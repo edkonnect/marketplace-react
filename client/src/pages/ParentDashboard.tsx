@@ -10,13 +10,14 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Link, useLocation } from "wouter";
 import { BookOpen, Calendar, MessageSquare, CreditCard, Clock, Users, Video } from "lucide-react";
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import { LOGIN_PATH } from "@/const";
 import { SessionNotesFeed } from "@/components/SessionNotesFeed";
 import { PaymentHistoryTable } from "@/components/PaymentHistoryTable";
 import { NotificationSettings } from "@/components/NotificationSettings";
 import { NotificationCenter } from "@/components/NotificationCenter";
 import { ParentBookingsManager } from "@/components/ParentBookingsManager";
+// no additional imports needed
 
 export default function ParentDashboard() {
   const { user, isAuthenticated, loading } = useAuth();
@@ -52,6 +53,81 @@ export default function ParentDashboard() {
     { enabled: isAuthenticated && user?.role === "parent" }
   );
 
+  // Track note updates per session to show a small indicator (one-time until next update)
+  const lastFeedbackRef = useRef<Map<number, string | null>>(new Map());
+  const seenFeedbackRef = useRef<Map<number, string | null>>(new Map());
+  const [noteAlerts, setNoteAlerts] = useState<Record<number, string>>({});
+  const [historyPulse, setHistoryPulse] = useState(false);
+  const notesInitialized = useRef(false);
+  const seenStorageKey = user ? `parent_seen_notes_${user.id}` : "parent_seen_notes";
+
+  // Load seen map once
+  useEffect(() => {
+    if (!seenStorageKey) return;
+    try {
+      const raw = localStorage.getItem(seenStorageKey);
+      if (raw) {
+        const parsed = JSON.parse(raw) as Record<number, string | null>;
+        const map = new Map<number, string | null>();
+        Object.entries(parsed).forEach(([k, v]) => map.set(Number(k), v));
+        seenFeedbackRef.current = map;
+      }
+    } catch (e) {
+      console.warn("Failed to load seen notes", e);
+    }
+  }, [seenStorageKey]);
+
+  const persistSeen = () => {
+    try {
+      const obj: Record<number, string | null> = {};
+      seenFeedbackRef.current.forEach((v, k) => {
+        obj[k] = v;
+      });
+      localStorage.setItem(seenStorageKey, JSON.stringify(obj));
+    } catch (e) {
+      console.warn("Failed to persist seen notes", e);
+    }
+  };
+
+  useEffect(() => {
+    if (!sessionHistory) return;
+    const nextAlerts: Record<number, string> = {};
+    sessionHistory.forEach((s) => {
+      if (!s.feedbackFromTutor) return;
+      const prev = lastFeedbackRef.current.get(s.id);
+      const seen = seenFeedbackRef.current.get(s.id);
+      if (prev !== s.feedbackFromTutor && seen !== s.feedbackFromTutor) {
+        nextAlerts[s.id] = s.feedbackFromTutor;
+      }
+      lastFeedbackRef.current.set(s.id, s.feedbackFromTutor);
+    });
+    setNoteAlerts(nextAlerts);
+    if (!notesInitialized.current) {
+      notesInitialized.current = true; // avoid initial noisy popup
+    }
+  }, [sessionHistory]);
+
+  useEffect(() => {
+    if (!notesInitialized.current) return;
+    if (Object.keys(noteAlerts).length === 0) return;
+
+    setHistoryPulse(true);
+    toast.info("New tutor notes available in History");
+    const timer = setTimeout(() => setHistoryPulse(false), 2000);
+
+    // Mark current alerts as seen so they won't reappear until updated again
+    Object.entries(noteAlerts).forEach(([id, feedback]) => {
+      seenFeedbackRef.current.set(Number(id), feedback);
+    });
+    persistSeen();
+    // Clear the alerts after a tick so the indicator shows once
+    const clearTimer = setTimeout(() => setNoteAlerts({}), 50);
+
+    return () => {
+      clearTimeout(timer);
+      clearTimeout(clearTimer);
+    };
+  }, [noteAlerts]);
   useEffect(() => {
     if (!loading && !isAuthenticated) {
       window.location.href = LOGIN_PATH;
@@ -159,7 +235,12 @@ export default function ParentDashboard() {
               <TabsTrigger value="bookings">My Bookings</TabsTrigger>
               <TabsTrigger value="schedule">Schedule</TabsTrigger>
               <TabsTrigger value="sessions">Sessions</TabsTrigger>
-              <TabsTrigger value="history">History</TabsTrigger>
+              <TabsTrigger
+                value="history"
+                className={historyPulse ? "ring-2 ring-primary/60 animate-pulse" : ""}
+              >
+                History
+              </TabsTrigger>
               <TabsTrigger value="notes">Notes</TabsTrigger>
               <TabsTrigger value="payments">Payments</TabsTrigger>
               <TabsTrigger value="notifications">Notifications</TabsTrigger>
@@ -456,7 +537,15 @@ export default function ParentDashboard() {
                           </div>
                           <div className="flex items-center gap-2">
                             <Badge>{session.status}</Badge>
-                            <Button onClick={() => console.log("Join meeting clicked")}>
+                            <Button
+                              onClick={() => {
+                                if (session.joinUrl) {
+                                  window.open(session.joinUrl, "_blank");
+                                } else {
+                                  console.log("Join meeting clicked");
+                                }
+                              }}
+                            >
                               Join meeting
                             </Button>
                           </div>
@@ -486,9 +575,12 @@ export default function ParentDashboard() {
                 <div className="space-y-4">
                   {[1, 2, 3].map(i => <Skeleton key={i} className="h-32 w-full" />)}
                 </div>
-              ) : sessionHistory && sessionHistory.length > 0 ? (
+              ) : sessionHistory && sessionHistory.filter(s => s.status === "scheduled" || s.status === "completed").length > 0 ? (
                 <div className="space-y-4">
-                  {sessionHistory.slice(0, 10).map((session) => (
+                  {sessionHistory
+                    .filter((s) => s.status === "scheduled" || s.status === "completed")
+                    .slice(0, 10)
+                    .map((session) => (
                     <Card key={session.id}>
                       <CardContent className="pt-6">
                         <div className="flex items-start justify-between">
@@ -506,8 +598,18 @@ export default function ParentDashboard() {
                             {session.duration} minutes • Tutor: {session.tutorName || "Tutor"}
                           </p>
                           {session.feedbackFromTutor && (
+                            <div className="flex items-center gap-2 text-xs text-primary">
+                              {noteAlerts[session.id] ? (
+                                <span className="inline-block h-2 w-2 rounded-full bg-primary animate-pulse" />
+                              ) : (
+                                <span className="inline-block h-2 w-2 rounded-full bg-primary/50" />
+                              )}
+                              <span>{noteAlerts[session.id] ? "Notes updated" : "Notes available"}</span>
+                            </div>
+                          )}
+                          {session.feedbackFromTutor && (
                             <p className="text-sm text-muted-foreground">
-                              <span className="font-medium">Tutor feedback:</span> {session.feedbackFromTutor}
+                              <span className="font-medium">Notes :</span> {session.feedbackFromTutor}
                             </p>
                           )}
                           </div>

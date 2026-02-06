@@ -39,10 +39,26 @@ export default function TutorDashboard() {
     { enabled: isAuthenticated && user?.role === "tutor" }
   );
 
-  const { data: upcomingSessions } = trpc.session.myUpcoming.useQuery(
+  const { data: upcomingSessions, refetch: refetchUpcoming } = trpc.session.myUpcoming.useQuery(
     undefined,
     { enabled: isAuthenticated && user?.role === "tutor" }
   );
+
+  const { data: historySessions, isLoading: historyLoading, refetch: refetchHistory } = trpc.session.myHistory.useQuery(
+    undefined,
+    { enabled: isAuthenticated && user?.role === "tutor" }
+  );
+
+  const [sessionNotes, setSessionNotes] = useState<Record<number, string>>({});
+
+  const updateSessionMutation = trpc.session.update.useMutation({
+    onSuccess: () => {
+      refetchUpcoming();
+      refetchHistory();
+      toast.success("Session updated");
+    },
+    onError: (err) => toast.error(err.message || "Failed to update session"),
+  });
 
   const { data: earnings } = trpc.payment.myEarnings.useQuery(
     undefined,
@@ -116,6 +132,50 @@ export default function TutorDashboard() {
     });
     return new Set(keys).size;
   }, [activeSubscriptions]);
+
+  // Helpers for session actions
+  const canComplete = (session: any) =>
+    session.status === "scheduled" && session.scheduledAt <= Date.now();
+
+  const statusVariant = (status: string) => {
+    switch (status) {
+      case "cancelled":
+        return "destructive";
+      case "completed":
+        return "secondary";
+      default:
+        return "default";
+    }
+  };
+
+  const hiddenStorageKey = user ? `tutor_hidden_sessions_${user.id}` : "tutor_hidden_sessions";
+  const [hiddenHistory, setHiddenHistory] = useState<Set<number>>(() => {
+    try {
+      const stored = localStorage.getItem(hiddenStorageKey);
+      if (stored) {
+        const ids = JSON.parse(stored) as number[];
+        return new Set(ids);
+      }
+    } catch (e) {
+      console.warn("Failed to parse hidden sessions", e);
+    }
+    return new Set();
+  });
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(hiddenStorageKey);
+      if (stored) {
+        const ids = JSON.parse(stored) as number[];
+        setHiddenHistory(new Set(ids));
+      } else {
+        setHiddenHistory(new Set());
+      }
+    } catch (e) {
+      console.warn("Failed to load hidden sessions", e);
+      setHiddenHistory(new Set());
+    }
+  }, [hiddenStorageKey]);
 
   if (loading || !isAuthenticated) {
     return (
@@ -237,11 +297,12 @@ export default function TutorDashboard() {
 
               {/* Main Content */}
               <Tabs defaultValue="courses" className="space-y-6">
-                <TabsList className="grid w-full max-w-2xl grid-cols-5">
+                <TabsList className="grid w-full max-w-2xl grid-cols-6">
                   <TabsTrigger value="profile">Profile</TabsTrigger>
                   <TabsTrigger value="courses">Courses</TabsTrigger>
                   <TabsTrigger value="students">Students</TabsTrigger>
                   <TabsTrigger value="sessions">Sessions</TabsTrigger>
+                  <TabsTrigger value="history">History</TabsTrigger>
                   <TabsTrigger value="availability">Availability</TabsTrigger>
                 </TabsList>
 
@@ -484,28 +545,80 @@ export default function TutorDashboard() {
 
                   {upcomingSessions && upcomingSessions.length > 0 ? (
                     <div className="space-y-4">
-                      {upcomingSessions.map((session) => (
-                        <Card key={session.id}>
-                          <CardContent className="pt-6">
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-4">
-                                <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center">
-                                  <Calendar className="w-6 h-6 text-primary" />
-                                </div>
-                                <div>
-                                  <p className="font-semibold">
-                                    {new Date(session.scheduledAt).toLocaleDateString()}
-                                  </p>
-                                  <p className="text-sm text-muted-foreground">
-                                    {new Date(session.scheduledAt).toLocaleTimeString()} • {session.duration} minutes
-                                  </p>
+                      {upcomingSessions.map((session) => {
+                        const noteValue =
+                          sessionNotes[session.id] ?? session.feedbackFromTutor ?? "";
+                        const markComplete = () =>
+                          updateSessionMutation.mutate({ id: session.id, status: "completed" });
+                        const saveNotes = () =>
+                          updateSessionMutation.mutate({ id: session.id, feedbackFromTutor: noteValue });
+
+                        return (
+                          <Card key={session.id}>
+                            <CardContent className="pt-6 space-y-4">
+                              <div className="flex items-center justify-between gap-4">
+                                <div className="flex items-center gap-4">
+                                  <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center">
+                                    <Calendar className="w-6 h-6 text-primary" />
+                                  </div>
+                                  <div>
+                                    <p className="font-semibold">
+                                      {new Date(session.scheduledAt).toLocaleDateString()}
+                                    </p>
+                                    <p className="text-sm text-muted-foreground">
+                                      {new Date(session.scheduledAt).toLocaleTimeString()} • {session.duration} minutes
+                                    </p>
                                 </div>
                               </div>
-                              <Badge>{session.status}</Badge>
-                            </div>
-                          </CardContent>
-                        </Card>
-                      ))}
+                                <div className="flex items-center gap-2">
+                                  <Badge variant={statusVariant(session.status)}>{session.status}</Badge>
+                                  {session.status !== "cancelled" && session.status !== "completed" && (
+                                    <Button
+                                      size="sm"
+                                      onClick={() => {
+                                        if (session.joinUrl) {
+                                          window.open(session.joinUrl, "_blank");
+                                        } else {
+                                          console.log("Join meeting clicked");
+                                        }
+                                      }}
+                                    >
+                                      Join meeting
+                                    </Button>
+                                  )}
+                                </div>
+                              </div>
+
+                              {canComplete(session) && (
+                                <Button size="sm" onClick={markComplete} disabled={updateSessionMutation.isPending}>
+                                  Mark session as completed
+                                </Button>
+                              )}
+
+                              {session.status === "completed" && (
+                                <div className="space-y-2">
+                                  <Label>Session Notes (visible to parent)</Label>
+                                  <Textarea
+                                    value={noteValue}
+                                    onChange={(e) =>
+                                      setSessionNotes((prev) => ({
+                                        ...prev,
+                                        [session.id]: e.target.value,
+                                      }))
+                                    }
+                                    placeholder="Add notes/summary for the student"
+                                  />
+                                  <div className="flex gap-2">
+                                    <Button size="sm" onClick={saveNotes} disabled={updateSessionMutation.isPending}>
+                                      Save notes
+                                    </Button>
+                                  </div>
+                                </div>
+                              )}
+                            </CardContent>
+                          </Card>
+                        );
+                      })}
                     </div>
                   ) : (
                     <Card>
@@ -514,6 +627,136 @@ export default function TutorDashboard() {
                         <h3 className="text-xl font-semibold mb-2">No Upcoming Sessions</h3>
                         <p className="text-muted-foreground">
                           Your scheduled sessions will appear here
+                        </p>
+                      </CardContent>
+                    </Card>
+                  )}
+                </TabsContent>
+
+                {/* History Tab */}
+                <TabsContent value="history" className="space-y-6">
+                  <h2 className="text-2xl font-bold">Session History</h2>
+
+                  {historyLoading ? (
+                    <div className="space-y-4">
+                      {[1, 2, 3].map(i => <Skeleton key={i} className="h-32 w-full" />)}
+                    </div>
+                  ) : historySessions && historySessions.length > 0 ? (
+                    <div className="space-y-4">
+                      {historySessions
+                        .filter((s) => !hiddenHistory.has(s.id))
+                        .filter(s => s.scheduledAt <= Date.now())
+                        .sort((a, b) => b.scheduledAt - a.scheduledAt)
+                        .map((session) => {
+                          const noteValue =
+                            sessionNotes[session.id] ?? session.feedbackFromTutor ?? "";
+                          const markComplete = () =>
+                            updateSessionMutation.mutate({ id: session.id, status: "completed" });
+                          const saveNotes = () =>
+                            updateSessionMutation.mutate({ id: session.id, feedbackFromTutor: noteValue });
+
+                          return (
+                            <Card key={session.id}>
+                              <CardContent className="pt-6 space-y-4">
+                                <div className="flex items-center justify-between gap-4">
+                                  <div className="flex items-center gap-4">
+                                    <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center">
+                                      <Calendar className="w-6 h-6 text-primary" />
+                                    </div>
+                                    <div>
+                                      <p className="font-semibold">
+                                        {new Date(session.scheduledAt).toLocaleDateString()}
+                                      </p>
+                                      <p className="text-sm text-muted-foreground">
+                                        {new Date(session.scheduledAt).toLocaleTimeString()} • {session.duration} minutes
+                                      </p>
+                                      <p className="text-sm text-muted-foreground">
+                                        {session.studentFirstName && session.studentLastName
+                                          ? `${session.studentFirstName} ${session.studentLastName}`
+                                          : "Student"} • {session.courseTitle || session.courseSubject || "Course"}
+                                      </p>
+                                    </div>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <Badge variant={statusVariant(session.status)}>{session.status}</Badge>
+                                    {session.status !== "cancelled" && session.status !== "completed" && (
+                                      <Button
+                                        size="sm"
+                                        onClick={() => {
+                                          if (session.joinUrl) {
+                                            window.open(session.joinUrl, "_blank");
+                                          } else {
+                                            console.log("Join meeting clicked");
+                                          }
+                                        }}
+                                      >
+                                        Join meeting
+                                      </Button>
+                                    )}
+                                  </div>
+                                </div>
+
+                                {canComplete(session) && (
+                                  <Button size="sm" onClick={markComplete} disabled={updateSessionMutation.isPending}>
+                                    Mark session as completed
+                                  </Button>
+                                )}
+
+                                {session.status === "completed" && (
+                                  <div className="space-y-2">
+                                    <Label>Session Notes (visible to parent)</Label>
+                                    <Textarea
+                                      value={noteValue}
+                                      onChange={(e) =>
+                                        setSessionNotes((prev) => ({
+                                          ...prev,
+                                          [session.id]: e.target.value,
+                                        }))
+                                      }
+                                      placeholder="Add notes/summary for the student"
+                                    />
+                                    <div className="flex gap-2">
+                                      <Button size="sm" onClick={saveNotes} disabled={updateSessionMutation.isPending}>
+                                        Save notes
+                                      </Button>
+                                    </div>
+                                  </div>
+                                )}
+
+                                {(session.status === "cancelled" || session.status === "completed") && (
+                                  <div className="flex gap-2">
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() => {
+                                        setHiddenHistory((prev) => {
+                                          const next = new Set(prev);
+                                          next.add(session.id);
+                                          try {
+                                            localStorage.setItem(hiddenStorageKey, JSON.stringify(Array.from(next)));
+                                          } catch (e) {
+                                            console.warn("Failed to persist hidden sessions", e);
+                                          }
+                                          return next;
+                                        });
+                                      }}
+                                    >
+                                      Remove from history
+                                    </Button>
+                                  </div>
+                                )}
+                              </CardContent>
+                            </Card>
+                          );
+                        })}
+                    </div>
+                  ) : (
+                    <Card>
+                      <CardContent className="py-16 text-center">
+                        <Clock className="w-16 h-16 mx-auto mb-4 text-muted-foreground" />
+                        <h3 className="text-xl font-semibold mb-2">No Past Sessions</h3>
+                        <p className="text-muted-foreground">
+                          Completed or past sessions will appear here.
                         </p>
                       </CardContent>
                     </Card>

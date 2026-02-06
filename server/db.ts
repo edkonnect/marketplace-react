@@ -721,21 +721,41 @@ export async function createSession(session: InsertSession) {
   if (!db) return null;
 
   try {
-    const result = await db.insert(sessions).values(session) as any;
-    const insertId = result?.[0]?.insertId ?? (result as any)?.insertId;
+    const durationMs = (session.duration || 0) * 60000;
+    const startMs = session.scheduledAt;
+    const endMs = startMs + durationMs;
 
-    if (insertId) return Number(insertId);
+    const insertId = await db.transaction(async (trx) => {
+      // Lock and check overlapping sessions for this tutor
+      const conflicts = await trx.execute(sql`
+        SELECT id FROM sessions
+        WHERE tutorId = ${session.tutorId}
+          AND status = 'scheduled'
+          AND ${startMs} < (sessions.scheduledAt + sessions.duration * 60000)
+          AND ${endMs} > sessions.scheduledAt
+        FOR UPDATE
+      `);
 
-    // Fallback: fetch the most recent session (best-effort)
-    const fallback = await db
-      .select({ id: sessions.id })
-      .from(sessions)
-      .orderBy(desc(sessions.id))
-      .limit(1);
-    return fallback[0]?.id ?? null;
-  } catch (error) {
+      const rows = Array.isArray(conflicts?.[0]) ? conflicts[0] : [];
+      if (rows.length > 0) {
+        throw new Error("SESSION_CONFLICT");
+      }
+
+      const result = await trx.insert(sessions).values(session) as any;
+      const newId = result?.[0]?.insertId ?? (result as any)?.insertId;
+      if (!newId) {
+        throw new Error("SESSION_INSERT_FAILED");
+      }
+      return Number(newId);
+    });
+
+    return insertId;
+  } catch (error: any) {
+    if (error?.message === "SESSION_CONFLICT" || error?.code === "ER_DUP_ENTRY") {
+      throw new Error("SESSION_CONFLICT");
+    }
     console.error("[Database] Failed to create session:", error);
-    return null;
+    throw error;
   }
 }
 
@@ -755,7 +775,10 @@ export async function getSessionsByParentId(parentId: number) {
     .select({
       session: sessions,
       courseTitle: courses.title,
+      courseSubject: courses.subject,
       tutorName: users.name,
+      studentFirstName: subscriptions.studentFirstName,
+      studentLastName: subscriptions.studentLastName,
     })
     .from(sessions)
     .leftJoin(subscriptions, eq(sessions.subscriptionId, subscriptions.id))
@@ -773,7 +796,10 @@ export async function getSessionsByTutorId(tutorId: number) {
     .select({
       session: sessions,
       courseTitle: courses.title,
+      courseSubject: courses.subject,
       tutorName: users.name,
+      studentFirstName: subscriptions.studentFirstName,
+      studentLastName: subscriptions.studentLastName,
     })
     .from(sessions)
     .leftJoin(subscriptions, eq(sessions.subscriptionId, subscriptions.id))
@@ -796,7 +822,10 @@ export async function getUpcomingSessions(userId: number, role: "parent" | "tuto
     .select({
       session: sessions,
       courseTitle: courses.title,
+      courseSubject: courses.subject,
       tutorName: users.name,
+      studentFirstName: subscriptions.studentFirstName,
+      studentLastName: subscriptions.studentLastName,
     })
     .from(sessions)
     .leftJoin(subscriptions, eq(sessions.subscriptionId, subscriptions.id))

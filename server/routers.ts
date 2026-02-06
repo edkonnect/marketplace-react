@@ -40,6 +40,12 @@ const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
   return next({ ctx });
 });
 
+function generateJoinUrl(sessionId: number) {
+  // Deterministic pseudo Zoom link so parent/tutor see the same URL without storing in DB
+  const padded = sessionId.toString().padStart(9, "0");
+  return `https://zoom.us/j/9${padded}`;
+}
+
 export const appRouter = router({
   system: systemRouter,
   
@@ -552,6 +558,29 @@ export const appRouter = router({
           throw new TRPCError({ code: 'NOT_FOUND', message: 'Course not found' });
         }
 
+        // Prevent duplicate enrollment for the same student + subject
+        const normalize = (v: string | null | undefined) => (v || "").trim().toLowerCase();
+        const targetFirst = normalize(input.studentFirstName);
+        const targetLast = normalize(input.studentLastName);
+        const existingSubscriptions = await db.getSubscriptionsByParentId(ctx.user.id);
+        const duplicate = existingSubscriptions.some((s: any) => {
+          const sub = s.subscription;
+          const c = s.course;
+          if (!sub || !c) return false;
+          if (sub.status === "cancelled") return false;
+          return (
+            normalize(sub.studentFirstName) === targetFirst &&
+            normalize(sub.studentLastName) === targetLast &&
+            normalize(c.subject) === normalize(course.subject)
+          );
+        });
+        if (duplicate) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "This student is already enrolled in this subject.",
+          });
+        }
+
         // Get primary tutor for the course
         const tutors = await db.getTutorsForCourse(input.courseId);
         const primaryTutor = tutors.find(t => t.isPrimary) || tutors[0];
@@ -663,6 +692,29 @@ export const appRouter = router({
           throw new TRPCError({ code: 'NOT_FOUND', message: 'Course not found' });
         }
 
+        // Prevent duplicate enrollment for the same student + subject
+        const normalize = (v: string | null | undefined) => (v || "").trim().toLowerCase();
+        const targetFirst = normalize(input.studentFirstName);
+        const targetLast = normalize(input.studentLastName);
+        const existingSubscriptions = await db.getSubscriptionsByParentId(ctx.user.id);
+        const duplicate = existingSubscriptions.some((s: any) => {
+          const sub = s.subscription;
+          const c = s.course;
+          if (!sub || !c) return false;
+          if (sub.status === "cancelled") return false;
+          return (
+            normalize(sub.studentFirstName) === targetFirst &&
+            normalize(sub.studentLastName) === targetLast &&
+            normalize(c.subject) === normalize(course.subject)
+          );
+        });
+        if (duplicate) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "This student is already enrolled in this subject.",
+          });
+        }
+
         // Create subscription with pending payment status
         const subscription = await db.createSubscription({
           parentId: ctx.user.id,
@@ -698,6 +750,29 @@ export const appRouter = router({
         const course = await db.getCourseById(input.courseId);
         if (!course) {
           throw new TRPCError({ code: 'NOT_FOUND', message: 'Course not found' });
+        }
+
+        // Prevent duplicate enrollment for the same student + subject
+        const normalize = (v: string | null | undefined) => (v || "").trim().toLowerCase();
+        const targetFirst = normalize(input.studentFirstName);
+        const targetLast = normalize(input.studentLastName);
+        const existingSubscriptions = await db.getSubscriptionsByParentId(ctx.user.id);
+        const duplicate = existingSubscriptions.some((s: any) => {
+          const sub = s.subscription;
+          const c = s.course;
+          if (!sub || !c) return false;
+          if (sub.status === "cancelled") return false;
+          return (
+            normalize(sub.studentFirstName) === targetFirst &&
+            normalize(sub.studentLastName) === targetLast &&
+            normalize(c.subject) === normalize(course.subject)
+          );
+        });
+        if (duplicate) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "This student is already enrolled in this subject.",
+          });
         }
 
         // Verify course price is over $500
@@ -904,6 +979,7 @@ export const appRouter = router({
         ...(row.session || row),
         courseTitle: row.courseTitle,
         tutorName: row.tutorName,
+        joinUrl: generateJoinUrl((row.session || row).id),
       }));
     }),
 
@@ -913,14 +989,22 @@ export const appRouter = router({
         return rows.map((row: any) => ({
           ...(row.session || row),
           courseTitle: row.courseTitle,
+          courseSubject: row.courseSubject,
           tutorName: row.tutorName,
+          studentFirstName: row.studentFirstName,
+          studentLastName: row.studentLastName,
+          joinUrl: generateJoinUrl((row.session || row).id),
         }));
       } else {
         const rows = await db.getSessionsByParentId(ctx.user.id);
         return rows.map((row: any) => ({
           ...(row.session || row),
           courseTitle: row.courseTitle,
+          courseSubject: row.courseSubject,
           tutorName: row.tutorName,
+          studentFirstName: row.studentFirstName,
+          studentLastName: row.studentLastName,
+          joinUrl: generateJoinUrl((row.session || row).id),
         }));
       }
     }),
@@ -932,6 +1016,7 @@ export const appRouter = router({
         ...(row.session || row),
         course: row.courseTitle ? { title: row.courseTitle } : null,
         tutor: row.tutorName ? { name: row.tutorName } : null,
+        joinUrl: generateJoinUrl((row.session || row).id),
       }));
       
       // Group sessions by subscriptionId
@@ -1284,62 +1369,56 @@ export const appRouter = router({
           throw new TRPCError({ code: 'BAD_REQUEST', message: 'Cannot schedule a session in the past' });
         }
 
-        // Prevent double-booking: check overlapping sessions for this tutor
-        const overlapWindowStart = input.scheduledAt - input.duration * 60000;
-        const overlapWindowEnd = input.scheduledAt + input.duration * 60000;
-        const tutorSessions = await db.getTutorSessionsWithin(input.tutorId, overlapWindowStart, overlapWindowEnd);
-        const hasOverlap = tutorSessions.some((s: any) => {
-          const existingStart = s.scheduledAt;
-          const existingEnd = s.scheduledAt + s.duration * 60000;
-          return input.scheduledAt < existingEnd && (input.scheduledAt + input.duration * 60000) > existingStart;
-        });
-        if (hasOverlap) {
-          throw new TRPCError({ code: 'CONFLICT', message: 'Time slot is already booked' });
-        }
-
-        const id = await db.createSession(input);
-        if (!id) {
-          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to create session' });
-        }
-        
-        // Get session details for email
-        const session = await db.getSessionById(id);
-        if (session) {
-          const sessionDate = new Date(session.scheduledAt);
-          const course = await db.getCourseById(session.subscriptionId); // Assuming subscription has courseId
-          const tutor = await db.getUserById(session.tutorId);
-          const parent = await db.getUserById(session.parentId);
-          
-          if (course && tutor && parent && tutor.name && parent.name && tutor.email && parent.email) {
-            // Send email to parent
-            sendBookingConfirmation({
-              userEmail: parent.email,
-              userName: parent.name,
-              userRole: 'parent',
-              courseName: course.title,
-              tutorName: tutor.name,
-              sessionDate: formatEmailDate(sessionDate),
-              sessionTime: formatEmailTime(sessionDate),
-              sessionDuration: `${session.duration} minutes`,
-              sessionPrice: formatEmailPrice(parseInt(course.price) * 100),
-            }).catch(err => console.error('[Email] Failed to send booking confirmation to parent:', err));
-            
-            // Send email to tutor
-            sendBookingConfirmation({
-              userEmail: tutor.email,
-              userName: tutor.name,
-              userRole: 'tutor',
-              courseName: course.title,
-              studentName: parent.name,
-              sessionDate: formatEmailDate(sessionDate),
-              sessionTime: formatEmailTime(sessionDate),
-              sessionDuration: `${session.duration} minutes`,
-              sessionPrice: formatEmailPrice(parseInt(course.price) * 100),
-            }).catch(err => console.error('[Email] Failed to send booking confirmation to tutor:', err));
+        try {
+          const id = await db.createSession(input);
+          if (!id) {
+            throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to create session' });
           }
+          
+          // Get session details for email
+          const session = await db.getSessionById(id);
+          if (session) {
+            const sessionDate = new Date(session.scheduledAt);
+            const course = await db.getCourseById(session.subscriptionId); // Assuming subscription has courseId
+            const tutor = await db.getUserById(session.tutorId);
+            const parent = await db.getUserById(session.parentId);
+            
+            if (course && tutor && parent && tutor.name && parent.name && tutor.email && parent.email) {
+              // Send email to parent
+              sendBookingConfirmation({
+                userEmail: parent.email,
+                userName: parent.name,
+                userRole: 'parent',
+                courseName: course.title,
+                tutorName: tutor.name,
+                sessionDate: formatEmailDate(sessionDate),
+                sessionTime: formatEmailTime(sessionDate),
+                sessionDuration: `${session.duration} minutes`,
+                sessionPrice: formatEmailPrice(parseInt(course.price) * 100),
+              }).catch(err => console.error('[Email] Failed to send booking confirmation to parent:', err));
+              
+              // Send email to tutor
+              sendBookingConfirmation({
+                userEmail: tutor.email,
+                userName: tutor.name,
+                userRole: 'tutor',
+                courseName: course.title,
+                studentName: parent.name,
+                sessionDate: formatEmailDate(sessionDate),
+                sessionTime: formatEmailTime(sessionDate),
+                sessionDuration: `${session.duration} minutes`,
+                sessionPrice: formatEmailPrice(parseInt(course.price) * 100),
+              }).catch(err => console.error('[Email] Failed to send booking confirmation to tutor:', err));
+            }
+          }
+          
+          return { id };
+        } catch (error: any) {
+          if (error?.message === "SESSION_CONFLICT") {
+            throw new TRPCError({ code: 'CONFLICT', message: 'Time slot is already booked' });
+          }
+          throw error;
         }
-        
-        return { id };
       }),
 
     update: protectedProcedure

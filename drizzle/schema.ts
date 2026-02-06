@@ -189,6 +189,7 @@ export const sessions = mysqlTable("sessions", {
   tutorIdIdx: index("sessions_tutorId_idx").on(table.tutorId),
   parentIdIdx: index("sessions_parentId_idx").on(table.parentId),
   scheduledAtIdx: index("sessions_scheduledAt_idx").on(table.scheduledAt),
+  tutorStartUnique: uniqueIndex("sessions_tutor_start_unique").on(table.tutorId, table.scheduledAt),
 }));
 
 export type Session = typeof sessions.$inferSelect;
