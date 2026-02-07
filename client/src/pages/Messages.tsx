@@ -23,9 +23,17 @@ export default function Messages() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
 
+  const isParent = user?.role === "parent";
+  const isTutor = user?.role === "tutor";
+
   const { data: studentsWithTutors, isLoading: studentsLoading } = trpc.messaging.getStudentsWithTutors.useQuery(
     undefined,
-    { enabled: isAuthenticated && user?.role === "parent" }
+    { enabled: isAuthenticated && isParent }
+  );
+
+  const { data: tutorConversations, isLoading: tutorConversationsLoading } = trpc.messaging.getTutorConversations.useQuery(
+    undefined,
+    { enabled: isAuthenticated && isTutor }
   );
 
   const { data: messages, isLoading: messagesLoading, refetch: refetchMessages } = trpc.messaging.getMessages.useQuery(
@@ -50,9 +58,13 @@ export default function Messages() {
     }
   }, [selectedConversationId]);
 
+  const [conversationLoading, setConversationLoading] = useState(false);
+
   const handleTutorSelect = async (tutorId: number) => {
     if (!selectedStudentId || !user?.id) return;
+    if (conversationLoading) return;
 
+    setConversationLoading(true);
     setSelectedTutorId(tutorId);
 
     try {
@@ -62,11 +74,29 @@ export default function Messages() {
         studentId: selectedStudentId,
       });
 
-      if (conversation && typeof conversation !== 'number') {
-        setSelectedConversationId(conversation.id);
+      if (conversation) {
+        const convId = typeof conversation === "number" ? conversation : conversation.id;
+        setSelectedConversationId(convId);
+        return;
+      }
+
+      // If no conversation returned, retry once
+      const retry = await createConversationMutation.mutateAsync({
+        parentId: user.id,
+        tutorId: tutorId,
+        studentId: selectedStudentId,
+      });
+      if (retry) {
+        const convId = typeof retry === "number" ? retry : retry.id;
+        setSelectedConversationId(convId);
+      } else {
+        toast.error("Failed to load conversation");
       }
     } catch (error) {
+      console.error("Failed to load conversation", error);
       toast.error("Failed to load conversation");
+    } finally {
+      setConversationLoading(false);
     }
   };
 
@@ -160,6 +190,23 @@ export default function Messages() {
   const selectedStudent = studentsWithTutors?.find(s => s.id === selectedStudentId);
   const selectedTutor = selectedStudent?.tutors.find((t: any) => t.id === selectedTutorId);
 
+  const tutorListForUI = isTutor
+    ? (tutorConversations || []).map((c: any) => ({
+        conversationId: c.conversation.id,
+        parentName: c.parent.name || c.parent.email || "Parent",
+        studentName: (() => {
+          const name = c.subscription
+            ? `${c.subscription.studentFirstName || ""} ${c.subscription.studentLastName || ""}`.trim()
+            : "";
+          if (name) return name;
+          if (c.course?.title) return c.course.title;
+          return "Student";
+        })(),
+        courseTitle: c.course?.title || "Course",
+        studentId: c.conversation.studentId,
+      }))
+    : [];
+
   return (
     <div className="min-h-screen flex flex-col bg-background">
       <Navigation />
@@ -175,97 +222,168 @@ export default function Messages() {
         </div>
 
         <div className="grid lg:grid-cols-4 gap-6 h-[calc(100vh-16rem)]">
-          {/* Students List */}
-          <Card className="lg:col-span-1">
-            <CardHeader>
-              <CardTitle className="text-lg flex items-center gap-2">
-                <User className="w-5 h-5" />
-                Students
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-0">
-              <ScrollArea className="h-[calc(100vh-20rem)]">
-                {studentsLoading ? (
-                  <div className="p-4 space-y-4">
-                    {[1, 2, 3].map(i => (
-                      <Skeleton key={i} className="h-20 w-full" />
-                    ))}
-                  </div>
-                ) : studentsWithTutors && studentsWithTutors.length > 0 ? (
-                  <div>
-                    {studentsWithTutors.map((student) => (
-                      <button
-                        key={student.id}
-                        onClick={() => {
-                          setSelectedStudentId(student.id);
-                          setSelectedTutorId(null);
-                          setSelectedConversationId(null);
-                        }}
-                        className={`w-full p-4 text-left hover:bg-muted/50 transition-colors border-b border-border ${
-                          selectedStudentId === student.id ? "bg-muted" : ""
-                        }`}
-                      >
-                        <div className="flex items-center justify-between">
-                          <div className="flex-1 min-w-0">
-                            <p className="font-medium truncate">
-                              {student.firstName} {student.lastName}
-                            </p>
-                            {student.grade && (
-                              <Badge variant="secondary" className="text-xs mt-1">
-                                Grade {student.grade}
-                              </Badge>
-                            )}
-                            <p className="text-xs text-muted-foreground mt-1">
-                              {student.tutors.length} tutor{student.tutors.length !== 1 ? 's' : ''}
-                            </p>
-                          </div>
-                          <ChevronRight className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="p-8 text-center">
-                    <User className="w-12 h-12 mx-auto mb-3 text-muted-foreground" />
-                    <p className="text-sm text-muted-foreground">No students enrolled yet</p>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Enroll in a course to start messaging tutors
-                    </p>
-                  </div>
-                )}
-              </ScrollArea>
-            </CardContent>
-          </Card>
+          {isParent ? (
+            <>
+              {/* Students List */}
+              <Card className="lg:col-span-1">
+                <CardHeader>
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <User className="w-5 h-5" />
+                    Students
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="p-0">
+                  <ScrollArea className="h-[calc(100vh-20rem)]">
+                    {studentsLoading ? (
+                      <div className="p-4 space-y-4">
+                        {[1, 2, 3].map(i => (
+                          <Skeleton key={i} className="h-20 w-full" />
+                        ))}
+                      </div>
+                    ) : studentsWithTutors && studentsWithTutors.length > 0 ? (
+                      <div>
+                        {studentsWithTutors.map((student) => (
+                          <button
+                            key={student.id}
+                            onClick={() => {
+                              setSelectedStudentId(student.id);
+                              setSelectedTutorId(null);
+                              setSelectedConversationId(null);
+                            }}
+                            className={`w-full p-4 text-left hover:bg-muted/50 transition-colors border-b border-border ${
+                              selectedStudentId === student.id ? "bg-muted" : ""
+                            }`}
+                          >
+                            <div className="flex items-center justify-between">
+                              <div className="flex-1 min-w-0">
+                                <p className="font-medium truncate">
+                                  {student.firstName} {student.lastName}
+                                </p>
+                                {(() => {
+                                  const courseNames = Array.from(
+                                    new Set(
+                                      (student.tutors || [])
+                                        .map((t: any) => t.courseTitle)
+                                        .filter(Boolean)
+                                    )
+                                  );
+                                  if (courseNames.length === 0) return null;
+                                  return (
+                                    <Badge variant="secondary" className="text-xs mt-1 truncate max-w-[180px]">
+                                      {courseNames.join(", ")}
+                                    </Badge>
+                                  );
+                                })()}
+                                <p className="text-xs text-muted-foreground mt-1">
+                                  {student.tutors.length} tutor{student.tutors.length !== 1 ? 's' : ''}
+                                </p>
+                              </div>
+                              <ChevronRight className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="p-8 text-center">
+                        <User className="w-12 h-12 mx-auto mb-3 text-muted-foreground" />
+                        <p className="text-sm text-muted-foreground">No students enrolled yet</p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Enroll in a course to start messaging tutors
+                        </p>
+                      </div>
+                    )}
+                  </ScrollArea>
+                </CardContent>
+              </Card>
 
-          {/* Tutors List */}
-          <Card className="lg:col-span-1">
-            <CardHeader>
-              <CardTitle className="text-lg flex items-center gap-2">
-                <GraduationCap className="w-5 h-5" />
-                Tutors
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-0">
-              <ScrollArea className="h-[calc(100vh-20rem)]">
-                {selectedStudent ? (
-                  selectedStudent.tutors.length > 0 ? (
+              {/* Tutors List */}
+              <Card className="lg:col-span-1">
+                <CardHeader>
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <GraduationCap className="w-5 h-5" />
+                    Tutors
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="p-0">
+                  <ScrollArea className="h-[calc(100vh-20rem)]">
+                    {selectedStudent ? (
+                      selectedStudent.tutors.length > 0 ? (
+                        <div>
+                          {selectedStudent.tutors.map((tutor: any) => (
+                            <button
+                              key={tutor.id}
+                              onClick={() => handleTutorSelect(tutor.id)}
+                              className={`w-full p-4 text-left hover:bg-muted/50 transition-colors border-b border-border ${
+                                selectedTutorId === tutor.id ? "bg-muted" : ""
+                              }`}
+                            >
+                              <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-sm font-semibold text-primary flex-shrink-0">
+                                  {tutor.name?.charAt(0) || "T"}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="font-medium truncate">{tutor.name || "Tutor"}</p>
+                                  <p className="text-xs text-muted-foreground truncate">
+                                    {tutor.courseTitle}
+                                  </p>
+                                </div>
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="p-8 text-center">
+                          <GraduationCap className="w-12 h-12 mx-auto mb-3 text-muted-foreground" />
+                          <p className="text-sm text-muted-foreground">No tutors found</p>
+                        </div>
+                      )
+                    ) : (
+                      <div className="p-8 text-center">
+                        <GraduationCap className="w-12 h-12 mx-auto mb-3 text-muted-foreground" />
+                        <p className="text-sm text-muted-foreground">Select a student to view their tutors</p>
+                      </div>
+                    )}
+                  </ScrollArea>
+                </CardContent>
+              </Card>
+            </>
+          ) : (
+            /* Tutor view: list conversations (parents/students) */
+            <Card className="lg:col-span-1">
+              <CardHeader>
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <User className="w-5 h-5" />
+                  Conversations
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                <ScrollArea className="h-[calc(100vh-20rem)]">
+                  {tutorConversationsLoading ? (
+                    <div className="p-4 space-y-4">
+                      {[1, 2, 3].map(i => <Skeleton key={i} className="h-20 w-full" />)}
+                    </div>
+                  ) : tutorListForUI.length > 0 ? (
                     <div>
-                      {selectedStudent.tutors.map((tutor: any) => (
+                      {tutorListForUI.map((item) => (
                         <button
-                          key={tutor.id}
-                          onClick={() => handleTutorSelect(tutor.id)}
+                          key={item.conversationId}
+                          onClick={() => {
+                            setSelectedConversationId(item.conversationId);
+                            setSelectedStudentId(item.studentId || null);
+                            setSelectedTutorId(null);
+                          }}
                           className={`w-full p-4 text-left hover:bg-muted/50 transition-colors border-b border-border ${
-                            selectedTutorId === tutor.id ? "bg-muted" : ""
+                            selectedConversationId === item.conversationId ? "bg-muted" : ""
                           }`}
                         >
                           <div className="flex items-center gap-3">
                             <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-sm font-semibold text-primary flex-shrink-0">
-                              {tutor.name?.charAt(0) || "T"}
+                              {item.studentName?.charAt(0) || "S"}
                             </div>
                             <div className="flex-1 min-w-0">
-                              <p className="font-medium truncate">{tutor.name || "Tutor"}</p>
+                              <p className="font-medium truncate">{item.studentName}</p>
                               <p className="text-xs text-muted-foreground truncate">
-                                {tutor.courseTitle}
+                                {item.courseTitle} · {item.parentName}
                               </p>
                             </div>
                           </div>
@@ -274,36 +392,41 @@ export default function Messages() {
                     </div>
                   ) : (
                     <div className="p-8 text-center">
-                      <GraduationCap className="w-12 h-12 mx-auto mb-3 text-muted-foreground" />
-                      <p className="text-sm text-muted-foreground">No tutors found</p>
+                      <User className="w-12 h-12 mx-auto mb-3 text-muted-foreground" />
+                      <p className="text-sm text-muted-foreground">No conversations yet</p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Parents will appear here once they message you.
+                      </p>
                     </div>
-                  )
-                ) : (
-                  <div className="p-8 text-center">
-                    <GraduationCap className="w-12 h-12 mx-auto mb-3 text-muted-foreground" />
-                    <p className="text-sm text-muted-foreground">Select a student to view their tutors</p>
-                  </div>
-                )}
-              </ScrollArea>
-            </CardContent>
-          </Card>
+                  )}
+                </ScrollArea>
+              </CardContent>
+            </Card>
+          )}
 
           {/* Messages Area */}
-          <Card className="lg:col-span-2 flex flex-col">
-            {selectedConversationId && selectedTutor ? (
+          <Card className="lg:col-span-2 flex flex-col h-[70vh]">
+            {selectedConversationId && (selectedTutor || isTutor) ? (
               <>
                 <CardHeader>
                   <CardTitle className="text-lg">
                     <div className="flex items-center gap-2">
-                      <span>Chat with {selectedTutor.name}</span>
+                      <span>
+                        Chat with{" "}
+                        {isTutor
+                          ? tutorListForUI.find((t) => t.conversationId === selectedConversationId)?.parentName || "Parent"
+                          : selectedTutor?.name || "Tutor"}
+                      </span>
                     </div>
                     <p className="text-sm font-normal text-muted-foreground mt-1">
-                      About {selectedStudent?.firstName} {selectedStudent?.lastName}
+                      {isTutor
+                        ? tutorListForUI.find((t) => t.conversationId === selectedConversationId)?.studentName || "Student"
+                        : `About ${selectedStudent?.firstName} ${selectedStudent?.lastName}`}
                     </p>
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="flex-1 flex flex-col p-0">
-                  <ScrollArea className="flex-1 p-4">
+                  <ScrollArea className="flex-1 p-4 overflow-auto">
                     {messagesLoading ? (
                       <div className="space-y-4">
                         {[1, 2, 3].map(i => (
@@ -320,7 +443,7 @@ export default function Messages() {
                               className={`flex ${isOwn ? "justify-end" : "justify-start"}`}
                             >
                               <div
-                                className={`max-w-[70%] rounded-lg p-3 ${
+                                className={`max-w-[70%] rounded-lg p-3 break-words ${
                                   isOwn
                                     ? "bg-primary text-primary-foreground"
                                     : "bg-muted"
@@ -364,7 +487,7 @@ export default function Messages() {
                                   </div>
                                 )}
                                 {msg.content && (
-                                  <p className="text-sm whitespace-pre-wrap break-words">{msg.content}</p>
+                                  <p className="text-sm whitespace-pre-wrap break-words break-all">{msg.content}</p>
                                 )}
                                 <p className={`text-xs mt-1 ${
                                   isOwn ? "text-primary-foreground/70" : "text-muted-foreground"

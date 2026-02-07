@@ -649,21 +649,40 @@ export async function getSubscriptionsByParentId(parentId: number) {
   const db = await getDb();
   if (!db) return [];
 
-  return await db
+  // Fetch with all tutor links (primary and secondary) so we can gracefully
+  // fall back when no primary tutor is flagged for a course.
+  const rows = await db
     .select({
       subscription: subscriptions,
       course: courses,
       tutor: users,
+      isPrimary: courseTutors.isPrimary,
     })
     .from(subscriptions)
     .innerJoin(courses, eq(subscriptions.courseId, courses.id))
-    .innerJoin(courseTutors, and(
-      eq(courses.id, courseTutors.courseId),
-      eq(courseTutors.isPrimary, true)
-    ))
-    .innerJoin(users, eq(courseTutors.tutorId, users.id))
+    // Tutor link may be missing; use left joins so subscriptions still return.
+    .leftJoin(courseTutors, eq(courses.id, courseTutors.courseId))
+    .leftJoin(users, eq(courseTutors.tutorId, users.id))
     .where(eq(subscriptions.parentId, parentId))
     .orderBy(desc(subscriptions.createdAt));
+
+  // Deduplicate per subscription, preferring the primary tutor if available.
+  const bySubscription = new Map<number, typeof rows[number]>();
+  for (const row of rows) {
+    const existing = bySubscription.get(row.subscription.id);
+    if (!existing) {
+      bySubscription.set(row.subscription.id, row);
+      continue;
+    }
+    if (row.isPrimary && !existing.isPrimary) {
+      bySubscription.set(row.subscription.id, row);
+    }
+  }
+
+  // Preserve createdAt ordering after deduplication.
+  return Array.from(bySubscription.values()).sort(
+    (a, b) => (b.subscription.createdAt?.getTime?.() ?? 0) - (a.subscription.createdAt?.getTime?.() ?? 0)
+  );
 }
 
 export async function getSubscriptionsByTutorId(tutorId: number) {
@@ -891,19 +910,53 @@ export async function getConversationsByUserId(userId: number, role: "parent" | 
     .orderBy(desc(conversations.lastMessageAt));
 }
 
+export async function getTutorConversationsWithDetails(tutorId: number) {
+  const db = await getDb();
+  if (!db) return [];
+
+  return await db
+    .select({
+      conversation: conversations,
+      parent: users,
+      subscription: subscriptions,
+      course: courses,
+    })
+    .from(conversations)
+    .innerJoin(users, eq(conversations.parentId, users.id))
+    .leftJoin(subscriptions, eq(conversations.studentId, subscriptions.id))
+    .leftJoin(courses, eq(subscriptions.courseId, courses.id))
+    .where(eq(conversations.tutorId, tutorId))
+    .orderBy(desc(conversations.lastMessageAt));
+}
+
 export async function createMessage(message: InsertMessage) {
   const db = await getDb();
   if (!db) return null;
 
   try {
     const result = await db.insert(messages).values(message) as any;
-    
-    // Update conversation's lastMessageAt
-    await db.update(conversations)
-      .set({ lastMessageAt: message.sentAt })
-      .where(eq(conversations.id, message.conversationId));
 
-    return Number(result.insertId);
+    // Drizzle/MySQL drivers sometimes return insertId on the result object or inside the first array element.
+    const rawInsertId =
+      (result as any)?.insertId ??
+      (Array.isArray(result) ? (result as any)[0]?.insertId : undefined);
+
+    const insertId = rawInsertId !== undefined ? Number(rawInsertId) : null;
+
+    // Update conversation's lastMessageAt (non-blocking)
+    try {
+      await db.update(conversations)
+        .set({ lastMessageAt: message.sentAt })
+        .where(eq(conversations.id, message.conversationId));
+    } catch (err) {
+      console.error("[Database] Failed to update lastMessageAt for conversation", message.conversationId, err);
+    }
+
+    if (insertId === null) {
+      console.warn("[Database] Message inserted but insertId missing from driver response", { result });
+    }
+
+    return insertId;
   } catch (error) {
     console.error("[Database] Failed to create message:", error);
     return null;
@@ -920,6 +973,19 @@ export async function getMessagesByConversationId(conversationId: number, limit:
     .where(eq(messages.conversationId, conversationId))
     .orderBy(desc(messages.sentAt))
     .limit(limit);
+}
+
+export async function getConversationById(id: number) {
+  const db = await getDb();
+  if (!db) return null;
+
+  const result = await db
+    .select()
+    .from(conversations)
+    .where(eq(conversations.id, id))
+    .limit(1);
+
+  return result.length > 0 ? result[0] : null;
 }
 
 export async function markMessagesAsRead(conversationId: number, userId: number) {
@@ -1185,8 +1251,9 @@ export async function getStudentsWithTutors(parentId: number) {
             tutorEmail: users.email,
           })
           .from(courseTutors)
-          .leftJoin(tutorProfiles, eq(courseTutors.tutorId, tutorProfiles.id))
-          .leftJoin(users, eq(tutorProfiles.userId, users.id))
+          // courseTutors.tutorId points to users.id; join directly to users/tutorProfiles
+          .leftJoin(users, eq(courseTutors.tutorId, users.id))
+          .leftJoin(tutorProfiles, eq(users.id, tutorProfiles.userId))
           .where(eq(courseTutors.courseId, sub.courseId));
 
         const student = studentMap.get(studentKey);
@@ -1259,8 +1326,15 @@ export async function createOrGetStudentConversation(
     lastMessageAt: Date.now(),
   };
 
-  const created = await createConversation(newConv);
-  return created;
+  try {
+    const createdId = await createConversation(newConv);
+    if (!createdId) return null;
+    return await getConversationById(createdId);
+  } catch (error) {
+    console.error("[Database] Failed to create conversation, retrying fetch:", error);
+    // If creation failed due to a race/constraint, attempt to fetch again
+    return await getConversationByStudentAndTutor(parentId, tutorId, studentId);
+  }
 }
 
 

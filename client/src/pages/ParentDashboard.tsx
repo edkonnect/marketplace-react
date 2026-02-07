@@ -10,13 +10,15 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Link, useLocation } from "wouter";
 import { BookOpen, Calendar, MessageSquare, CreditCard, Clock, Users, Video } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { LOGIN_PATH } from "@/const";
 import { SessionNotesFeed } from "@/components/SessionNotesFeed";
 import { PaymentHistoryTable } from "@/components/PaymentHistoryTable";
 import { NotificationSettings } from "@/components/NotificationSettings";
 import { NotificationCenter } from "@/components/NotificationCenter";
 import { ParentBookingsManager } from "@/components/ParentBookingsManager";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 // no additional imports needed
 
 export default function ParentDashboard() {
@@ -137,6 +139,31 @@ export default function ParentDashboard() {
     }
   }, [loading, isAuthenticated, user, setLocation]);
 
+  const activeSubscriptions = subscriptions?.filter(s => s.subscription.status === "active") || [];
+  const completedSessions = sessionHistory?.filter(s => s.status === "completed") || [];
+
+  const studentOptions = useMemo(() => {
+    const unique = new Set<string>();
+    const names: string[] = [];
+    activeSubscriptions.forEach(({ subscription }) => {
+      const name = [subscription.studentFirstName, subscription.studentLastName].filter(Boolean).join(" ").trim() || "Student";
+      if (!unique.has(name)) {
+        unique.add(name);
+        names.push(name);
+      }
+    });
+    return names;
+  }, [activeSubscriptions]);
+
+  const [selectedStudent, setSelectedStudent] = useState<string>("all");
+  const filteredSubscriptions =
+    selectedStudent === "all"
+      ? activeSubscriptions
+      : activeSubscriptions.filter(({ subscription }) => {
+          const name = [subscription.studentFirstName, subscription.studentLastName].filter(Boolean).join(" ").trim() || "Student";
+          return name === selectedStudent;
+        });
+
   if (loading || !isAuthenticated) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -144,9 +171,6 @@ export default function ParentDashboard() {
       </div>
     );
   }
-
-  const activeSubscriptions = subscriptions?.filter(s => s.subscription.status === "active") || [];
-  const completedSessions = sessionHistory?.filter(s => s.status === "completed") || [];
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
@@ -221,7 +245,11 @@ export default function ParentDashboard() {
                     <Users className="w-5 h-5 text-primary" />
                   </div>
                   <span className="text-3xl font-bold">
-                    {new Set(activeSubscriptions.map(s => s.tutor.id)).size}
+                    {new Set(
+                      activeSubscriptions
+                        .map(s => s.tutor?.id)
+                        .filter((id): id is number => Boolean(id))
+                    ).size}
                   </span>
                 </div>
               </CardContent>
@@ -445,8 +473,30 @@ export default function ParentDashboard() {
             {/* Schedule Tab */}
             <TabsContent value="schedule" className="space-y-6">
               <h2 className="text-2xl font-bold">Schedule Sessions</h2>
+
+              {studentOptions.length > 1 && (
+                <div className="flex flex-col gap-2 w-full max-w-sm">
+                  <Label htmlFor="student-filter">Select Student</Label>
+                  <Select
+                    value={selectedStudent}
+                    onValueChange={setSelectedStudent}
+                  >
+                    <SelectTrigger id="student-filter">
+                      <SelectValue placeholder="Choose a student" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All students</SelectItem>
+                      {studentOptions.map((name) => (
+                        <SelectItem key={name} value={name}>
+                          {name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
               
-              {activeSubscriptions.length > 0 ? (
+              {filteredSubscriptions.length > 0 ? (
                 <div className="space-y-6">
                   <Card>
                     <CardHeader>
@@ -457,24 +507,39 @@ export default function ParentDashboard() {
                     </CardHeader>
                     <CardContent>
                       <div className="space-y-4">
-                        {activeSubscriptions.map(({ subscription, course, tutor }) => (
+                        {filteredSubscriptions.map(({ subscription, course, tutor }) => {
+                          const tutorName = tutor?.name || "Tutor";
+                          const tutorId = tutor?.id;
+                          const hasTutor = Boolean(tutorId);
+                          return (
                           <Card key={subscription.id} className="border-2">
                             <CardHeader>
                               <CardTitle className="text-lg">{course.title}</CardTitle>
-                              <CardDescription>with {tutor.name || "Tutor"}</CardDescription>
+                              <CardDescription>
+                                {hasTutor ? `with ${tutorName}` : "Tutor assignment pending"}
+                              </CardDescription>
                             </CardHeader>
                             <CardContent>
-                              <p className="text-sm text-muted-foreground mb-4">
-                                Click on the calendar below to schedule a new session
-                              </p>
-                              <SchedulingCalendar
-                                subscriptionId={subscription.id}
-                                tutorId={tutor.id}
-                                parentId={user?.id || 0}
-                              />
+                              {hasTutor ? (
+                                <>
+                                  <p className="text-sm text-muted-foreground mb-4">
+                                    Click on the calendar below to schedule a new session
+                                  </p>
+                                  <SchedulingCalendar
+                                    subscriptionId={subscription.id}
+                                    tutorId={tutorId}
+                                    parentId={user?.id || 0}
+                                  />
+                                </>
+                              ) : (
+                                <p className="text-sm text-muted-foreground">
+                                  We’re assigning a tutor for this course. Scheduling will be available once assigned.
+                                </p>
+                              )}
                             </CardContent>
                           </Card>
-                        ))}
+                          );
+                        })}
                       </div>
                     </CardContent>
                   </Card>

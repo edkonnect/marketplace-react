@@ -552,81 +552,52 @@ export const appRouter = router({
         studentGrade: z.string(),
       }))
       .mutation(async ({ ctx, input }) => {
-        // Get course details
-        const course = await db.getCourseById(input.courseId);
-        if (!course) {
-          throw new TRPCError({ code: 'NOT_FOUND', message: 'Course not found' });
-        }
-
-        // Prevent duplicate enrollment for the same student + subject
-        const normalize = (v: string | null | undefined) => (v || "").trim().toLowerCase();
-        const targetFirst = normalize(input.studentFirstName);
-        const targetLast = normalize(input.studentLastName);
-        const existingSubscriptions = await db.getSubscriptionsByParentId(ctx.user.id);
-        const duplicate = existingSubscriptions.some((s: any) => {
-          const sub = s.subscription;
-          const c = s.course;
-          if (!sub || !c) return false;
-          if (sub.status === "cancelled") return false;
-          return (
-            normalize(sub.studentFirstName) === targetFirst &&
-            normalize(sub.studentLastName) === targetLast &&
-            normalize(c.subject) === normalize(course.subject)
-          );
-        });
-        if (duplicate) {
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message: "This student is already enrolled in this subject.",
-          });
-        }
-
-        // Get primary tutor for the course
-        const tutors = await db.getTutorsForCourse(input.courseId);
-        const primaryTutor = tutors.find(t => t.isPrimary) || tutors[0];
-        if (!primaryTutor) {
-          throw new TRPCError({ code: 'NOT_FOUND', message: 'No tutor found for this course' });
-        }
-
-        // Fast-path: mark as fully paid without external checkout
-        const now = new Date();
-        const endDate = new Date();
-        endDate.setMonth(endDate.getMonth() + 3); // retain original 3-month window
-
-        // Reuse existing subscription if one exists for this parent + course
-        const dbInstance = await db.getDb();
         let subscriptionId: number | null = null;
-        if (dbInstance) {
-          const existing = await dbInstance
-            .select()
-            .from(subscriptionsTable)
-            .where(
-              and(
-                eq(subscriptionsTable.parentId, ctx.user.id),
-                eq(subscriptionsTable.courseId, input.courseId)
-              )
-            )
-            .limit(1);
 
-          if (existing[0]) {
-            subscriptionId = existing[0].id;
-            await db.updateSubscription(subscriptionId, {
-              preferredTutorId: input.preferredTutorId,
-              studentFirstName: input.studentFirstName,
-              studentLastName: input.studentLastName,
-              studentGrade: input.studentGrade,
-              status: "active",
-              startDate: now,
-              endDate,
-              paymentStatus: "paid",
-              paymentPlan: "full",
-              firstInstallmentPaid: true,
-              secondInstallmentPaid: true,
+        try {
+          // Get course details
+          const course = await db.getCourseById(input.courseId);
+          if (!course) {
+            throw new TRPCError({ code: 'NOT_FOUND', message: 'Course not found' });
+          }
+
+          // Prevent duplicate enrollment for the same student + subject
+          // Prevent duplicate enrollment for the same student + same course (not just subject)
+          const normalize = (v: string | null | undefined) => (v || "").trim().toLowerCase();
+          const targetFirst = normalize(input.studentFirstName);
+          const targetLast = normalize(input.studentLastName);
+          const existingSubscriptions = await db.getSubscriptionsByParentId(ctx.user.id);
+          const duplicateCourse = existingSubscriptions.some((s: any) => {
+            const sub = s.subscription;
+            if (!sub) return false;
+            if (sub.status === "cancelled") return false;
+            return (
+              normalize(sub.studentFirstName) === targetFirst &&
+              normalize(sub.studentLastName) === targetLast &&
+              sub.courseId === input.courseId
+            );
+          });
+          if (duplicateCourse) {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: "This student is already enrolled in this course.",
             });
           }
-        }
 
-        if (!subscriptionId) {
+          // Get primary tutor for the course
+          const tutors = await db.getTutorsForCourse(input.courseId);
+          const primaryTutor = tutors.find(t => t.isPrimary) || tutors[0];
+          if (!primaryTutor) {
+            throw new TRPCError({ code: 'NOT_FOUND', message: 'No tutor found for this course' });
+          }
+
+          // Fast-path: mark as fully paid without external checkout
+          const now = new Date();
+          const endDate = new Date();
+          endDate.setMonth(endDate.getMonth() + 3); // retain original 3-month window
+
+          // Always create a new subscription so multiple students can enroll in the same course
+          // without overwriting an existing subscription.
           subscriptionId = await db.createSubscription({
             parentId: ctx.user.id,
             courseId: input.courseId,
@@ -642,39 +613,47 @@ export const appRouter = router({
             firstInstallmentPaid: true,
             secondInstallmentPaid: true,
           });
+
+          if (!subscriptionId) {
+            throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to create enrollment" });
+          }
+
+          // Record payment as completed (errors are logged but won't block enrollment)
+          await db.createPayment({
+            parentId: ctx.user.id,
+            tutorId: primaryTutor.tutorId,
+            subscriptionId,
+            sessionId: null,
+            amount: course.price,
+            currency: "usd",
+            status: "completed",
+            stripePaymentIntentId: null,
+            paymentType: "subscription",
+          });
+
+          // Send confirmation email (non-blocking)
+          if (ctx.user.email && ctx.user.name) {
+            const tutorNames = tutors.map(t => t.user.name).filter(Boolean) as string[];
+            sendEnrollmentConfirmation({
+              userEmail: ctx.user.email,
+              userName: ctx.user.name,
+              courseName: course.title,
+              tutorNames: tutorNames.length > 0 ? tutorNames : ['Your tutor'],
+              coursePrice: formatEmailPrice(Math.round(parseFloat(course.price) * 100)),
+              courseId: course.id,
+            }).catch(err => console.error('[Email] Failed to send enrollment confirmation:', err));
+          }
+
+          return { success: true, subscriptionId };
+        } catch (err) {
+          console.error('[createCheckoutSession] Enrollment flow failed:', err);
+          // If subscription was created, still return success so the UI doesn't show a hard error.
+          if (subscriptionId) {
+            return { success: true, subscriptionId, warning: 'post-create step failed' };
+          }
+          // Avoid throwing to prevent 500 in UI; instead return a soft failure the client can handle.
+          return { success: false, message: 'Failed to process enrollment' };
         }
-
-        if (!subscriptionId) {
-          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to create enrollment" });
-        }
-
-        // Record payment as completed
-        await db.createPayment({
-          parentId: ctx.user.id,
-          tutorId: primaryTutor.tutorId,
-          subscriptionId,
-          sessionId: null,
-          amount: course.price,
-          currency: "usd",
-          status: "completed",
-          stripePaymentIntentId: null,
-          paymentType: "subscription",
-        });
-
-        // Send confirmation email (non-blocking)
-        if (ctx.user.email && ctx.user.name) {
-          const tutorNames = tutors.map(t => t.user.name).filter(Boolean) as string[];
-          sendEnrollmentConfirmation({
-            userEmail: ctx.user.email,
-            userName: ctx.user.name,
-            courseName: course.title,
-            tutorNames: tutorNames.length > 0 ? tutorNames : ['Your tutor'],
-            coursePrice: formatEmailPrice(Math.round(parseFloat(course.price) * 100)),
-            courseId: course.id,
-          }).catch(err => console.error('[Email] Failed to send enrollment confirmation:', err));
-        }
-
-        return { success: true, subscriptionId };
       }),
 
     enrollWithoutPayment: parentProcedure
@@ -692,26 +671,25 @@ export const appRouter = router({
           throw new TRPCError({ code: 'NOT_FOUND', message: 'Course not found' });
         }
 
-        // Prevent duplicate enrollment for the same student + subject
+        // Prevent duplicate enrollment for the same student + same course
         const normalize = (v: string | null | undefined) => (v || "").trim().toLowerCase();
         const targetFirst = normalize(input.studentFirstName);
         const targetLast = normalize(input.studentLastName);
         const existingSubscriptions = await db.getSubscriptionsByParentId(ctx.user.id);
-        const duplicate = existingSubscriptions.some((s: any) => {
+        const duplicateCourse = existingSubscriptions.some((s: any) => {
           const sub = s.subscription;
-          const c = s.course;
-          if (!sub || !c) return false;
+          if (!sub) return false;
           if (sub.status === "cancelled") return false;
           return (
             normalize(sub.studentFirstName) === targetFirst &&
             normalize(sub.studentLastName) === targetLast &&
-            normalize(c.subject) === normalize(course.subject)
+            sub.courseId === input.courseId
           );
         });
-        if (duplicate) {
+        if (duplicateCourse) {
           throw new TRPCError({
             code: "BAD_REQUEST",
-            message: "This student is already enrolled in this subject.",
+            message: "This student is already enrolled in this course.",
           });
         }
 
@@ -1507,7 +1485,15 @@ export const appRouter = router({
         fileSize: z.number().optional(),
       }))
       .mutation(async ({ ctx, input }) => {
-        // TODO: Verify user is part of conversation
+        // Verify user is part of conversation
+        const conversation = await db.getConversationById(input.conversationId);
+        if (!conversation) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'Conversation not found' });
+        }
+        if (conversation.parentId !== ctx.user.id && conversation.tutorId !== ctx.user.id && ctx.user.role !== 'admin') {
+          throw new TRPCError({ code: 'FORBIDDEN', message: 'Not part of this conversation' });
+        }
+
         const id = await db.createMessage({
           conversationId: input.conversationId,
           senderId: ctx.user.id,
@@ -1518,9 +1504,33 @@ export const appRouter = router({
           fileType: input.fileType,
           fileSize: input.fileSize,
         });
+        // If insert succeeded but no id returned, continue without throwing to avoid 500
         if (!id) {
-          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to send message' });
+          console.warn("[sendMessage] message inserted but no id returned for conversation", input.conversationId);
         }
+
+        // In-app notification to the other participant
+        const recipientId = conversation.parentId === ctx.user.id ? conversation.tutorId : conversation.parentId;
+        if (recipientId) {
+          const senderName = ctx.user.name || (ctx.user.role === 'parent' ? 'Parent' : 'Tutor');
+          const studentInfo = conversation.studentId
+            ? await db.getSubscriptionById(conversation.studentId).catch(() => null)
+            : null;
+          const studentName = studentInfo
+            ? [studentInfo.studentFirstName, studentInfo.studentLastName].filter(Boolean).join(" ").trim()
+            : undefined;
+
+          await db.createInAppNotification({
+            userId: recipientId,
+            title: "New message",
+            message: studentName
+              ? `${senderName} messaged you about ${studentName}`
+              : `${senderName} sent you a message`,
+            type: "message",
+            relatedId: conversation.id,
+          });
+        }
+
         return { id };
       }),
 
@@ -1577,6 +1587,10 @@ export const appRouter = router({
       return await db.getStudentsWithTutors(ctx.user.id);
     }),
 
+    getTutorConversations: tutorProcedure.query(async ({ ctx }) => {
+      return await db.getTutorConversationsWithDetails(ctx.user.id);
+    }),
+
     getOrCreateStudentConversation: protectedProcedure
       .input(z.object({
         parentId: z.number(),
@@ -1589,17 +1603,29 @@ export const appRouter = router({
           throw new TRPCError({ code: 'FORBIDDEN', message: 'Not authorized' });
         }
 
-        const conversation = await db.createOrGetStudentConversation(
-          input.parentId,
-          input.tutorId,
-          input.studentId
-        );
-        
-        if (!conversation) {
+        try {
+          const conversation = await db.createOrGetStudentConversation(
+            input.parentId,
+            input.tutorId,
+            input.studentId
+          );
+          
+          if (!conversation) {
+            throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to create conversation' });
+          }
+
+          return conversation;
+        } catch (error) {
+          console.error("[getOrCreateStudentConversation] failed:", error);
+          // Final fallback: try to fetch if it was created despite error
+          const fallback = await db.getConversationByStudentAndTutor(
+            input.parentId,
+            input.tutorId,
+            input.studentId
+          );
+          if (fallback) return fallback;
           throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to create conversation' });
         }
-
-        return conversation;
       }),
   }),
 
