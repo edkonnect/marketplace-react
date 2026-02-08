@@ -8,7 +8,8 @@ import {
   getWelcomeEmail, 
   getBookingConfirmationEmail,
   getEnrollmentConfirmationEmail,
-  getTutorApprovalEmail
+  getTutorApprovalEmail,
+  getEmailVerificationEmail
 } from './email-templates';
 
 const BASE_URL = process.env.VITE_FRONTEND_FORGE_API_URL || 'http://localhost:3000';
@@ -36,6 +37,29 @@ export async function sendWelcomeEmail(params: SendWelcomeEmailParams): Promise<
   return await emailService.sendEmail({
     to: userEmail,
     subject: 'Welcome to EdKonnect Academy! 🎓',
+    html,
+  });
+}
+
+interface SendVerificationEmailParams {
+  userEmail: string;
+  userName: string;
+  verificationUrl: string;
+  expiresAt: Date;
+}
+
+export async function sendVerificationEmail(params: SendVerificationEmailParams): Promise<boolean> {
+  const { userEmail, userName, verificationUrl, expiresAt } = params;
+
+  const html = getEmailVerificationEmail({
+    userName,
+    verificationUrl,
+    expiresAt,
+  });
+
+  return await emailService.sendEmail({
+    to: userEmail,
+    subject: 'Verify your email to activate your account',
     html,
   });
 }

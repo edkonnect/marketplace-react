@@ -210,6 +210,12 @@ interface WelcomeEmailProps {
   dashboardUrl: string;
 }
 
+interface EmailVerificationProps {
+  userName: string;
+  verificationUrl: string;
+  expiresAt: Date;
+}
+
 /**
  * Welcome email template for new users
  */
@@ -268,6 +274,31 @@ export function getWelcomeEmail(props: WelcomeEmailProps): string {
   
   return getEmailBase(content, {
     preheaderText: `Welcome to EdKonnect Academy, ${userName}! Let's get started.`
+  });
+}
+
+export function getEmailVerificationEmail(props: EmailVerificationProps): string {
+  const { userName, verificationUrl, expiresAt } = props;
+  const expiresText = expiresAt.toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+
+  const content = `
+    <h1>Verify your email ✉️</h1>
+    <p>Hi ${userName},</p>
+    <p>Thanks for signing up for EdKonnect Academy. Please confirm your email to activate your account.</p>
+    <div style="text-align: center; margin: 28px 0;">
+      <a href="${verificationUrl}" class="button">Verify Email</a>
+    </div>
+    <p>This link will expire on <strong>${expiresText}</strong>. If it expires, you can request a new one from the login page.</p>
+    <div class="highlight-box">
+      <p style="margin:0; font-weight:600;">Why verify?</p>
+      <p style="margin:8px 0 0 0;">We verify emails to keep your account secure and ensure you receive important notifications.</p>
+    </div>
+    <p>If you did not create an account, you can safely ignore this email.</p>
+    <p style="margin-top: 32px;">See you inside,<br><strong>The EdKonnect Academy Team</strong></p>
+  `;
+
+  return getEmailBase(content, {
+    preheaderText: `Confirm your email to activate your EdKonnect Academy account.`,
   });
 }
 

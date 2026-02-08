@@ -57,8 +57,8 @@ export default function SignUp() {
         password: formData.password,
         role: formData.role,
       });
-      toast.success("Account created! Redirecting to dashboard...");
-      setLocation("/parent/dashboard");
+      toast.success("Account created! Check your email for the verification link.");
+      setLocation("/login");
     } catch (error) {
       toast.error("Something went wrong. Please try again.");
       setIsSubmitting(false);
