@@ -22,6 +22,8 @@ import SessionNotesHistory from "./pages/SessionNotesHistory";
 import { FindTutors } from "./pages/FindTutors";
 import TutorRegistration from "./pages/TutorRegistration";
 import TutorProfile from "./pages/TutorProfile";
+import ParentPayments from "./pages/ParentPayments";
+import ParentNotifications from "./pages/ParentNotifications";
 
 function Router() {
   return (
@@ -40,6 +42,8 @@ function Router() {
       <Route path={"/courses"} component={CourseListing} />
       <Route path={"/course/:id"} component={CourseDetail} />
       <Route path={"/parent/dashboard"} component={ParentDashboard} />
+      <Route path={"/parent/payments"} component={ParentPayments} />
+      <Route path={"/parent/notifications"} component={ParentNotifications} />
       <Route path={"/admin/dashboard"} component={AdminDashboard} />
       <Route path={"/book-session/:id"} component={BookSession} />
       <Route path={"/manage-booking/:token"} component={ManageBooking} />

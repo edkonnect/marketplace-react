@@ -13,8 +13,6 @@ import { BookOpen, Calendar, MessageSquare, CreditCard, Clock, Users, Video } fr
 import { useEffect, useMemo, useRef, useState } from "react";
 import { LOGIN_PATH } from "@/const";
 import { SessionNotesFeed } from "@/components/SessionNotesFeed";
-import { PaymentHistoryTable } from "@/components/PaymentHistoryTable";
-import { NotificationSettings } from "@/components/NotificationSettings";
 import { NotificationCenter } from "@/components/NotificationCenter";
 import { ParentBookingsManager } from "@/components/ParentBookingsManager";
 import { Label } from "@/components/ui/label";
@@ -24,6 +22,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 export default function ParentDashboard() {
   const { user, isAuthenticated, loading } = useAuth();
   const [, setLocation] = useLocation();
+  const tabContentClass =
+    "space-y-6 absolute inset-0 w-full transition-all duration-300 data-[state=active]:opacity-100 data-[state=active]:translate-x-0 data-[state=inactive]:opacity-0 data-[state=inactive]:translate-x-4 data-[state=inactive]:pointer-events-none [&[hidden]]:block [&[hidden]]:opacity-0";
 
   const { data: subscriptions, isLoading: subsLoading } = trpc.subscription.mySubscriptions.useQuery(
     undefined,
@@ -40,20 +40,11 @@ export default function ParentDashboard() {
     { enabled: isAuthenticated && user?.role === "parent" }
   );
 
-  const { data: payments, isLoading: paymentsLoading } = trpc.payment.getPaymentHistory.useQuery(
-    undefined,
-    { enabled: isAuthenticated && user?.role === "parent" }
-  );
-
   const { data: sessionNotes, isLoading: notesLoading } = trpc.parentProfile.getSessionNotes.useQuery(
     { limit: 10 },
     { enabled: isAuthenticated && user?.role === "parent" }
   );
 
-  const { data: paymentHistory, isLoading: paymentHistoryLoading } = trpc.parentProfile.getPayments.useQuery(
-    undefined,
-    { enabled: isAuthenticated && user?.role === "parent" }
-  );
 
   // Track note updates per session to show a small indicator (one-time until next update)
   const lastFeedbackRef = useRef<Map<number, string | null>>(new Map());
@@ -155,14 +146,14 @@ export default function ParentDashboard() {
     return names;
   }, [activeSubscriptions]);
 
-  const [selectedStudent, setSelectedStudent] = useState<string>("all");
+  const [selectedStudent, setSelectedStudent] = useState<string | null>(null);
   const filteredSubscriptions =
-    selectedStudent === "all"
-      ? activeSubscriptions
-      : activeSubscriptions.filter(({ subscription }) => {
+    selectedStudent
+      ? activeSubscriptions.filter(({ subscription }) => {
           const name = [subscription.studentFirstName, subscription.studentLastName].filter(Boolean).join(" ").trim() || "Student";
           return name === selectedStudent;
-        });
+        })
+      : [];
 
   if (loading || !isAuthenticated) {
     return (
@@ -258,24 +249,25 @@ export default function ParentDashboard() {
 
           {/* Main Content */}
           <Tabs defaultValue="subscriptions" className="space-y-6">
-            <TabsList className="grid w-full max-w-2xl grid-cols-8">
-              <TabsTrigger value="subscriptions">Subscriptions</TabsTrigger>
-              <TabsTrigger value="bookings">My Bookings</TabsTrigger>
-              <TabsTrigger value="schedule">Schedule</TabsTrigger>
-              <TabsTrigger value="sessions">Sessions</TabsTrigger>
-              <TabsTrigger
-                value="history"
-                className={historyPulse ? "ring-2 ring-primary/60 animate-pulse" : ""}
-              >
-                History
-              </TabsTrigger>
-              <TabsTrigger value="notes">Notes</TabsTrigger>
-              <TabsTrigger value="payments">Payments</TabsTrigger>
-              <TabsTrigger value="notifications">Notifications</TabsTrigger>
-            </TabsList>
+            <div className="overflow-x-auto">
+              <TabsList className="inline-flex min-w-max gap-2 sm:w-full sm:flex-wrap sm:justify-start">
+                <TabsTrigger className="whitespace-nowrap" value="subscriptions">Subscriptions</TabsTrigger>
+                <TabsTrigger className="whitespace-nowrap" value="bookings">My Bookings</TabsTrigger>
+                <TabsTrigger className="whitespace-nowrap" value="schedule">Schedule</TabsTrigger>
+                <TabsTrigger className="whitespace-nowrap" value="sessions">Sessions</TabsTrigger>
+                <TabsTrigger
+                  className={`whitespace-nowrap ${historyPulse ? "ring-2 ring-primary/60 animate-pulse" : ""}`}
+                  value="history"
+                >
+                  History
+                </TabsTrigger>
+                <TabsTrigger className="whitespace-nowrap" value="notes">Notes</TabsTrigger>
+              </TabsList>
+            </div>
 
+            <div className="relative min-h-[540px]">
             {/* Subscriptions Tab */}
-            <TabsContent value="subscriptions" className="space-y-6">
+            <TabsContent value="subscriptions" forceMount className={tabContentClass}>
               <div className="flex items-center justify-between">
                 <h2 className="text-2xl font-bold">My Subscriptions</h2>
                 <Button asChild>
@@ -466,37 +458,44 @@ export default function ParentDashboard() {
             </TabsContent>
 
             {/* Bookings Tab */}
-            <TabsContent value="bookings" className="space-y-6">
+            <TabsContent value="bookings" forceMount className={tabContentClass}>
               <ParentBookingsManager />
             </TabsContent>
 
             {/* Schedule Tab */}
-            <TabsContent value="schedule" className="space-y-6">
+            <TabsContent value="schedule" forceMount className={tabContentClass}>
               <h2 className="text-2xl font-bold">Schedule Sessions</h2>
 
-              {studentOptions.length > 1 && (
-                <div className="flex flex-col gap-2 w-full max-w-sm">
-                  <Label htmlFor="student-filter">Select Student</Label>
-                  <Select
-                    value={selectedStudent}
-                    onValueChange={setSelectedStudent}
-                  >
-                    <SelectTrigger id="student-filter">
-                      <SelectValue placeholder="Choose a student" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All students</SelectItem>
-                      {studentOptions.map((name) => (
-                        <SelectItem key={name} value={name}>
-                          {name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
+              <div className="flex flex-col gap-2 w-full max-w-sm">
+                <Label htmlFor="student-filter">Student</Label>
+                <Select
+                  value={selectedStudent ?? "placeholder"}
+                  onValueChange={(val) => setSelectedStudent(val === "placeholder" ? null : val)}
+                >
+                  <SelectTrigger id="student-filter">
+                    <SelectValue placeholder="Select student" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="placeholder" disabled>
+                      Select student
+                    </SelectItem>
+                    {studentOptions.map((name) => (
+                      <SelectItem key={name} value={name}>
+                        {name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
               
-              {filteredSubscriptions.length > 0 ? (
+              {selectedStudent === null ? (
+                <Card>
+                  <CardContent className="py-10 text-center space-y-2">
+                    <h3 className="text-lg font-semibold">Select a student to view availability</h3>
+                    <p className="text-muted-foreground">Choose which student you want to schedule a session for.</p>
+                  </CardContent>
+                </Card>
+              ) : filteredSubscriptions.length > 0 ? (
                 <div className="space-y-6">
                   <Card>
                     <CardHeader>
@@ -561,7 +560,7 @@ export default function ParentDashboard() {
             </TabsContent>
 
             {/* Sessions Tab */}
-            <TabsContent value="sessions" className="space-y-6">
+            <TabsContent value="sessions" forceMount className={tabContentClass}>
               <h2 className="text-2xl font-bold">Upcoming Sessions</h2>
 
               {sessionsLoading ? (
@@ -633,7 +632,7 @@ export default function ParentDashboard() {
             </TabsContent>
 
             {/* History Tab */}
-            <TabsContent value="history" className="space-y-6">
+            <TabsContent value="history" forceMount className={tabContentClass}>
               <h2 className="text-2xl font-bold">Session History</h2>
 
               {historyLoading ? (
@@ -697,7 +696,7 @@ export default function ParentDashboard() {
             </TabsContent>
 
             {/* Session Notes Tab */}
-            <TabsContent value="notes" className="space-y-6">
+            <TabsContent value="notes" forceMount className={tabContentClass}>
               <h2 className="text-2xl font-bold">Session Notes</h2>
               {notesLoading ? (
                 <Skeleton className="h-96" />
@@ -706,103 +705,7 @@ export default function ParentDashboard() {
               )}
             </TabsContent>
 
-            {/* Payment History Tab */}
-            <TabsContent value="payments" className="space-y-6">
-              <h2 className="text-2xl font-bold">Payment History</h2>
-
-              {paymentsLoading ? (
-                <div className="space-y-4">
-                  {[1, 2, 3].map(i => <Skeleton key={i} className="h-32 w-full" />)}
-                </div>
-              ) : !payments || payments.length === 0 ? (
-                <Card>
-                  <CardContent className="py-16 text-center">
-                    <CreditCard className="w-16 h-16 mx-auto mb-4 text-muted-foreground" />
-                    <h3 className="text-xl font-semibold mb-2">No Payment History</h3>
-                    <p className="text-muted-foreground">
-                      Your payment transactions will appear here
-                    </p>
-                  </CardContent>
-                </Card>
-              ) : (
-                <div className="space-y-4">
-                  {payments.map((payment) => (
-                    <Card key={payment.id} className="hover:shadow-elegant transition-all">
-                      <CardContent className="pt-6">
-                        <div className="flex items-start justify-between">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-3 mb-3">
-                              <p className="font-semibold text-lg">
-                                ${payment.amount} {payment.currency.toUpperCase()}
-                              </p>
-                              <Badge variant={payment.status === "completed" ? "default" : "secondary"}>
-                                {payment.status}
-                              </Badge>
-                              {payment.installmentInfo && (
-                                <Badge variant="outline" className="text-xs">
-                                  Installment {payment.installmentInfo.installmentNumber}/2
-                                </Badge>
-                              )}
-                            </div>
-                            
-                            <div className="space-y-1 text-sm text-muted-foreground">
-                              <p>
-                                <span className="font-medium text-foreground">Date:</span>{" "}
-                                {new Date(payment.createdAt).toLocaleDateString()} at{" "}
-                                {new Date(payment.createdAt).toLocaleTimeString()}
-                              </p>
-                              {payment.courseName && (
-                                <p>
-                                  <span className="font-medium text-foreground">Course:</span>{" "}
-                                  {payment.courseName}
-                                </p>
-                              )}
-                              {payment.tutorName && (
-                                <p>
-                                  <span className="font-medium text-foreground">Tutor:</span>{" "}
-                                  {payment.tutorName}
-                                </p>
-                              )}
-                              {payment.studentName && (
-                                <p>
-                                  <span className="font-medium text-foreground">Student:</span>{" "}
-                                  {payment.studentName}
-                                </p>
-                              )}
-                              {payment.stripePaymentIntentId && (
-                                <p className="text-xs">
-                                  <span className="font-medium text-foreground">Transaction ID:</span>{" "}
-                                  {payment.stripePaymentIntentId}
-                                </p>
-                              )}
-                            </div>
-                          </div>
-                          
-                          <div className="ml-4">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => {
-                                window.open(`/api/pdf/receipt/${payment.id}`, '_blank');
-                              }}
-                            >
-                              <CreditCard className="w-4 h-4 mr-2" />
-                              Download Receipt
-                            </Button>
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
-              )}
-            </TabsContent>
-
-            {/* Notifications Tab */}
-            <TabsContent value="notifications" className="space-y-6">
-              <h2 className="text-2xl font-bold">Notification Settings</h2>
-              <NotificationSettings />
-            </TabsContent>
+            </div>
           </Tabs>
         </div>
       </div>

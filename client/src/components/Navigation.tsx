@@ -3,7 +3,7 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { LOGIN_PATH } from "@/const";
 import { Button } from "@/components/ui/button";
 import { Link, useLocation } from "wouter";
-import { GraduationCap, MessageSquare, LayoutDashboard, LogOut, Play } from "lucide-react";
+import { GraduationCap, MessageSquare, LayoutDashboard, LogOut, Play, Bell, CreditCard } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import VideoModal from "@/components/VideoModal";
 import {
@@ -144,6 +144,22 @@ export default function Navigation() {
                     <LogOut className="w-4 h-4 mr-2" />
                     Log out
                   </DropdownMenuItem>
+                  {user.role === 'parent' && (
+                    <>
+                      <DropdownMenuItem asChild>
+                        <Link href="/parent/payments" className="flex items-center w-full cursor-pointer">
+                          <CreditCard className="w-4 h-4 mr-2" />
+                          Payments
+                        </Link>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem asChild>
+                        <Link href="/parent/notifications" className="flex items-center w-full cursor-pointer">
+                          <Bell className="w-4 h-4 mr-2" />
+                          Notifications
+                        </Link>
+                      </DropdownMenuItem>
+                    </>
+                  )}
                 </DropdownMenuContent>
               </DropdownMenu>
             ) : (

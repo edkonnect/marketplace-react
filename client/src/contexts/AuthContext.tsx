@@ -78,9 +78,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       method: "POST",
       body: JSON.stringify(data),
     });
-    const next = await fetchProfile();
-    return next;
-  }, [fetchProfile]);
+    // Signup now requires email verification; user is not logged in yet.
+    return null;
+  }, []);
 
   const logout = useCallback(async () => {
     await request<{ success: boolean }>("/api/auth/logout", { method: "POST" }).catch(() => {});
