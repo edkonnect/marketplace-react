@@ -156,16 +156,8 @@ authRouter.get("/verify-email", async (req, res) => {
     return res.status(400).json({ error: "Invalid or expired token" });
   }
 
-  await setAuthCookies(req, res, {
-    sub: user.id,
-    email: user.email || "",
-    role: user.role as "parent" | "tutor" | "admin",
-  });
-
-  const { passwordHash: _pw, ...safeUser } = user as any;
-
   res.format({
-    json: () => res.json({ success: true, user: safeUser }),
+    json: () => res.json({ success: true, message: "Email verified. Please sign in to continue." }),
     html: () =>
       res.send(`
         <!doctype html>
@@ -173,12 +165,12 @@ authRouter.get("/verify-email", async (req, res) => {
         <head><meta charset="utf-8"><title>Email verified</title></head>
         <body style="font-family: system-ui; max-width: 480px; margin: 40px auto; text-align: center;">
           <h1>✅ Email verified</h1>
-          <p>Your account is now active. You can close this tab or continue.</p>
-          <a href="/parent/dashboard">Go to dashboard</a>
-          <script>setTimeout(() => { window.location.href = "/parent/dashboard"; }, 1200);</script>
+          <p>Your account is now active. Please sign in to continue.</p>
+          <a href="/login">Go to sign in</a>
+          <script>setTimeout(() => { window.location.href = "/login"; }, 1200);</script>
         </body>
         </html>
       `),
-    default: () => res.json({ success: true, user: safeUser }),
+    default: () => res.json({ success: true, message: "Email verified. Please sign in to continue." }),
   });
 });
