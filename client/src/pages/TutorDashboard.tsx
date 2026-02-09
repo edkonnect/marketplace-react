@@ -455,16 +455,16 @@ export default function TutorDashboard() {
                             return (
                               <div
                                 key={course.id}
-                                className="grid gap-3 md:grid-cols-12 items-center border rounded-lg p-3"
+                                className="grid gap-4 md:grid-cols-12 items-start border rounded-lg p-3"
                               >
-                                <div className="md:col-span-5 flex items-start gap-3">
+                                <div className="md:col-span-5 flex items-start gap-3 min-w-0">
                                   <Checkbox
                                     checked={pref.preferred}
                                     onCheckedChange={(checked) => togglePreference(course.id, Boolean(checked))}
                                   />
                                   <div>
-                                    <p className="font-semibold leading-tight">{course.title}</p>
-                                    <p className="text-sm text-muted-foreground">
+                                    <p className="font-semibold leading-tight break-words">{course.title}</p>
+                                    <p className="text-sm text-muted-foreground break-words">
                                       {course.subject}
                                       {course.gradeLevel ? ` • ${course.gradeLevel}` : ""}
                                     </p>

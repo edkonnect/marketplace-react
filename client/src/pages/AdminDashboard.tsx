@@ -68,6 +68,8 @@ export function AdminDashboard() {
     startDate?: string;
     endDate?: string;
   }>({});
+  const tabContentClass =
+    "space-y-6 absolute inset-0 w-full transition-all duration-300 data-[state=active]:opacity-100 data-[state=active]:translate-x-0 data-[state=inactive]:opacity-0 data-[state=inactive]:translate-x-4 data-[state=inactive]:pointer-events-none [&[hidden]]:block [&[hidden]]:opacity-0";
 
   const [selectedTutorId, setSelectedTutorId] = useState<number | null>(null);
 
@@ -300,22 +302,26 @@ export function AdminDashboard() {
 
         {/* Data Tables */}
         <Tabs defaultValue="analytics" className="space-y-6">
-          <TabsList className="grid w-full max-w-6xl grid-cols-11">
-            <TabsTrigger value="analytics">Analytics</TabsTrigger>
-            <TabsTrigger value="users">Users</TabsTrigger>
-            <TabsTrigger value="enrollments">Enrollments</TabsTrigger>
-            <TabsTrigger value="payments">Payments</TabsTrigger>
-            <TabsTrigger value="courses">Courses</TabsTrigger>
-            <TabsTrigger value="registered-tutors">Registered Tutors</TabsTrigger>
-            <TabsTrigger value="availability">Tutor Availability</TabsTrigger>
-            <TabsTrigger value="acuity">Acuity Mapping</TabsTrigger>
-            <TabsTrigger value="quicksetup">Quick Setup</TabsTrigger>
-            <TabsTrigger value="email">Email Settings</TabsTrigger>
-            <TabsTrigger value="course-approval">Tutor Course Approval</TabsTrigger>
-          </TabsList>
+          <div className="overflow-x-auto">
+            <TabsList className="inline-flex min-w-max gap-2 sm:w-full sm:flex-wrap">
+              <TabsTrigger value="analytics">Analytics</TabsTrigger>
+              <TabsTrigger value="users">Users</TabsTrigger>
+              <TabsTrigger value="enrollments">Enrollments</TabsTrigger>
+              <TabsTrigger value="payments">Payments</TabsTrigger>
+              <TabsTrigger value="courses">Courses</TabsTrigger>
+              <TabsTrigger value="registered-tutors">Registered Tutors</TabsTrigger>
+              <TabsTrigger value="availability">Tutor Availability</TabsTrigger>
+              <TabsTrigger value="acuity">Acuity Mapping</TabsTrigger>
+              <TabsTrigger value="quicksetup">Quick Setup</TabsTrigger>
+              <TabsTrigger value="email">Email Settings</TabsTrigger>
+              <TabsTrigger value="course-approval">Tutor Course Approval</TabsTrigger>
+            </TabsList>
+          </div>
+
+          <div className="relative min-h-[640px]">
 
           {/* Analytics Tab */}
-          <TabsContent value="analytics" className="space-y-4">
+          <TabsContent value="analytics" forceMount className={tabContentClass}>
             {/* Date Range Selector */}
             <DateRangeSelector
               onDateRangeChange={(startDate, endDate) => {
@@ -424,7 +430,7 @@ export function AdminDashboard() {
           </TabsContent>
 
           {/* Users Tab */}
-          <TabsContent value="users" className="space-y-4">
+          <TabsContent value="users" forceMount className={tabContentClass}>
             {/* Filters */}
             <Card>
               <CardHeader>
@@ -543,7 +549,7 @@ export function AdminDashboard() {
           </TabsContent>
 
           {/* Enrollments Tab */}
-          <TabsContent value="enrollments" className="space-y-4">
+          <TabsContent value="enrollments" forceMount className={tabContentClass}>
             {/* Filters */}
             <Card>
               <CardHeader>
@@ -680,7 +686,7 @@ export function AdminDashboard() {
           </TabsContent>
 
           {/* Payments Tab */}
-          <TabsContent value="payments" className="space-y-4">
+          <TabsContent value="payments" forceMount className={tabContentClass}>
             {/* Filters */}
             <Card>
               <CardHeader>
@@ -813,7 +819,7 @@ export function AdminDashboard() {
           </TabsContent>
 
           {/* Courses Tab */}
-          <TabsContent value="courses" className="space-y-4">
+          <TabsContent value="courses" forceMount className={tabContentClass}>
             <div className="space-y-6">
               <CourseCreationForm onSuccess={() => refetchCourses()} />
               <CourseManagementTable onAssignTutors={(courseId) => {
@@ -833,12 +839,12 @@ export function AdminDashboard() {
           </TabsContent>
 
           {/* Registered Tutors Tab */}
-          <TabsContent value="registered-tutors" className="space-y-4">
+          <TabsContent value="registered-tutors" forceMount className={tabContentClass}>
             <RegisteredTutorsManager />
           </TabsContent>
 
           {/* Tutor Course Approval Tab */}
-          <TabsContent value="course-approval" className="space-y-4">
+          <TabsContent value="course-approval" forceMount className={tabContentClass}>
             <Card>
               <CardHeader>
                 <CardTitle>Tutor Course Approval</CardTitle>
@@ -959,24 +965,25 @@ export function AdminDashboard() {
           </TabsContent>
 
           {/* Tutor Availability Tab */}
-          <TabsContent value="availability" className="space-y-4">
+          <TabsContent value="availability" forceMount className={tabContentClass}>
             <TutorAvailabilityManager />
           </TabsContent>
 
           {/* Acuity Mapping Tab */}
-          <TabsContent value="acuity" className="space-y-4">
+          <TabsContent value="acuity" forceMount className={tabContentClass}>
             <CourseAcuityMapping />
           </TabsContent>
 
           {/* Quick Setup Tab */}
-          <TabsContent value="quicksetup" className="space-y-4">
+          <TabsContent value="quicksetup" forceMount className={tabContentClass}>
             <QuickSetup />
           </TabsContent>
 
           {/* Email Settings Tab */}
-          <TabsContent value="email" className="space-y-4">
+          <TabsContent value="email" forceMount className={tabContentClass}>
             <EmailSettings />
           </TabsContent>
+          </div>
         </Tabs>
       </div>
     </div>
