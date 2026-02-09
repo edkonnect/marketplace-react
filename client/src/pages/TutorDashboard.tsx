@@ -6,24 +6,20 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Link, useLocation } from "wouter";
-import { BookOpen, Calendar, MessageSquare, DollarSign, Users, Plus, Edit, Clock, FileText } from "lucide-react";
+import { BookOpen, Calendar, MessageSquare, DollarSign, Users, Edit, Clock, FileText } from "lucide-react";
 import { AvailabilityManager } from "@/components/AvailabilityManager";
 import { TimeBlockManager } from "@/components/TimeBlockManager";
 import { VideoUploadManager } from "@/components/VideoUploadManager";
 import { useEffect, useMemo, useState } from "react";
 import { LOGIN_PATH } from "@/const";
 import { toast } from "sonner";
-import { useValidatedForm } from "@/hooks/useValidatedForm";
-import { FormInput, FormTextarea } from "@/components/forms/FormInput";
-import { positiveNumber, required } from "@/lib/validation";
 
 export default function TutorDashboard() {
   const { user, isAuthenticated, loading } = useAuth();
   const [, setLocation] = useLocation();
-  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const tabContentClass =
     "space-y-6 absolute inset-0 w-full transition-all duration-300 data-[state=active]:opacity-100 data-[state=active]:translate-x-0 data-[state=inactive]:opacity-0 data-[state=inactive]:translate-x-4 data-[state=inactive]:pointer-events-none [&[hidden]]:block [&[hidden]]:opacity-0";
 
@@ -32,7 +28,7 @@ export default function TutorDashboard() {
     { enabled: isAuthenticated && user?.role === "tutor" }
   );
 
-  const { data: courses, isLoading: coursesLoading, refetch: refetchCourses } = trpc.course.myCoursesAsTutor.useQuery(
+  const { data: courses, isLoading: coursesLoading } = trpc.course.myCoursesAsTutor.useQuery(
     undefined,
     { enabled: isAuthenticated && user?.role === "tutor" }
   );
@@ -68,7 +64,6 @@ export default function TutorDashboard() {
     { enabled: isAuthenticated && user?.role === "tutor" }
   );
 
-  const createCourseMutation = trpc.course.create.useMutation();
   const createProfileMutation = trpc.tutorProfile.create.useMutation();
 
   useEffect(() => {
@@ -79,59 +74,6 @@ export default function TutorDashboard() {
       setLocation("/"); // Redirect to home if not a tutor
     }
   }, [loading, isAuthenticated, user, setLocation]);
-
-  const emptyCourseValues = {
-    title: "",
-    description: "",
-    subject: "",
-    gradeLevel: "",
-    price: "",
-    duration: "",
-    sessionsPerWeek: "",
-    totalSessions: "",
-  };
-
-  const courseForm = useValidatedForm(emptyCourseValues, {
-    title: required("Course title is required"),
-    subject: required("Subject is required"),
-    price: [required("Price is required"), positiveNumber("Price must be greater than 0")],
-  });
-
-  const {
-    values: courseValues,
-    register: courseRegister,
-    validateForm: validateCourseForm,
-    reset: resetCourseForm,
-  } = courseForm;
-
-  const handleCreateCourse = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const { isValid } = validateCourseForm();
-    if (!isValid) {
-      toast.error("Please fix the highlighted fields.");
-      return;
-    }
-
-    try {
-      await createCourseMutation.mutateAsync({
-        title: courseValues.title,
-        description: courseValues.description,
-        subject: courseValues.subject,
-        gradeLevel: courseValues.gradeLevel,
-        price: courseValues.price,
-        duration: parseInt(courseValues.duration) || undefined,
-        sessionsPerWeek: parseInt(courseValues.sessionsPerWeek) || undefined,
-        totalSessions: parseInt(courseValues.totalSessions) || undefined,
-      });
-
-      toast.success("Course created successfully!");
-      setIsCreateDialogOpen(false);
-      resetCourseForm(emptyCourseValues);
-      refetchCourses();
-    } catch (error) {
-      toast.error("Failed to create course");
-    }
-  };
 
   const activeSubscriptions = subscriptions?.filter(s => s.subscription.status === "active") || [];
   const activeCourses = courses?.filter(c => c.isActive) || [];
@@ -333,87 +275,6 @@ export default function TutorDashboard() {
                 <TabsContent value="courses" forceMount className={tabContentClass}>
                   <div className="flex items-center justify-between">
                     <h2 className="text-2xl font-bold">My Courses</h2>
-                    <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-                      <DialogTrigger asChild>
-                        <Button className="gap-2">
-                          <Plus className="w-4 h-4" />
-                          Create Course
-                        </Button>
-                      </DialogTrigger>
-                      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-                        <DialogHeader>
-                          <DialogTitle>Create New Course</DialogTitle>
-                          <DialogDescription>
-                            Add a new tutoring course or package to your offerings
-                          </DialogDescription>
-                        </DialogHeader>
-                        <form onSubmit={handleCreateCourse} className="space-y-4">
-                          <FormInput
-                            field={courseRegister("title")}
-                            label="Course Title *"
-                            required
-                            placeholder="e.g., Algebra II Foundations"
-                          />
-                          <FormTextarea
-                            field={courseRegister("description")}
-                            label="Description"
-                            rows={4}
-                            placeholder="Describe what students will learn..."
-                          />
-                          <div className="grid grid-cols-2 gap-4">
-                            <FormInput
-                              field={courseRegister("subject")}
-                              label="Subject *"
-                              required
-                              placeholder="Mathematics"
-                            />
-                            <FormInput
-                              field={courseRegister("gradeLevel")}
-                              label="Grade Level"
-                              placeholder="Middle School"
-                            />
-                          </div>
-                          <div className="grid grid-cols-2 gap-4">
-                            <FormInput
-                              field={courseRegister("price")}
-                              label="Price ($) *"
-                              required
-                              type="number"
-                              step="0.01"
-                              placeholder="99.00"
-                            />
-                            <FormInput
-                              field={courseRegister("duration")}
-                              label="Session Duration (min)"
-                              type="number"
-                              placeholder="60"
-                            />
-                          </div>
-                          <div className="grid grid-cols-2 gap-4">
-                            <FormInput
-                              field={courseRegister("sessionsPerWeek")}
-                              label="Sessions Per Week"
-                              type="number"
-                              placeholder="1"
-                            />
-                            <FormInput
-                              field={courseRegister("totalSessions")}
-                              label="Total Sessions"
-                              type="number"
-                              placeholder="10"
-                            />
-                          </div>
-                          <div className="flex justify-end gap-3 pt-4">
-                            <Button type="button" variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
-                              Cancel
-                            </Button>
-                            <Button type="submit" disabled={createCourseMutation.isPending}>
-                              {createCourseMutation.isPending ? "Creating..." : "Create Course"}
-                            </Button>
-                          </div>
-                        </form>
-                      </DialogContent>
-                    </Dialog>
                   </div>
 
                   {coursesLoading ? (

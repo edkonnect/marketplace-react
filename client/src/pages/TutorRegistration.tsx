@@ -71,7 +71,7 @@ export default function TutorRegistration() {
         nonNegativeNumber("Please enter a valid years of experience"),
       ],
       hourlyRate: [
-        required("Hourly rate is required"),
+        required("Hourly rate range is required"),
         hourlyRateString("Please enter a valid hourly rate range"),
       ],
       subjects: arrayMin(1, "Select at least one subject"),
