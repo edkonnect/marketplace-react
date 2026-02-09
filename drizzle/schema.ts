@@ -146,6 +146,23 @@ export const courseTutors = mysqlTable("course_tutors", {
 export type CourseTutor = typeof courseTutors.$inferSelect;
 export type InsertCourseTutor = typeof courseTutors.$inferInsert;
 
+export const tutorCoursePreferences = mysqlTable("tutor_course_preferences", {
+  id: int("id").autoincrement().primaryKey(),
+  tutorId: int("tutorId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  courseId: int("courseId").notNull().references(() => courses.id, { onDelete: "cascade" }),
+  hourlyRate: decimal("hourlyRate", { precision: 10, scale: 2 }).default("0.00").notNull(),
+  approvalStatus: mysqlEnum("approvalStatus", ["PENDING", "APPROVED", "REJECTED"]).default("PENDING").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => ({
+  tutorCourseUnique: uniqueIndex("tutor_course_pref_unique").on(table.tutorId, table.courseId),
+  tutorIdx: index("tutor_course_pref_tutor_idx").on(table.tutorId),
+  courseIdx: index("tutor_course_pref_course_idx").on(table.courseId),
+}));
+
+export type TutorCoursePreference = typeof tutorCoursePreferences.$inferSelect;
+export type InsertTutorCoursePreference = typeof tutorCoursePreferences.$inferInsert;
+
 export type Course = typeof courses.$inferSelect;
 export type InsertCourse = typeof courses.$inferInsert;
 

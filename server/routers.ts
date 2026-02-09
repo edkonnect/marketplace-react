@@ -823,6 +823,39 @@ export const appRouter = router({
       }),
   }),
 
+  tutorCoursePreferences: router({
+    getMine: tutorProcedure.query(async ({ ctx }) => {
+      return await db.getTutorCoursePreferences(ctx.user.id);
+    }),
+
+    availableCourses: tutorProcedure.query(async () => {
+      return await db.getAllActiveCourses();
+    }),
+
+    saveMine: tutorProcedure
+      .input(z.object({
+        preferences: z.array(z.object({
+          courseId: z.number(),
+          hourlyRate: z.number().positive(),
+        })).default([]),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const seen = new Set<number>();
+        for (const pref of input.preferences) {
+          if (seen.has(pref.courseId)) {
+            throw new TRPCError({ code: 'BAD_REQUEST', message: 'Duplicate course in preferences' });
+          }
+          seen.add(pref.courseId);
+        }
+
+        const success = await db.upsertTutorCoursePreferences(ctx.user.id, input.preferences);
+        if (!success) {
+          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to save preferences' });
+        }
+        return { success: true };
+      }),
+  }),
+
   // Subscription Management
   subscription: router({
     mySubscriptions: parentProcedure.query(async ({ ctx }) => {
@@ -2834,6 +2867,35 @@ export const appRouter = router({
           approvedCount: successCount,
           totalRequested: tutorIds.length,
         };
+      }),
+
+    getTutorsForCourseApproval: adminProcedure
+      .query(async () => {
+        return await db.getTutorsForPreferenceDropdown();
+      }),
+
+    getTutorCoursePreferences: adminProcedure
+      .input(z.object({ tutorId: z.number() }))
+      .query(async ({ input }) => {
+        return await db.getTutorCoursePreferencesForAdmin(input.tutorId);
+      }),
+
+    updateTutorCoursePreferenceStatus: adminProcedure
+      .input(z.object({
+        preferenceId: z.number(),
+        approvalStatus: z.enum(["APPROVED", "REJECTED"]),
+      }))
+      .mutation(async ({ input }) => {
+        const success = await db.updateTutorCoursePreferenceStatus(
+          input.preferenceId,
+          input.approvalStatus
+        );
+
+        if (!success) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Preference not found" });
+        }
+
+        return { success: true };
       }),
   }),
 

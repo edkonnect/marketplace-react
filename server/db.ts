@@ -6,7 +6,7 @@ import {
   subscriptions, sessions, conversations, messages, payments,
   InsertTutorProfile, InsertParentProfile, InsertCourse,
   InsertSubscription, InsertSession, InsertConversation,
-  InsertMessage, InsertPayment, courseTutors,
+  InsertMessage, InsertPayment, courseTutors, InsertCourseTutor,
   platformStats, featuredCourses, testimonials, faqs, blogPosts,
   tutorAvailability, InsertTutorAvailability,
   tutorTimeBlocks, InsertTutorTimeBlock,
@@ -19,7 +19,8 @@ import {
   notificationPreferences, InsertNotificationPreference,
   notificationLogs, InsertNotificationLog,
   inAppNotifications, InsertInAppNotification,
-  refreshTokens
+  refreshTokens,
+  tutorCoursePreferences, InsertTutorCoursePreference
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
@@ -533,11 +534,37 @@ export async function addTutorToCourse(courseId: number, tutorId: number, isPrim
   if (!db) return false;
 
   try {
+    const now = new Date();
+
+    // Link tutor to course
     await db.insert(courseTutors).values({
       courseId,
       tutorId,
       isPrimary,
-    });
+      createdAt: now,
+    } as InsertCourseTutor);
+
+    // Ensure an approved preference exists for this pairing
+    const course = await db.select({ price: courses.price }).from(courses).where(eq(courses.id, courseId)).limit(1);
+    const hourlyRate = course?.[0]?.price?.toString?.() ?? "0.00";
+
+    await db.insert(tutorCoursePreferences)
+      .values({
+        tutorId,
+        courseId,
+        hourlyRate,
+        approvalStatus: "APPROVED",
+        createdAt: now,
+        updatedAt: now,
+      } as InsertTutorCoursePreference)
+      .onDuplicateKeyUpdate({
+        set: {
+          hourlyRate,
+          approvalStatus: "APPROVED",
+          updatedAt: now,
+        },
+      });
+
     return true;
   } catch (error) {
     console.error("Failed to add tutor to course:", error);
@@ -555,6 +582,16 @@ export async function removeTutorFromCourse(courseId: number, tutorId: number) {
         eq(courseTutors.courseId, courseId),
         eq(courseTutors.tutorId, tutorId)
       ));
+
+    // Mark related preference as rejected so it no longer counts as approved
+    await db
+      .update(tutorCoursePreferences)
+      .set({ approvalStatus: "REJECTED", updatedAt: new Date() })
+      .where(and(
+        eq(tutorCoursePreferences.courseId, courseId),
+        eq(tutorCoursePreferences.tutorId, tutorId)
+      ));
+
     return true;
   } catch (error) {
     console.error("Failed to remove tutor from course:", error);
@@ -589,6 +626,14 @@ export async function getTutorsForCourse(courseId: number) {
       profile: tutorProfiles,
     })
       .from(courseTutors)
+      .innerJoin(
+        tutorCoursePreferences,
+        and(
+          eq(tutorCoursePreferences.courseId, courseTutors.courseId),
+          eq(tutorCoursePreferences.tutorId, courseTutors.tutorId),
+          eq(tutorCoursePreferences.approvalStatus, "APPROVED")
+        )
+      )
       .innerJoin(users, eq(courseTutors.tutorId, users.id))
       .leftJoin(tutorProfiles, eq(users.id, tutorProfiles.userId))
       .where(eq(courseTutors.courseId, courseId));
@@ -617,10 +662,15 @@ export async function getCoursesByTutorId(tutorId: number) {
   const db = await getDb();
   if (!db) return [];
 
-  // Get course IDs for this tutor from junction table
-  const tutorCourses = await db.select({ courseId: courseTutors.courseId })
-    .from(courseTutors)
-    .where(eq(courseTutors.tutorId, tutorId));
+  // Get course IDs for this tutor from approved preferences
+  const tutorCourses = await db.select({ courseId: tutorCoursePreferences.courseId })
+    .from(tutorCoursePreferences)
+    .where(
+      and(
+        eq(tutorCoursePreferences.tutorId, tutorId),
+        eq(tutorCoursePreferences.approvalStatus, "APPROVED")
+      )
+    );
   
   if (tutorCourses.length === 0) return [];
   
@@ -688,6 +738,250 @@ export async function searchCourses(filters: {
   }
 
   return await db.select().from(courses).where(and(...conditions)).orderBy(desc(courses.createdAt));
+}
+
+// ============ Tutor Course Preferences ============
+
+export type TutorCoursePreferenceInput = {
+  courseId: number;
+  hourlyRate: number;
+};
+
+export async function getTutorCoursePreferences(tutorId: number) {
+  const db = await getDb();
+  if (!db) return [];
+
+  try {
+    return await db
+      .select({
+        id: tutorCoursePreferences.id,
+        tutorId: tutorCoursePreferences.tutorId,
+        courseId: tutorCoursePreferences.courseId,
+        hourlyRate: tutorCoursePreferences.hourlyRate,
+        approvalStatus: tutorCoursePreferences.approvalStatus,
+        courseTitle: courses.title,
+        courseSubject: courses.subject,
+        courseGradeLevel: courses.gradeLevel,
+      })
+      .from(tutorCoursePreferences)
+      .innerJoin(courses, eq(tutorCoursePreferences.courseId, courses.id))
+      .where(eq(tutorCoursePreferences.tutorId, tutorId));
+  } catch (error) {
+    console.error("[Database] Failed to get tutor course preferences:", error);
+    return [];
+  }
+}
+
+export async function upsertTutorCoursePreferences(
+  tutorId: number,
+  preferences: TutorCoursePreferenceInput[]
+) {
+  const db = await getDb();
+  if (!db) return false;
+
+  const now = new Date();
+  try {
+    await db.transaction(async (tx) => {
+      const existing = await tx
+        .select()
+        .from(tutorCoursePreferences)
+        .where(eq(tutorCoursePreferences.tutorId, tutorId));
+
+      const existingByCourse = new Map(existing.map((pref) => [pref.courseId, pref]));
+      const incomingCourseIds = preferences.map((p) => p.courseId);
+
+      // Delete preferences (and course tutor links) that are no longer selected
+      const toDelete = existing
+        .filter((pref) => !incomingCourseIds.includes(pref.courseId))
+        .map((pref) => pref.courseId);
+
+      if (toDelete.length > 0) {
+        await tx
+          .delete(tutorCoursePreferences)
+          .where(
+            and(
+              eq(tutorCoursePreferences.tutorId, tutorId),
+              inArray(tutorCoursePreferences.courseId, toDelete)
+            )
+          );
+
+        await tx
+          .delete(courseTutors)
+          .where(
+            and(
+              eq(courseTutors.tutorId, tutorId),
+              inArray(courseTutors.courseId, toDelete)
+            )
+          );
+      }
+
+      for (const pref of preferences) {
+        const rate = Number(pref.hourlyRate || 0).toFixed(2);
+        const existingPref = existingByCourse.get(pref.courseId);
+
+        if (!existingPref) {
+          await tx.insert(tutorCoursePreferences).values({
+            tutorId,
+            courseId: pref.courseId,
+            hourlyRate: rate,
+            approvalStatus: "PENDING",
+            createdAt: now,
+            updatedAt: now,
+          } as InsertTutorCoursePreference);
+          continue;
+        }
+
+        const rateChanged = existingPref.hourlyRate !== rate;
+        const shouldResetStatus =
+          rateChanged || existingPref.approvalStatus === "REJECTED"
+            ? "PENDING"
+            : existingPref.approvalStatus;
+
+        await tx
+          .update(tutorCoursePreferences)
+          .set({
+            hourlyRate: rate,
+            approvalStatus: shouldResetStatus,
+            updatedAt: now,
+          })
+          .where(
+            and(
+              eq(tutorCoursePreferences.tutorId, tutorId),
+              eq(tutorCoursePreferences.courseId, pref.courseId)
+            )
+          );
+
+        if (shouldResetStatus === "PENDING" && existingPref.approvalStatus === "APPROVED") {
+          await tx
+            .delete(courseTutors)
+            .where(
+              and(
+                eq(courseTutors.tutorId, tutorId),
+                eq(courseTutors.courseId, pref.courseId)
+              )
+            );
+        }
+      }
+    });
+
+    return true;
+  } catch (error) {
+    console.error("[Database] Failed to upsert tutor course preferences:", error);
+    return false;
+  }
+}
+
+export async function getTutorsForPreferenceDropdown() {
+  const db = await getDb();
+  if (!db) return [];
+
+  try {
+    return await db
+      .select({
+        id: users.id,
+        name: users.name,
+        email: users.email,
+      })
+      .from(users)
+      .where(eq(users.role, "tutor"))
+      .orderBy(asc(users.name));
+  } catch (error) {
+    console.error("[Database] Failed to fetch tutors for dropdown:", error);
+    return [];
+  }
+}
+
+export async function getTutorCoursePreferencesForAdmin(tutorId: number) {
+  const db = await getDb();
+  if (!db) return [];
+
+  try {
+    return await db
+      .select({
+        id: tutorCoursePreferences.id,
+        tutorId: tutorCoursePreferences.tutorId,
+        courseId: tutorCoursePreferences.courseId,
+        hourlyRate: tutorCoursePreferences.hourlyRate,
+        approvalStatus: tutorCoursePreferences.approvalStatus,
+        courseTitle: courses.title,
+      })
+      .from(tutorCoursePreferences)
+      .innerJoin(courses, eq(tutorCoursePreferences.courseId, courses.id))
+      .where(eq(tutorCoursePreferences.tutorId, tutorId));
+  } catch (error) {
+    console.error("[Database] Failed to fetch tutor preferences for admin:", error);
+    return [];
+  }
+}
+
+export async function updateTutorCoursePreferenceStatus(
+  preferenceId: number,
+  approvalStatus: "APPROVED" | "REJECTED"
+) {
+  const db = await getDb();
+  if (!db) return false;
+
+  const now = new Date();
+
+  try {
+    return await db.transaction(async (tx) => {
+      const existing = await tx
+        .select()
+        .from(tutorCoursePreferences)
+        .where(eq(tutorCoursePreferences.id, preferenceId))
+        .limit(1);
+
+      if (existing.length === 0) {
+        throw new Error("PREFERENCE_NOT_FOUND");
+      }
+
+      const pref = existing[0];
+
+      await tx
+        .update(tutorCoursePreferences)
+        .set({ approvalStatus, updatedAt: now })
+        .where(eq(tutorCoursePreferences.id, preferenceId));
+
+      if (approvalStatus === "APPROVED") {
+        const courseLink = await tx
+          .select()
+          .from(courseTutors)
+          .where(
+            and(
+              eq(courseTutors.courseId, pref.courseId),
+              eq(courseTutors.tutorId, pref.tutorId)
+            )
+          )
+          .limit(1);
+
+        if (courseLink.length === 0) {
+          await tx.insert(courseTutors).values({
+            courseId: pref.courseId,
+            tutorId: pref.tutorId,
+            isPrimary: false,
+            createdAt: now,
+          });
+        }
+      } else {
+        await tx
+          .delete(courseTutors)
+          .where(
+            and(
+              eq(courseTutors.courseId, pref.courseId),
+              eq(courseTutors.tutorId, pref.tutorId)
+            )
+          );
+      }
+
+      return true;
+    });
+  } catch (error) {
+    if ((error as any)?.message === "PREFERENCE_NOT_FOUND") {
+      return false;
+    }
+    console.error("[Database] Failed to update tutor course preference status:", error);
+    return false;
+  }
 }
 
 // ============ Subscription Management ============

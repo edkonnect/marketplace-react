@@ -8,8 +8,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Link, useLocation } from "wouter";
-import { BookOpen, Calendar, MessageSquare, DollarSign, Users, Edit, Clock, FileText } from "lucide-react";
+import { BookOpen, Calendar, MessageSquare, DollarSign, Users, Edit, Clock, FileText, Plus } from "lucide-react";
 import { AvailabilityManager } from "@/components/AvailabilityManager";
 import { TimeBlockManager } from "@/components/TimeBlockManager";
 import { VideoUploadManager } from "@/components/VideoUploadManager";
@@ -33,6 +35,16 @@ export default function TutorDashboard() {
     { enabled: isAuthenticated && user?.role === "tutor" }
   );
 
+  const { data: coursePreferences, isLoading: preferencesLoading, refetch: refetchPreferences } =
+    trpc.tutorCoursePreferences.getMine.useQuery(undefined, {
+      enabled: isAuthenticated && (user?.role === "tutor" || user?.role === "admin"),
+    });
+
+  const { data: availableCourses, isLoading: availableCoursesLoading } =
+    trpc.tutorCoursePreferences.availableCourses.useQuery(undefined, {
+      enabled: isAuthenticated && (user?.role === "tutor" || user?.role === "admin"),
+    });
+
   const { data: subscriptions, isLoading: subsLoading } = trpc.subscription.mySubscriptionsAsTutor.useQuery(
     undefined,
     { enabled: isAuthenticated && user?.role === "tutor" }
@@ -49,6 +61,16 @@ export default function TutorDashboard() {
   );
 
   const [sessionNotes, setSessionNotes] = useState<Record<number, string>>({});
+  type PreferenceState = { preferred: boolean; hourlyRate: string; approvalStatus?: string };
+  const [preferenceState, setPreferenceState] = useState<Record<number, PreferenceState>>({});
+
+  const savePreferencesMutation = trpc.tutorCoursePreferences.saveMine.useMutation({
+    onSuccess: () => {
+      toast.success("Preferences saved");
+      refetchPreferences();
+    },
+    onError: (err) => toast.error(err.message || "Failed to save preferences"),
+  });
 
   const updateSessionMutation = trpc.session.update.useMutation({
     onSuccess: () => {
@@ -130,6 +152,61 @@ export default function TutorDashboard() {
       setHiddenHistory(new Set());
     }
   }, [hiddenStorageKey]);
+
+  useEffect(() => {
+    if (!availableCourses) return;
+    const mapped: Record<number, PreferenceState> = {};
+    for (const course of availableCourses) {
+      const existing = coursePreferences?.find((p: any) => p.courseId === course.id);
+      mapped[course.id] = {
+        preferred: !!existing,
+        hourlyRate: existing?.hourlyRate?.toString?.() ?? "",
+        approvalStatus: existing?.approvalStatus,
+      };
+    }
+    setPreferenceState(mapped);
+  }, [availableCourses, coursePreferences]);
+
+  const togglePreference = (courseId: number, preferred: boolean) => {
+    setPreferenceState((prev) => {
+      const current = prev[courseId] || { preferred: false, hourlyRate: "" };
+      return {
+        ...prev,
+        [courseId]: {
+          ...current,
+          preferred,
+          hourlyRate: preferred ? current.hourlyRate : "",
+        },
+      };
+    });
+  };
+
+  const updateHourlyRate = (courseId: number, value: string) => {
+    setPreferenceState((prev) => ({
+      ...prev,
+      [courseId]: {
+        ...(prev[courseId] || { preferred: true, hourlyRate: "" }),
+        hourlyRate: value,
+      },
+    }));
+  };
+
+  const handleSavePreferences = () => {
+    const selected = Object.entries(preferenceState)
+      .filter(([, pref]) => pref?.preferred)
+      .map(([courseId, pref]) => ({
+        courseId: Number(courseId),
+        hourlyRate: Number(pref.hourlyRate || 0),
+      }));
+
+    const invalid = selected.find((p) => !p.hourlyRate || p.hourlyRate <= 0);
+    if (invalid) {
+      toast.error("Please enter an hourly rate greater than 0 for selected courses.");
+      return;
+    }
+
+    savePreferencesMutation.mutate({ preferences: selected });
+  };
 
   if (loading || !isAuthenticated) {
     return (
@@ -255,6 +332,7 @@ export default function TutorDashboard() {
               <TabsList className="inline-flex min-w-max gap-2 sm:w-full sm:flex-wrap sm:justify-start">
                 <TabsTrigger className="whitespace-nowrap" value="profile">Profile</TabsTrigger>
                 <TabsTrigger className="whitespace-nowrap" value="courses">Courses</TabsTrigger>
+                <TabsTrigger className="whitespace-nowrap" value="course-preferences">Course Preferences</TabsTrigger>
                 <TabsTrigger className="whitespace-nowrap" value="students">Students</TabsTrigger>
                 <TabsTrigger className="whitespace-nowrap" value="sessions">Sessions</TabsTrigger>
                 <TabsTrigger className="whitespace-nowrap" value="history">History</TabsTrigger>
@@ -339,6 +417,90 @@ export default function TutorDashboard() {
                       </CardContent>
                     </Card>
                   )}
+                </TabsContent>
+
+                {/* Course Preferences Tab */}
+                <TabsContent value="course-preferences" forceMount className={tabContentClass}>
+                  <div className="flex items-center justify-between gap-4 flex-wrap">
+                    <h2 className="text-2xl font-bold">My Course Preferences</h2>
+                    <Button
+                      onClick={handleSavePreferences}
+                      disabled={savePreferencesMutation.isPending || preferencesLoading || availableCoursesLoading}
+                    >
+                      {savePreferencesMutation.isPending ? "Saving..." : "Save Preferences"}
+                    </Button>
+                  </div>
+
+                  <Card>
+                    <CardContent className="pt-6 space-y-4">
+                      <p className="text-sm text-muted-foreground">
+                        Select the courses you want to teach and set your hourly rate for each selected course.
+                        New or updated preferences will be reviewed by an admin.
+                      </p>
+
+                      {preferencesLoading || availableCoursesLoading ? (
+                        <div className="space-y-3">
+                          {[1, 2, 3].map((i) => (
+                            <Skeleton key={i} className="h-16 w-full" />
+                          ))}
+                        </div>
+                      ) : availableCourses && availableCourses.length > 0 ? (
+                        <div className="space-y-3">
+                          {availableCourses.map((course: any) => {
+                            const pref = preferenceState[course.id] || { preferred: false, hourlyRate: "" };
+                            const status = pref.approvalStatus || "PENDING";
+                            const statusVariant =
+                              status === "APPROVED" ? "default" : status === "REJECTED" ? "destructive" : "secondary";
+
+                            return (
+                              <div
+                                key={course.id}
+                                className="grid gap-3 md:grid-cols-12 items-center border rounded-lg p-3"
+                              >
+                                <div className="md:col-span-5 flex items-start gap-3">
+                                  <Checkbox
+                                    checked={pref.preferred}
+                                    onCheckedChange={(checked) => togglePreference(course.id, Boolean(checked))}
+                                  />
+                                  <div>
+                                    <p className="font-semibold leading-tight">{course.title}</p>
+                                    <p className="text-sm text-muted-foreground">
+                                      {course.subject}
+                                      {course.gradeLevel ? ` • ${course.gradeLevel}` : ""}
+                                    </p>
+                                  </div>
+                                </div>
+
+                                <div className="md:col-span-3">
+                                  <Label className="text-xs text-muted-foreground">Hourly Rate (USD)</Label>
+                                  <Input
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    value={pref.hourlyRate}
+                                    disabled={!pref.preferred}
+                                    onChange={(e) => updateHourlyRate(course.id, e.target.value)}
+                                  />
+                                </div>
+
+                                <div className="md:col-span-2">
+                                  {pref.preferred && (
+                                    <div className="flex items-center gap-2">
+                                      <Badge variant={statusVariant as any}>{status}</Badge>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <div className="text-center text-muted-foreground py-6">
+                          No courses available yet. Please check back later.
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
                 </TabsContent>
 
                 {/* Students Tab */}

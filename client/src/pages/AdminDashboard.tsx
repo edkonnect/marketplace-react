@@ -26,6 +26,7 @@ import { Pagination } from "@/components/Pagination";
 import { CourseCreationForm } from "@/components/CourseCreationForm";
 import { CourseManagementTable } from "@/components/CourseManagementTable";
 import { TutorAssignmentDialog } from "@/components/TutorAssignmentDialog";
+import { toast } from "sonner";
 
 export function AdminDashboard() {
   const { user, isAuthenticated, loading } = useAuth();
@@ -68,6 +69,8 @@ export function AdminDashboard() {
     endDate?: string;
   }>({});
 
+  const [selectedTutorId, setSelectedTutorId] = useState<number | null>(null);
+
   const { data: stats, isLoading: statsLoading } = trpc.admin.getOverviewStats.useQuery(
     undefined,
     { enabled: isAuthenticated && user?.role === "admin" }
@@ -109,6 +112,28 @@ export function AdminDashboard() {
     dateRange,
     { enabled: isAuthenticated && user?.role === "admin" }
   );
+
+  const { data: tutorOptions, isLoading: tutorOptionsLoading } = trpc.admin.getTutorsForCourseApproval.useQuery(
+    undefined,
+    { enabled: isAuthenticated && user?.role === "admin" }
+  );
+
+  const {
+    data: tutorPreferenceData,
+    isLoading: tutorPreferencesLoading,
+    refetch: refetchTutorPreferences,
+  } = trpc.admin.getTutorCoursePreferences.useQuery(
+    { tutorId: selectedTutorId ?? 0 },
+    { enabled: isAuthenticated && user?.role === "admin" && !!selectedTutorId }
+  );
+
+  const updatePreferenceStatus = trpc.admin.updateTutorCoursePreferenceStatus.useMutation({
+    onSuccess: () => {
+      toast.success("Preference updated");
+      refetchTutorPreferences();
+    },
+    onError: (err) => toast.error(err.message || "Failed to update preference"),
+  });
 
   useEffect(() => {
     if (!loading && !isAuthenticated) {
@@ -275,7 +300,7 @@ export function AdminDashboard() {
 
         {/* Data Tables */}
         <Tabs defaultValue="analytics" className="space-y-6">
-          <TabsList className="grid w-full max-w-6xl grid-cols-10">
+          <TabsList className="grid w-full max-w-6xl grid-cols-11">
             <TabsTrigger value="analytics">Analytics</TabsTrigger>
             <TabsTrigger value="users">Users</TabsTrigger>
             <TabsTrigger value="enrollments">Enrollments</TabsTrigger>
@@ -286,6 +311,7 @@ export function AdminDashboard() {
             <TabsTrigger value="acuity">Acuity Mapping</TabsTrigger>
             <TabsTrigger value="quicksetup">Quick Setup</TabsTrigger>
             <TabsTrigger value="email">Email Settings</TabsTrigger>
+            <TabsTrigger value="course-approval">Tutor Course Approval</TabsTrigger>
           </TabsList>
 
           {/* Analytics Tab */}
@@ -809,6 +835,127 @@ export function AdminDashboard() {
           {/* Registered Tutors Tab */}
           <TabsContent value="registered-tutors" className="space-y-4">
             <RegisteredTutorsManager />
+          </TabsContent>
+
+          {/* Tutor Course Approval Tab */}
+          <TabsContent value="course-approval" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>Tutor Course Approval</CardTitle>
+                <CardDescription>
+                  Select a tutor to review their requested courses and approve or reject individually.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid gap-3 md:grid-cols-2">
+                  <div>
+                    <label className="text-sm font-medium mb-2 block">Select Tutor</label>
+                    <Select
+                      value={selectedTutorId ? String(selectedTutorId) : undefined}
+                      onValueChange={(value) => setSelectedTutorId(Number(value))}
+                      disabled={tutorOptionsLoading}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select Tutor" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {tutorOptions?.map((tutor) => (
+                          <SelectItem key={tutor.id} value={String(tutor.id)}>
+                            {tutor.name || "Tutor"}{tutor.email ? ` • ${tutor.email}` : ""}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                {!tutorOptionsLoading && (!tutorOptions || tutorOptions.length === 0) && (
+                  <p className="text-sm text-muted-foreground">No tutors found.</p>
+                )}
+              </CardContent>
+            </Card>
+
+            {selectedTutorId && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Requested Courses</CardTitle>
+                  <CardDescription>
+                    Decisions apply immediately. Pending preferences are hidden from parents until approved.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {tutorPreferencesLoading ? (
+                    <div className="space-y-3">
+                      {[1, 2, 3].map((i) => (
+                        <Skeleton key={i} className="h-14 w-full" />
+                      ))}
+                    </div>
+                  ) : tutorPreferenceData && tutorPreferenceData.length > 0 ? (
+                    <div className="divide-y">
+                      <div className="grid grid-cols-12 text-sm font-medium text-muted-foreground py-2">
+                        <div className="col-span-4">Course</div>
+                        <div className="col-span-2">Requested Rate</div>
+                        <div className="col-span-2">Status</div>
+                        <div className="col-span-4 text-right">Actions</div>
+                      </div>
+                      {tutorPreferenceData.map((pref: any) => (
+                        <div key={pref.id} className="grid grid-cols-12 items-center py-3 gap-2">
+                          <div className="col-span-4">
+                            <p className="font-semibold">{pref.courseTitle}</p>
+                          </div>
+                          <div className="col-span-2">
+                            ${parseFloat(pref.hourlyRate || 0).toFixed(2)}
+                          </div>
+                          <div className="col-span-2">
+                            <Badge
+                              variant={
+                                pref.approvalStatus === "APPROVED"
+                                  ? "default"
+                                  : pref.approvalStatus === "REJECTED"
+                                    ? "destructive"
+                                    : "secondary"
+                              }
+                            >
+                              {pref.approvalStatus}
+                            </Badge>
+                          </div>
+                          <div className="col-span-4 flex justify-end gap-2">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={updatePreferenceStatus.isPending}
+                              onClick={() =>
+                                updatePreferenceStatus.mutate({
+                                  preferenceId: pref.id,
+                                  approvalStatus: "APPROVED",
+                                })
+                              }
+                            >
+                              Approve
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              disabled={updatePreferenceStatus.isPending}
+                              onClick={() =>
+                                updatePreferenceStatus.mutate({
+                                  preferenceId: pref.id,
+                                  approvalStatus: "REJECTED",
+                                })
+                              }
+                            >
+                              Reject
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">No preferences submitted by this tutor yet.</p>
+                  )}
+                </CardContent>
+              </Card>
+            )}
           </TabsContent>
 
           {/* Tutor Availability Tab */}
