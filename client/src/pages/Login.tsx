@@ -32,7 +32,8 @@ export default function Login() {
     setLoading(true);
     try {
       const user = await login(values.email, values.password);
-      toast.success("Logged in");
+      const firstName = user?.name?.split(" ")[0] || "there";
+      toast.success(`Welcome, ${firstName}!`);
       if (user?.role === "tutor") {
         setLocation("/tutor/dashboard");
       } else if (user?.role === "admin") {
