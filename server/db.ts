@@ -1690,16 +1690,17 @@ export async function getStudentsWithTutors(parentId: number) {
       .leftJoin(courses, eq(subscriptions.courseId, courses.id))
       .where(eq(subscriptions.parentId, parentId));
 
-    // Group by student and get their tutors
-    const studentMap = new Map<number, any>();
-    
+    // Group by student identity (name) to avoid duplicates from multiple subscriptions
+    const studentMap = new Map<string, any>();
+
     for (const sub of subs) {
       if (!sub.studentFirstName || !sub.studentLastName) continue;
-      
-      const studentKey = sub.studentId;
+
+      // Key by name so re-enrollments don't create duplicate student entries
+      const studentKey = `${sub.studentFirstName.trim().toLowerCase()}_${sub.studentLastName.trim().toLowerCase()}`;
       if (!studentMap.has(studentKey)) {
         studentMap.set(studentKey, {
-          id: studentKey,
+          id: sub.studentId,
           firstName: sub.studentFirstName,
           lastName: sub.studentLastName,
           grade: sub.studentGrade,
@@ -1718,7 +1719,6 @@ export async function getStudentsWithTutors(parentId: number) {
             lastMessageAt: conversations.lastMessageAt,
           })
           .from(courseTutors)
-          // courseTutors.tutorId points to users.id; join directly to users/tutorProfiles
           .leftJoin(users, eq(courseTutors.tutorId, users.id))
           .leftJoin(tutorProfiles, eq(users.id, tutorProfiles.userId))
           .leftJoin(
@@ -1733,7 +1733,10 @@ export async function getStudentsWithTutors(parentId: number) {
 
         const student = studentMap.get(studentKey);
         for (const tutor of tutorList) {
-          if (tutor.tutorId && !student.tutors.find((t: any) => t.id === tutor.tutorId)) {
+          // Skip tutors with no name (orphaned course_tutors rows)
+          if (!tutor.tutorId || !tutor.tutorName) continue;
+          // Deduplicate by tutorId
+          if (!student.tutors.find((t: any) => t.id === tutor.tutorId)) {
             student.tutors.push({
               id: tutor.tutorId,
               name: tutor.tutorName,
