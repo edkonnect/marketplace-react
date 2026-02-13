@@ -1041,7 +1041,9 @@ export async function getSubscriptionsByParentId(parentId: number) {
     .where(eq(subscriptions.parentId, parentId))
     .orderBy(desc(subscriptions.createdAt));
 
-  // Deduplicate per subscription, preferring the primary tutor if available.
+  // Deduplicate per subscription:
+  // 1. If the parent explicitly chose a tutor (preferredTutorId), use that tutor.
+  // 2. Otherwise fall back to the primary tutor, then any tutor.
   const bySubscription = new Map<number, typeof rows[number]>();
   for (const row of rows) {
     const existing = bySubscription.get(row.subscription.id);
@@ -1049,7 +1051,15 @@ export async function getSubscriptionsByParentId(parentId: number) {
       bySubscription.set(row.subscription.id, row);
       continue;
     }
-    if (row.isPrimary && !existing.isPrimary) {
+    const preferredId = row.subscription.preferredTutorId;
+    const rowMatchesPreferred = preferredId !== null && preferredId !== undefined && row.tutor?.id === preferredId;
+    const existingMatchesPreferred = preferredId !== null && preferredId !== undefined && existing.tutor?.id === preferredId;
+
+    if (rowMatchesPreferred && !existingMatchesPreferred) {
+      // This row is the parent's explicit choice — always prefer it
+      bySubscription.set(row.subscription.id, row);
+    } else if (!existingMatchesPreferred && row.isPrimary && !existing.isPrimary) {
+      // No preferred tutor set — fall back to primary
       bySubscription.set(row.subscription.id, row);
     }
   }

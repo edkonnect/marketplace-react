@@ -96,7 +96,11 @@ export default function TutorRegistration() {
       toast.success("Registration submitted successfully!");
     },
     onError: (error: any) => {
-      toast.error(error.message || "Failed to submit registration");
+      if (error.message === "You already have a tutor profile") {
+        setSubmitted(true);
+      } else {
+        toast.error(error.message || "Failed to submit registration");
+      }
     },
   });
 

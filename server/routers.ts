@@ -150,7 +150,7 @@ export const appRouter = router({
         } else {
           // Create tutor profile with pending approval status
           const created = await db.createTutorProfile({ userId, ...profileData });
-          if (!created) {
+          if (created === null) {
             throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to create tutor profile' });
           }
           profileId = created;
