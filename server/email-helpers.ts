@@ -175,6 +175,7 @@ export function formatEmailDate(date: Date): string {
     year: 'numeric',
     month: 'long',
     day: 'numeric',
+    timeZone: 'UTC',
   });
 }
 
@@ -186,6 +187,7 @@ export function formatEmailTime(date: Date): string {
     hour: 'numeric',
     minute: '2-digit',
     hour12: true,
+    timeZone: 'UTC',
   });
 }
 
