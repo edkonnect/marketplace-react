@@ -5,7 +5,7 @@ Create a `.env.local` (or reuse `.env`) with:
 ```
 NODE_ENV=development
 PORT=3000
-DATABASE_URL=mysql://tutor_user:Strong%24123Pass@localhost:3306/tutor_marketplace_1
+DATABASE_URL=mysql://user:password@localhost:3306/tutor_marketplace_1
 JWT_SECRET=change_me_access
 JWT_REFRESH_SECRET=change_me_refresh
 JWT_EXPIRY=15m
