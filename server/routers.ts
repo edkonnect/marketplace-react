@@ -1032,6 +1032,8 @@ export const appRouter = router({
         ...(row.session || row),
         courseTitle: row.courseTitle,
         tutorName: row.tutorName,
+        studentFirstName: row.studentFirstName,
+        studentLastName: row.studentLastName,
         joinUrl: generateJoinUrl((row.session || row).id),
       }));
     }),
@@ -1069,6 +1071,8 @@ export const appRouter = router({
         ...(row.session || row),
         course: row.courseTitle ? { title: row.courseTitle } : null,
         tutor: row.tutorName ? { name: row.tutorName } : null,
+        studentFirstName: row.studentFirstName,
+        studentLastName: row.studentLastName,
         joinUrl: generateJoinUrl((row.session || row).id),
       }));
       

@@ -584,6 +584,11 @@ export default function ParentDashboard() {
                               <p className="text-sm text-muted-foreground">
                                 with {session.tutorName || "Tutor"}
                               </p>
+                              {(session.studentFirstName || session.studentLastName) && (
+                                <p className="text-sm text-muted-foreground">
+                                  Student: {[session.studentFirstName, session.studentLastName].filter(Boolean).join(" ")}
+                                </p>
+                              )}
                             </div>
                           </div>
                           <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -660,6 +665,9 @@ export default function ParentDashboard() {
                           </div>
                           <p className="text-sm text-muted-foreground mb-2">
                             {session.duration} minutes • Tutor: {session.tutorName || "Tutor"}
+                            {(session.studentFirstName || session.studentLastName) && (
+                              <> • Student: {[session.studentFirstName, session.studentLastName].filter(Boolean).join(" ")}</>
+                            )}
                           </p>
                           {session.feedbackFromTutor && (
                             <div className="flex items-center gap-2 text-xs text-primary">

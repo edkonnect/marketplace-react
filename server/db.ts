@@ -1252,7 +1252,18 @@ export async function getCompletedSessionsByTutorId(tutorId: number) {
     .leftJoin(subscriptions, eq(sessions.subscriptionId, subscriptions.id))
     .leftJoin(courses, eq(subscriptions.courseId, courses.id))
     .leftJoin(users, eq(sessions.tutorId, users.id))
-    .where(and(eq(sessions.tutorId, tutorId), eq(sessions.status, 'completed' as any)))
+    .where(and(
+      eq(sessions.tutorId, tutorId),
+      or(
+        eq(sessions.status, 'completed' as any),
+        eq(sessions.status, 'no_show' as any),
+        eq(sessions.status, 'cancelled' as any),
+        and(
+          eq(sessions.status, 'scheduled' as any),
+          lt(sessions.scheduledAt, Date.now())
+        )
+      )
+    ))
     .orderBy(desc(sessions.scheduledAt));
 }
 

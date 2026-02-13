@@ -293,6 +293,9 @@ export function ParentBookingsManager() {
                   </CardTitle>
                   <CardDescription>
                     Tutor: {firstSession?.tutor?.name || "Unknown"}
+                    {(firstSession?.studentFirstName || firstSession?.studentLastName) && (
+                      <> • Student: {[firstSession.studentFirstName, firstSession.studentLastName].filter(Boolean).join(" ")}</>
+                    )}
                   </CardDescription>
                 </div>
                 {scheduledSessions.length > 0 && (
