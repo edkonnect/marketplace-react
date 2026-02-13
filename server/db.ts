@@ -1213,6 +1213,49 @@ export async function getSessionsByTutorId(tutorId: number) {
     .orderBy(desc(sessions.scheduledAt));
 }
 
+// Completed sessions (for history views)
+export async function getCompletedSessionsByParentId(parentId: number) {
+  const db = await getDb();
+  if (!db) return [];
+
+  return await db
+    .select({
+      session: sessions,
+      courseTitle: courses.title,
+      courseSubject: courses.subject,
+      tutorName: users.name,
+      studentFirstName: subscriptions.studentFirstName,
+      studentLastName: subscriptions.studentLastName,
+    })
+    .from(sessions)
+    .leftJoin(subscriptions, eq(sessions.subscriptionId, subscriptions.id))
+    .leftJoin(courses, eq(subscriptions.courseId, courses.id))
+    .leftJoin(users, eq(sessions.tutorId, users.id))
+    .where(and(eq(sessions.parentId, parentId), eq(sessions.status, 'completed' as any)))
+    .orderBy(desc(sessions.scheduledAt));
+}
+
+export async function getCompletedSessionsByTutorId(tutorId: number) {
+  const db = await getDb();
+  if (!db) return [];
+
+  return await db
+    .select({
+      session: sessions,
+      courseTitle: courses.title,
+      courseSubject: courses.subject,
+      tutorName: users.name,
+      studentFirstName: subscriptions.studentFirstName,
+      studentLastName: subscriptions.studentLastName,
+    })
+    .from(sessions)
+    .leftJoin(subscriptions, eq(sessions.subscriptionId, subscriptions.id))
+    .leftJoin(courses, eq(subscriptions.courseId, courses.id))
+    .leftJoin(users, eq(sessions.tutorId, users.id))
+    .where(and(eq(sessions.tutorId, tutorId), eq(sessions.status, 'completed' as any)))
+    .orderBy(desc(sessions.scheduledAt));
+}
+
 export async function getUpcomingSessions(userId: number, role: "parent" | "tutor") {
   const db = await getDb();
   if (!db) return [];

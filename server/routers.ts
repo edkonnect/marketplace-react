@@ -1038,7 +1038,7 @@ export const appRouter = router({
 
     myHistory: protectedProcedure.query(async ({ ctx }) => {
       if (ctx.user.role === 'tutor') {
-        const rows = await db.getSessionsByTutorId(ctx.user.id);
+        const rows = await db.getCompletedSessionsByTutorId(ctx.user.id);
         return rows.map((row: any) => ({
           ...(row.session || row),
           courseTitle: row.courseTitle,
@@ -1049,7 +1049,7 @@ export const appRouter = router({
           joinUrl: generateJoinUrl((row.session || row).id),
         }));
       } else {
-        const rows = await db.getSessionsByParentId(ctx.user.id);
+        const rows = await db.getCompletedSessionsByParentId(ctx.user.id);
         return rows.map((row: any) => ({
           ...(row.session || row),
           courseTitle: row.courseTitle,
