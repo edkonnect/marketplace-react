@@ -16,6 +16,17 @@ CREATE INDEX `tutor_course_pref_tutor_idx` ON `tutor_course_preferences` (`tutor
 CREATE INDEX `tutor_course_pref_course_idx` ON `tutor_course_preferences` (`courseId`);
 --> statement-breakpoint
 
+-- Ensure course_tutors exists in environments that missed its migration
+CREATE TABLE IF NOT EXISTS `course_tutors` (
+  `id` int AUTO_INCREMENT NOT NULL,
+  `courseId` int NOT NULL,
+  `tutorId` int NOT NULL,
+  `isPrimary` boolean NOT NULL DEFAULT false,
+  `createdAt` timestamp NOT NULL DEFAULT (now()),
+  CONSTRAINT `course_tutors_id` PRIMARY KEY(`id`)
+);
+--> statement-breakpoint
+
 -- Backfill existing course tutor assignments as approved preferences to preserve behavior
 INSERT INTO tutor_course_preferences (tutorId, courseId, hourlyRate, approvalStatus, createdAt, updatedAt)
 SELECT DISTINCT ct.tutorId, ct.courseId, COALESCE(c.price, 0.00), 'APPROVED', NOW(), NOW()

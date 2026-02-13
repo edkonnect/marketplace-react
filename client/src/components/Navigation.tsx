@@ -120,13 +120,13 @@ export default function Navigation() {
             ) : isAuthenticated && user ? (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" className="relative h-10 w-10 rounded-full">
+                  <button className="relative h-10 w-10 rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                     <Avatar>
                       <AvatarFallback className="bg-primary text-primary-foreground">
                         {getInitials(user.name)}
                       </AvatarFallback>
                     </Avatar>
-                  </Button>
+                  </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-56">
                   <div className="flex flex-col space-y-1 p-2">

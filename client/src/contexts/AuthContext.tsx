@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 
 type User = {
   id: number;
@@ -87,14 +87,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
   }, []);
 
-  const value: AuthContextValue = {
+  const refreshProfile = useCallback(async () => { await fetchProfile(); }, [fetchProfile]);
+
+  const value = useMemo<AuthContextValue>(() => ({
     user,
     loading,
     login,
     signup,
     logout,
-    refreshProfile: fetchProfile,
-  };
+    refreshProfile,
+  }), [user, loading, login, signup, logout, refreshProfile]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
