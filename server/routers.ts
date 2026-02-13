@@ -124,13 +124,15 @@ export const appRouter = router({
         // Use the logged-in user's ID instead of creating a new user
         const userId = ctx.user.id;
 
-        // Check if user already has an active or pending tutor profile
+        // Check if user already has a tutor profile
         const existingProfile = await db.getTutorProfileByUserId(userId);
-        if (existingProfile && existingProfile.approvalStatus !== 'rejected') {
+        if (existingProfile) {
           throw new TRPCError({ code: 'BAD_REQUEST', message: 'You already have a tutor profile' });
         }
 
-        const profileData = {
+        // Create tutor profile with pending approval status
+        const profileId = await db.createTutorProfile({
+          userId,
           bio: input.bio,
           qualifications: input.qualifications,
           yearsOfExperience: input.yearsOfExperience,
@@ -138,22 +140,11 @@ export const appRouter = router({
           subjects: JSON.stringify(input.subjects),
           gradeLevels: JSON.stringify(input.gradeLevels),
           acuityLink: input.acuityLink,
-          approvalStatus: 'pending' as const,
-        };
+          approvalStatus: 'pending',
+        });
 
-        let profileId: number;
-
-        if (existingProfile) {
-          // Re-application after rejection: update the existing profile and clear rejection reason
-          await db.updateTutorProfile(userId, { ...profileData, isActive: false, rejectionReason: null });
-          profileId = existingProfile.id;
-        } else {
-          // Create tutor profile with pending approval status
-          const created = await db.createTutorProfile({ userId, ...profileData });
-          if (!created) {
-            throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to create tutor profile' });
-          }
-          profileId = created;
+        if (!profileId) {
+          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to create tutor profile' });
         }
 
         // Notify admin about new tutor registration

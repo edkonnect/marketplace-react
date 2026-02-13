@@ -1,4 +1,4 @@
-import { useCallback, useRef, useEffect, useState } from "react";
+import React, { useCallback, useMemo, useRef, useEffect, useState } from "react";
 
 export type FieldValidator<TValues, TValue = any> = (
   value: TValue,
@@ -61,12 +61,6 @@ export function useValidatedForm<TValues extends Record<string, any>>(
     initialValuesRef.current = initialValues;
   }, [initialValues]);
 
-  // Keep validators in a ref so inline object literals don't cause cascading re-renders
-  const validatorsRef = useRef(validators);
-  useEffect(() => {
-    validatorsRef.current = validators;
-  });
-
   const [values, setValues] = useState<TValues>(initialValuesRef.current);
   const [touched, setTouched] = useState<Partial<Record<keyof TValues, boolean>>>(
     {}
@@ -75,9 +69,11 @@ export function useValidatedForm<TValues extends Record<string, any>>(
     {}
   );
 
+  const validatorEntries = useMemo(() => validators, [validators]);
+
   const runValidators = useCallback(
     <K extends keyof TValues>(name: K, value: TValues[K], allValues: TValues) => {
-      const rules = validatorsRef.current[name];
+      const rules = validatorEntries[name];
       const validatorsForField = Array.isArray(rules)
         ? (rules as Array<FieldValidator<TValues, TValues[K]>>)
         : rules
@@ -92,8 +88,7 @@ export function useValidatedForm<TValues extends Record<string, any>>(
       setErrors((prev) => ({ ...prev, [name]: message }));
       return message;
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    []
+    [validatorEntries]
   );
 
   const getMeta = useCallback(
@@ -185,7 +180,7 @@ export function useValidatedForm<TValues extends Record<string, any>>(
       const touchedFields: Partial<Record<keyof TValues, boolean>> = {};
       const nextErrors: Partial<Record<keyof TValues, string | null>> = {};
 
-      (Object.keys(validatorsRef.current) as Array<keyof TValues>).forEach((name) => {
+      (Object.keys(validatorEntries) as Array<keyof TValues>).forEach((name) => {
         touchedFields[name] = true;
         const message = runValidators(name, currentValues[name], currentValues);
         nextErrors[name] = message;
@@ -200,7 +195,7 @@ export function useValidatedForm<TValues extends Record<string, any>>(
 
       return { isValid, errors: nextErrors };
     },
-    [runValidators, values]
+    [runValidators, validatorEntries, values, errors]
   );
 
   const reset = useCallback((nextValues?: TValues) => {
