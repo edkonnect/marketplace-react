@@ -83,7 +83,7 @@ export async function handleStripeWebhook(req: Request, res: Response) {
 
           // Create payment record for installment
           const course = await db.getCourseById(courseId);
-          if (course && tutorId) {
+          if (course && tutorId && subscriptionId) {
             await db.createPayment({
               parentId: userId,
               tutorId,
@@ -123,17 +123,28 @@ export async function handleStripeWebhook(req: Request, res: Response) {
             const tutors = await db.getTutorsForCourse(courseId);
             
             // Create payment record
-            await db.createPayment({
-              parentId: userId,
-              tutorId,
-              subscriptionId: subscriptionId || null,
-              sessionId: null,
-              amount: ((session.amount_total || 0) / 100).toString(),
-              currency: session.currency || "usd",
-              status: "completed",
-              stripePaymentIntentId: session.payment_intent as string || null,
-              paymentType: "subscription",
-            });
+            const paymentSubscriptionId = subscriptionId || newSubscriptionId;
+            if (paymentSubscriptionId) {
+              await db.createPayment({
+                parentId: userId,
+                tutorId,
+                subscriptionId: paymentSubscriptionId,
+                sessionId: null,
+                amount: ((session.amount_total || 0) / 100).toString(),
+                currency: session.currency || "usd",
+                status: "completed",
+                stripePaymentIntentId: session.payment_intent as string || null,
+                paymentType: "subscription",
+              });
+            } else {
+              console.warn("[Webhook] Skipped payment creation: missing subscriptionId", {
+                userId,
+                courseId,
+                tutorId,
+                metadataSubscriptionId: subscriptionId,
+                newSubscriptionId,
+              });
+            }
 
             console.log("[Webhook] Payment record created for user:", userId);
             
