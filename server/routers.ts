@@ -1427,7 +1427,29 @@ export const appRouter = router({
         }
 
         try {
-          const id = await db.createSession(input);
+          // Check for an existing cancelled session at the same tutor+time slot.
+          // The DB has a unique constraint on (tutorId, scheduledAt), so re-booking
+          // a previously cancelled slot must update the existing row instead of inserting.
+          let id: number;
+          const existing = await db.getSessionByTutorAndTime(input.tutorId, input.scheduledAt);
+          if (existing) {
+            if (existing.status !== 'cancelled') {
+              throw new TRPCError({ code: 'CONFLICT', message: 'That time slot is already booked' });
+            }
+            await db.updateSession(existing.id, {
+              subscriptionId: input.subscriptionId,
+              parentId: input.parentId,
+              duration: input.duration,
+              status: 'scheduled',
+              notes: input.notes ?? null,
+              feedbackFromTutor: null,
+              feedbackFromParent: null,
+              rating: null,
+            });
+            id = existing.id;
+          } else {
+            id = await db.createSession(input) as number;
+          }
           if (!id) {
             throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to create session' });
           }

@@ -1082,9 +1082,8 @@ export async function getSubscriptionsByTutorId(tutorId: number) {
     })
     .from(subscriptions)
     .innerJoin(courses, eq(subscriptions.courseId, courses.id))
-    .innerJoin(courseTutors, eq(courses.id, courseTutors.courseId))
     .innerJoin(users, eq(subscriptions.parentId, users.id))
-    .where(eq(courseTutors.tutorId, tutorId))
+    .where(eq(subscriptions.preferredTutorId, tutorId))
     .orderBy(desc(subscriptions.createdAt));
 }
 
@@ -1168,6 +1167,18 @@ export async function getSessionById(id: number) {
   if (!db) return null;
 
   const result = await db.select().from(sessions).where(eq(sessions.id, id)).limit(1);
+  return result.length > 0 ? result[0] : null;
+}
+
+export async function getSessionByTutorAndTime(tutorId: number, scheduledAt: number) {
+  const db = await getDb();
+  if (!db) return null;
+
+  const result = await db
+    .select()
+    .from(sessions)
+    .where(and(eq(sessions.tutorId, tutorId), eq(sessions.scheduledAt, scheduledAt)))
+    .limit(1);
   return result.length > 0 ? result[0] : null;
 }
 
@@ -1874,7 +1885,8 @@ export async function getTutorSessionsWithin(tutorId: number, from: number, to: 
       and(
         eq(sessions.tutorId, tutorId),
         gte(sessions.scheduledAt, from),
-        lte(sessions.scheduledAt, to)
+        lte(sessions.scheduledAt, to),
+        eq(sessions.status, 'scheduled' as any)
       )
     );
 }
