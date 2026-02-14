@@ -1947,6 +1947,11 @@ export const appRouter = router({
         stripePaymentIntentId: z.string().optional(),
       }))
       .mutation(async ({ ctx, input }) => {
+        // Prevent subscription payments without a subscription link
+        if (input.paymentType === 'subscription' && !input.subscriptionId) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'subscriptionId is required for subscription payments' });
+        }
+
         const id = await db.createPayment({
           ...input,
           status: 'pending',
@@ -2010,10 +2015,16 @@ export const appRouter = router({
         
         // Get total payments and revenue
         const allPayments = await db.getAllPayments();
-        const totalPayments = allPayments.length;
-        const totalRevenue = allPayments
-          .filter(p => p.status === 'completed')
-          .reduce((sum, p) => sum + parseFloat(p.amount), 0);
+        const completedPayments = allPayments.filter(
+          (p) =>
+            p.subscriptionId != null &&
+            (p.status || '').toLowerCase() === 'completed'
+        );
+        const totalPayments = completedPayments.length;
+        const totalRevenue = completedPayments.reduce((sum, p) => {
+          const amt = parseFloat(p.amount);
+          return sum + (isFinite(amt) ? amt : 0);
+        }, 0);
         
         return {
           totalUsers,
@@ -2152,6 +2163,28 @@ export const appRouter = router({
       }))
       .query(async ({ input }) => {
         let allPayments = await db.getAllPayments();
+
+        // Surface pending/failed enrollments even if no payment row exists yet
+        const allSubs = await db.getAllSubscriptions();
+        const unpaidSubs = allSubs.filter(
+          ({ subscription }) => subscription.paymentStatus === "pending" || subscription.paymentStatus === "failed"
+        );
+
+        const syntheticPayments = unpaidSubs.map(({ subscription, course, tutor }) => ({
+          // Negative id space to avoid collision with real payments
+          id: -subscription.id,
+          parentId: subscription.parentId,
+          tutorId: subscription.preferredTutorId ?? tutor?.id ?? 0,
+          subscriptionId: subscription.id,
+          amount: course?.price ?? "0",
+          currency: "usd",
+          status: subscription.paymentStatus,
+          paymentType: "subscription" as const,
+          stripePaymentIntentId: null,
+          createdAt: subscription.createdAt,
+        }));
+
+        allPayments = [...allPayments, ...syntheticPayments];
 
         // Only show enrollment-based payments (must have a subscriptionId)
         allPayments = allPayments.filter(p => p.subscriptionId != null);
@@ -2409,8 +2442,25 @@ export const appRouter = router({
       }).optional())
       .query(async ({ input }) => {
         const allUsers = await db.getAllUsers();
-        const allSubscriptions = await db.getAllSubscriptions();
+        // Deduplicate subscriptions in case joins return multiple tutor rows
+        const allSubscriptionsRaw = await db.getAllSubscriptions();
+        const subMap = new Map<number, (typeof allSubscriptionsRaw)[number]>();
+        allSubscriptionsRaw.forEach((s) => {
+          if (!subMap.has(s.subscription.id)) {
+            subMap.set(s.subscription.id, s);
+          }
+        });
+        const allSubscriptions = Array.from(subMap.values());
         const allPayments = await db.getAllPayments();
+        const completedSubscriptionIds = new Set(
+          allPayments
+            .filter(
+              (p) =>
+                p.subscriptionId != null &&
+                (p.status || "").toLowerCase() === "completed"
+            )
+            .map((p) => p.subscriptionId as number)
+        );
         
         // Determine date range
         const now = new Date();
@@ -2450,6 +2500,7 @@ export const appRouter = router({
           const monthEnd = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0, 23, 59, 59);
           
           const count = allSubscriptions.filter(s => {
+            if (!completedSubscriptionIds.has(s.subscription.id)) return false;
             const subDate = new Date(s.subscription.createdAt);
             return subDate >= monthStart && subDate <= monthEnd;
           }).length;
@@ -2467,7 +2518,8 @@ export const appRouter = router({
           
           const revenue = allPayments
             .filter(p => {
-              if (p.status !== 'completed') return false;
+              if ((p.status || '').toLowerCase() !== 'completed') return false;
+              if (p.subscriptionId == null) return false;
               const paymentDate = new Date(p.createdAt);
               return paymentDate >= monthStart && paymentDate <= monthEnd;
             })
@@ -2491,6 +2543,7 @@ export const appRouter = router({
         
         // Payment status distribution (filtered by date range)
         const filteredPayments = allPayments.filter(p => {
+          if (p.subscriptionId == null) return false;
           const paymentDate = new Date(p.createdAt);
           return paymentDate >= rangeStart && paymentDate <= rangeEnd;
         });
