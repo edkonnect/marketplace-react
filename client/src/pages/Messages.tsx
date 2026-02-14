@@ -210,10 +210,15 @@ export default function Messages() {
     return nameMatch || courseMatch;
   });
 
+  const selectedMatchesSearch =
+    selectedStudent &&
+    `${selectedStudent.firstName} ${selectedStudent.lastName}`.toLowerCase().includes(searchTerm);
+
   const filteredTutors = selectedStudent
     ? selectedStudent.tutors
         .filter((tutor: any) => {
-          if (!searchTerm) return true; // always show all enrolled tutors
+          // If we're typing the student's name, still show all tutors for that student
+          if (!searchTerm || selectedMatchesSearch) return true;
           return (
             (tutor.name || "").toLowerCase().includes(searchTerm) ||
             (tutor.courseTitle || "").toLowerCase().includes(searchTerm)
