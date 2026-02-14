@@ -1654,9 +1654,7 @@ export const appRouter = router({
         fileName: z.string(),
         fileType: z.string(),
       }))
-      .mutation(async ({ ctx, input }) => {
-        const { storagePut } = await import("./storage");
-        
+      .mutation(async ({ input }) => {
         // Validate file size (10MB limit)
         const buffer = Buffer.from(input.file, 'base64');
         const fileSize = buffer.length;
@@ -1664,21 +1662,11 @@ export const appRouter = router({
           throw new TRPCError({ code: 'BAD_REQUEST', message: 'File size exceeds 10MB limit' });
         }
 
-        // Generate unique file key
-        const timestamp = Date.now();
-        const randomSuffix = Math.random().toString(36).substring(7);
-        const fileExtension = input.fileName.split('.').pop();
-        const fileKey = `messages/${ctx.user.id}/${timestamp}-${randomSuffix}.${fileExtension}`;
-
-        // Upload to S3
-        const result = await storagePut(fileKey, buffer, input.fileType);
-        
-        if (!result || !result.url) {
-          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to upload file' });
-        }
+        // Store as a base64 data URL directly in the database
+        const dataUrl = `data:${input.fileType};base64,${input.file}`;
 
         return {
-          fileUrl: result.url,
+          fileUrl: dataUrl,
           fileName: input.fileName,
           fileType: input.fileType,
           fileSize,
@@ -2164,12 +2152,15 @@ export const appRouter = router({
       }))
       .query(async ({ input }) => {
         let allPayments = await db.getAllPayments();
-        
+
+        // Only show enrollment-based payments (must have a subscriptionId)
+        allPayments = allPayments.filter(p => p.subscriptionId != null);
+
         // Apply status filter
         if (input.status) {
           allPayments = allPayments.filter(p => p.status === input.status);
         }
-        
+
         // Apply date range filter
         if (input.startDate) {
           const startDate = new Date(input.startDate);
@@ -2180,43 +2171,60 @@ export const appRouter = router({
           endDate.setHours(23, 59, 59, 999);
           allPayments = allPayments.filter(p => new Date(p.createdAt) <= endDate);
         }
-        
+
         // Sort by creation date (most recent first)
         const sortedPayments = allPayments.sort((a, b) => {
           const dateA = new Date(a.createdAt).getTime();
           const dateB = new Date(b.createdAt).getTime();
           return dateB - dateA;
         });
-        
+
         // Apply pagination
         const paginatedPayments = sortedPayments.slice(input.offset, input.offset + input.limit);
-        
+
         // Enrich with user and course details
         const enrichedPayments = await Promise.all(
           paginatedPayments.map(async (payment) => {
             const parent = await db.getUserById(payment.parentId);
             const tutor = await db.getUserById(payment.tutorId);
-            
+
             let courseName = null;
             let studentName = null;
-            
-            if (payment.subscriptionId) {
-              const subscription = await db.getSubscriptionById(payment.subscriptionId);
-              if (subscription) {
-                const course = await db.getCourseById(subscription.courseId);
-                if (course) {
-                  courseName = course.title;
+            let paymentPlan: string = 'full';
+            let installmentNumber: number | null = null;
+
+            const subscription = await db.getSubscriptionById(payment.subscriptionId!);
+            if (subscription) {
+              const course = await db.getCourseById(subscription.courseId);
+              if (course) courseName = course.title;
+              studentName = `${subscription.studentFirstName || ''} ${subscription.studentLastName || ''}`.trim();
+              paymentPlan = subscription.paymentPlan;
+
+              // Determine which installment this payment corresponds to
+              if (paymentPlan === 'installment') {
+                // Match by amount: first installment amount vs second
+                const firstAmt = subscription.firstInstallmentAmount
+                  ? parseFloat(subscription.firstInstallmentAmount)
+                  : null;
+                const secondAmt = subscription.secondInstallmentAmount
+                  ? parseFloat(subscription.secondInstallmentAmount)
+                  : null;
+                const paidAmt = parseFloat(payment.amount);
+                if (firstAmt !== null && Math.abs(paidAmt - firstAmt) < 0.01) {
+                  installmentNumber = 1;
+                } else if (secondAmt !== null && Math.abs(paidAmt - secondAmt) < 0.01) {
+                  installmentNumber = 2;
                 }
-                studentName = `${subscription.studentFirstName} ${subscription.studentLastName}`;
               }
             }
-            
+
             return {
               id: payment.id,
               amount: payment.amount,
               currency: payment.currency,
               status: payment.status,
-              paymentType: payment.paymentType,
+              paymentPlan,
+              installmentNumber,
               parentName: parent?.name || 'Unknown',
               parentEmail: parent?.email || '',
               tutorName: tutor?.name || 'Unknown',
@@ -2227,7 +2235,7 @@ export const appRouter = router({
             };
           })
         );
-        
+
         return {
           payments: enrichedPayments,
           total: allPayments.length,
