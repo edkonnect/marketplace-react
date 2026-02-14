@@ -1,4 +1,4 @@
-import { int, mysqlEnum, mysqlTable, text, timestamp, varchar, decimal, boolean, bigint, index, uniqueIndex } from "drizzle-orm/mysql-core";
+import { int, mysqlEnum, mysqlTable, text, mediumtext, timestamp, varchar, decimal, boolean, bigint, index, uniqueIndex } from "drizzle-orm/mysql-core";
 import { relations } from "drizzle-orm";
 
 /**
@@ -257,7 +257,7 @@ export const messages = mysqlTable("messages", {
   content: text("content").notNull(),
   isRead: boolean("isRead").default(false).notNull(),
   sentAt: bigint("sentAt", { mode: "number" }).notNull(), // Unix timestamp in milliseconds
-  fileUrl: varchar("fileUrl", { length: 500 }),
+  fileUrl: mediumtext("fileUrl"),
   fileName: varchar("fileName", { length: 255 }),
   fileType: varchar("fileType", { length: 100 }),
   fileSize: int("fileSize"),

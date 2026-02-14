@@ -776,52 +776,60 @@ export function AdminDashboard() {
                   </div>
                 ) : paymentsData && paymentsData.payments.length > 0 ? (
                   <div className="space-y-4">
-                    {paymentsData.payments.map((payment) => (
-                      <div
-                        key={payment.id}
-                        className="flex items-start justify-between p-4 border rounded-lg hover:bg-accent transition-colors"
-                      >
-                        <div className="flex-1">
-                          <div className="flex items-center gap-3 mb-2">
-                            <p className="font-semibold text-lg">
-                              ${payment.amount} {payment.currency.toUpperCase()}
-                            </p>
-                            <Badge variant={payment.status === 'completed' ? 'default' : 'secondary'}>
-                              {payment.status}
-                            </Badge>
-                          </div>
-                          <div className="space-y-1 text-sm text-muted-foreground">
-                            <p>
-                              <span className="font-medium text-foreground">Date:</span>{" "}
-                              {new Date(payment.createdAt).toLocaleDateString()} at{" "}
-                              {new Date(payment.createdAt).toLocaleTimeString()}
-                            </p>
-                            {payment.courseName && (
+                    {paymentsData.payments.map((payment) => {
+                      const planLabel = payment.paymentPlan === 'installment'
+                        ? payment.installmentNumber
+                          ? `Installment ${payment.installmentNumber}`
+                          : 'Installment'
+                        : 'Pay in Full';
+                      return (
+                        <div
+                          key={payment.id}
+                          className="flex items-start justify-between p-4 border rounded-lg hover:bg-accent transition-colors"
+                        >
+                          <div className="flex-1">
+                            <div className="flex items-center gap-3 mb-2">
+                              <p className="font-semibold text-lg">
+                                ${payment.amount} {payment.currency.toUpperCase()}
+                              </p>
+                              <Badge variant={payment.status === 'completed' ? 'default' : 'secondary'}>
+                                {payment.status}
+                              </Badge>
+                              <Badge variant="outline">{planLabel}</Badge>
+                            </div>
+                            <div className="space-y-1 text-sm text-muted-foreground">
                               <p>
-                                <span className="font-medium text-foreground">Course:</span> {payment.courseName}
+                                <span className="font-medium text-foreground">Date:</span>{" "}
+                                {new Date(payment.createdAt).toLocaleDateString()} at{" "}
+                                {new Date(payment.createdAt).toLocaleTimeString()}
                               </p>
-                            )}
-                            {payment.studentName && (
+                              {payment.courseName && (
+                                <p>
+                                  <span className="font-medium text-foreground">Course:</span> {payment.courseName}
+                                </p>
+                              )}
+                              {payment.studentName && (
+                                <p>
+                                  <span className="font-medium text-foreground">Student:</span> {payment.studentName}
+                                </p>
+                              )}
                               <p>
-                                <span className="font-medium text-foreground">Student:</span> {payment.studentName}
+                                <span className="font-medium text-foreground">Parent:</span> {payment.parentName} ({payment.parentEmail})
                               </p>
-                            )}
-                            <p>
-                              <span className="font-medium text-foreground">Parent:</span> {payment.parentName} ({payment.parentEmail})
-                            </p>
-                            <p>
-                              <span className="font-medium text-foreground">Tutor:</span> {payment.tutorName}
-                            </p>
-                            {payment.stripePaymentIntentId && (
-                              <p className="text-xs">
-                                <span className="font-medium text-foreground">Transaction ID:</span>{" "}
-                                {payment.stripePaymentIntentId}
+                              <p>
+                                <span className="font-medium text-foreground">Tutor:</span> {payment.tutorName}
                               </p>
-                            )}
+                              {payment.stripePaymentIntentId && (
+                                <p className="text-xs">
+                                  <span className="font-medium text-foreground">Transaction ID:</span>{" "}
+                                  {payment.stripePaymentIntentId}
+                                </p>
+                              )}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 ) : (
                   <p className="text-center text-muted-foreground py-8">No payments found</p>

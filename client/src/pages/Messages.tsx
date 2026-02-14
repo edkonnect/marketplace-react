@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
-import { MessageSquare, Send, User, GraduationCap, ChevronRight, Paperclip, X, FileText, Image as ImageIcon } from "lucide-react";
+import { MessageSquare, Send, User, GraduationCap, ChevronRight, Paperclip, X, FileText, Download } from "lucide-react";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
@@ -119,16 +119,13 @@ export default function Messages() {
 
     // Validate file type
     const allowedTypes = [
-      'image/jpeg', 'image/png', 'image/gif', 'image/webp',
-      'application/pdf', 'application/msword',
+      'application/pdf',
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      'application/vnd.ms-excel',
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'text/plain'
     ];
 
     if (!allowedTypes.includes(file.type)) {
-      toast.error("File type not supported. Please upload images, PDFs, or documents.");
+      toast.error("Only PDF, DOCX, and XLSX files are supported.");
       return;
     }
 
@@ -575,40 +572,35 @@ export default function Messages() {
                                 }`}
                               >
                                 {/* File attachment */}
-                                {msg.fileUrl && (
-                                  <div className="mb-2">
-                                    {msg.fileType?.startsWith('image/') ? (
-                                      <a href={msg.fileUrl} target="_blank" rel="noopener noreferrer">
-                                        <img
-                                          src={msg.fileUrl}
-                                          alt={msg.fileName || 'Attachment'}
-                                          className="rounded max-w-full h-auto max-h-64 object-contain cursor-pointer hover:opacity-90 transition-opacity"
-                                        />
-                                      </a>
-                                    ) : (
-                                      <a
-                                        href={msg.fileUrl}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className={`flex items-center gap-2 p-2 rounded border ${
-                                          isOwn
-                                            ? "border-primary-foreground/20 hover:bg-primary-foreground/10"
-                                            : "border-border hover:bg-accent"
-                                        } transition-colors`}
-                                      >
-                                        <FileText className="w-4 h-4 flex-shrink-0" />
-                                        <div className="flex-1 min-w-0">
-                                          <p className="text-sm font-medium truncate">{msg.fileName}</p>
-                                          {msg.fileSize && (
-                                            <p className={`text-xs ${
-                                              isOwn ? "text-primary-foreground/70" : "text-muted-foreground"
-                                            }`}>
-                                              {(msg.fileSize / 1024).toFixed(1)} KB
-                                            </p>
-                                          )}
-                                        </div>
-                                      </a>
-                                    )}
+                                {msg.fileUrl && msg.fileName && (
+                                  <div className={`mb-2 flex items-center gap-2 p-2 rounded border ${
+                                    isOwn
+                                      ? "border-primary-foreground/20"
+                                      : "border-border"
+                                  }`}>
+                                    <FileText className="w-4 h-4 flex-shrink-0" />
+                                    <div className="flex-1 min-w-0">
+                                      <p className="text-sm font-medium truncate">{msg.fileName}</p>
+                                      {msg.fileSize && (
+                                        <p className={`text-xs ${
+                                          isOwn ? "text-primary-foreground/70" : "text-muted-foreground"
+                                        }`}>
+                                          {(msg.fileSize / 1024).toFixed(1)} KB
+                                        </p>
+                                      )}
+                                    </div>
+                                    <button
+                                      title="Download"
+                                      onClick={() => {
+                                        const a = document.createElement('a');
+                                        a.href = msg.fileUrl!;
+                                        a.download = msg.fileName!;
+                                        a.click();
+                                      }}
+                                      className={`flex-shrink-0 p-1 rounded hover:bg-black/10 transition-colors`}
+                                    >
+                                      <Download className="w-4 h-4" />
+                                    </button>
                                   </div>
                                 )}
                                 {msg.content && (
@@ -635,11 +627,7 @@ export default function Messages() {
                   <div className="p-4 border-t border-border">
                     {selectedFile && (
                       <div className="mb-3 flex items-center gap-2 p-2 bg-muted rounded-lg">
-                        {selectedFile.type.startsWith('image/') ? (
-                          <ImageIcon className="w-4 h-4 text-muted-foreground" />
-                        ) : (
-                          <FileText className="w-4 h-4 text-muted-foreground" />
-                        )}
+                        <FileText className="w-4 h-4 text-muted-foreground" />
                         <span className="text-sm flex-1 truncate">{selectedFile.name}</span>
                         <span className="text-xs text-muted-foreground">
                           {(selectedFile.size / 1024).toFixed(1)} KB
@@ -660,7 +648,7 @@ export default function Messages() {
                         id="file-upload"
                         className="hidden"
                         onChange={handleFileSelect}
-                        accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt"
+                        accept=".pdf,.docx,.xlsx"
                       />
                       <Button
                         variant="outline"
