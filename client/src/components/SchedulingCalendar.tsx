@@ -52,13 +52,18 @@ export default function SchedulingCalendar({ subscriptionId, tutorId, parentId, 
   const availability = availabilityData?.availability ?? [];
   const bookedSessions = availabilityData?.booked ?? [];
 
-  const calendarEvents: Session[] = (sessions || []).map((session) => ({
-    id: session.id,
-    title: `Tutoring Session`,
-    start: new Date(session.scheduledAt),
-    end: new Date(new Date(session.scheduledAt).getTime() + session.duration * 60000),
-    status: session.status,
-  }));
+  // Only show sessions that belong to this subscription's tutor on the calendar.
+  // Using all parent sessions (myUpcoming) caused other students' sessions with
+  // different tutors to appear as blocked slots on this tutor's calendar.
+  const calendarEvents: Session[] = (sessions || [])
+    .filter((session: any) => session.tutorId === effectiveTutorId)
+    .map((session) => ({
+      id: session.id,
+      title: `Tutoring Session`,
+      start: new Date(session.scheduledAt),
+      end: new Date(new Date(session.scheduledAt).getTime() + session.duration * 60000),
+      status: session.status,
+    }));
 
   const blockedEvents: Session[] = bookedSessions.map((session) => ({
     id: session.id,
@@ -90,11 +95,9 @@ export default function SchedulingCalendar({ subscriptionId, tutorId, parentId, 
   }
 
   function overlapsBooked(slotStart: Date, slotEnd: Date) {
-    const candidates = allEvents.filter(
-      (evt) => evt.status === "booked" || evt.status === "scheduled"
-    );
-
-    return candidates.some(evt => {
+    // Only check against this tutor's booked sessions — not sessions from
+    // other students of this parent who may have different tutors
+    return blockedEvents.some(evt => {
       const evStart = evt.start.getTime();
       const evEnd = evt.end.getTime();
       return slotStart.getTime() < evEnd && slotEnd.getTime() > evStart;
