@@ -197,7 +197,12 @@ export default function Messages() {
   const searchTerm = globalSearch.trim().toLowerCase();
 
   const filteredStudents = (studentsWithTutors || []).filter((student) => {
-    if (!searchTerm) return true;
+    const hasConversation = (student.tutors || []).some((t: any) => t.conversationId);
+    if (!searchTerm) {
+      // Default list: only students with an existing conversation
+      return hasConversation;
+    }
+    // Searching: include enrolled students even if they have no conversation yet
     const nameMatch = `${student.firstName} ${student.lastName}`.toLowerCase().includes(searchTerm);
     const courseMatch = (student.tutors || []).some(
       (t: any) => (t.courseTitle || "").toLowerCase().includes(searchTerm)
@@ -349,34 +354,29 @@ export default function Messages() {
                               selectedStudentId === student.id ? "bg-muted" : ""
                             }`}
                           >
-                            <div className="flex items-center justify-between">
-                              <div className="flex-1 min-w-0">
-                                <p className="font-medium truncate">
-                                  {student.firstName} {student.lastName}
-                                </p>
-                                {(() => {
-                                  const courseNames = Array.from(
-                                    new Set(
-                                      (student.tutors || [])
-                                        .map((t: any) => t.courseTitle)
-                                        .filter(Boolean)
-                                    )
-                                  );
-                                  if (courseNames.length === 0) return null;
-                                  return (
-                                    <Badge variant="secondary" className="text-xs mt-1 truncate max-w-[180px]">
-                                      {courseNames.join(", ")}
-                                    </Badge>
-                                  );
-                                })()}
-                                <p className="text-xs text-muted-foreground mt-1">
-                                  {student.tutors.length} tutor{student.tutors.length !== 1 ? 's' : ''}
-                                </p>
-                              </div>
-                              <ChevronRight className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                          <div className="flex items-center justify-between">
+                            <div className="flex-1 min-w-0">
+                              <p className="font-medium truncate">
+                                {student.firstName} {student.lastName}
+                              </p>
+                              {(() => {
+                                const courseNames = (student.courseTitles || [])
+                                  .filter(Boolean);
+                                if (courseNames.length === 0) return null;
+                                return (
+                                  <Badge variant="secondary" className="text-xs mt-1 truncate max-w-[180px]">
+                                    {courseNames.join(", ")}
+                                  </Badge>
+                                );
+                              })()}
+                              <p className="text-xs text-muted-foreground mt-1">
+                                {student.tutors.length} tutor{student.tutors.length !== 1 ? 's' : ''}
+                              </p>
                             </div>
-                          </button>
-                        ))}
+                            <ChevronRight className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                          </div>
+                        </button>
+                      ))}
                       </div>
                     ) : (
                       <div className="p-8 text-center">
@@ -412,19 +412,19 @@ export default function Messages() {
                                 selectedTutorId === tutor.id ? "bg-muted" : ""
                               }`}
                             >
-                              <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-sm font-semibold text-primary flex-shrink-0">
-                                  {tutor.name?.charAt(0) || "T"}
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                  <p className="font-medium truncate">{tutor.name || "Tutor"}</p>
-                                  <p className="text-xs text-muted-foreground truncate">
-                                    {tutor.courseTitle}
-                                  </p>
-                                </div>
-                              </div>
-                            </button>
-                          ))}
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-sm font-semibold text-primary flex-shrink-0">
+                              {tutor.name?.charAt(0) || "T"}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="font-medium truncate">{tutor.name || "Tutor"}</p>
+                              <p className="text-xs text-muted-foreground truncate">
+                                {(tutor.courseTitles || [tutor.courseTitle]).filter(Boolean).join(", ")}
+                              </p>
+                            </div>
+                          </div>
+                        </button>
+                      ))}
                         </div>
                       ) : (
                         <div className="p-8 text-center">

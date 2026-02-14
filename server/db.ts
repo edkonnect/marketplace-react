@@ -1715,6 +1715,60 @@ export async function getStudentsWithTutors(parentId: number) {
       .leftJoin(courses, eq(subscriptions.courseId, courses.id))
       .where(and(eq(subscriptions.parentId, parentId), eq(subscriptions.status, 'active' as any)));
 
+    // Preload course tutor links for all enrolled courses so we don't miss
+    // tutors when payment is pending or the plan is installment-based.
+    const courseIds = Array.from(new Set(subs.map((s) => s.courseId).filter(Boolean))) as number[];
+    const courseTutorLinks = courseIds.length
+      ? await db
+          .select({
+            courseId: courseTutors.courseId,
+            tutorId: courseTutors.tutorId,
+            isPrimary: courseTutors.isPrimary,
+          })
+          .from(courseTutors)
+          .where(inArray(courseTutors.courseId, courseIds))
+      : [];
+
+    // Collect all tutorIds we might need details for (preferred + course tutors)
+    const tutorIdSet = new Set<number>();
+    subs.forEach((sub) => {
+      if (sub.preferredTutorId) tutorIdSet.add(sub.preferredTutorId);
+    });
+    courseTutorLinks.forEach((link) => tutorIdSet.add(link.tutorId));
+    const tutorIds = Array.from(tutorIdSet);
+
+    const tutorDetails = tutorIds.length
+      ? await db
+          .select({
+            id: users.id,
+            name: users.name,
+            email: users.email,
+          })
+          .from(users)
+          .where(inArray(users.id, tutorIds))
+      : [];
+    const tutorById = new Map<number, typeof tutorDetails[number]>(tutorDetails.map((t) => [t.id, t]));
+
+    // Fetch existing conversations for these students so default view can
+    // restrict to students who already have a conversation.
+    const studentIds = subs.map((s) => s.studentId).filter((id): id is number => id !== null && id !== undefined);
+    const convRows = studentIds.length
+      ? await db
+          .select({
+            conversationId: conversations.id,
+            tutorId: conversations.tutorId,
+            studentId: conversations.studentId,
+            lastMessageAt: conversations.lastMessageAt,
+          })
+          .from(conversations)
+          .where(and(eq(conversations.parentId, parentId), inArray(conversations.studentId, studentIds)))
+      : [];
+    const conversationByStudentTutor = new Map<string, typeof convRows[number]>();
+    convRows.forEach((row) => {
+      if (!row.studentId || !row.tutorId) return;
+      conversationByStudentTutor.set(`${row.studentId}_${row.tutorId}`, row);
+    });
+
     // Group by student identity (name) to avoid duplicates from multiple subscriptions
     const studentMap = new Map<string, any>();
 
@@ -1729,52 +1783,65 @@ export async function getStudentsWithTutors(parentId: number) {
           firstName: sub.studentFirstName,
           lastName: sub.studentLastName,
           grade: sub.studentGrade,
+          courseTitles: new Set<string>(),
           tutors: [],
         });
       }
 
-      // Only show the tutor the parent explicitly chose for this enrollment
-      const tutorId = sub.preferredTutorId;
-      if (!tutorId) continue;
-
-      const tutorList = await db
-        .select({
-          tutorId: users.id,
-          tutorName: users.name,
-          tutorEmail: users.email,
-          conversationId: conversations.id,
-          lastMessageAt: conversations.lastMessageAt,
-        })
-        .from(users)
-        .leftJoin(
-          conversations,
-          and(
-            eq(conversations.tutorId, users.id),
-            eq(conversations.parentId, parentId),
-            eq(conversations.studentId, sub.studentId)
-          )
-        )
-        .where(eq(users.id, tutorId))
-        .limit(1);
-
       const student = studentMap.get(studentKey);
-      for (const tutor of tutorList) {
-        if (!tutor.tutorId || !tutor.tutorName) continue;
-        // Deduplicate by tutorId
-        if (!student.tutors.find((t: any) => t.id === tutor.tutorId)) {
-          student.tutors.push({
-            id: tutor.tutorId,
-            name: tutor.tutorName,
-            email: tutor.tutorEmail,
-            courseTitle: sub.courseTitle,
-            conversationId: tutor.conversationId,
-            lastMessageAt: tutor.lastMessageAt,
-          });
+      if (sub.courseTitle) {
+        student.courseTitles.add(sub.courseTitle);
+      }
+      const tutorSeen = new Set<number>(student.tutors.map((t: any) => t.id));
+
+      // For this subscription prefer the explicitly chosen tutor; otherwise fall back to course tutors
+      const tutorIdsForSub: number[] = [];
+      if (sub.preferredTutorId) {
+        tutorIdsForSub.push(sub.preferredTutorId);
+      } else {
+        courseTutorLinks
+          .filter((link) => link.courseId === sub.courseId)
+          .forEach((link) => tutorIdsForSub.push(link.tutorId));
+      }
+
+      for (const tutorId of tutorIdsForSub) {
+        if (!tutorId) continue;
+        const tutor = tutorById.get(tutorId);
+        if (!tutor) continue;
+
+        const conv = conversationByStudentTutor.get(`${sub.studentId}_${tutorId}`);
+        const existingTutor = student.tutors.find((t: any) => t.id === tutorId);
+
+        if (existingTutor) {
+          if (sub.courseTitle && !existingTutor.courseTitles?.includes(sub.courseTitle)) {
+            existingTutor.courseTitles = [...(existingTutor.courseTitles || []), sub.courseTitle];
+          }
+          // Prefer latest conversation data if missing
+          if (!existingTutor.conversationId && conv?.conversationId) {
+            existingTutor.conversationId = conv.conversationId;
+            existingTutor.lastMessageAt = conv.lastMessageAt;
+          }
+          continue;
         }
+
+        student.tutors.push({
+          id: tutor.id,
+          name: tutor.name,
+          email: tutor.email,
+          courseTitles: sub.courseTitle ? [sub.courseTitle] : [],
+          courseTitle: sub.courseTitle,
+          conversationId: conv?.conversationId ?? null,
+          lastMessageAt: conv?.lastMessageAt ?? null,
+        });
+        tutorSeen.add(tutorId);
       }
     }
 
-    return Array.from(studentMap.values());
+    // Normalize courseTitles set to array for the response shape
+    return Array.from(studentMap.values()).map((s: any) => ({
+      ...s,
+      courseTitles: Array.from(s.courseTitles ?? []),
+    }));
   } catch (error) {
     console.error("[Database] Error getting students with tutors:", error);
     return [];
