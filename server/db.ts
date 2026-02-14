@@ -1250,19 +1250,24 @@ export async function getCompletedSessionsByTutorId(tutorId: number) {
   const db = await getDb();
   if (!db) return [];
 
+  const tutorUsers = alias(users, "tutorUser");
+  const parentUsers = alias(users, "parentUser");
+
   return await db
     .select({
       session: sessions,
       courseTitle: courses.title,
       courseSubject: courses.subject,
-      tutorName: users.name,
+      tutorName: tutorUsers.name,
+      parentName: parentUsers.name,
       studentFirstName: subscriptions.studentFirstName,
       studentLastName: subscriptions.studentLastName,
     })
     .from(sessions)
     .leftJoin(subscriptions, eq(sessions.subscriptionId, subscriptions.id))
     .leftJoin(courses, eq(subscriptions.courseId, courses.id))
-    .leftJoin(users, eq(sessions.tutorId, users.id))
+    .leftJoin(tutorUsers, eq(sessions.tutorId, tutorUsers.id))
+    .leftJoin(parentUsers, eq(sessions.parentId, parentUsers.id))
     .where(and(
       eq(sessions.tutorId, tutorId),
       or(
@@ -1283,23 +1288,28 @@ export async function getUpcomingSessions(userId: number, role: "parent" | "tuto
   if (!db) return [];
 
   const now = Date.now();
-  const condition = role === "parent" 
+  const condition = role === "parent"
     ? eq(sessions.parentId, userId)
     : eq(sessions.tutorId, userId);
+
+  const tutorUsers = alias(users, "tutorUser");
+  const parentUsers = alias(users, "parentUser");
 
   return await db
     .select({
       session: sessions,
       courseTitle: courses.title,
       courseSubject: courses.subject,
-      tutorName: users.name,
+      tutorName: tutorUsers.name,
+      parentName: parentUsers.name,
       studentFirstName: subscriptions.studentFirstName,
       studentLastName: subscriptions.studentLastName,
     })
     .from(sessions)
     .leftJoin(subscriptions, eq(sessions.subscriptionId, subscriptions.id))
     .leftJoin(courses, eq(subscriptions.courseId, courses.id))
-    .leftJoin(users, eq(sessions.tutorId, users.id))
+    .leftJoin(tutorUsers, eq(sessions.tutorId, tutorUsers.id))
+    .leftJoin(parentUsers, eq(sessions.parentId, parentUsers.id))
     .where(and(condition, gte(sessions.scheduledAt, now), eq(sessions.status, "scheduled")))
     .orderBy(asc(sessions.scheduledAt));
 }
@@ -1373,7 +1383,10 @@ export async function getTutorConversationsWithDetails(tutorId: number) {
     })
     .from(conversations)
     .innerJoin(users, eq(conversations.parentId, users.id))
-    .leftJoin(subscriptions, eq(conversations.studentId, subscriptions.id))
+    .innerJoin(subscriptions, and(
+      eq(conversations.studentId, subscriptions.id),
+      eq(subscriptions.preferredTutorId, tutorId)
+    ))
     .leftJoin(courses, eq(subscriptions.courseId, courses.id))
     .where(eq(conversations.tutorId, tutorId))
     .orderBy(desc(conversations.lastMessageAt));
@@ -1693,13 +1706,14 @@ export async function getStudentsWithTutors(parentId: number) {
         studentFirstName: subscriptions.studentFirstName,
         studentLastName: subscriptions.studentLastName,
         studentGrade: subscriptions.studentGrade,
-        studentId: subscriptions.id, // Use subscription ID as student identifier
+        studentId: subscriptions.id,
         courseId: subscriptions.courseId,
         courseTitle: courses.title,
+        preferredTutorId: subscriptions.preferredTutorId,
       })
       .from(subscriptions)
       .leftJoin(courses, eq(subscriptions.courseId, courses.id))
-      .where(eq(subscriptions.parentId, parentId));
+      .where(and(eq(subscriptions.parentId, parentId), eq(subscriptions.status, 'active' as any)));
 
     // Group by student identity (name) to avoid duplicates from multiple subscriptions
     const studentMap = new Map<string, any>();
@@ -1719,44 +1733,43 @@ export async function getStudentsWithTutors(parentId: number) {
         });
       }
 
-      // Get tutors for this course
-      if (sub.courseId) {
-        const tutorList = await db
-          .select({
-            tutorId: courseTutors.tutorId,
-            tutorName: users.name,
-            tutorEmail: users.email,
-            conversationId: conversations.id,
-            lastMessageAt: conversations.lastMessageAt,
-          })
-          .from(courseTutors)
-          .leftJoin(users, eq(courseTutors.tutorId, users.id))
-          .leftJoin(tutorProfiles, eq(users.id, tutorProfiles.userId))
-          .leftJoin(
-            conversations,
-            and(
-              eq(conversations.tutorId, courseTutors.tutorId),
-              eq(conversations.parentId, parentId),
-              eq(conversations.studentId, sub.studentId)
-            )
-          )
-          .where(eq(courseTutors.courseId, sub.courseId));
+      // Only show the tutor the parent explicitly chose for this enrollment
+      const tutorId = sub.preferredTutorId;
+      if (!tutorId) continue;
 
-        const student = studentMap.get(studentKey);
-        for (const tutor of tutorList) {
-          // Skip tutors with no name (orphaned course_tutors rows)
-          if (!tutor.tutorId || !tutor.tutorName) continue;
-          // Deduplicate by tutorId
-          if (!student.tutors.find((t: any) => t.id === tutor.tutorId)) {
-            student.tutors.push({
-              id: tutor.tutorId,
-              name: tutor.tutorName,
-              email: tutor.tutorEmail,
-              courseTitle: sub.courseTitle,
-              conversationId: tutor.conversationId,
-              lastMessageAt: tutor.lastMessageAt,
-            });
-          }
+      const tutorList = await db
+        .select({
+          tutorId: users.id,
+          tutorName: users.name,
+          tutorEmail: users.email,
+          conversationId: conversations.id,
+          lastMessageAt: conversations.lastMessageAt,
+        })
+        .from(users)
+        .leftJoin(
+          conversations,
+          and(
+            eq(conversations.tutorId, users.id),
+            eq(conversations.parentId, parentId),
+            eq(conversations.studentId, sub.studentId)
+          )
+        )
+        .where(eq(users.id, tutorId))
+        .limit(1);
+
+      const student = studentMap.get(studentKey);
+      for (const tutor of tutorList) {
+        if (!tutor.tutorId || !tutor.tutorName) continue;
+        // Deduplicate by tutorId
+        if (!student.tutors.find((t: any) => t.id === tutor.tutorId)) {
+          student.tutors.push({
+            id: tutor.tutorId,
+            name: tutor.tutorName,
+            email: tutor.tutorEmail,
+            courseTitle: sub.courseTitle,
+            conversationId: tutor.conversationId,
+            lastMessageAt: tutor.lastMessageAt,
+          });
         }
       }
     }

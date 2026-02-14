@@ -572,10 +572,17 @@ export default function TutorDashboard() {
                                   </div>
                                   <div>
                                     <p className="font-semibold">
-                                      {new Date(session.scheduledAt).toLocaleDateString()}
+                                      {session.courseTitle || "Course"}
                                     </p>
                                     <p className="text-sm text-muted-foreground">
-                                      {new Date(session.scheduledAt).toLocaleTimeString()} • {session.duration} minutes
+                                      {new Date(session.scheduledAt).toLocaleDateString()} • {new Date(session.scheduledAt).toLocaleTimeString()} • {session.duration} min
+                                    </p>
+                                    <p className="text-sm text-muted-foreground">
+                                      {session.studentFirstName || session.studentLastName
+                                        ? `Student: ${[session.studentFirstName, session.studentLastName].filter(Boolean).join(" ")}`
+                                        : null}
+                                      {(session.studentFirstName || session.studentLastName) && session.parentName ? " • " : null}
+                                      {session.parentName ? `Parent: ${session.parentName}` : null}
                                     </p>
                                 </div>
                               </div>
@@ -674,15 +681,17 @@ export default function TutorDashboard() {
                                     </div>
                                     <div>
                                       <p className="font-semibold">
-                                        {new Date(session.scheduledAt).toLocaleDateString()}
+                                        {session.courseTitle || session.courseSubject || "Course"}
                                       </p>
                                       <p className="text-sm text-muted-foreground">
-                                        {new Date(session.scheduledAt).toLocaleTimeString()} • {session.duration} minutes
+                                        {new Date(session.scheduledAt).toLocaleDateString()} • {new Date(session.scheduledAt).toLocaleTimeString()} • {session.duration} min
                                       </p>
                                       <p className="text-sm text-muted-foreground">
-                                        {session.studentFirstName && session.studentLastName
-                                          ? `${session.studentFirstName} ${session.studentLastName}`
-                                          : "Student"} • {session.courseTitle || session.courseSubject || "Course"}
+                                        {(session.studentFirstName || session.studentLastName)
+                                          ? `Student: ${[session.studentFirstName, session.studentLastName].filter(Boolean).join(" ")}`
+                                          : null}
+                                        {(session.studentFirstName || session.studentLastName) && session.parentName ? " • " : null}
+                                        {session.parentName ? `Parent: ${session.parentName}` : null}
                                       </p>
                                     </div>
                                   </div>
