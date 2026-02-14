@@ -657,7 +657,7 @@ export default function ParentDashboard() {
                           <div className="flex items-center gap-3 mb-2">
                             <div className="text-sm text-muted-foreground">{session.courseTitle || "Course"}</div>
                             <p className="font-semibold">
-                              {new Date(session.scheduledAt).toLocaleDateString()}
+                              {new Date(session.scheduledAt).toLocaleDateString()} • {new Date(session.scheduledAt).toLocaleTimeString()}
                             </p>
                             <Badge variant={session.status === "completed" ? "default" : "secondary"}>
                               {session.status}
