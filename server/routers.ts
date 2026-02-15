@@ -2500,7 +2500,6 @@ export const appRouter = router({
           const monthEnd = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0, 23, 59, 59);
           
           const count = allSubscriptions.filter(s => {
-            if (!completedSubscriptionIds.has(s.subscription.id)) return false;
             const subDate = new Date(s.subscription.createdAt);
             return subDate >= monthStart && subDate <= monthEnd;
           }).length;
