@@ -1,4 +1,4 @@
-import { eq, and, or, like, desc, asc, sql, gte, lte, lt, gt, inArray } from "drizzle-orm";
+import { eq, and, or, like, desc, asc, sql, gte, lte, lt, gt, inArray, isNotNull } from "drizzle-orm";
 import { alias } from "drizzle-orm/mysql-core";
 import { drizzle } from "drizzle-orm/mysql2";
 import crypto from "crypto";
@@ -3211,22 +3211,28 @@ export async function getParentSessionNotes(parentId: number, limit: number = 10
   try {
     return await db
       .select({
-        id: sessionNotes.id,
-        sessionId: sessionNotes.sessionId,
-        tutorId: sessionNotes.tutorId,
+        id: sessions.id,
+        sessionId: sessions.id,
+        subscriptionId: sessions.subscriptionId,
+        tutorId: sessions.tutorId,
         tutorName: users.name,
-        progressSummary: sessionNotes.progressSummary,
-        homework: sessionNotes.homework,
-        challenges: sessionNotes.challenges,
-        nextSteps: sessionNotes.nextSteps,
-        createdAt: sessionNotes.createdAt,
+        progressSummary: sessions.feedbackFromTutor,
+        homework: sql<string | null>`NULL`,
+        challenges: sql<string | null>`NULL`,
+        nextSteps: sql<string | null>`NULL`,
+        createdAt: sessions.updatedAt,
         scheduledAt: sessions.scheduledAt,
+        studentFirstName: subscriptions.studentFirstName,
+        studentLastName: subscriptions.studentLastName,
+        courseSubject: courses.subject,
+        courseTitle: courses.title,
       })
-      .from(sessionNotes)
-      .innerJoin(sessions, eq(sessionNotes.sessionId, sessions.id))
-      .innerJoin(users, eq(sessionNotes.tutorId, users.id))
-      .where(eq(sessions.parentId, parentId))
-      .orderBy(desc(sessionNotes.createdAt))
+      .from(sessions)
+      .innerJoin(users, eq(sessions.tutorId, users.id))
+      .innerJoin(subscriptions, eq(sessions.subscriptionId, subscriptions.id))
+      .leftJoin(courses, eq(subscriptions.courseId, courses.id))
+      .where(and(eq(sessions.parentId, parentId), isNotNull(sessions.feedbackFromTutor)))
+      .orderBy(desc(sessions.scheduledAt))
       .limit(limit);
   } catch (error) {
     console.error("[Database] Failed to get parent session notes:", error);
