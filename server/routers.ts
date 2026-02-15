@@ -2541,15 +2541,14 @@ export const appRouter = router({
         const tutorCount = filteredUsers.filter(u => u.role === 'tutor').length;
         const adminCount = filteredUsers.filter(u => u.role === 'admin').length;
         
-        // Payment status distribution (filtered by date range)
-        const filteredPayments = allPayments.filter(p => {
-          if (p.subscriptionId == null) return false;
-          const paymentDate = new Date(p.createdAt);
-          return paymentDate >= rangeStart && paymentDate <= rangeEnd;
+        // Payment status distribution (filtered by date range, based on subscriptions)
+        const filteredSubsForPaymentStatus = allSubscriptions.filter(s => {
+          const subDate = new Date(s.subscription.createdAt);
+          return subDate >= rangeStart && subDate <= rangeEnd;
         });
-        const completedPayments = filteredPayments.filter(p => p.status === 'completed').length;
-        const pendingPayments = filteredPayments.filter(p => p.status === 'pending').length;
-        const failedPayments = filteredPayments.filter(p => p.status === 'failed').length;
+        const completedPayments = filteredSubsForPaymentStatus.filter(s => (s.subscription.paymentStatus || '').toLowerCase() === 'paid').length;
+        const pendingPayments = filteredSubsForPaymentStatus.filter(s => (s.subscription.paymentStatus || '').toLowerCase() === 'pending').length;
+        const failedPayments = filteredSubsForPaymentStatus.filter(s => (s.subscription.paymentStatus || '').toLowerCase() === 'failed').length;
         
         return {
           userGrowth,

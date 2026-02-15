@@ -22,7 +22,7 @@ interface PaymentStatusChartProps {
 
 export function PaymentStatusChart({ data }: PaymentStatusChartProps) {
   const chartData = {
-    labels: ['Completed', 'Pending', 'Failed'],
+    labels: ['Paid', 'Pending', 'Failed'],
     datasets: [
       {
         data: [data.completed, data.pending, data.failed],
