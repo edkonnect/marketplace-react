@@ -1333,13 +1333,21 @@ export async function createConversation(conversation: InsertConversation) {
   const db = await getDb();
   if (!db) return null;
 
-  try {
-    const result = await db.insert(conversations).values(conversation) as any;
-    return Number(result.insertId);
-  } catch (error) {
-    console.error("[Database] Failed to create conversation:", error);
-    return null;
+  const result = await db.insert(conversations).values(conversation) as any;
+  const rawId = result?.[0]?.insertId ?? (result as any)?.insertId;
+  const insertId = rawId ? Number(rawId) : null;
+
+  if (!insertId) {
+    // Driver didn't return insertId — fetch the row we just inserted
+    const fetched = await getConversationByStudentAndTutor(
+      conversation.parentId,
+      conversation.tutorId,
+      conversation.studentId!
+    );
+    return fetched ? fetched.id : null;
   }
+
+  return insertId;
 }
 
 export async function getConversationByParticipants(parentId: number, tutorId: number) {
@@ -1374,22 +1382,30 @@ export async function getTutorConversationsWithDetails(tutorId: number) {
   const db = await getDb();
   if (!db) return [];
 
-  return await db
-    .select({
-      conversation: conversations,
-      parent: users,
-      subscription: subscriptions,
-      course: courses,
-    })
-    .from(conversations)
-    .innerJoin(users, eq(conversations.parentId, users.id))
-    .innerJoin(subscriptions, and(
-      eq(conversations.studentId, subscriptions.id),
-      eq(subscriptions.preferredTutorId, tutorId)
-    ))
-    .leftJoin(courses, eq(subscriptions.courseId, courses.id))
-    .where(eq(conversations.tutorId, tutorId))
-    .orderBy(desc(conversations.lastMessageAt));
+  const [rows, unreadMap] = await Promise.all([
+    db
+      .select({
+        conversation: conversations,
+        parent: users,
+        subscription: subscriptions,
+        course: courses,
+      })
+      .from(conversations)
+      .innerJoin(users, eq(conversations.parentId, users.id))
+      .innerJoin(subscriptions, and(
+        eq(conversations.studentId, subscriptions.id),
+        eq(subscriptions.preferredTutorId, tutorId)
+      ))
+      .leftJoin(courses, eq(subscriptions.courseId, courses.id))
+      .where(eq(conversations.tutorId, tutorId))
+      .orderBy(desc(conversations.lastMessageAt)),
+    getUnreadCountsByConversation(tutorId),
+  ]);
+
+  return rows.map(row => ({
+    ...row,
+    unreadCount: unreadMap.get(Number(row.conversation.id)) ?? 0,
+  }));
 }
 
 export async function createMessage(message: InsertMessage) {
@@ -1496,6 +1512,44 @@ export async function getUnreadMessageCount(userId: number): Promise<number> {
   } catch (error) {
     console.error("[Database] Failed to get unread message count:", error);
     return 0;
+  }
+}
+
+/**
+ * Get unread message counts per conversation for a given user (as a map: conversationId → count)
+ */
+async function getUnreadCountsByConversation(userId: number): Promise<Map<number, number>> {
+  const db = await getDb();
+  if (!db) return new Map();
+
+  try {
+    const rows = await db
+      .select({
+        conversationId: messages.conversationId,
+        count: sql<number>`count(*)`,
+      })
+      .from(messages)
+      .innerJoin(conversations, eq(messages.conversationId, conversations.id))
+      .where(
+        and(
+          eq(messages.isRead, false),
+          sql`${messages.senderId} != ${userId}`,
+          or(
+            eq(conversations.parentId, userId),
+            eq(conversations.tutorId, userId)
+          )
+        )
+      )
+      .groupBy(messages.conversationId);
+
+    const map = new Map<number, number>();
+    for (const row of rows) {
+      map.set(Number(row.conversationId), Number(row.count) || 0);
+    }
+    return map;
+  } catch (error) {
+    console.error("[Database] Failed to get unread counts by conversation:", error);
+    return new Map();
   }
 }
 
@@ -1694,153 +1748,102 @@ export async function getBlogPostBySlug(slug: string) {
 // ============ Student-Tutor Messaging ============
 
 /**
- * Get all students (from subscriptions) with their associated tutors
+ * Get all students (from subscriptions) with their assigned tutors.
+ * A tutor is shown for a student ONLY if they are the preferredTutorId
+ * on that student's subscription. No course-tutor fallback.
  */
 export async function getStudentsWithTutors(parentId: number) {
   const db = await getDb();
   if (!db) return [];
 
   try {
-    const subs = await db
-      .select({
-        studentFirstName: subscriptions.studentFirstName,
-        studentLastName: subscriptions.studentLastName,
-        studentGrade: subscriptions.studentGrade,
-        studentId: subscriptions.id,
-        courseId: subscriptions.courseId,
-        courseTitle: courses.title,
-        preferredTutorId: subscriptions.preferredTutorId,
-      })
-      .from(subscriptions)
-      .leftJoin(courses, eq(subscriptions.courseId, courses.id))
-      .where(and(eq(subscriptions.parentId, parentId), eq(subscriptions.status, 'active' as any)));
+    // Single query: subscriptions → course → preferredTutor → existing conversation
+    // Only rows with a preferredTutorId will have tutor data (LEFT JOIN handles nulls)
+    const [rows, unreadMap] = await Promise.all([
+      db
+        .select({
+          subId: subscriptions.id,
+          studentFirstName: subscriptions.studentFirstName,
+          studentLastName: subscriptions.studentLastName,
+          studentGrade: subscriptions.studentGrade,
+          courseTitle: courses.title,
+          preferredTutorId: subscriptions.preferredTutorId,
+          tutorName: users.name,
+          tutorEmail: users.email,
+          conversationId: conversations.id,
+          lastMessageAt: conversations.lastMessageAt,
+        })
+        .from(subscriptions)
+        .leftJoin(courses, eq(subscriptions.courseId, courses.id))
+        .leftJoin(users, eq(subscriptions.preferredTutorId, users.id))
+        .leftJoin(
+          conversations,
+          and(
+            eq(conversations.parentId, parentId),
+            eq(conversations.studentId, subscriptions.id),
+            eq(conversations.tutorId, subscriptions.preferredTutorId as any),
+          )
+        )
+        .where(and(eq(subscriptions.parentId, parentId), eq(subscriptions.status, 'active' as any)))
+        .orderBy(subscriptions.studentFirstName, subscriptions.id),
+      getUnreadCountsByConversation(parentId),
+    ]);
 
-    // Preload course tutor links for all enrolled courses so we don't miss
-    // tutors when payment is pending or the plan is installment-based.
-    const courseIds = Array.from(new Set(subs.map((s) => s.courseId).filter(Boolean))) as number[];
-    const courseTutorLinks = courseIds.length
-      ? await db
-          .select({
-            courseId: courseTutors.courseId,
-            tutorId: courseTutors.tutorId,
-            isPrimary: courseTutors.isPrimary,
-          })
-          .from(courseTutors)
-          .where(inArray(courseTutors.courseId, courseIds))
-      : [];
-
-    // Collect all tutorIds we might need details for (preferred + course tutors)
-    const tutorIdSet = new Set<number>();
-    subs.forEach((sub) => {
-      if (sub.preferredTutorId) tutorIdSet.add(sub.preferredTutorId);
-    });
-    courseTutorLinks.forEach((link) => tutorIdSet.add(link.tutorId));
-    const tutorIds = Array.from(tutorIdSet);
-
-    const tutorDetails = tutorIds.length
-      ? await db
-          .select({
-            id: users.id,
-            name: users.name,
-            email: users.email,
-          })
-          .from(users)
-          .where(inArray(users.id, tutorIds))
-      : [];
-    const tutorById = new Map<number, typeof tutorDetails[number]>(tutorDetails.map((t) => [t.id, t]));
-
-    // Fetch existing conversations for these students so default view can
-    // restrict to students who already have a conversation.
-    const studentIds = subs.map((s) => s.studentId).filter((id): id is number => id !== null && id !== undefined);
-    const convRows = studentIds.length
-      ? await db
-          .select({
-            conversationId: conversations.id,
-            tutorId: conversations.tutorId,
-            studentId: conversations.studentId,
-            lastMessageAt: conversations.lastMessageAt,
-          })
-          .from(conversations)
-          .where(and(eq(conversations.parentId, parentId), inArray(conversations.studentId, studentIds)))
-      : [];
-    const conversationByStudentTutor = new Map<string, typeof convRows[number]>();
-    convRows.forEach((row) => {
-      if (!row.studentId || !row.tutorId) return;
-      conversationByStudentTutor.set(`${row.studentId}_${row.tutorId}`, row);
-    });
-
-    // Group by student identity (name) to avoid duplicates from multiple subscriptions
+    // Group rows by student name
     const studentMap = new Map<string, any>();
 
-    for (const sub of subs) {
-      if (!sub.studentFirstName || !sub.studentLastName) continue;
+    for (const row of rows) {
+      if (!row.studentFirstName || !row.studentLastName) continue;
 
-      // Key by name so re-enrollments don't create duplicate student entries
-      const studentKey = `${sub.studentFirstName.trim().toLowerCase()}_${sub.studentLastName.trim().toLowerCase()}`;
+      const studentKey = `${row.studentFirstName.trim().toLowerCase()}_${row.studentLastName.trim().toLowerCase()}`;
       if (!studentMap.has(studentKey)) {
         studentMap.set(studentKey, {
-          id: sub.studentId,
-          firstName: sub.studentFirstName,
-          lastName: sub.studentLastName,
-          grade: sub.studentGrade,
+          id: row.subId,
+          firstName: row.studentFirstName,
+          lastName: row.studentLastName,
+          grade: row.studentGrade,
           courseTitles: new Set<string>(),
           tutors: [],
         });
       }
 
       const student = studentMap.get(studentKey);
-      if (sub.courseTitle) {
-        student.courseTitles.add(sub.courseTitle);
-      }
-      const tutorSeen = new Set<number>(student.tutors.map((t: any) => t.id));
+      if (row.courseTitle) student.courseTitles.add(row.courseTitle);
 
-      // For this subscription prefer the explicitly chosen tutor; otherwise fall back to course tutors
-      const tutorIdsForSub: number[] = [];
-      if (sub.preferredTutorId) {
-        tutorIdsForSub.push(sub.preferredTutorId);
-      } else {
-        courseTutorLinks
-          .filter((link) => link.courseId === sub.courseId)
-          .forEach((link) => tutorIdsForSub.push(link.tutorId));
-      }
+      // Only add tutor if this subscription has a preferredTutorId
+      if (!row.preferredTutorId || !row.tutorName) continue;
 
-      for (const tutorId of tutorIdsForSub) {
-        if (!tutorId) continue;
-        const tutor = tutorById.get(tutorId);
-        if (!tutor) continue;
-
-        const conv = conversationByStudentTutor.get(`${sub.studentId}_${tutorId}`);
-        const existingTutor = student.tutors.find((t: any) => t.id === tutorId);
-
-        if (existingTutor) {
-          if (sub.courseTitle && !existingTutor.courseTitles?.includes(sub.courseTitle)) {
-            existingTutor.courseTitles = [...(existingTutor.courseTitles || []), sub.courseTitle];
-          }
-          // Prefer latest conversation data if missing
-          if (!existingTutor.conversationId && conv?.conversationId) {
-            existingTutor.conversationId = conv.conversationId;
-            existingTutor.lastMessageAt = conv.lastMessageAt;
-          }
-          continue;
+      const existingTutor = student.tutors.find((t: any) => t.id === row.preferredTutorId);
+      if (existingTutor) {
+        // Tutor already added (teaches another course for same student) — merge course
+        if (row.courseTitle && !existingTutor.courseTitles.includes(row.courseTitle)) {
+          existingTutor.courseTitles.push(row.courseTitle);
         }
-
+        // Keep the conversationId that matched this subscription's studentId
+        if (!existingTutor.conversationId && row.conversationId) {
+          existingTutor.conversationId = row.conversationId;
+          existingTutor.lastMessageAt = row.lastMessageAt;
+          existingTutor.studentId = row.subId;
+          existingTutor.unreadCount = unreadMap.get(Number(row.conversationId)) ?? 0;
+        }
+      } else {
         student.tutors.push({
-          id: tutor.id,
-          name: tutor.name,
-          email: tutor.email,
-          courseTitles: sub.courseTitle ? [sub.courseTitle] : [],
-          courseTitle: sub.courseTitle,
-          conversationId: conv?.conversationId ?? null,
-          lastMessageAt: conv?.lastMessageAt ?? null,
+          id: row.preferredTutorId,
+          name: row.tutorName,
+          email: row.tutorEmail,
+          courseTitles: row.courseTitle ? [row.courseTitle] : [],
+          courseTitle: row.courseTitle,
+          conversationId: row.conversationId ?? null,
+          lastMessageAt: row.lastMessageAt ?? null,
+          studentId: row.subId,
+          unreadCount: row.conversationId ? (unreadMap.get(Number(row.conversationId)) ?? 0) : 0,
         });
-        tutorSeen.add(tutorId);
       }
     }
 
-    // Normalize courseTitles set to array for the response shape
     return Array.from(studentMap.values()).map((s: any) => ({
       ...s,
-      courseTitles: Array.from(s.courseTitles ?? []),
+      courseTitles: Array.from(s.courseTitles),
     }));
   } catch (error) {
     console.error("[Database] Error getting students with tutors:", error);
@@ -1899,7 +1902,11 @@ export async function createOrGetStudentConversation(
 
   try {
     const createdId = await createConversation(newConv);
-    if (!createdId) return null;
+    if (!createdId) {
+      console.error("[Database] createConversation returned null/0 for", { parentId, tutorId, studentId });
+      // May have been created by a race condition — try fetching again
+      return await getConversationByStudentAndTutor(parentId, tutorId, studentId);
+    }
     return await getConversationById(createdId);
   } catch (error) {
     console.error("[Database] Failed to create conversation, retrying fetch:", error);

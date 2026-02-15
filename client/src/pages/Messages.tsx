@@ -15,6 +15,7 @@ import { LOGIN_PATH } from "@/const";
 
 export default function Messages() {
   const { user, isAuthenticated, loading } = useAuth();
+  const utils = trpc.useUtils();
   const [, setLocation] = useLocation();
   const [selectedStudentId, setSelectedStudentId] = useState<number | null>(null);
   const [selectedTutorId, setSelectedTutorId] = useState<number | null>(null);
@@ -23,6 +24,7 @@ export default function Messages() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [globalSearch, setGlobalSearch] = useState("");
+  const [readConversationIds, setReadConversationIds] = useState<Set<number>>(new Set());
   const RECENCY_MS = 10 * 24 * 60 * 60 * 1000;
 
   const isParent = user?.role === "parent";
@@ -30,12 +32,12 @@ export default function Messages() {
 
   const { data: studentsWithTutors, isLoading: studentsLoading } = trpc.messaging.getStudentsWithTutors.useQuery(
     undefined,
-    { enabled: isAuthenticated && isParent }
+    { enabled: isAuthenticated && isParent, refetchInterval: 10000 }
   );
 
   const { data: tutorConversations, isLoading: tutorConversationsLoading } = trpc.messaging.getTutorConversations.useQuery(
     undefined,
-    { enabled: isAuthenticated && isTutor }
+    { enabled: isAuthenticated && isTutor, refetchInterval: 10000 }
   );
 
   const { data: enrolledSubscriptions } = trpc.subscription.mySubscriptionsAsTutor.useQuery(
@@ -45,7 +47,10 @@ export default function Messages() {
 
   const { data: messages, isLoading: messagesLoading, refetch: refetchMessages } = trpc.messaging.getMessages.useQuery(
     { conversationId: selectedConversationId! },
-    { enabled: !!selectedConversationId }
+    {
+      enabled: !!selectedConversationId,
+      refetchInterval: 5000,
+    }
   );
 
   const sendMessageMutation = trpc.messaging.sendMessage.useMutation();
@@ -61,14 +66,40 @@ export default function Messages() {
 
   useEffect(() => {
     if (selectedConversationId) {
-      markAsReadMutation.mutate({ conversationId: selectedConversationId });
+      // Optimistically clear the badge immediately
+      setReadConversationIds(prev => new Set(prev).add(selectedConversationId));
+      markAsReadMutation.mutate(
+        { conversationId: selectedConversationId },
+        {
+          onSuccess: () => {
+            utils.messaging.getUnreadMessageCount.invalidate();
+            utils.messaging.getStudentsWithTutors.invalidate();
+            utils.messaging.getTutorConversations.invalidate();
+          },
+        }
+      );
     }
   }, [selectedConversationId]);
 
+  // When new messages arrive (via polling) while conversation is open, mark as read immediately
+  useEffect(() => {
+    if (selectedConversationId && messages && messages.length > 0) {
+      markAsReadMutation.mutate(
+        { conversationId: selectedConversationId },
+        {
+          onSuccess: () => {
+            utils.messaging.getUnreadMessageCount.invalidate();
+          },
+        }
+      );
+    }
+  }, [messages]);
+
   const [conversationLoading, setConversationLoading] = useState(false);
 
-  const handleTutorSelect = async (tutorId: number) => {
-    if (!selectedStudentId || !user?.id) return;
+  const handleTutorSelect = async (tutorId: number, subscriptionStudentId?: number) => {
+    const studentIdToUse = subscriptionStudentId ?? selectedStudentId;
+    if (!studentIdToUse || !user?.id) return;
     if (conversationLoading) return;
 
     setConversationLoading(true);
@@ -78,7 +109,7 @@ export default function Messages() {
       const conversation = await createConversationMutation.mutateAsync({
         parentId: user.id,
         tutorId: tutorId,
-        studentId: selectedStudentId,
+        studentId: studentIdToUse,
       });
 
       if (conversation) {
@@ -91,7 +122,7 @@ export default function Messages() {
       const retry = await createConversationMutation.mutateAsync({
         parentId: user.id,
         tutorId: tutorId,
-        studentId: selectedStudentId,
+        studentId: studentIdToUse,
       });
       if (retry) {
         const convId = typeof retry === "number" ? retry : retry.id;
@@ -251,6 +282,7 @@ export default function Messages() {
             enrollmentDateLabel,
             lastMessageAt: Number(c.conversation.lastMessageAt),
             hasConversation: true,
+            unreadCount: Number(c.unreadCount) || 0,
           };
         });
 
@@ -275,6 +307,7 @@ export default function Messages() {
               enrollmentDateLabel,
               lastMessageAt: 0,
               hasConversation: false,
+              unreadCount: 0,
             };
           });
 
@@ -364,20 +397,20 @@ export default function Messages() {
                               <p className="font-medium truncate">
                                 {student.firstName} {student.lastName}
                               </p>
-                              {(() => {
-                                const courseNames = (student.courseTitles || [])
-                                  .filter(Boolean);
-                                if (courseNames.length === 0) return null;
-                                return (
-                                  <Badge variant="secondary" className="text-xs mt-1 truncate max-w-[180px]">
-                                    {courseNames.join(", ")}
-                                  </Badge>
-                                );
-                              })()}
                               <p className="text-xs text-muted-foreground mt-1">
                                 {student.tutors.length} tutor{student.tutors.length !== 1 ? 's' : ''}
                               </p>
                             </div>
+                            {(() => {
+                              const total = (student.tutors as any[]).reduce((sum: number, t: any) =>
+                                sum + (t.conversationId && !readConversationIds.has(t.conversationId) ? (t.unreadCount || 0) : 0), 0
+                              );
+                              return total > 0 ? (
+                                <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white px-1 mr-1 flex-shrink-0">
+                                  {total > 9 ? "9+" : total}
+                                </span>
+                              ) : null;
+                            })()}
                             <ChevronRight className="w-4 h-4 text-muted-foreground flex-shrink-0" />
                           </div>
                         </button>
@@ -412,7 +445,7 @@ export default function Messages() {
                           {filteredTutors.map((tutor: any) => (
                             <button
                               key={tutor.id}
-                              onClick={() => handleTutorSelect(tutor.id)}
+                              onClick={() => handleTutorSelect(tutor.id, tutor.studentId)}
                               className={`w-full p-4 text-left hover:bg-muted/50 transition-colors border-b border-border ${
                                 selectedTutorId === tutor.id ? "bg-muted" : ""
                               }`}
@@ -427,6 +460,11 @@ export default function Messages() {
                                 {(tutor.courseTitles || [tutor.courseTitle]).filter(Boolean).join(", ")}
                               </p>
                             </div>
+                            {tutor.conversationId && !readConversationIds.has(tutor.conversationId) && tutor.unreadCount > 0 && (
+                              <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white px-1 flex-shrink-0">
+                                {tutor.unreadCount > 9 ? "9+" : tutor.unreadCount}
+                              </span>
+                            )}
                           </div>
                         </button>
                       ))}
@@ -511,6 +549,11 @@ export default function Messages() {
                                 <span className="text-xs text-primary font-medium">Click to start chat</span>
                               )}
                             </div>
+                            {item.conversationId && !readConversationIds.has(item.conversationId) && item.unreadCount > 0 && (
+                              <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white px-1 flex-shrink-0">
+                                {item.unreadCount > 9 ? "9+" : item.unreadCount}
+                              </span>
+                            )}
                           </div>
                         </button>
                       ))}
