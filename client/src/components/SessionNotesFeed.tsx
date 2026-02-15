@@ -1,16 +1,21 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { FileText, Calendar } from "lucide-react";
+import { FileText, Calendar, Clock3 } from "lucide-react";
 import { format } from "date-fns";
 
 interface SessionNote {
   id: number;
   tutorName: string | null;
+  subscriptionId?: number;
   progressSummary: string;
   homework: string | null;
   challenges: string | null;
   nextSteps: string | null;
   createdAt: Date;
   scheduledAt: number;
+  studentFirstName?: string | null;
+  studentLastName?: string | null;
+  courseSubject?: string | null;
+  courseTitle?: string | null;
 }
 
 interface SessionNotesFeedProps {
@@ -42,11 +47,25 @@ export function SessionNotesFeed({ notes }: SessionNotesFeedProps) {
                 <div className="flex items-start justify-between">
                   <div>
                     <h4 className="font-semibold">{note.tutorName || 'Tutor'}</h4>
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground mt-1">
-                      <Calendar className="h-4 w-4" />
-                      <span>
+                    <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground mt-1">
+                      <span className="inline-flex items-center gap-1">
+                        <Calendar className="h-4 w-4" />
                         {format(new Date(note.scheduledAt), 'MMM d, yyyy')}
                       </span>
+                      <span className="inline-flex items-center gap-1">
+                        <Clock3 className="h-4 w-4" />
+                        {format(new Date(note.scheduledAt), 'h:mm a')}
+                      </span>
+                      {(note.courseTitle || note.courseSubject) && (
+                        <span className="rounded-full bg-muted px-2 py-0.5 text-xs">
+                          {note.courseTitle || note.courseSubject}
+                        </span>
+                      )}
+                      {(note.studentFirstName || note.studentLastName) && (
+                        <span className="rounded-full bg-muted px-2 py-0.5 text-xs">
+                          Student: {[note.studentFirstName, note.studentLastName].filter(Boolean).join(" ")}
+                        </span>
+                      )}
                     </div>
                   </div>
                   <div className="text-xs text-muted-foreground">
@@ -56,7 +75,7 @@ export function SessionNotesFeed({ notes }: SessionNotesFeedProps) {
 
                 {/* Progress Summary */}
                 <div>
-                  <h5 className="text-sm font-medium mb-1">Progress</h5>
+                  <h5 className="text-sm font-medium mb-1">Notes</h5>
                   <p className="text-sm text-muted-foreground">
                     {note.progressSummary}
                   </p>

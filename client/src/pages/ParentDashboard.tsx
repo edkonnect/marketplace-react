@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Link, useLocation } from "wouter";
-import { BookOpen, Calendar, MessageSquare, CreditCard, Clock, Users, Video } from "lucide-react";
+import { BookOpen, Calendar, MessageSquare, CreditCard, Clock, Users, Video, FileText } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { LOGIN_PATH } from "@/const";
 import { SessionNotesFeed } from "@/components/SessionNotesFeed";
@@ -41,7 +41,7 @@ export default function ParentDashboard() {
   );
 
   const { data: sessionNotes, isLoading: notesLoading } = trpc.parentProfile.getSessionNotes.useQuery(
-    { limit: 10 },
+    { limit: 50 },
     { enabled: isAuthenticated && user?.role === "parent" }
   );
 
@@ -147,6 +147,63 @@ export default function ParentDashboard() {
   }, [activeSubscriptions]);
 
   const [selectedStudent, setSelectedStudent] = useState<string | null>(null);
+  const [selectedNoteStudent, setSelectedNoteStudent] = useState<string>("all");
+  const [selectedSubject, setSelectedSubject] = useState<string>("all");
+
+  const subscriptionStudentMap = useMemo(() => {
+    const map = new Map<number, string>();
+    activeSubscriptions.forEach(({ subscription }) => {
+      const name = [subscription.studentFirstName, subscription.studentLastName].filter(Boolean).join(" ").trim();
+      if (subscription.id && name) {
+        map.set(subscription.id, name);
+      }
+    });
+    return map;
+  }, [activeSubscriptions]);
+
+  const noteStudentOptions = useMemo(() => {
+    const set = new Set<string>();
+    // Include students that have notes
+    sessionNotes?.forEach((note) => {
+      const name = [note.studentFirstName, note.studentLastName].filter(Boolean).join(" ").trim()
+        || (note.subscriptionId ? subscriptionStudentMap.get(note.subscriptionId) ?? "" : "");
+      if (name) set.add(name);
+    });
+    // Fallback to students from active subscriptions so dropdown isn't empty
+    activeSubscriptions.forEach(({ subscription }) => {
+      const name = [subscription.studentFirstName, subscription.studentLastName].filter(Boolean).join(" ").trim();
+      if (name) set.add(name);
+    });
+    return Array.from(set);
+  }, [sessionNotes, activeSubscriptions, subscriptionStudentMap]);
+
+  const subjectOptions = useMemo(() => {
+    const set = new Set<string>();
+    // Courses/titles from notes
+    sessionNotes?.forEach((note) => {
+      if (note.courseTitle) set.add(note.courseTitle);
+      else if (note.courseSubject) set.add(note.courseSubject);
+    });
+    // Fallback to courses from active subscriptions
+    activeSubscriptions.forEach(({ course }) => {
+      if (course?.title) set.add(course.title);
+      else if (course?.subject) set.add(course.subject);
+    });
+    return Array.from(set);
+  }, [sessionNotes, activeSubscriptions]);
+
+  const filteredSessionNotes = useMemo(() => {
+    if (!sessionNotes) return [];
+    return sessionNotes.filter((note) => {
+      const studentName =
+        [note.studentFirstName, note.studentLastName].filter(Boolean).join(" ").trim() ||
+        (note.subscriptionId ? subscriptionStudentMap.get(note.subscriptionId) ?? "" : "");
+      const subject = note.courseTitle || note.courseSubject || "";
+      const matchesStudent = selectedNoteStudent === "all" || studentName === selectedNoteStudent;
+      const matchesSubject = selectedSubject === "all" || subject === selectedSubject;
+      return matchesStudent && matchesSubject;
+    });
+  }, [sessionNotes, selectedNoteStudent, selectedSubject, subscriptionStudentMap]);
   const filteredSubscriptions =
     selectedStudent
       ? activeSubscriptions.filter(({ subscription }) => {
@@ -706,10 +763,51 @@ export default function ParentDashboard() {
             {/* Session Notes Tab */}
             <TabsContent value="notes" forceMount className={tabContentClass}>
               <h2 className="text-2xl font-bold">Session Notes</h2>
+
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 mt-4">
+                <div className="space-y-2">
+                  <Label htmlFor="note-student">Student</Label>
+                  <Select value={selectedNoteStudent} onValueChange={setSelectedNoteStudent}>
+                    <SelectTrigger id="note-student">
+                      <SelectValue placeholder="All students" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All students</SelectItem>
+                      {noteStudentOptions.map((name) => (
+                        <SelectItem key={name} value={name}>{name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="note-subject">Course</Label>
+                  <Select value={selectedSubject} onValueChange={setSelectedSubject}>
+                    <SelectTrigger id="note-subject">
+                      <SelectValue placeholder="All courses" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All courses</SelectItem>
+                      {subjectOptions.map((subject) => (
+                        <SelectItem key={subject} value={subject}>{subject}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
               {notesLoading ? (
-                <Skeleton className="h-96" />
+                <Skeleton className="h-32" />
+              ) : sessionNotes && sessionNotes.length > 0 ? (
+                <SessionNotesFeed notes={filteredSessionNotes} />
               ) : (
-                <SessionNotesFeed notes={sessionNotes || []} />
+                <Card className="mt-6">
+                  <CardContent className="py-16 text-center">
+                    <FileText className="w-16 h-16 mx-auto mb-4 text-muted-foreground" />
+                    <h3 className="text-xl font-semibold mb-2">No notes yet</h3>
+                    <p className="text-muted-foreground">Your tutor's session notes will appear here.</p>
+                  </CardContent>
+                </Card>
               )}
             </TabsContent>
 
