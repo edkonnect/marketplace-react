@@ -1,18 +1,23 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "@/_core/hooks/useAuth";
 import Navigation from "@/components/Navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useLocation, Link } from "wouter";
 import { toast } from "sonner";
 import { FormInput } from "@/components/forms/FormInput";
 import { useValidatedForm } from "@/hooks/useValidatedForm";
 import { email as emailValidator, required } from "@/lib/validation";
 
+const REMEMBER_ME_KEY = "rememberMe";
+const SAVED_EMAIL_KEY = "savedEmail";
+
 export default function Login() {
   const { login } = useAuth();
   const [, setLocation] = useLocation();
   const [loading, setLoading] = useState(false);
+  const [rememberMe, setRememberMe] = useState(false);
   const form = useValidatedForm(
     { email: "", password: "" },
     {
@@ -20,7 +25,16 @@ export default function Login() {
       password: required("Password is required"),
     }
   );
-  const { values, register, validateForm } = form;
+  const { values, register, validateForm, setValue } = form;
+
+  useEffect(() => {
+    const saved = localStorage.getItem(REMEMBER_ME_KEY) === "true";
+    if (saved) {
+      const savedEmail = localStorage.getItem(SAVED_EMAIL_KEY) || "";
+      setRememberMe(true);
+      if (savedEmail) setValue("email", savedEmail);
+    }
+  }, []);
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -28,6 +42,13 @@ export default function Login() {
     if (!isValid) {
       toast.error("Please fix the highlighted fields.");
       return;
+    }
+    if (rememberMe) {
+      localStorage.setItem(REMEMBER_ME_KEY, "true");
+      localStorage.setItem(SAVED_EMAIL_KEY, values.email);
+    } else {
+      localStorage.removeItem(REMEMBER_ME_KEY);
+      localStorage.removeItem(SAVED_EMAIL_KEY);
     }
     setLoading(true);
     try {
@@ -73,6 +94,16 @@ export default function Login() {
                 type="password"
                 placeholder="••••••••"
               />
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="rememberMe"
+                  checked={rememberMe}
+                  onCheckedChange={(checked) => setRememberMe(checked === true)}
+                />
+                <label htmlFor="rememberMe" className="text-sm text-muted-foreground cursor-pointer select-none">
+                  Remember me
+                </label>
+              </div>
               <Button type="submit" className="w-full" disabled={loading}>
                 {loading ? "Signing in..." : "Sign In"}
               </Button>
