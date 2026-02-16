@@ -1,19 +1,23 @@
 import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
+import Navigation from "@/components/Navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SessionNotesView } from "@/components/SessionNotesView";
-import { FileText, Calendar } from "lucide-react";
+import { FileText, Calendar, Clock3, BookOpen } from "lucide-react";
 import { Link, useLocation } from "wouter";
-import { useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { LOGIN_PATH } from "@/const";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
+import { format } from "date-fns";
 
 export default function SessionNotesHistory() {
   const { user, isAuthenticated, loading } = useAuth();
   const [, setLocation] = useLocation();
 
-  const { data: tutorNotes, isLoading: tutorNotesLoading } = trpc.sessionNotes.getMyNotes.useQuery(
+  const { data: tutorHistory, isLoading: tutorHistoryLoading } = trpc.session.myHistory.useQuery(
     undefined,
     { enabled: isAuthenticated && user?.role === "tutor" }
   );
@@ -22,6 +26,60 @@ export default function SessionNotesHistory() {
     undefined,
     { enabled: isAuthenticated && user?.role === "parent" }
   );
+
+  const [selectedCourse, setSelectedCourse] = useState<string>("all");
+  const [selectedYear, setSelectedYear] = useState<string>("all");
+
+  const tutorNotesWithFeedback = useMemo(() => {
+    if (!tutorHistory) return [];
+    return tutorHistory
+      .filter((s) => s.feedbackFromTutor)
+      .map((s) => ({
+        id: s.id,
+        sessionId: s.id,
+        progressSummary: s.feedbackFromTutor as string,
+        createdAt: s.updatedAt || s.scheduledAt,
+        scheduledAt: s.scheduledAt,
+        courseTitle: s.courseTitle || s.courseSubject || "Course",
+        courseSubject: s.courseSubject,
+        studentName: [s.studentFirstName, s.studentLastName].filter(Boolean).join(" "),
+        parentName: s.parentName || "",
+        tutorName: s.tutorName || "",
+        duration: s.duration,
+      }));
+  }, [tutorHistory]);
+
+  const courseOptions = useMemo(() => {
+    const set = new Set<string>();
+    tutorNotesWithFeedback.forEach((n) => set.add(n.courseTitle));
+    return Array.from(set);
+  }, [tutorNotesWithFeedback]);
+
+  const yearOptions = useMemo(() => {
+    const set = new Set<string>();
+    tutorNotesWithFeedback.forEach((n) => set.add(new Date(n.scheduledAt).getFullYear().toString()));
+    return Array.from(set);
+  }, [tutorNotesWithFeedback]);
+
+  const filteredTutorNotes = useMemo(() => {
+    return tutorNotesWithFeedback.filter((n) => {
+      const yearMatch = selectedYear === "all" || new Date(n.scheduledAt).getFullYear().toString() === selectedYear;
+      const courseMatch = selectedCourse === "all" || n.courseTitle === selectedCourse;
+      return yearMatch && courseMatch;
+    });
+  }, [tutorNotesWithFeedback, selectedCourse, selectedYear]);
+
+  const groupedByMonth = useMemo(() => {
+    const map = new Map<string, typeof filteredTutorNotes>();
+    filteredTutorNotes.forEach((n) => {
+      const key = format(new Date(n.scheduledAt), "MMMM yyyy");
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(n);
+    });
+    return Array.from(map.entries()).sort(
+      (a, b) => new Date(b[0]).getTime() - new Date(a[0]).getTime()
+    );
+  }, [filteredTutorNotes]);
 
   useEffect(() => {
     if (!loading && !isAuthenticated) {
@@ -45,11 +103,12 @@ export default function SessionNotesHistory() {
     return null;
   }
 
-  const notes = user.role === "tutor" ? tutorNotes : parentNotes;
-  const isLoading = user.role === "tutor" ? tutorNotesLoading : parentNotesLoading;
+  const notes = user.role === "tutor" ? filteredTutorNotes : parentNotes;
+  const isLoading = user.role === "tutor" ? tutorHistoryLoading : parentNotesLoading;
 
   return (
     <div className="min-h-screen bg-background">
+      <Navigation />
       <div className="container py-8">
         <div className="mb-8">
           <div className="flex items-center gap-2 mb-2">
@@ -63,12 +122,105 @@ export default function SessionNotesHistory() {
           </p>
         </div>
 
+        {user.role === "tutor" && (
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 mb-6">
+            <div className="space-y-2">
+              <Label htmlFor="course-filter">Course</Label>
+              <Select value={selectedCourse} onValueChange={setSelectedCourse}>
+                <SelectTrigger id="course-filter">
+                  <SelectValue placeholder="All courses" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All courses</SelectItem>
+                  {courseOptions.map((c) => (
+                    <SelectItem key={c} value={c}>{c}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="year-filter">Year</Label>
+              <Select value={selectedYear} onValueChange={setSelectedYear}>
+                <SelectTrigger id="year-filter">
+                  <SelectValue placeholder="All years" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All years</SelectItem>
+                  {yearOptions.map((y) => (
+                    <SelectItem key={y} value={y}>{y}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        )}
+
         {isLoading ? (
           <div className="space-y-4">
             <Skeleton className="h-64" />
             <Skeleton className="h-64" />
             <Skeleton className="h-64" />
           </div>
+        ) : user.role === "tutor" ? (
+          notes && notes.length > 0 ? (
+            <div className="space-y-6">
+              {groupedByMonth.map(([month, monthNotes]) => (
+                <div key={month} className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <Calendar className="h-4 w-4 text-primary" />
+                    <h3 className="text-lg font-semibold">{month}</h3>
+                  </div>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    {monthNotes.map((note) => (
+                      <Card key={note.id} className="h-full">
+                        <CardHeader className="pb-2">
+                          <div className="flex items-center justify-between">
+                            <CardTitle className="text-base">{note.courseTitle}</CardTitle>
+                            <Badge variant="secondary">Session</Badge>
+                          </div>
+                          <CardDescription>
+                            {note.studentName && `Student: ${note.studentName}`}{" "}
+                            {note.parentName && `• Parent: ${note.parentName}`}
+                          </CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-3">
+                          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                            <Clock3 className="h-4 w-4" />
+                            <span>{format(new Date(note.scheduledAt), "PPP p")}</span>
+                          </div>
+                          {note.courseSubject && (
+                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                              <BookOpen className="h-4 w-4" />
+                              <span>{note.courseSubject}</span>
+                            </div>
+                          )}
+                          <p className="text-sm text-foreground whitespace-pre-wrap">
+                            {note.progressSummary}
+                          </p>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <Card>
+              <CardHeader>
+                <CardTitle>No Session Notes Yet</CardTitle>
+                <CardDescription>
+                  Notes you add in completed sessions will appear here with course and student details.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Link href={"/tutor-dashboard"}>
+                  <a className="text-primary hover:underline">
+                    Go to Dashboard
+                  </a>
+                </Link>
+              </CardContent>
+            </Card>
+          )
         ) : notes && notes.length > 0 ? (
           <div className="space-y-6">
             {notes.map((note) => (
