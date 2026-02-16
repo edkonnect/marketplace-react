@@ -5,6 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import Navigation from "@/components/Navigation";
 import { Link } from "wouter";
+import { useEffect, useState } from "react";
 import {
   GraduationCap,
   Calendar,
@@ -22,7 +23,7 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
-import { motion, type Variants } from "framer-motion";
+import { AnimatePresence, motion, type Variants } from "framer-motion";
 import useEmblaCarousel from "embla-carousel-react";
 import { StatNumber } from "@/components/motion-primitives/StatNumber";
 import { AnimatedTestimonials } from "@/components/ui/animated-testimonials";
@@ -152,6 +153,20 @@ export default function Home() {
     if (user?.role === "parent") return "/parent/dashboard";
     return "/role-selection";
   };
+  const phrases = [
+    "Personalized Learning",
+    "Elite Mentorship",
+    "Academic Excellence",
+  ];
+    const [index, setIndex] = useState(0);
+  
+    useEffect(() => {
+      const interval = setInterval(() => {
+        setIndex((prev) => (prev + 1) % phrases.length);
+      }, 3000); // change every 3 seconds
+  
+      return () => clearInterval(interval);
+    }, []);  
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
@@ -164,16 +179,41 @@ export default function Home() {
     className="absolute inset-0 z-0 bg-center bg-cover bg-no-repeat"
     style={{ backgroundImage: "url(/images/connect_img.png)", backgroundPosition: "center 65%" }}
   />
-
+       
         {/* Contrast overlay */}
         <div className="absolute inset-0 z-10 bg-gradient-to-b from-black/70 via-black/55 to-black/35" />
         <div className="absolute inset-0 z-20 backdrop-blur-[2px] saturate-90" />
 
         <div className="container relative z-30">
           <div className="max-w-3xl mx-auto text-center">
-            <h1 className="text-4xl lg:text-6xl font-bold mb-6 tracking-tight text-white">
-              Connect with Expert Tutors for Personalized Learning
-            </h1>
+          <h1 className="text-3xl sm:text-4xl lg:text-6xl font-bold mb-6 tracking-tight text-white text-center">
+  
+  {/* Line 1 */}
+  <span className="block">
+    Connect with Expert Tutors
+  </span>
+
+  {/* Line 2 */}
+  <span className="block whitespace-nowrap">
+    for{" "}
+    <span className="inline-block min-w-[1ch] align-baseline">
+      <AnimatePresence mode="wait">
+        <motion.span
+          key={phrases[index]}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.6, ease: "easeInOut" }}
+          className="inline-block"
+        >
+          {phrases[index]}
+        </motion.span>
+      </AnimatePresence>
+    </span>
+  </span>
+
+</h1>
+
             <p className="text-lg lg:text-xl text-white/80 mb-8 leading-relaxed">
               EdKonnect Academy brings together dedicated parents and qualified tutors to create meaningful one-on-one learning
               experiences. Schedule sessions, track progress, and communicate seamlessly—all in one platform.

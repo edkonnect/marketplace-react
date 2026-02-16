@@ -2375,7 +2375,29 @@ export const appRouter = router({
       }))
       .query(async ({ input }) => {
         let allPayments = await db.getAllPayments();
-        
+
+        // Surface pending/failed enrollments even if no payment row exists yet
+        const allSubs = await db.getAllSubscriptions();
+        const unpaidSubs = allSubs.filter(
+          ({ subscription }) => subscription.paymentStatus === "pending" || subscription.paymentStatus === "failed"
+        );
+        const syntheticPayments = unpaidSubs.map(({ subscription, course, tutor }) => ({
+          id: -subscription.id,
+          parentId: subscription.parentId,
+          tutorId: subscription.preferredTutorId ?? tutor?.id ?? 0,
+          subscriptionId: subscription.id,
+          amount: course?.price ?? "0",
+          currency: "usd",
+          status: subscription.paymentStatus,
+          paymentType: "subscription" as const,
+          stripePaymentIntentId: null,
+          createdAt: subscription.createdAt,
+        }));
+        allPayments = [...allPayments, ...syntheticPayments];
+
+        // Only show enrollment-based payments
+        allPayments = allPayments.filter(p => p.subscriptionId != null);
+
         if (input.status) {
           allPayments = allPayments.filter(p => p.status === input.status);
         }
