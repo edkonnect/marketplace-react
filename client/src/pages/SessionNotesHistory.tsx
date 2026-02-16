@@ -22,6 +22,11 @@ export default function SessionNotesHistory() {
     { enabled: isAuthenticated && user?.role === "tutor" }
   );
 
+  const { data: tutorNotesRaw, isLoading: tutorNotesLoading } = trpc.sessionNotes.getMyNotes.useQuery(
+    undefined,
+    { enabled: isAuthenticated && user?.role === "tutor" }
+  );
+
   const { data: parentNotes, isLoading: parentNotesLoading } = trpc.sessionNotes.getParentNotes.useQuery(
     undefined,
     { enabled: isAuthenticated && user?.role === "parent" }
@@ -31,8 +36,7 @@ export default function SessionNotesHistory() {
   const [selectedYear, setSelectedYear] = useState<string>("all");
 
   const tutorNotesWithFeedback = useMemo(() => {
-    if (!tutorHistory) return [];
-    return tutorHistory
+    const fromSessions = (tutorHistory || [])
       .filter((s) => s.feedbackFromTutor)
       .map((s) => ({
         id: s.id,
@@ -46,8 +50,35 @@ export default function SessionNotesHistory() {
         parentName: s.parentName || "",
         tutorName: s.tutorName || "",
         duration: s.duration,
+        source: "session" as const,
       }));
-  }, [tutorHistory]);
+
+    const fromNotes = (tutorNotesRaw || []).map((n) => ({
+      id: n.id,
+      sessionId: n.sessionId,
+      progressSummary: n.progressSummary,
+      createdAt: n.createdAt,
+      scheduledAt: n.scheduledAt,
+      courseTitle: n.courseTitle || n.courseSubject || "Course",
+      courseSubject: n.courseSubject,
+      studentName: [n.studentFirstName, n.studentLastName].filter(Boolean).join(" "),
+      parentName: n.parentName || "",
+      tutorName: n.tutorName || "",
+      duration: undefined,
+      source: "note" as const,
+    }));
+
+    // Prefer session-sourced records (carry more up-to-date feedback) when same sessionId
+    const bySession = new Map<number, typeof fromSessions[number]>();
+    fromNotes.forEach((n) => {
+      if (n.sessionId != null) bySession.set(n.sessionId, n);
+    });
+    fromSessions.forEach((s) => {
+      if (s.sessionId != null) bySession.set(s.sessionId, s);
+    });
+
+    return Array.from(bySession.values());
+  }, [tutorHistory, tutorNotesRaw]);
 
   const courseOptions = useMemo(() => {
     const set = new Set<string>();
@@ -104,7 +135,7 @@ export default function SessionNotesHistory() {
   }
 
   const notes = user.role === "tutor" ? filteredTutorNotes : parentNotes;
-  const isLoading = user.role === "tutor" ? tutorHistoryLoading : parentNotesLoading;
+  const isLoading = user.role === "tutor" ? (tutorHistoryLoading || tutorNotesLoading) : parentNotesLoading;
 
   return (
     <div className="min-h-screen bg-background">

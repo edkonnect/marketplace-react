@@ -2661,13 +2661,33 @@ export async function getSessionNotesByTutorId(tutorId: number) {
   if (!db) return [];
 
   try {
-    const result = await db
-      .select()
+    const parentUsers = alias(users, "parentUser");
+    return await db
+      .select({
+        id: sessionNotes.id,
+        sessionId: sessionNotes.sessionId,
+        tutorId: sessionNotes.tutorId,
+        tutorName: users.name,
+        progressSummary: sessionNotes.progressSummary,
+        homework: sessionNotes.homework,
+        challenges: sessionNotes.challenges,
+        nextSteps: sessionNotes.nextSteps,
+        createdAt: sessionNotes.createdAt,
+        scheduledAt: sessions.scheduledAt,
+        courseTitle: courses.title,
+        courseSubject: courses.subject,
+        studentFirstName: subscriptions.studentFirstName,
+        studentLastName: subscriptions.studentLastName,
+        parentName: parentUsers.name,
+      })
       .from(sessionNotes)
+      .innerJoin(sessions, eq(sessionNotes.sessionId, sessions.id))
+      .innerJoin(subscriptions, eq(sessions.subscriptionId, subscriptions.id))
+      .leftJoin(courses, eq(subscriptions.courseId, courses.id))
+      .leftJoin(users, eq(sessionNotes.tutorId, users.id))
+      .leftJoin(parentUsers, eq(sessions.parentId, parentUsers.id))
       .where(eq(sessionNotes.tutorId, tutorId))
       .orderBy(desc(sessionNotes.createdAt));
-    
-    return result;
   } catch (error) {
     console.error("[Database] Error getting tutor session notes:", error);
     return [];
