@@ -130,7 +130,8 @@ describe('Email Templates', () => {
       const html = getEnrollmentConfirmationEmail({
         userName: 'Sarah Mitchell',
         courseName: 'SAT Prep Course',
-        tutorNames: ['Dr. Michael Brown'],
+        tutorName: 'Dr. Michael Brown',
+        studentName: 'Alex Mitchell',
         coursePrice: '$299.00',
         dashboardUrl: 'https://edkonnect.academy/dashboard',
         courseDetailUrl: 'https://edkonnect.academy/courses/123',
@@ -142,14 +143,14 @@ describe('Email Templates', () => {
       expect(html).toContain('Dr. Michael Brown');
       expect(html).toContain('$299.00');
       expect(html).toContain('Tutor:');
-      expect(html).not.toContain('Tutors:');
+      expect(html).toContain('Student:');
     });
 
-    it('should generate enrollment confirmation with multiple tutors', () => {
+    it('should generate enrollment confirmation without student when not provided', () => {
       const html = getEnrollmentConfirmationEmail({
         userName: 'Sarah Mitchell',
         courseName: 'Advanced Mathematics',
-        tutorNames: ['Dr. John Smith', 'Dr. Emily Chen', 'Prof. David Lee'],
+        tutorName: 'Dr. John Smith',
         coursePrice: '$499.00',
         dashboardUrl: 'https://edkonnect.academy/dashboard',
         courseDetailUrl: 'https://edkonnect.academy/courses/456',
@@ -157,16 +158,16 @@ describe('Email Templates', () => {
 
       expect(html).toContain('Enrollment Confirmed!');
       expect(html).toContain('Advanced Mathematics');
-      expect(html).toContain('Dr. John Smith, Dr. Emily Chen and Prof. David Lee');
-      expect(html).toContain('Tutors:');
+      expect(html).toContain('Dr. John Smith');
       expect(html).toContain('$499.00');
+      expect(html).not.toContain('Student:');
     });
 
     it('should include what\'s next section', () => {
       const html = getEnrollmentConfirmationEmail({
         userName: 'Test User',
         courseName: 'Test Course',
-        tutorNames: ['Test Tutor'],
+        tutorName: 'Test Tutor',
         coursePrice: '$100.00',
         dashboardUrl: 'https://test.com/dashboard',
         courseDetailUrl: 'https://test.com/courses/1',
@@ -182,7 +183,7 @@ describe('Email Templates', () => {
       const html = getEnrollmentConfirmationEmail({
         userName: 'Test User',
         courseName: 'Test Course',
-        tutorNames: ['Test Tutor'],
+        tutorName: 'Test Tutor',
         coursePrice: '$100.00',
         dashboardUrl: 'https://test.com/dashboard',
         courseDetailUrl: 'https://test.com/courses/1',
@@ -218,8 +219,9 @@ describe('Email Templates', () => {
         getEnrollmentConfirmationEmail({
           userName: 'Test',
           courseName: 'Test',
-          tutorNames: ['Test'],
+          tutorName: 'Test',
           coursePrice: 'Test',
+          studentName: 'Test Student',
           dashboardUrl: 'https://test.com',
           courseDetailUrl: 'https://test.com',
         }),
@@ -254,7 +256,7 @@ describe('Email Templates', () => {
         getEnrollmentConfirmationEmail({
           userName: 'Test',
           courseName: 'Test',
-          tutorNames: ['Test'],
+          tutorName: 'Test',
           coursePrice: 'Test',
           dashboardUrl: 'https://test.com',
           courseDetailUrl: 'https://test.com',
