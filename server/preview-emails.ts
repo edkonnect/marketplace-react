@@ -70,7 +70,8 @@ console.log('✓ Generated: booking-tutor.html');
 const enrollmentSingleHtml = getEnrollmentConfirmationEmail({
   userName: 'Sarah Mitchell',
   courseName: 'SAT Prep Course',
-  tutorNames: ['Dr. Michael Brown'],
+  tutorName: 'Dr. Michael Brown',
+  studentName: 'Alex Mitchell',
   coursePrice: '$299.00',
   dashboardUrl: 'https://edkonnect.academy/dashboard',
   courseDetailUrl: 'https://edkonnect.academy/courses/123',
@@ -82,7 +83,8 @@ console.log('✓ Generated: enrollment-single.html');
 const enrollmentMultipleHtml = getEnrollmentConfirmationEmail({
   userName: 'Sarah Mitchell',
   courseName: 'Advanced Mathematics Program',
-  tutorNames: ['Dr. John Smith', 'Dr. Emily Chen', 'Prof. David Lee'],
+  tutorName: 'Dr. John Smith',
+  studentName: 'Alex Mitchell',
   coursePrice: '$499.00',
   dashboardUrl: 'https://edkonnect.academy/dashboard',
   courseDetailUrl: 'https://edkonnect.academy/courses/456',

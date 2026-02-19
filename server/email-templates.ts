@@ -410,21 +410,27 @@ export function getBookingConfirmationEmail(props: BookingConfirmationEmailProps
 interface EnrollmentConfirmationEmailProps {
   userName: string;
   courseName: string;
-  tutorNames: string[];
+  tutorName: string;
+  studentName?: string;
   coursePrice: string;
   dashboardUrl: string;
   courseDetailUrl: string;
+}
+
+interface TutorEnrollmentNotificationEmailProps {
+  tutorName: string;
+  courseName: string;
+  studentName?: string;
+  parentName?: string;
+  coursePrice: string;
+  dashboardUrl: string;
 }
 
 /**
  * Course enrollment confirmation email template
  */
 export function getEnrollmentConfirmationEmail(props: EnrollmentConfirmationEmailProps): string {
-  const { userName, courseName, tutorNames, coursePrice, dashboardUrl, courseDetailUrl } = props;
-  
-  const tutorList = tutorNames.length > 1 
-    ? tutorNames.slice(0, -1).join(', ') + ' and ' + tutorNames[tutorNames.length - 1]
-    : tutorNames[0];
+  const { userName, courseName, tutorName, studentName, coursePrice, dashboardUrl, courseDetailUrl } = props;
   
   const content = `
     <h1>Enrollment Confirmed! 🎉</h1>
@@ -440,9 +446,15 @@ export function getEnrollmentConfirmationEmail(props: EnrollmentConfirmationEmai
           <td style="padding: 8px 0; color: #374151;">${courseName}</td>
         </tr>
         <tr>
-          <td style="padding: 8px 0; font-weight: 600; color: #111827;">${tutorNames.length > 1 ? 'Tutors:' : 'Tutor:'}</td>
-          <td style="padding: 8px 0; color: #374151;">${tutorList}</td>
+          <td style="padding: 8px 0; font-weight: 600; color: #111827;">Tutor:</td>
+          <td style="padding: 8px 0; color: #374151;">${tutorName}</td>
         </tr>
+        ${studentName ? `
+        <tr>
+          <td style="padding: 8px 0; font-weight: 600; color: #111827;">Student:</td>
+          <td style="padding: 8px 0; color: #374151;">${studentName}</td>
+        </tr>
+        ` : ""}
         <tr>
           <td style="padding: 8px 0; font-weight: 600; color: #111827;">Price:</td>
           <td style="padding: 8px 0; color: #374151;">${coursePrice}</td>
@@ -455,7 +467,7 @@ export function getEnrollmentConfirmationEmail(props: EnrollmentConfirmationEmai
     <ul style="margin: 16px 0; padding-left: 24px;">
       <li style="margin-bottom: 8px;">Schedule your first tutoring session</li>
       <li style="margin-bottom: 8px;">Review course materials and learning objectives</li>
-      <li style="margin-bottom: 8px;">Connect with your ${tutorNames.length > 1 ? 'tutors' : 'tutor'} through our messaging platform</li>
+      <li style="margin-bottom: 8px;">Connect with your tutor through our messaging platform</li>
       <li style="margin-bottom: 8px;">Track your progress in your dashboard</li>
     </ul>
     
@@ -484,6 +496,56 @@ export function getEnrollmentConfirmationEmail(props: EnrollmentConfirmationEmai
   
   return getEmailBase(content, {
     preheaderText: `You're enrolled in ${courseName}! Let's start learning.`
+  });
+}
+
+/**
+ * Notify tutor about a new course enrollment
+ */
+export function getTutorEnrollmentNotificationEmail(props: TutorEnrollmentNotificationEmailProps): string {
+  const { tutorName, courseName, studentName, parentName, coursePrice, dashboardUrl } = props;
+
+  const content = `
+    <h1>New Enrollment Assigned</h1>
+
+    <p>Hi ${tutorName},</p>
+
+    <p>A parent has enrolled a student in <strong>${courseName}</strong> with you as the preferred tutor.</p>
+
+    <div class="highlight-box">
+      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin: 0;">
+        <tr>
+          <td style="padding: 8px 0; font-weight: 600; color: #111827; width: 140px;">Course:</td>
+          <td style="padding: 8px 0; color: #374151;">${courseName}</td>
+        </tr>
+        ${studentName ? `
+        <tr>
+          <td style="padding: 8px 0; font-weight: 600; color: #111827;">Student:</td>
+          <td style="padding: 8px 0; color: #374151;">${studentName}</td>
+        </tr>` : ""}
+        ${parentName ? `
+        <tr>
+          <td style="padding: 8px 0; font-weight: 600; color: #111827;">Parent:</td>
+          <td style="padding: 8px 0; color: #374151;">${parentName}</td>
+        </tr>` : ""}
+        <tr>
+          <td style="padding: 8px 0; font-weight: 600; color: #111827;">Price:</td>
+          <td style="padding: 8px 0; color: #374151;">${coursePrice}</td>
+        </tr>
+      </table>
+    </div>
+
+    <p>You can view the enrollment details and schedule sessions from your dashboard.</p>
+
+    <div style="text-align: center; margin: 24px 0;">
+      <a href="${dashboardUrl}" style="color: #3b82f6; text-decoration: none; font-weight: 600;">Go to Tutor Dashboard →</a>
+    </div>
+
+    <p style="margin-top: 32px;">Thanks for supporting our students,<br><strong>The EdKonnect Academy Team</strong></p>
+  `;
+
+  return getEmailBase(content, {
+    preheaderText: `New enrollment for ${courseName}`
   });
 }
 

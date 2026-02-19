@@ -5,7 +5,7 @@ import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
 import { z } from "zod";
 import * as db from "./db";
 import { TRPCError } from "@trpc/server";
-import { sendWelcomeEmail, sendBookingConfirmation, sendEnrollmentConfirmation, formatEmailDate, formatEmailTime, formatEmailPrice } from "./email-helpers";
+import { sendWelcomeEmail, sendBookingConfirmation, sendEnrollmentConfirmation, sendTutorEnrollmentNotification, formatEmailDate, formatEmailTime, formatEmailPrice } from "./email-helpers";
 import { generateBookingToken, isValidBookingToken } from "./booking-management";
 import { cancelAppointment } from "./acuity";
 import { sendCancellationConfirmationEmail } from "./cancellation-email";
@@ -674,15 +674,33 @@ export const appRouter = router({
 
           // Send confirmation email (non-blocking)
           if (ctx.user.email && ctx.user.name) {
-            const tutorNames = tutors.map(t => t.user.name).filter(Boolean) as string[];
+            const preferredTutor = input.preferredTutorId
+              ? tutors.find(t => t.tutorId === input.preferredTutorId)
+              : primaryTutor;
+            const tutorName = preferredTutor?.user.name || primaryTutor?.user.name || "Your tutor";
+            const studentName = [input.studentFirstName, input.studentLastName].filter(Boolean).join(" ");
+
             sendEnrollmentConfirmation({
               userEmail: ctx.user.email,
               userName: ctx.user.name,
               courseName: course.title,
-              tutorNames: tutorNames.length > 0 ? tutorNames : ['Your tutor'],
+              tutorName,
+              studentName,
               coursePrice: formatEmailPrice(Math.round(parseFloat(course.price) * 100)),
               courseId: course.id,
             }).catch(err => console.error('[Email] Failed to send enrollment confirmation:', err));
+
+            // Notify preferred tutor
+            if (preferredTutor?.user.email) {
+              sendTutorEnrollmentNotification({
+                tutorEmail: preferredTutor.user.email,
+                tutorName,
+                studentName,
+                parentName: ctx.user.name,
+                courseName: course.title,
+                coursePrice: formatEmailPrice(Math.round(parseFloat(course.price) * 100)),
+              }).catch(err => console.error('[Email] Failed to send tutor enrollment notification:', err));
+            }
           }
 
           return { success: true, subscriptionId };

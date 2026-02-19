@@ -8,6 +8,7 @@ import {
   getWelcomeEmail, 
   getBookingConfirmationEmail,
   getEnrollmentConfirmationEmail,
+  getTutorEnrollmentNotificationEmail,
   getTutorApprovalEmail,
   getEmailVerificationEmail
 } from './email-templates';
@@ -129,9 +130,19 @@ interface SendEnrollmentConfirmationParams {
   userEmail: string;
   userName: string;
   courseName: string;
-  tutorNames: string[];
+  tutorName: string;
+  studentName?: string;
   coursePrice: string;
   courseId: number;
+}
+
+interface SendTutorEnrollmentNotificationParams {
+  tutorEmail: string;
+  tutorName: string;
+  courseName: string;
+  studentName?: string;
+  parentName?: string;
+  coursePrice: string;
 }
 
 /**
@@ -142,7 +153,8 @@ export async function sendEnrollmentConfirmation(params: SendEnrollmentConfirmat
     userEmail,
     userName,
     courseName,
-    tutorNames,
+    tutorName,
+    studentName,
     coursePrice,
     courseId,
   } = params;
@@ -153,7 +165,8 @@ export async function sendEnrollmentConfirmation(params: SendEnrollmentConfirmat
   const html = getEnrollmentConfirmationEmail({
     userName,
     courseName,
-    tutorNames,
+    tutorName,
+    studentName,
     coursePrice,
     dashboardUrl,
     courseDetailUrl,
@@ -162,6 +175,30 @@ export async function sendEnrollmentConfirmation(params: SendEnrollmentConfirmat
   return await emailService.sendEmail({
     to: userEmail,
     subject: `Enrollment Confirmed: ${courseName}`,
+    html,
+  });
+}
+
+/**
+ * Send notification to preferred tutor about a new enrollment
+ */
+export async function sendTutorEnrollmentNotification(params: SendTutorEnrollmentNotificationParams): Promise<boolean> {
+  const { tutorEmail, tutorName, courseName, studentName, parentName, coursePrice } = params;
+
+  const dashboardUrl = emailRedirect("/tutor/dashboard");
+
+  const html = getTutorEnrollmentNotificationEmail({
+    tutorName,
+    courseName,
+    studentName,
+    parentName,
+    coursePrice,
+    dashboardUrl,
+  });
+
+  return await emailService.sendEmail({
+    to: tutorEmail,
+    subject: `New Enrollment: ${courseName}`,
     html,
   });
 }

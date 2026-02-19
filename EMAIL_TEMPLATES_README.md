@@ -163,7 +163,8 @@ sendEnrollmentConfirmation({
   userEmail: user.email,
   userName: user.name,
   courseName: course.title,
-  tutorNames: tutorNames,
+  tutorName: tutor.name,
+  studentName: `${studentFirstName} ${studentLastName}`,
   coursePrice: formatEmailPrice(session.amount_total || 0),
   courseId: course.id,
 });

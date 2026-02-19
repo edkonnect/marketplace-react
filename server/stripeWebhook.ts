@@ -5,7 +5,7 @@ import { ENV } from "./_core/env";
 import * as db from "./db";
 import { subscriptions } from "../drizzle/schema";
 import { eq } from "drizzle-orm";
-import { sendEnrollmentConfirmation, formatEmailPrice } from "./email-helpers";
+import { sendEnrollmentConfirmation, sendTutorEnrollmentNotification, formatEmailPrice } from "./email-helpers";
 
 export async function handleStripeWebhook(req: Request, res: Response) {
   const stripe = getStripe();
@@ -151,15 +151,30 @@ export async function handleStripeWebhook(req: Request, res: Response) {
             // Send enrollment confirmation email
             const user = await db.getUserById(userId);
             if (user && user.email && user.name) {
-              const tutorNames = tutors.map(t => t.user.name).filter(Boolean) as string[];
+              const preferredTutor = tutorId ? tutors.find(t => t.tutorId === tutorId) : tutors[0];
+              const tutorName = preferredTutor?.user.name || tutors[0]?.user.name || "Your tutor";
+              const studentName = [studentFirstName, studentLastName].filter(Boolean).join(" ");
+              const parentName = user.name;
               sendEnrollmentConfirmation({
                 userEmail: user.email,
                 userName: user.name,
                 courseName: course.title,
-                tutorNames: tutorNames.length > 0 ? tutorNames : ['Your tutor'],
+                tutorName,
+                studentName,
                 coursePrice: formatEmailPrice(session.amount_total || 0),
                 courseId: course.id,
               }).catch(err => console.error('[Email] Failed to send enrollment confirmation:', err));
+
+              if (preferredTutor?.user.email) {
+                sendTutorEnrollmentNotification({
+                  tutorEmail: preferredTutor.user.email,
+                  tutorName,
+                  studentName,
+                  parentName,
+                  courseName: course.title,
+                  coursePrice: formatEmailPrice(session.amount_total || 0),
+                }).catch(err => console.error('[Email] Failed to send tutor enrollment notification:', err));
+              }
             }
           }
         }
