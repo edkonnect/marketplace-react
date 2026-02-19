@@ -368,21 +368,41 @@ export default function Home() {
         </div>
       </motion.section>
 
-      {/* Testimonials Section (animated testimonials + keep new data source) */}
-      <motion.section className="py-20" {...scrollReveal}>
-        <div className="container">
-          <div className="text-center mb-16">
-            <h2 className="text-3xl lg:text-4xl font-bold mb-4">What Parents Are Saying</h2>
-            <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
+      {/* Testimonials Section */}
+      <motion.section className="relative overflow-hidden py-8" {...scrollReveal}>
+        {/* Background video */}
+        <video
+          autoPlay
+          loop
+          muted
+          playsInline
+          className="absolute inset-0 w-full h-full object-cover"
+          aria-hidden="true"
+        >
+          <source src="/bgvideo/bgvideo.mp4" type="video/mp4" />
+        </video>
+
+        {/* Dark overlay */}
+        <div className="absolute inset-0 bg-black/70" aria-hidden="true" />
+
+        {/* Content */}
+        <div className="relative z-10 container">
+          <div className="text-center mb-4">
+            <h2 className="text-3xl md:text-4xl font-bold mb-2 text-white drop-shadow-lg">What Parents Are Saying</h2>
+            <p className="text-lg text-white/80 max-w-2xl mx-auto">
               Hear from families who have transformed their children's learning experience with EdKonnect Academy.
             </p>
           </div>
 
-          {animatedTestimonials.length > 0 ? (
-            <AnimatedTestimonials testimonials={animatedTestimonials} />
-          ) : (
-            <div className="text-center text-muted-foreground">No testimonials yet.</div>
-          )}
+          <div className="flex items-center justify-center">
+            <div className="w-full max-w-3xl p-2 text-center">
+              {animatedTestimonials.length > 0 ? (
+                <AnimatedTestimonials testimonials={animatedTestimonials} />
+              ) : (
+                <div className="text-white/70 py-8">No testimonials yet.</div>
+              )}
+            </div>
+          </div>
         </div>
       </motion.section>
 
@@ -712,3 +732,4 @@ export default function Home() {
     </div>
   );
 }
+

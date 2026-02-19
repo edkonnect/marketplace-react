@@ -69,11 +69,11 @@ export const AnimatedTestimonials = ({
   const clampedRating = Math.max(0, Math.min(5, Number(current.rating ?? 0)));
 
   return (
-    <div className="mx-auto max-w-sm px-4 py-16 font-sans antialiased md:max-w-4xl md:px-8 lg:px-12">
-      <div className="relative grid grid-cols-1 gap-14 md:grid-cols-2 md:gap-20">
+    <div className="mx-auto max-w-sm px-4 py-6 font-sans antialiased md:max-w-4xl md:px-8 lg:px-12">
+      <div className="relative grid grid-cols-1 gap-10 md:grid-cols-2 md:gap-14">
         {/* Left: Animated initials "cards" stack */}
         <div>
-          <div className="relative h-80 w-full">
+          <div className="relative h-56 w-full">
             <AnimatePresence>
               {safeTestimonials.map((t, index) => (
                 <motion.div
@@ -136,7 +136,7 @@ export const AnimatedTestimonials = ({
         </div>
 
         {/* Right: Quote + rating + controls */}
-        <div className="flex flex-col justify-between py-4">
+        <div className="flex flex-col justify-between py-1">
           <motion.div
             key={active}
             initial={{ y: 18, opacity: 0 }}
@@ -144,14 +144,14 @@ export const AnimatedTestimonials = ({
             exit={{ y: -18, opacity: 0 }}
             transition={{ duration: 0.25, ease: "easeInOut" }}
           >
-            <h3 className="text-2xl font-bold text-foreground">
+            <h3 className="text-2xl font-bold text-white">
               {current.name}
             </h3>
-            <p className="text-sm text-muted-foreground">
+            <p className="text-sm text-white/70">
               {current.designation}
             </p>
 
-            <motion.p className="mt-8 text-lg text-muted-foreground">
+            <motion.p className="mt-4 text-lg text-white/90">
               {current.quote.split(" ").map((word, index) => (
                 <motion.span
                   key={`${word}-${index}`}
@@ -170,7 +170,7 @@ export const AnimatedTestimonials = ({
             </motion.p>
 
             {/* ✅ Stars under quote */}
-            <div className="mt-5 flex items-center gap-1">
+            <div className="mt-4 mb-2 flex items-center gap-1">
               {Array.from({ length: clampedRating }).map((_, i) => (
                 <Star
                   key={i}
@@ -181,25 +181,25 @@ export const AnimatedTestimonials = ({
                 Array.from({ length: 5 - clampedRating }).map((_, i) => (
                   <Star
                     key={`e-${i}`}
-                    className="h-4 w-4 text-muted-foreground/30"
+                    className="h-4 w-4 text-white/30"
                   />
                 ))}
             </div>
           </motion.div>
 
-          <div className="flex gap-4 pt-10 md:pt-0">
+          <div className="flex gap-4 mt-6">
             <button
               onClick={handlePrev}
               aria-label="Previous testimonial"
-              className="group/button flex h-9 w-9 items-center justify-center rounded-full border border-border/50 bg-background/70 backdrop-blur-sm hover:bg-background transition"
+              className="group/button flex h-9 w-9 items-center justify-center rounded-full border border-white/30 bg-white/10 backdrop-blur-sm hover:bg-white/20 transition"
             >
-              <IconArrowLeft className="h-5 w-5 text-foreground/80 transition-transform duration-300 group-hover/button:rotate-12" />
+              <IconArrowLeft className="h-5 w-5 duration-300 group-hover/button:rotate-12" />
             </button>
 
             <button
               onClick={handleNext}
               aria-label="Next testimonial"
-              className="group/button flex h-9 w-9 items-center justify-center rounded-full border border-border/50 bg-background/70 backdrop-blur-sm hover:bg-background transition"
+              className="group/button flex h-9 w-9 items-center justify-center rounded-full border border-white/30 bg-white/10 backdrop-blur-sm hover:bg-white/20 transition"
             >
               <IconArrowRight className="h-5 w-5 text-foreground/80 transition-transform duration-300 group-hover/button:-rotate-12" />
             </button>
