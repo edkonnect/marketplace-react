@@ -25,7 +25,9 @@ export default function Navigation() {
     undefined,
     {
       enabled: isAuthenticated && (user?.role === "parent" || user?.role === "tutor"),
-      refetchInterval: 30_000,
+      // Avoid constant polling; refresh on tab focus and every 60s instead of ~5–10s
+      refetchOnWindowFocus: true,
+      refetchInterval: 60_000,
     }
   );
   const unreadCount = unreadData?.count ?? 0;
@@ -46,6 +48,11 @@ export default function Navigation() {
     if (!name) return "U";
     return name.split(" ").map(n => n[0]).join("").toUpperCase().slice(0, 2);
   };
+
+  // Hide navigation on the login page during auth loading or when not authenticated (covers token refresh redirects)
+  if ((loading || !isAuthenticated) && location.startsWith(LOGIN_PATH)) {
+    return null;
+  }
 
   return (
     <nav className="border-b border-border bg-card/50 backdrop-blur-sm sticky top-0 z-50">

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -25,13 +25,18 @@ export function TimeBlockManager() {
   const [endTime, setEndTime] = useState("17:00");
   const [reason, setReason] = useState("");
 
-  // Get time blocks for the next 3 months
-  const now = Date.now();
-  const threeMonthsLater = now + (90 * 24 * 60 * 60 * 1000);
+  // Get time blocks for the next 3 months (fixed on mount to avoid re-query loops)
+  const { rangeStart, rangeEnd } = useMemo(() => {
+    const start = Date.now();
+    return {
+      rangeStart: start,
+      rangeEnd: start + 90 * 24 * 60 * 60 * 1000,
+    };
+  }, []);
 
   const { data: timeBlocks, isLoading, refetch } = trpc.tutorAvailability.getTimeBlocks.useQuery({
-    startTime: now,
-    endTime: threeMonthsLater,
+    startTime: rangeStart,
+    endTime: rangeEnd,
   });
 
   const createBlockMutation = trpc.tutorAvailability.createTimeBlock.useMutation({
