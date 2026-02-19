@@ -3266,6 +3266,11 @@ export async function getParentPayments(parentId: number) {
   if (!db) return [];
 
   try {
+    const sessionSubscriptions = alias(subscriptions, "sessionSubscriptions");
+    const paymentSubscriptions = alias(subscriptions, "paymentSubscriptions");
+    const sessionCourses = alias(courses, "sessionCourses");
+    const paymentCourses = alias(courses, "paymentCourses");
+
     return await db
       .select({
         id: payments.id,
@@ -3277,9 +3282,18 @@ export async function getParentPayments(parentId: number) {
         sessionId: payments.sessionId,
         tutorName: users.name,
         scheduledAt: sessions.scheduledAt,
+        courseTitle: sql<string | null>`COALESCE(${paymentCourses.title}, ${sessionCourses.title})`,
+        studentFirstName: sql<string | null>`COALESCE(${paymentSubscriptions.studentFirstName}, ${sessionSubscriptions.studentFirstName})`,
+        studentLastName: sql<string | null>`COALESCE(${paymentSubscriptions.studentLastName}, ${sessionSubscriptions.studentLastName})`,
+        paymentMethodType: sql<"card" | "ach">`'card'`,
+        paymentMethodLast4: sql<string | null>`NULL`,
       })
       .from(payments)
       .leftJoin(sessions, eq(payments.sessionId, sessions.id))
+      .leftJoin(paymentSubscriptions, eq(payments.subscriptionId, paymentSubscriptions.id))
+      .leftJoin(paymentCourses, eq(paymentSubscriptions.courseId, paymentCourses.id))
+      .leftJoin(sessionSubscriptions, eq(sessions.subscriptionId, sessionSubscriptions.id))
+      .leftJoin(sessionCourses, eq(sessionSubscriptions.courseId, sessionCourses.id))
       .leftJoin(users, eq(sessions.tutorId, users.id))
       .where(eq(payments.parentId, parentId))
       .orderBy(desc(payments.createdAt));

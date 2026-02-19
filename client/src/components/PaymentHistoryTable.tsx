@@ -1,5 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Table,
   TableBody,
@@ -8,7 +9,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { CreditCard } from "lucide-react";
+import { CreditCard, Download, Banknote } from "lucide-react";
 import { format } from "date-fns";
 
 interface Payment {
@@ -17,8 +18,11 @@ interface Payment {
   currency: string;
   status: string;
   createdAt: Date;
-  tutorName: string | null;
-  scheduledAt: number | null;
+  courseTitle: string | null;
+  studentFirstName: string | null;
+  studentLastName: string | null;
+  paymentMethodType?: "card" | "ach";
+  paymentMethodLast4?: string | null;
 }
 
 interface PaymentHistoryTableProps {
@@ -49,6 +53,19 @@ export function PaymentHistoryTable({ payments }: PaymentHistoryTableProps) {
     }).format(numAmount);
   };
 
+  const getPaymentMethodIcon = (type?: "card" | "ach") => {
+    if (type === "ach") return <Banknote className="h-4 w-4" />;
+    return <CreditCard className="h-4 w-4" />;
+  };
+
+  const getItemLabel = (payment: Payment) => {
+    const student = [payment.studentFirstName, payment.studentLastName].filter(Boolean).join(" ");
+    if (payment.courseTitle && student) return `${payment.courseTitle} – ${student}`;
+    if (payment.courseTitle) return payment.courseTitle;
+    if (student) return student;
+    return "Session";
+  };
+
   return (
     <Card>
       <CardHeader>
@@ -68,10 +85,10 @@ export function PaymentHistoryTable({ payments }: PaymentHistoryTableProps) {
               <TableHeader>
                 <TableRow>
                   <TableHead>Date</TableHead>
-                  <TableHead>Tutor</TableHead>
-                  <TableHead>Session Date</TableHead>
+                  <TableHead>Student</TableHead>
                   <TableHead>Amount</TableHead>
-                  <TableHead>Status</TableHead>
+                  <TableHead>Method</TableHead>
+                  <TableHead className="text-right">Receipt</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -81,20 +98,32 @@ export function PaymentHistoryTable({ payments }: PaymentHistoryTableProps) {
                       {format(new Date(payment.createdAt), 'MMM d, yyyy')}
                     </TableCell>
                     <TableCell>
-                      {payment.tutorName || 'N/A'}
-                    </TableCell>
-                    <TableCell>
-                      {payment.scheduledAt
-                        ? format(new Date(payment.scheduledAt), 'MMM d, yyyy')
-                        : 'N/A'}
+                      {getItemLabel(payment)}
                     </TableCell>
                     <TableCell className="font-medium">
-                      {formatAmount(payment.amount, payment.currency)}
+                      <div className="flex items-center gap-2">
+                        {formatAmount(payment.amount, payment.currency)}
+                        <Badge variant={getStatusVariant(payment.status)} className="capitalize">
+                          {payment.status}
+                        </Badge>
+                      </div>
                     </TableCell>
                     <TableCell>
-                      <Badge variant={getStatusVariant(payment.status)}>
-                        {payment.status}
-                      </Badge>
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        {getPaymentMethodIcon(payment.paymentMethodType)}
+                        {payment.paymentMethodType === "ach" ? (
+                          <Badge variant="outline">ACH</Badge>
+                        ) : (
+                          <span>{payment.paymentMethodLast4 ? `•••• ${payment.paymentMethodLast4}` : "Card"}</span>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Button variant="ghost" size="icon" asChild aria-label="Download receipt">
+                        <a href={`/api/pdf/receipt/${payment.id}`} target="_blank" rel="noreferrer">
+                          <Download className="h-4 w-4" />
+                        </a>
+                      </Button>
                     </TableCell>
                   </TableRow>
                 ))}
