@@ -1,9 +1,0 @@
-{
-  "query": "UPDATE `courses` SET `curriculum` = 'Week 1-4: Fundamentals of Algebra\\n• Variables and expressions\\n• Linear equations and inequalities\\n• Systems of equations\\n• Word problems and applications\\n\\nWeek 5-8: Geometry Essentials\\n• Angles, triangles, and polygons\\n• Area and perimeter calculations\\n• Pythagorean theorem\\n• Coordinate geometry\\n\\nWeek 9-12: Advanced Topics\\n• Quadratic equations\\n• Functions and graphs\\n• Exponential and logarithmic functions\\n• Practice tests and review' WHERE `subject` = 'Mathematics' LIMIT 1;",
-  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway03.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 3WQULgVDBb1t2sq.root --database jiuvaqiRLMtCC23XtAnX7G --execute UPDATE `courses` SET `curriculum` = 'Week 1-4: Fundamentals of Algebra\\n• Variables and expressions\\n• Linear equations and inequalities\\n• Systems of equations\\n• Word problems and applications\\n\\nWeek 5-8: Geometry Essentials\\n• Angles, triangles, and polygons\\n• Area and perimeter calculations\\n• Pythagorean theorem\\n• Coordinate geometry\\n\\nWeek 9-12: Advanced Topics\\n• Quadratic equations\\n• Functions and graphs\\n• Exponential and logarithmic functions\\n• Practice tests and review' WHERE `subject` = 'Mathematics' LIMIT 1;",
-  "rows": [],
-  "messages": [],
-  "stdout": "",
-  "stderr": "",
-  "execution_time_ms": 59
-}

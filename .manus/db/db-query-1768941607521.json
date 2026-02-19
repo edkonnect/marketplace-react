@@ -1,9 +1,0 @@
-{
-  "query": "UPDATE tutor_profiles \nSET approvalStatus = 'approved', isActive = 1 \nWHERE userId = (SELECT id FROM users WHERE email = 'courseadmin@edkonnect.com');",
-  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway03.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 3WQULgVDBb1t2sq.root --database jiuvaqiRLMtCC23XtAnX7G --execute UPDATE tutor_profiles \nSET approvalStatus = 'approved', isActive = 1 \nWHERE userId = (SELECT id FROM users WHERE email = 'courseadmin@edkonnect.com');",
-  "rows": [],
-  "messages": [],
-  "stdout": "",
-  "stderr": "",
-  "execution_time_ms": 106
-}

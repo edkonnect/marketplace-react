@@ -1,9 +1,0 @@
-{
-  "query": "CREATE TABLE IF NOT EXISTS session_notes (\n  id INT AUTO_INCREMENT PRIMARY KEY,\n  sessionId INT NOT NULL,\n  tutorId INT NOT NULL,\n  parentId INT NOT NULL,\n  progressSummary TEXT NOT NULL,\n  homework TEXT,\n  challenges TEXT,\n  nextSteps TEXT,\n  parentNotified BOOLEAN NOT NULL DEFAULT FALSE,\n  createdAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,\n  updatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,\n  FOREIGN KEY (sessionId) REFERENCES sessions(id) ON DELETE CASCADE,\n  FOREIGN KEY (tutorId) REFERENCES users(id) ON DELETE CASCADE,\n  FOREIGN KEY (parentId) REFERENCES users(id) ON DELETE CASCADE,\n  INDEX session_notes_sessionId_idx (sessionId),\n  INDEX session_notes_tutorId_idx (tutorId),\n  INDEX session_notes_parentId_idx (parentId)\n);",
-  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway03.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 3WQULgVDBb1t2sq.root --database jiuvaqiRLMtCC23XtAnX7G --execute CREATE TABLE IF NOT EXISTS session_notes (\n  id INT AUTO_INCREMENT PRIMARY KEY,\n  sessionId INT NOT NULL,\n  tutorId INT NOT NULL,\n  parentId INT NOT NULL,\n  progressSummary TEXT NOT NULL,\n  homework TEXT,\n  challenges TEXT,\n  nextSteps TEXT,\n  parentNotified BOOLEAN NOT NULL DEFAULT FALSE,\n  createdAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,\n  updatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,\n  FOREIGN KEY (sessionId) REFERENCES sessions(id) ON DELETE CASCADE,\n  FOREIGN KEY (tutorId) REFERENCES users(id) ON DELETE CASCADE,\n  FOREIGN KEY (parentId) REFERENCES users(id) ON DELETE CASCADE,\n  INDEX session_notes_sessionId_idx (sessionId),\n  INDEX session_notes_tutorId_idx (tutorId),\n  INDEX session_notes_parentId_idx (parentId)\n);",
-  "rows": [],
-  "messages": [],
-  "stdout": "",
-  "stderr": "",
-  "execution_time_ms": 351
-}

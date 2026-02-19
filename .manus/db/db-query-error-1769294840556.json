@@ -1,8 +1,0 @@
-{
-  "query": "ALTER TABLE subscriptions ADD COLUMN preferredTutorId INT NULL AFTER courseId, ADD FOREIGN KEY (preferredTutorId) REFERENCES users(id) ON DELETE SET NULL;",
-  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway03.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 3WQULgVDBb1t2sq.root --database jiuvaqiRLMtCC23XtAnX7G --execute ALTER TABLE subscriptions ADD COLUMN preferredTutorId INT NULL AFTER courseId, ADD FOREIGN KEY (preferredTutorId) REFERENCES users(id) ON DELETE SET NULL;",
-  "returncode": 1,
-  "logs": [
-    "ERROR 1072 (42000) at line 1: Key column 'preferredTutorId' doesn't exist in table"
-  ]
-}

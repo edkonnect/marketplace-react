@@ -1,9 +1,0 @@
-{
-  "query": "DELETE FROM tutor_profiles WHERE userId = (SELECT id FROM users WHERE email = 'arunemba@gmail.com' LIMIT 1) AND id NOT IN (SELECT id FROM (SELECT id FROM tutor_profiles WHERE userId = (SELECT id FROM users WHERE email = 'arunemba@gmail.com' LIMIT 1) ORDER BY createdAt DESC LIMIT 1) AS keep);",
-  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway03.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 3WQULgVDBb1t2sq.root --database jiuvaqiRLMtCC23XtAnX7G --execute DELETE FROM tutor_profiles WHERE userId = (SELECT id FROM users WHERE email = 'arunemba@gmail.com' LIMIT 1) AND id NOT IN (SELECT id FROM (SELECT id FROM tutor_profiles WHERE userId = (SELECT id FROM users WHERE email = 'arunemba@gmail.com' LIMIT 1) ORDER BY createdAt DESC LIMIT 1) AS keep);",
-  "rows": [],
-  "messages": [],
-  "stdout": "",
-  "stderr": "",
-  "execution_time_ms": 74
-}

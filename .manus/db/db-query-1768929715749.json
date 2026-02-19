@@ -1,9 +1,0 @@
-{
-  "query": "INSERT INTO tutor_profiles (userId, bio, qualifications, subjects, gradeLevels, hourlyRate, yearsOfExperience, approvalStatus, isActive)\nSELECT id, \n  'Experienced educator passionate about student success',\n  'Professional teaching credentials and subject matter expertise',\n  '[\"Mathematics\",\"Science\"]',\n  '[\"High School\",\"College\"]',\n  50.00,\n  5,\n  'pending',\n  true\nFROM users \nWHERE email IN ('maya.b@edkonnect.com', 'shriti.s@edkonnect.com')\nAND id NOT IN (SELECT userId FROM tutor_profiles);",
-  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway03.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 3WQULgVDBb1t2sq.root --database jiuvaqiRLMtCC23XtAnX7G --execute INSERT INTO tutor_profiles (userId, bio, qualifications, subjects, gradeLevels, hourlyRate, yearsOfExperience, approvalStatus, isActive)\nSELECT id, \n  'Experienced educator passionate about student success',\n  'Professional teaching credentials and subject matter expertise',\n  '[\"Mathematics\",\"Science\"]',\n  '[\"High School\",\"College\"]',\n  50.00,\n  5,\n  'pending',\n  true\nFROM users \nWHERE email IN ('maya.b@edkonnect.com', 'shriti.s@edkonnect.com')\nAND id NOT IN (SELECT userId FROM tutor_profiles);",
-  "rows": [],
-  "messages": [],
-  "stdout": "",
-  "stderr": "",
-  "execution_time_ms": 71
-}

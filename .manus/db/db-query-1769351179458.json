@@ -1,9 +1,0 @@
-{
-  "query": "SELECT tp.id, tp.userId, tp.approvalStatus, tp.createdAt, u.email, u.name, u.role\nFROM tutor_profiles tp\nINNER JOIN users u ON tp.userId = u.id\nWHERE tp.approvalStatus = 'pending'\nORDER BY tp.createdAt DESC;",
-  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway03.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 3WQULgVDBb1t2sq.root --database jiuvaqiRLMtCC23XtAnX7G --execute SELECT tp.id, tp.userId, tp.approvalStatus, tp.createdAt, u.email, u.name, u.role\nFROM tutor_profiles tp\nINNER JOIN users u ON tp.userId = u.id\nWHERE tp.approvalStatus = 'pending'\nORDER BY tp.createdAt DESC;",
-  "rows": [],
-  "messages": [],
-  "stdout": "",
-  "stderr": "",
-  "execution_time_ms": 53
-}

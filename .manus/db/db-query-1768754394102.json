@@ -1,9 +1,0 @@
-{
-  "query": "CREATE TABLE `acuity_mapping_templates` (\n\t`id` int AUTO_INCREMENT NOT NULL,\n\t`name` varchar(255) NOT NULL,\n\t`description` text,\n\t`acuityAppointmentTypeId` int NOT NULL,\n\t`acuityCalendarId` int NOT NULL,\n\t`createdBy` int NOT NULL,\n\t`createdAt` timestamp NOT NULL DEFAULT (now()),\n\t`updatedAt` timestamp NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,\n\tCONSTRAINT `acuity_mapping_templates_id` PRIMARY KEY(`id`)\n);\nALTER TABLE `acuity_mapping_templates` ADD CONSTRAINT `acuity_mapping_templates_createdBy_users_id_fk` FOREIGN KEY (`createdBy`) REFERENCES `users`(`id`) ON DELETE cascade ON UPDATE no action;",
-  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway03.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 3WQULgVDBb1t2sq.root --database jiuvaqiRLMtCC23XtAnX7G --execute CREATE TABLE `acuity_mapping_templates` (\n\t`id` int AUTO_INCREMENT NOT NULL,\n\t`name` varchar(255) NOT NULL,\n\t`description` text,\n\t`acuityAppointmentTypeId` int NOT NULL,\n\t`acuityCalendarId` int NOT NULL,\n\t`createdBy` int NOT NULL,\n\t`createdAt` timestamp NOT NULL DEFAULT (now()),\n\t`updatedAt` timestamp NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,\n\tCONSTRAINT `acuity_mapping_templates_id` PRIMARY KEY(`id`)\n);\nALTER TABLE `acuity_mapping_templates` ADD CONSTRAINT `acuity_mapping_templates_createdBy_users_id_fk` FOREIGN KEY (`createdBy`) REFERENCES `users`(`id`) ON DELETE cascade ON UPDATE no action;",
-  "rows": [],
-  "messages": [],
-  "stdout": "",
-  "stderr": "",
-  "execution_time_ms": 1610
-}

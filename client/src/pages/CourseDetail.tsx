@@ -322,7 +322,7 @@ export default function CourseDetail() {
 
             {/* Sidebar - Enrollment Card */}
             <div>
-              <Card className="sticky top-24 border-2">
+              <Card className="sticky top-24 border-2 z-20 bg-background">
                 <CardHeader>
                   <div className="flex items-baseline gap-2 mb-2">
                     <span className="text-4xl font-bold text-primary">${price}</span>

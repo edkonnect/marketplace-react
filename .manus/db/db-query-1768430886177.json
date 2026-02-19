@@ -1,9 +1,0 @@
-{
-  "query": "CREATE TABLE IF NOT EXISTS `blog_posts` (\n  `id` int AUTO_INCREMENT PRIMARY KEY,\n  `title` varchar(255) NOT NULL,\n  `slug` varchar(255) NOT NULL UNIQUE,\n  `excerpt` text NOT NULL,\n  `content` text NOT NULL,\n  `coverImageUrl` text,\n  `authorId` int,\n  `category` varchar(100),\n  `tags` text,\n  `readTime` int,\n  `isPublished` boolean NOT NULL DEFAULT true,\n  `publishedAt` timestamp,\n  `displayOrder` int NOT NULL DEFAULT 0,\n  `createdAt` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,\n  `updatedAt` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,\n  FOREIGN KEY (`authorId`) REFERENCES `users`(`id`) ON DELETE SET NULL,\n  INDEX `blog_posts_slug_idx` (`slug`),\n  INDEX `blog_posts_category_idx` (`category`)\n);",
-  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway03.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 3WQULgVDBb1t2sq.root --database jiuvaqiRLMtCC23XtAnX7G --execute CREATE TABLE IF NOT EXISTS `blog_posts` (\n  `id` int AUTO_INCREMENT PRIMARY KEY,\n  `title` varchar(255) NOT NULL,\n  `slug` varchar(255) NOT NULL UNIQUE,\n  `excerpt` text NOT NULL,\n  `content` text NOT NULL,\n  `coverImageUrl` text,\n  `authorId` int,\n  `category` varchar(100),\n  `tags` text,\n  `readTime` int,\n  `isPublished` boolean NOT NULL DEFAULT true,\n  `publishedAt` timestamp,\n  `displayOrder` int NOT NULL DEFAULT 0,\n  `createdAt` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,\n  `updatedAt` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,\n  FOREIGN KEY (`authorId`) REFERENCES `users`(`id`) ON DELETE SET NULL,\n  INDEX `blog_posts_slug_idx` (`slug`),\n  INDEX `blog_posts_category_idx` (`category`)\n);",
-  "rows": [],
-  "messages": [],
-  "stdout": "",
-  "stderr": "",
-  "execution_time_ms": 476
-}

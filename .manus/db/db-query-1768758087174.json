@@ -1,9 +1,0 @@
-{
-  "query": "CREATE TABLE IF NOT EXISTS `email_settings` (\n  `id` int AUTO_INCREMENT PRIMARY KEY,\n  `logoUrl` text,\n  `primaryColor` varchar(7) NOT NULL DEFAULT '#667eea',\n  `accentColor` varchar(7) NOT NULL DEFAULT '#764ba2',\n  `footerText` text NOT NULL,\n  `companyName` varchar(255) NOT NULL DEFAULT 'EdKonnect Academy',\n  `supportEmail` varchar(255) NOT NULL DEFAULT 'support@edkonnect.com',\n  `updatedBy` int,\n  `createdAt` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,\n  `updatedAt` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,\n  FOREIGN KEY (`updatedBy`) REFERENCES `users`(`id`) ON DELETE SET NULL\n);\n\nINSERT INTO `email_settings` (`footerText`) VALUES ('EdKonnect Academy - Connecting Students with Expert Tutors');",
-  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway03.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 3WQULgVDBb1t2sq.root --database jiuvaqiRLMtCC23XtAnX7G --execute CREATE TABLE IF NOT EXISTS `email_settings` (\n  `id` int AUTO_INCREMENT PRIMARY KEY,\n  `logoUrl` text,\n  `primaryColor` varchar(7) NOT NULL DEFAULT '#667eea',\n  `accentColor` varchar(7) NOT NULL DEFAULT '#764ba2',\n  `footerText` text NOT NULL,\n  `companyName` varchar(255) NOT NULL DEFAULT 'EdKonnect Academy',\n  `supportEmail` varchar(255) NOT NULL DEFAULT 'support@edkonnect.com',\n  `updatedBy` int,\n  `createdAt` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,\n  `updatedAt` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,\n  FOREIGN KEY (`updatedBy`) REFERENCES `users`(`id`) ON DELETE SET NULL\n);\n\nINSERT INTO `email_settings` (`footerText`) VALUES ('EdKonnect Academy - Connecting Students with Expert Tutors');",
-  "rows": [],
-  "messages": [],
-  "stdout": "",
-  "stderr": "",
-  "execution_time_ms": 292
-}

@@ -1,9 +1,0 @@
-{
-  "query": "INSERT INTO tutor_profiles (\n  userId, \n  bio, \n  qualifications, \n  subjects, \n  gradeLevels, \n  hourlyRate, \n  yearsOfExperience, \n  approvalStatus,\n  isActive\n) \nSELECT \n  id,\n  'Experienced educator specializing in course administration and tutoring',\n  'Course Administrator with teaching certification',\n  '[\"Mathematics\",\"Science\",\"English\"]',\n  '[\"Elementary (K-5)\",\"Middle School (6-8)\",\"High School (9-12)\"]',\n  '45.00',\n  5,\n  'pending',\n  1\nFROM users \nWHERE email = 'courseadmin@edkonnect.com';",
-  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway03.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 3WQULgVDBb1t2sq.root --database jiuvaqiRLMtCC23XtAnX7G --execute INSERT INTO tutor_profiles (\n  userId, \n  bio, \n  qualifications, \n  subjects, \n  gradeLevels, \n  hourlyRate, \n  yearsOfExperience, \n  approvalStatus,\n  isActive\n) \nSELECT \n  id,\n  'Experienced educator specializing in course administration and tutoring',\n  'Course Administrator with teaching certification',\n  '[\"Mathematics\",\"Science\",\"English\"]',\n  '[\"Elementary (K-5)\",\"Middle School (6-8)\",\"High School (9-12)\"]',\n  '45.00',\n  5,\n  'pending',\n  1\nFROM users \nWHERE email = 'courseadmin@edkonnect.com';",
-  "rows": [],
-  "messages": [],
-  "stdout": "",
-  "stderr": "",
-  "execution_time_ms": 72
-}

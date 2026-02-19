@@ -1,9 +1,0 @@
-{
-  "query": "SELECT u.id, u.email, u.name, u.role, u.openId, tp.id as profile_id, tp.approvalStatus\nFROM users u\nINNER JOIN tutor_profiles tp ON u.id = tp.userId\nWHERE u.openId IS NULL\nORDER BY u.id;",
-  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway03.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 3WQULgVDBb1t2sq.root --database jiuvaqiRLMtCC23XtAnX7G --execute SELECT u.id, u.email, u.name, u.role, u.openId, tp.id as profile_id, tp.approvalStatus\nFROM users u\nINNER JOIN tutor_profiles tp ON u.id = tp.userId\nWHERE u.openId IS NULL\nORDER BY u.id;",
-  "rows": [],
-  "messages": [],
-  "stdout": "",
-  "stderr": "",
-  "execution_time_ms": 79
-}

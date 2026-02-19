@@ -1,9 +1,0 @@
-{
-  "query": "CREATE TABLE `tutor_availability` (\n\t`id` int AUTO_INCREMENT NOT NULL,\n\t`tutorId` int NOT NULL,\n\t`dayOfWeek` int NOT NULL,\n\t`startTime` varchar(5) NOT NULL,\n\t`endTime` varchar(5) NOT NULL,\n\t`isActive` boolean NOT NULL DEFAULT true,\n\t`createdAt` timestamp NOT NULL DEFAULT (now()),\n\t`updatedAt` timestamp NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,\n\tCONSTRAINT `tutor_availability_id` PRIMARY KEY(`id`)\n);\nALTER TABLE `tutor_availability` ADD CONSTRAINT `tutor_availability_tutorId_users_id_fk` FOREIGN KEY (`tutorId`) REFERENCES `users`(`id`) ON DELETE cascade ON UPDATE no action;\nCREATE INDEX `tutor_availability_tutorId_idx` ON `tutor_availability` (`tutorId`);\nCREATE INDEX `tutor_availability_dayOfWeek_idx` ON `tutor_availability` (`dayOfWeek`);",
-  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway03.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 3WQULgVDBb1t2sq.root --database jiuvaqiRLMtCC23XtAnX7G --execute CREATE TABLE `tutor_availability` (\n\t`id` int AUTO_INCREMENT NOT NULL,\n\t`tutorId` int NOT NULL,\n\t`dayOfWeek` int NOT NULL,\n\t`startTime` varchar(5) NOT NULL,\n\t`endTime` varchar(5) NOT NULL,\n\t`isActive` boolean NOT NULL DEFAULT true,\n\t`createdAt` timestamp NOT NULL DEFAULT (now()),\n\t`updatedAt` timestamp NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,\n\tCONSTRAINT `tutor_availability_id` PRIMARY KEY(`id`)\n);\nALTER TABLE `tutor_availability` ADD CONSTRAINT `tutor_availability_tutorId_users_id_fk` FOREIGN KEY (`tutorId`) REFERENCES `users`(`id`) ON DELETE cascade ON UPDATE no action;\nCREATE INDEX `tutor_availability_tutorId_idx` ON `tutor_availability` (`tutorId`);\nCREATE INDEX `tutor_availability_dayOfWeek_idx` ON `tutor_availability` (`dayOfWeek`);",
-  "rows": [],
-  "messages": [],
-  "stdout": "",
-  "stderr": "",
-  "execution_time_ms": 2029
-}

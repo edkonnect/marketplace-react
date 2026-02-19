@@ -1,8 +1,0 @@
-{
-  "query": "SELECT tp.id, tp.userId, tp.approvalStatus, tp.name, tp.email, tp.hourlyRate, u.role FROM tutor_profiles tp JOIN users u ON tp.userId = u.id WHERE u.email = 'arunemba@gmail.com';",
-  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway03.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 3WQULgVDBb1t2sq.root --database jiuvaqiRLMtCC23XtAnX7G --execute SELECT tp.id, tp.userId, tp.approvalStatus, tp.name, tp.email, tp.hourlyRate, u.role FROM tutor_profiles tp JOIN users u ON tp.userId = u.id WHERE u.email = 'arunemba@gmail.com';",
-  "returncode": 1,
-  "logs": [
-    "ERROR 1054 (42S22) at line 1: Unknown column 'tp.name' in 'field list'"
-  ]
-}
