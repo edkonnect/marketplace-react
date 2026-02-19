@@ -235,9 +235,10 @@ export default function Messages() {
     }
     // Searching: include enrolled students even if they have no conversation yet
     const nameMatch = `${student.firstName} ${student.lastName}`.toLowerCase().includes(searchTerm);
-    const courseMatch = (student.tutors || []).some(
-      (t: any) => (t.courseTitle || "").toLowerCase().includes(searchTerm)
-    );
+    const courseMatch = (student.tutors || []).some((t: any) => {
+      const titles = (t.courseTitles && Array.isArray(t.courseTitles) ? t.courseTitles : [t.courseTitle]).filter(Boolean) as string[];
+      return titles.some((title) => title.toLowerCase().includes(searchTerm));
+    });
     return nameMatch || courseMatch;
   });
 
@@ -252,7 +253,12 @@ export default function Messages() {
           if (!searchTerm || selectedMatchesSearch) return true;
           return (
             (tutor.name || "").toLowerCase().includes(searchTerm) ||
-            (tutor.courseTitle || "").toLowerCase().includes(searchTerm)
+            ((tutor.courseTitles && Array.isArray(tutor.courseTitles)
+              ? tutor.courseTitles
+              : [tutor.courseTitle]
+            ) || [])
+              .filter(Boolean)
+              .some((title: string) => title.toLowerCase().includes(searchTerm))
           );
         })
     : [];
