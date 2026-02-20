@@ -1813,20 +1813,21 @@ export async function getStudentsWithTutors(parentId: number) {
       // Only add tutor if this subscription has a preferredTutorId
       if (!row.preferredTutorId || !row.tutorName) continue;
 
-      const existingTutor = student.tutors.find((t: any) => t.id === row.preferredTutorId);
+      // Each subscription gets its own tutor entry (even if same tutor teaches multiple courses)
+      // This ensures each course/subscription has its own conversation
+      const existingTutor = student.tutors.find((t: any) =>
+        t.id === row.preferredTutorId && t.studentId === row.subId
+      );
+
       if (existingTutor) {
-        // Tutor already added (teaches another course for same student) — merge course
-        if (row.courseTitle && !existingTutor.courseTitles.includes(row.courseTitle)) {
-          existingTutor.courseTitles.push(row.courseTitle);
-        }
-        // Keep the conversationId that matched this subscription's studentId
+        // Same tutor AND same subscription - just update conversation if needed
         if (!existingTutor.conversationId && row.conversationId) {
           existingTutor.conversationId = row.conversationId;
           existingTutor.lastMessageAt = row.lastMessageAt;
-          existingTutor.studentId = row.subId;
           existingTutor.unreadCount = unreadMap.get(Number(row.conversationId)) ?? 0;
         }
       } else {
+        // New tutor entry for this subscription
         student.tutors.push({
           id: row.preferredTutorId,
           name: row.tutorName,

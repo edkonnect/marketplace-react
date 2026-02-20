@@ -235,11 +235,17 @@ export default function Messages() {
     }
     // Searching: include enrolled students even if they have no conversation yet
     const nameMatch = `${student.firstName} ${student.lastName}`.toLowerCase().includes(searchTerm);
-    const courseMatch = (student.tutors || []).some((t: any) => {
+    const tutorMatch = (student.tutors || []).some((t: any) => {
+      // Check tutor name
+      const tutorNameMatch = (t.name || "").toLowerCase().includes(searchTerm);
+
+      // Check all course titles
       const titles = (t.courseTitles && Array.isArray(t.courseTitles) ? t.courseTitles : [t.courseTitle]).filter(Boolean) as string[];
-      return titles.some((title) => title.toLowerCase().includes(searchTerm));
+      const courseMatch = titles.some((title) => title.toLowerCase().includes(searchTerm));
+
+      return tutorNameMatch || courseMatch;
     });
-    return nameMatch || courseMatch;
+    return nameMatch || tutorMatch;
   });
 
   const selectedMatchesSearch =
