@@ -154,6 +154,7 @@ export default function CourseDetail() {
     try {
       const { checkoutUrl } = await enrollWithInstallmentMutation.mutateAsync({
         courseId,
+        preferredTutorId: selectedTutorId || undefined,
         studentFirstName,
         studentLastName,
         studentGrade: studentGrade || "Not specified",
