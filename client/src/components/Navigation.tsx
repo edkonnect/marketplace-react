@@ -49,8 +49,20 @@ export default function Navigation() {
     return name.split(" ").map(n => n[0]).join("").toUpperCase().slice(0, 2);
   };
 
-  // Hide navigation on the login page during auth loading or when not authenticated (covers token refresh redirects)
-  if ((loading || !isAuthenticated) && location.startsWith(LOGIN_PATH)) {
+  // Public pages where navbar should always show (even when not authenticated)
+  const publicPages = ["/", "/tutors", "/courses", "/tutor-registration"];
+  const isPublicPage = publicPages.some(page => location === page || (page === "/" && location === "/"));
+
+  // Auth pages (login/signup) should NEVER show navbar
+  const isAuthPage = location.startsWith(LOGIN_PATH) || location.startsWith("/signup");
+
+  if (isAuthPage) {
+    return null;
+  }
+
+  // On protected pages (dashboards, messages, etc), hide navbar if not authenticated
+  // This handles the case when tokens expire and user becomes null
+  if (!isAuthenticated && !isPublicPage && !loading) {
     return null;
   }
 
@@ -71,13 +83,13 @@ export default function Navigation() {
             }`}>
               Find Tutors
             </Link>
-            
+
             <Link href="/courses" className={`text-sm font-medium transition-colors hover:text-primary ${
               location === "/courses" ? "text-primary" : "text-muted-foreground"
             }`}>
               Browse Courses
             </Link>
-            
+
             {user?.role !== "tutor" && (
               <Link href="/tutor-registration" className={`text-sm font-medium transition-colors hover:text-primary ${
                 location === "/tutor-registration" ? "text-primary" : "text-muted-foreground"
@@ -85,7 +97,7 @@ export default function Navigation() {
                 Become a Tutor
               </Link>
             )}
-            
+
             <button
               onClick={() => setIsVideoModalOpen(true)}
               className="flex items-center gap-2 text-sm font-medium transition-colors hover:text-primary text-muted-foreground"
@@ -93,7 +105,7 @@ export default function Navigation() {
               <Play className="w-4 h-4" />
               What's EdKonnect
             </button>
-            
+
             {isAuthenticated && (
               <>
                 <Link href={getDashboardLink()} className={`flex items-center gap-2 text-sm font-medium transition-colors hover:text-primary ${
@@ -102,7 +114,7 @@ export default function Navigation() {
                   <LayoutDashboard className="w-4 h-4" />
                   Dashboard
                 </Link>
-                
+
                 <Link href="/messages" className={`flex items-center gap-2 text-sm font-medium transition-colors hover:text-primary ${
                   location === "/messages" ? "text-primary" : "text-muted-foreground"
                 }`}>
