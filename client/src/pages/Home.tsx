@@ -17,6 +17,7 @@ import {
   TrendingUp,
   Calculator,
   Shapes,
+  Triangle,
   Code,
   LayoutDashboard,
   ChevronLeft,
@@ -33,6 +34,7 @@ const iconMap: Record<string, React.ComponentType<any>> = {
   TrendingUp,
   Calculator,
   Shapes,
+  Triangle,
   Code,
 };
 
