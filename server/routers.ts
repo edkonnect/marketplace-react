@@ -833,6 +833,7 @@ export const appRouter = router({
         const subscription = await db.createSubscription({
           parentId: ctx.user.id,
           courseId: input.courseId,
+          preferredTutorId: primaryTutor.tutorId,
           studentFirstName: input.studentFirstName,
           studentLastName: input.studentLastName,
           studentGrade: input.studentGrade,
