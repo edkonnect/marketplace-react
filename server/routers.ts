@@ -775,6 +775,7 @@ export const appRouter = router({
     enrollWithInstallment: parentProcedure
       .input(z.object({
         courseId: z.number(),
+        preferredTutorId: z.number().optional(),
         studentFirstName: z.string(),
         studentLastName: z.string(),
         studentGrade: z.string(),
@@ -822,18 +823,21 @@ export const appRouter = router({
         const firstInstallment = coursePrice / 2;
         const secondInstallment = coursePrice / 2;
 
-        // Get primary tutor for the course
+        // Get tutors for the course
         const tutors = await db.getTutorsForCourse(input.courseId);
         const primaryTutor = tutors.find(t => t.isPrimary) || tutors[0];
         if (!primaryTutor) {
           throw new TRPCError({ code: 'NOT_FOUND', message: 'No tutor found for this course' });
         }
 
+        // Use preferred tutor if provided, otherwise use primary tutor
+        const selectedTutorId = input.preferredTutorId || primaryTutor.tutorId;
+
         // Create subscription with installment payment plan
         const subscription = await db.createSubscription({
           parentId: ctx.user.id,
           courseId: input.courseId,
-          preferredTutorId: primaryTutor.tutorId,
+          preferredTutorId: selectedTutorId,
           studentFirstName: input.studentFirstName,
           studentLastName: input.studentLastName,
           studentGrade: input.studentGrade,
