@@ -456,7 +456,7 @@ export default function Messages() {
                         <div>
                           {filteredTutors.map((tutor: any) => (
                             <button
-                              key={tutor.id}
+                              key={`${tutor.id || 'unassigned'}-${tutor.studentId}`}
                               onClick={() => handleTutorSelect(tutor.id, tutor.studentId)}
                               className={`w-full p-4 text-left hover:bg-muted/50 transition-colors border-b border-border ${
                                 selectedTutorId === tutor.id ? "bg-muted" : ""
