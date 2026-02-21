@@ -18,6 +18,9 @@ export default function Login() {
   const [, setLocation] = useLocation();
   const [loading, setLoading] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
+  const [showResendSetup, setShowResendSetup] = useState(false);
+  const [resendEmail, setResendEmail] = useState("");
+  const [resendLoading, setResendLoading] = useState(false);
   const form = useValidatedForm(
     { email: "", password: "" },
     {
@@ -69,6 +72,39 @@ export default function Login() {
     }
   };
 
+  const handleResendSetup = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!resendEmail) {
+      toast.error("Please enter your email");
+      return;
+    }
+
+    setResendLoading(true);
+
+    try {
+      const response = await fetch("/api/auth/resend-setup-link", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: resendEmail }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to send setup link");
+      }
+
+      toast.success(data.message || "Setup link sent! Check your email.");
+      setShowResendSetup(false);
+      setResendEmail("");
+    } catch (error: any) {
+      toast.error(error.message || "Failed to send setup link");
+    } finally {
+      setResendLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen flex flex-col bg-background">
       <Navigation />
@@ -111,6 +147,42 @@ export default function Login() {
             <p className="text-sm text-muted-foreground text-center mt-4">
               New here? <Link href="/signup" className="text-primary">Create an account</Link>
             </p>
+
+            <div className="mt-4 text-center text-sm border-t border-border pt-4">
+              <button
+                type="button"
+                onClick={() => setShowResendSetup(!showResendSetup)}
+                className="text-primary hover:underline"
+              >
+                Haven't received your account setup link?
+              </button>
+            </div>
+
+            {showResendSetup && (
+              <div className="mt-4 p-4 bg-muted rounded-md">
+                <p className="text-sm mb-2 text-muted-foreground">
+                  Enter your email to receive a new setup link:
+                </p>
+                <form onSubmit={handleResendSetup} className="space-y-2">
+                  <input
+                    type="email"
+                    value={resendEmail}
+                    onChange={(e) => setResendEmail(e.target.value)}
+                    className="w-full px-3 py-2 border border-input rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-primary"
+                    placeholder="your.email@example.com"
+                    required
+                    disabled={resendLoading}
+                  />
+                  <Button
+                    type="submit"
+                    className="w-full"
+                    disabled={resendLoading}
+                  >
+                    {resendLoading ? "Sending..." : "Send Setup Link"}
+                  </Button>
+                </form>
+              </div>
+            )}
           </CardContent>
         </Card>
       </section>

@@ -2,8 +2,8 @@ import { eq, and, or, like, desc, asc, sql, gte, lte, lt, gt, inArray, isNotNull
 import { alias } from "drizzle-orm/mysql-core";
 import { drizzle } from "drizzle-orm/mysql2";
 import crypto from "crypto";
-import { 
-  InsertUser, users, tutorProfiles, parentProfiles, courses, 
+import {
+  InsertUser, users, tutorProfiles, parentProfiles, courses,
   subscriptions, sessions, conversations, messages, payments,
   InsertTutorProfile, InsertParentProfile, InsertCourse,
   InsertSubscription, InsertSession, InsertConversation,
@@ -14,6 +14,7 @@ import {
   acuityMappingTemplates, InsertAcuityMappingTemplate,
   emailSettings, InsertEmailSettings,
   emailVerifications, EmailVerification,
+  passwordSetupTokens, PasswordSetupToken,
   sessionNotes, InsertSessionNote,
   sessionNoteAttachments, InsertSessionNoteAttachment,
   tutorReviews, InsertTutorReview,
@@ -52,7 +53,7 @@ function hashToken(token: string) {
 
 export async function createAuthUser(input: {
   email: string;
-  passwordHash: string;
+  passwordHash: string | null;
   firstName: string;
   lastName: string;
   role: "parent" | "tutor" | "admin";
@@ -209,6 +210,76 @@ export async function consumeEmailVerificationToken(token: string) {
   });
 
   return await getUserById(verification.userId);
+}
+
+// ============ Password Setup Tokens ============
+
+export async function createPasswordSetupToken(userId: number, ttlMs = 48 * 60 * 60 * 1000) {
+  const db = await getDb();
+  if (!db) return null;
+
+  const token = crypto.randomBytes(32).toString("hex");
+  const tokenHash = hashToken(token);
+  const expiresAt = new Date(Date.now() + ttlMs);
+
+  // Invalidate previous tokens for this user
+  await db
+    .update(passwordSetupTokens)
+    .set({ consumedAt: new Date() })
+    .where(and(eq(passwordSetupTokens.userId, userId), sql`${passwordSetupTokens.consumedAt} IS NULL`));
+
+  await db.insert(passwordSetupTokens).values({
+    userId,
+    tokenHash,
+    expiresAt,
+  });
+
+  return token;
+}
+
+export async function validatePasswordSetupToken(token: string): Promise<PasswordSetupToken | null> {
+  const db = await getDb();
+  if (!db) return null;
+
+  const tokenHash = hashToken(token);
+  const result = await db
+    .select()
+    .from(passwordSetupTokens)
+    .where(
+      and(
+        eq(passwordSetupTokens.tokenHash, tokenHash),
+        gt(passwordSetupTokens.expiresAt, new Date()),
+        sql`${passwordSetupTokens.consumedAt} IS NULL`
+      )
+    )
+    .limit(1);
+
+  return result.length > 0 ? result[0] : null;
+}
+
+export async function consumePasswordSetupToken(token: string, newPasswordHash: string) {
+  const db = await getDb();
+  if (!db) return null;
+
+  const setupToken = await validatePasswordSetupToken(token);
+  if (!setupToken) return null;
+
+  await db.transaction(async tx => {
+    await tx
+      .update(passwordSetupTokens)
+      .set({ consumedAt: new Date() })
+      .where(eq(passwordSetupTokens.id, setupToken.id));
+
+    await tx
+      .update(users)
+      .set({
+        passwordHash: newPasswordHash,
+        accountSetupComplete: true
+      })
+      .where(eq(users.id, setupToken.userId));
+  });
+
+  return await getUserById(setupToken.userId);
 }
 
 export async function getAllUsers() {

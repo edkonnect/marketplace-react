@@ -16,6 +16,7 @@ import Messages from "./pages/Messages";
 // RoleSelection removed - users get role assigned during registration
 import SignUp from "./pages/SignUp";
 import Login from "./pages/Login";
+import SetupPassword from "./pages/SetupPassword";
 import BookSession from "./pages/BookSession";
 import { ManageBooking } from "./pages/ManageBooking";
 import SessionNotesHistory from "./pages/SessionNotesHistory";
@@ -33,6 +34,7 @@ function Router() {
       <Route path={"/"} component={Home} />
       <Route path={"/signup"} component={SignUp} />
       <Route path={"/login"} component={Login} />
+      <Route path={"/setup-password"} component={SetupPassword} />
       {/* RoleSelection removed - users get role assigned during registration */}
       <Route path={"/tutors"} component={TutorListing} />
       <Route path={"/find-tutors"} component={FindTutors} />

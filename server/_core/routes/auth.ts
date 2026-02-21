@@ -199,3 +199,138 @@ authRouter.get("/email-redirect", async (req, res) => {
   const loginUrl = `/login?next=${encodeURIComponent(target)}`;
   return res.redirect(loginUrl);
 });
+
+/**
+ * Password setup endpoint for newly approved tutors
+ * Validates the setup token and sets the user's password
+ */
+authRouter.post("/setup-password", async (req, res) => {
+  const schema = z.object({
+    token: z.string(),
+    password: z.string().min(8, "Password must be at least 8 characters"),
+  });
+
+  const parseResult = schema.safeParse(req.body);
+  if (!parseResult.success) {
+    return res.status(400).json({
+      error: parseResult.error.issues[0]?.message || "Invalid input"
+    });
+  }
+
+  const { token, password } = parseResult.data;
+
+  // Validate token
+  const tokenRecord = await db.validatePasswordSetupToken(token);
+  if (!tokenRecord) {
+    return res.status(400).json({
+      error: "Invalid or expired setup link. Please request a new one."
+    });
+  }
+
+  // Hash new password
+  const authService = await import("../services/authService");
+  const passwordHash = await authService.hashPassword(password);
+
+  // Consume token and update user password
+  const user = await db.consumePasswordSetupToken(token, passwordHash);
+  if (!user) {
+    return res.status(500).json({
+      error: "Failed to set up your account. Please try again."
+    });
+  }
+
+  // Auto-login the user by creating session
+  await setAuthCookies(req, res, {
+    sub: user.id,
+    email: user.email,
+    role: user.role,
+  });
+
+  res.json({
+    success: true,
+    user: {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      role: user.role,
+    },
+  });
+});
+
+/**
+ * Resend password setup link for approved tutors who haven't completed setup
+ */
+authRouter.post("/resend-setup-link", async (req, res) => {
+  const schema = z.object({
+    email: z.string().email(),
+  });
+
+  const parseResult = schema.safeParse(req.body);
+  if (!parseResult.success) {
+    return res.status(400).json({
+      error: "Valid email is required"
+    });
+  }
+
+  const { email } = parseResult.data;
+
+  // Find user by email
+  const user = await db.getUserByEmail(email);
+  if (!user) {
+    // Don't reveal if email exists - security best practice
+    return res.json({
+      success: true,
+      message: "If an approved account exists for this email, a setup link has been sent."
+    });
+  }
+
+  // Check if account setup is already complete
+  if (user.accountSetupComplete) {
+    return res.json({
+      success: true,
+      message: "Your account is already set up. Please use the login page."
+    });
+  }
+
+  // Check if user has approved tutor profile
+  const tutorProfile = await db.getTutorProfileByUserId(user.id);
+  if (!tutorProfile || tutorProfile.approvalStatus !== 'approved') {
+    // Don't reveal profile status - security
+    return res.json({
+      success: true,
+      message: "If an approved account exists for this email, a setup link has been sent."
+    });
+  }
+
+  // Generate new setup token
+  const setupToken = await db.createPasswordSetupToken(user.id);
+  if (!setupToken) {
+    return res.status(500).json({
+      error: "Failed to generate setup link. Please try again later."
+    });
+  }
+
+  const setupUrl = `${process.env.VITE_FRONTEND_FORGE_API_URL || 'http://localhost:3000'}/setup-password?token=${setupToken}`;
+  const expiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000);
+
+  // Send email
+  try {
+    const { sendPasswordSetupEmail } = await import('../../email-helpers');
+    await sendPasswordSetupEmail({
+      tutorEmail: user.email,
+      tutorName: user.name || 'Tutor',
+      setupUrl,
+      expiresAt,
+    });
+  } catch (error) {
+    console.error('[ResendSetupLink] Failed to send email:', error);
+    return res.status(500).json({
+      error: "Failed to send setup link. Please try again later."
+    });
+  }
+
+  res.json({
+    success: true,
+    message: "If an approved account exists for this email, a setup link has been sent."
+  });
+});

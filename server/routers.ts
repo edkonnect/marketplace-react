@@ -107,7 +107,7 @@ export const appRouter = router({
         return profile;
       }),
 
-    register: protectedProcedure
+    register: publicProcedure
       .input(z.object({
         name: z.string(),
         email: z.string().email(),
@@ -121,15 +121,60 @@ export const appRouter = router({
         acuityLink: z.string().optional(),
       }))
       .mutation(async ({ ctx, input }) => {
-        // Use the logged-in user's ID instead of creating a new user
-        const userId = ctx.user.id;
+        // Determine if user is authenticated
+        const isAuthenticated = !!ctx.user;
+        let userId: number;
 
-        // Check if user already has an active or pending tutor profile
-        const existingProfile = await db.getTutorProfileByUserId(userId);
-        if (existingProfile && existingProfile.approvalStatus !== 'rejected') {
-          throw new TRPCError({ code: 'BAD_REQUEST', message: 'You already have a tutor profile' });
+        if (isAuthenticated) {
+          // EXISTING FLOW: User is logged in, use their ID
+          userId = ctx.user.id;
+
+          // Check for existing profile
+          const existingProfile = await db.getTutorProfileByUserId(userId);
+          if (existingProfile && existingProfile.approvalStatus !== 'rejected') {
+            throw new TRPCError({ code: 'BAD_REQUEST', message: 'You already have a tutor profile' });
+          }
+        } else {
+          // NEW FLOW: User is NOT logged in
+          // Check if email already exists
+          const existingUser = await db.getUserByEmail(input.email);
+
+          if (existingUser) {
+            // Email exists - check if they have a tutor profile
+            const existingProfile = await db.getTutorProfileByUserId(existingUser.id);
+
+            if (existingProfile && existingProfile.approvalStatus !== 'rejected') {
+              throw new TRPCError({
+                code: 'BAD_REQUEST',
+                message: 'A tutor application already exists for this email. Please sign in or use a different email.'
+              });
+            }
+
+            userId = existingUser.id;
+          } else {
+            // Create new user account without password (will be set via setup link)
+            // Split name into first/last
+            const nameParts = input.name.trim().split(' ');
+            const firstName = nameParts[0];
+            const lastName = nameParts.slice(1).join(' ') || nameParts[0];
+
+            const newUser = await db.createAuthUser({
+              email: input.email,
+              passwordHash: null,
+              firstName,
+              lastName,
+              role: 'parent', // Will change to 'tutor' on approval
+            });
+
+            if (!newUser) {
+              throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to create user account' });
+            }
+
+            userId = newUser.id;
+          }
         }
 
+        // Common profile data for both flows
         const profileData = {
           bio: input.bio,
           qualifications: input.qualifications,
@@ -142,6 +187,7 @@ export const appRouter = router({
         };
 
         let profileId: number;
+        const existingProfile = await db.getTutorProfileByUserId(userId);
 
         if (existingProfile) {
           // Re-application after rejection: update the existing profile and clear rejection reason
@@ -2976,18 +3022,44 @@ export const appRouter = router({
           throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to approve tutor' });
         }
 
-        // Send approval confirmation email to tutor
-        if (tutorProfile.email && tutorProfile.name) {
-          try {
-            const { sendTutorApprovalEmail } = await import('./email-helpers');
-            await sendTutorApprovalEmail({
-              tutorEmail: tutorProfile.email,
-              tutorName: tutorProfile.name,
-            });
-            console.log('[TutorApproval] Confirmation email sent to:', tutorProfile.email);
-          } catch (error) {
-            console.error('[TutorApproval] Failed to send confirmation email:', error);
-            // Don't fail the approval if email fails
+        // Check if user has already set up their account
+        const user = await db.getUserById(tutorProfile.userId);
+
+        if (tutorProfile.email && tutorProfile.name && user) {
+          if (!user.accountSetupComplete) {
+            // User hasn't set up password yet - send setup link
+            try {
+              const setupToken = await db.createPasswordSetupToken(tutorProfile.userId);
+              if (setupToken) {
+                const setupUrl = `${process.env.VITE_FRONTEND_FORGE_API_URL || 'http://localhost:3000'}/setup-password?token=${setupToken}`;
+                const expiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000);
+
+                const { sendPasswordSetupEmail } = await import('./email-helpers');
+                await sendPasswordSetupEmail({
+                  tutorEmail: tutorProfile.email,
+                  tutorName: tutorProfile.name,
+                  setupUrl,
+                  expiresAt,
+                });
+                console.log('[TutorApproval] Password setup email sent to:', tutorProfile.email);
+              }
+            } catch (error) {
+              console.error('[TutorApproval] Failed to send password setup email:', error);
+              // Don't fail the approval if email fails
+            }
+          } else {
+            // User already has password - send regular approval email
+            try {
+              const { sendTutorApprovalEmail } = await import('./email-helpers');
+              await sendTutorApprovalEmail({
+                tutorEmail: tutorProfile.email,
+                tutorName: tutorProfile.name,
+              });
+              console.log('[TutorApproval] Approval confirmation email sent to:', tutorProfile.email);
+            } catch (error) {
+              console.error('[TutorApproval] Failed to send confirmation email:', error);
+              // Don't fail the approval if email fails
+            }
           }
         }
 

@@ -4,12 +4,13 @@
  */
 
 import { emailService } from './email-service';
-import { 
-  getWelcomeEmail, 
+import {
+  getWelcomeEmail,
   getBookingConfirmationEmail,
   getEnrollmentConfirmationEmail,
   getTutorEnrollmentNotificationEmail,
   getTutorApprovalEmail,
+  getPasswordSetupEmail,
   getEmailVerificationEmail
 } from './email-templates';
 
@@ -58,7 +59,7 @@ interface SendVerificationEmailParams {
 
 export async function sendVerificationEmail(params: SendVerificationEmailParams): Promise<boolean> {
   const { userEmail, userName, verificationUrl, expiresAt } = params;
-
+  
   const html = getEmailVerificationEmail({
     userName,
     verificationUrl,
@@ -245,17 +246,43 @@ interface SendTutorApprovalEmailParams {
  */
 export async function sendTutorApprovalEmail(params: SendTutorApprovalEmailParams): Promise<boolean> {
   const { tutorEmail, tutorName } = params;
-  
+
   const dashboardUrl = emailRedirect("/tutor/dashboard");
-  
+
   const html = getTutorApprovalEmail({
     tutorName,
     dashboardUrl,
   });
-  
+
   return await emailService.sendEmail({
     to: tutorEmail,
     subject: '🎉 Your Tutor Application is Approved - EdKonnect Academy',
+    html,
+  });
+}
+
+interface SendPasswordSetupEmailParams {
+  tutorEmail: string;
+  tutorName: string;
+  setupUrl: string;
+  expiresAt: Date;
+}
+
+/**
+ * Send password setup email to newly approved tutor
+ */
+export async function sendPasswordSetupEmail(params: SendPasswordSetupEmailParams): Promise<boolean> {
+  const { tutorEmail, tutorName, setupUrl, expiresAt } = params;
+
+  const html = getPasswordSetupEmail({
+    tutorName,
+    setupUrl,
+    expiresAt,
+  });
+
+  return await emailService.sendEmail({
+    to: tutorEmail,
+    subject: '🎉 Set Up Your Tutor Account - EdKonnect Academy',
     html,
   });
 }

@@ -559,46 +559,121 @@ interface TutorApprovalEmailProps {
  */
 export function getTutorApprovalEmail(props: TutorApprovalEmailProps): string {
   const { tutorName, dashboardUrl } = props;
-  
+
   const content = `
     <h1>🎉 Congratulations! Your Application is Approved</h1>
-    
+
     <p>Hi ${tutorName},</p>
-    
+
     <p>Great news! Your tutor application has been approved by our admin team. You're now officially part of the EdKonnect Academy tutor community.</p>
-    
+
     <div class="highlight-box">
       <p style="margin: 0; font-weight: 600; color: #1e40af;">
         ✓ Your profile is now visible to parents searching for tutors
       </p>
     </div>
-    
+
     <h2>Next Steps:</h2>
-    
+
     <ul style="margin: 16px 0; padding-left: 24px;">
       <li style="margin-bottom: 8px;">Access your tutor dashboard to manage your profile and availability</li>
       <li style="margin-bottom: 8px;">Set your weekly availability so parents can book sessions</li>
       <li style="margin-bottom: 8px;">Review and respond to booking requests from parents</li>
       <li style="margin-bottom: 8px;">Track your upcoming sessions and earnings</li>
     </ul>
-    
+
     <div style="text-align: center; margin: 32px 0;">
       <a href="${dashboardUrl}" class="button">
         Go to Tutor Dashboard
       </a>
     </div>
-    
+
     <p style="margin-top: 24px;">
       If you have any questions or need assistance getting started, feel free to reach out to our support team.
     </p>
-    
+
     <p style="margin-top: 16px;">
       Welcome aboard!<br>
       <strong>The EdKonnect Academy Team</strong>
     </p>
   `;
-  
+
   return getEmailBase(content, {
     preheaderText: 'Your tutor application has been approved!'
+  });
+}
+
+interface PasswordSetupEmailProps {
+  tutorName: string;
+  setupUrl: string;
+  expiresAt: Date;
+}
+
+/**
+ * Password setup email template for approved tutors
+ */
+export function getPasswordSetupEmail(props: PasswordSetupEmailProps): string {
+  const { tutorName, setupUrl, expiresAt } = props;
+
+  const expiresIn = Math.round((expiresAt.getTime() - Date.now()) / (1000 * 60 * 60));
+
+  const content = `
+    <h1>🎉 Welcome to EdKonnect Academy!</h1>
+
+    <p>Hi ${tutorName},</p>
+
+    <p>Congratulations! Your tutor application has been approved. You're now officially part of the EdKonnect Academy tutor community.</p>
+
+    <div class="highlight-box">
+      <p style="margin: 0; font-weight: 600; color: #1e40af;">
+        🔐 Complete your account setup to get started
+      </p>
+    </div>
+
+    <p style="margin-top: 24px;">
+      To access your tutor dashboard and start accepting students, please set up your account password by clicking the button below:
+    </p>
+
+    <div style="text-align: center; margin: 32px 0;">
+      <a href="${setupUrl}" class="button">
+        Set Up Your Account
+      </a>
+    </div>
+
+    <div style="background-color: #fef3c7; border-left: 4px solid #f59e0b; padding: 16px; margin: 24px 0; border-radius: 4px;">
+      <p style="margin: 0; color: #92400e; font-size: 14px;">
+        <strong>⏰ This link expires in ${expiresIn} hours</strong><br>
+        If your link expires, you can request a new one from the login page.
+      </p>
+    </div>
+
+    <h2>What happens next?</h2>
+
+    <ul style="margin: 16px 0; padding-left: 24px;">
+      <li style="margin-bottom: 8px;">Click the button above to create your password</li>
+      <li style="margin-bottom: 8px;">You'll be automatically logged in to your tutor dashboard</li>
+      <li style="margin-bottom: 8px;">Complete your profile and set your availability</li>
+      <li style="margin-bottom: 8px;">Start accepting booking requests from parents</li>
+    </ul>
+
+    <div style="background-color: #eff6ff; border-left: 4px solid #3b82f6; padding: 16px; margin: 24px 0; border-radius: 4px;">
+      <p style="margin: 0; color: #1e40af; font-size: 14px;">
+        <strong>🔒 Security Note:</strong><br>
+        This link is unique to you and can only be used once. Do not share it with anyone.
+      </p>
+    </div>
+
+    <p style="margin-top: 24px;">
+      If you have any questions or need assistance, feel free to reach out to our support team.
+    </p>
+
+    <p style="margin-top: 16px;">
+      Welcome aboard!<br>
+      <strong>The EdKonnect Academy Team</strong>
+    </p>
+  `;
+
+  return getEmailBase(content, {
+    preheaderText: 'Set up your tutor account password'
   });
 }
