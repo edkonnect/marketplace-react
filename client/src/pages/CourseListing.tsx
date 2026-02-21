@@ -152,7 +152,10 @@ export default function CourseListing() {
             ) : filteredCourses && filteredCourses.length > 0 ? (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {filteredCourses.map((course) => (
-                  <Card key={course.id} className="hover:shadow-lg transition-shadow duration-300">
+                  <Card
+                    key={course.id}
+                    className="hover:shadow-lg transition-shadow duration-300 h-full flex flex-col"
+                  >
                     <CardHeader>
                       <div className="flex items-start justify-between mb-2">
                         <Badge variant="secondary" className="mb-2">
@@ -170,7 +173,7 @@ export default function CourseListing() {
                       )}
                     </CardHeader>
 
-                    <CardContent className="space-y-3">
+                    <CardContent className="space-y-3 flex-1">
                       <p className="text-sm text-muted-foreground line-clamp-2">
                         {course.description || "No description available"}
                       </p>
@@ -208,7 +211,7 @@ export default function CourseListing() {
                       </div>
                     </CardContent>
 
-                    <CardFooter>
+                    <CardFooter className="mt-auto">
                       <Button asChild className="w-full">
                         <Link href={`/course/${course.id}`}>
                           View Details
