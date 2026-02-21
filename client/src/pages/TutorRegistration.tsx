@@ -126,12 +126,6 @@ export default function TutorRegistration() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!isAuthenticated) {
-      toast.error("Please sign in to submit your tutor application.");
-      navigate(LOGIN_PATH);
-      return;
-    }
-
     const { isValid } = validateForm();
     if (!isValid) {
       toast.error("Please fix the highlighted fields.");
@@ -193,14 +187,21 @@ export default function TutorRegistration() {
               </div>
               <h2 className="text-2xl font-bold mb-2">Application Submitted!</h2>
               <p className="text-muted-foreground mb-6">
-                Thank you for your interest in joining our tutoring platform. Your application is under review.
+                {isAuthenticated
+                  ? "Thank you for your interest in joining our tutoring platform. Your application is under review."
+                  : "Thank you for applying! Once approved, you'll receive an email with instructions to set up your account and create your password."
+                }
               </p>
               <div className="bg-muted p-4 rounded-lg space-y-2 text-sm text-left mb-6">
                 <p className="font-medium">What happens next?</p>
                 <ul className="list-disc list-inside space-y-1 text-muted-foreground">
                   <li>Our team will review your application</li>
                   <li>You'll receive an email notification with the decision</li>
-                  <li>If approved, you can start creating your profile and accepting students</li>
+                  {isAuthenticated ? (
+                    <li>If approved, you can start creating your profile and accepting students</li>
+                  ) : (
+                    <li>If approved, you'll receive a secure link to set up your password and access your account</li>
+                  )}
                 </ul>
               </div>
               <button

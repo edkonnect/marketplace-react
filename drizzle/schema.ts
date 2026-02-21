@@ -9,7 +9,7 @@ export const users = mysqlTable("users", {
   id: int("id").autoincrement().primaryKey(),
   openId: varchar("openId", { length: 64 }).notNull().unique(),
   email: varchar("email", { length: 320 }).notNull().unique(),
-  passwordHash: varchar("passwordHash", { length: 255 }).notNull(),
+  passwordHash: varchar("passwordHash", { length: 255 }),
   firstName: varchar("firstName", { length: 100 }).notNull(),
   lastName: varchar("lastName", { length: 100 }).notNull(),
   role: mysqlEnum("role", ["parent", "tutor", "admin"]).default("parent").notNull(),
@@ -18,6 +18,7 @@ export const users = mysqlTable("users", {
   loginMethod: varchar("loginMethod", { length: 64 }),
   emailVerified: boolean("emailVerified").default(false).notNull(),
   emailVerifiedAt: timestamp("emailVerifiedAt"),
+  accountSetupComplete: boolean("accountSetupComplete").default(false).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
@@ -55,6 +56,20 @@ export const refreshTokens = mysqlTable("refresh_tokens", {
 }));
 
 export type RefreshToken = typeof refreshTokens.$inferSelect;
+
+export const passwordSetupTokens = mysqlTable("password_setup_tokens", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  tokenHash: varchar("tokenHash", { length: 255 }).notNull(),
+  expiresAt: timestamp("expiresAt").notNull(),
+  consumedAt: timestamp("consumedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => ({
+  tokenHashIdx: index("password_setup_tokens_tokenHash_idx").on(table.tokenHash),
+  userIdIdx: index("password_setup_tokens_userId_idx").on(table.userId),
+}));
+
+export type PasswordSetupToken = typeof passwordSetupTokens.$inferSelect;
 
 /**
  * Tutor profiles with professional information
