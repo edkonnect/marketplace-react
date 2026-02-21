@@ -1162,16 +1162,19 @@ export async function getAllSubscriptions() {
   const db = await getDb();
   if (!db) return [];
 
+  const tutorUsers = alias(users, 'tutor_users');
+
   return await db
     .select({
       subscription: subscriptions,
       course: courses,
       parent: users,
-      tutor: { id: users.id, name: users.name, email: users.email },
+      tutor: { id: tutorUsers.id, name: tutorUsers.name, email: tutorUsers.email },
     })
     .from(subscriptions)
     .leftJoin(courses, eq(subscriptions.courseId, courses.id))
     .leftJoin(users, eq(subscriptions.parentId, users.id))
+    .leftJoin(tutorUsers, eq(subscriptions.preferredTutorId, tutorUsers.id))
     .orderBy(desc(subscriptions.createdAt));
 }
 
