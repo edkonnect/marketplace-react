@@ -1,6 +1,6 @@
 import React, { useEffect } from "react";
 import Navigation from "@/components/Navigation";
-import { AcuityBookingWidget } from "@/components/AcuityBookingWidget";
+import SchedulingCalendar from "@/components/SchedulingCalendar";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
 import { useParams, useLocation } from "wouter";
@@ -104,9 +104,9 @@ export default function BookSession() {
     );
   }
 
-  // Check if course has Acuity mapping configured
-  const hasAcuityMapping = subscription.course.acuityAppointmentTypeId && subscription.course.acuityCalendarId;
-  const acuityOwner = import.meta.env.VITE_ACUITY_OWNER_ID || "29896173";
+  // Check if tutor is assigned
+  const tutorId = subscription.tutor?.id;
+  const hasTutor = typeof tutorId === "number";
 
   return (
     <div className="min-h-screen bg-background">
@@ -126,7 +126,7 @@ export default function BookSession() {
             <CardHeader>
               <CardTitle>{subscription.course.title}</CardTitle>
               <CardDescription>
-                with {subscription.tutor.name || "Tutor"}
+                with {subscription.tutor?.name || "Tutor"}
                 {subscription.subscription.studentFirstName && subscription.subscription.studentLastName && (
                   <> • Student: {subscription.subscription.studentFirstName} {subscription.subscription.studentLastName}</>
                 )}
@@ -157,21 +157,29 @@ export default function BookSession() {
           </Card>
         </div>
 
-        {!hasAcuityMapping ? (
-          <Alert variant="destructive">
+        {!hasTutor ? (
+          <Alert>
             <AlertCircle className="h-4 h-4" />
             <AlertDescription>
-              This course is not configured for online booking yet. Please contact support to enable booking for this course.
+              We're assigning a tutor for this course. Scheduling will be available once assigned.
             </AlertDescription>
           </Alert>
         ) : (
-          <AcuityBookingWidget
-            owner={acuityOwner}
-            appointmentTypeId={subscription.course.acuityAppointmentTypeId ?? undefined}
-            calendarId={subscription.course.acuityCalendarId ?? undefined}
-            courseTitle={subscription.course.title}
-            tutorName={subscription.tutor.name || undefined}
-          />
+          <Card>
+            <CardHeader>
+              <CardTitle>Schedule a Session</CardTitle>
+              <CardDescription>
+                Click on the calendar below to book a new session with your tutor
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <SchedulingCalendar
+                subscriptionId={subscription.subscription.id}
+                tutorId={tutorId!}
+                parentId={user?.id ?? 0}
+              />
+            </CardContent>
+          </Card>
         )}
       </div>
     </div>
