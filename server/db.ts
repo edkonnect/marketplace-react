@@ -1316,7 +1316,13 @@ export async function getCompletedSessionsByParentId(parentId: number) {
     .leftJoin(subscriptions, eq(sessions.subscriptionId, subscriptions.id))
     .leftJoin(courses, eq(subscriptions.courseId, courses.id))
     .leftJoin(users, eq(sessions.tutorId, users.id))
-    .where(and(eq(sessions.parentId, parentId), eq(sessions.status, 'completed' as any)))
+    .where(and(
+      eq(sessions.parentId, parentId),
+      or(
+        eq(sessions.status, 'completed' as any),
+        eq(sessions.status, 'no_show' as any)
+      )
+    ))
     .orderBy(desc(sessions.scheduledAt));
 }
 
@@ -3371,7 +3377,11 @@ export async function getParentSessionNotes(parentId: number, limit: number = 10
       .innerJoin(users, eq(sessions.tutorId, users.id))
       .innerJoin(subscriptions, eq(sessions.subscriptionId, subscriptions.id))
       .leftJoin(courses, eq(subscriptions.courseId, courses.id))
-      .where(and(eq(sessions.parentId, parentId), isNotNull(sessions.feedbackFromTutor)))
+      .where(and(
+        eq(sessions.parentId, parentId),
+        isNotNull(sessions.feedbackFromTutor),
+        eq(sessions.status, 'completed')
+      ))
       .orderBy(desc(sessions.scheduledAt))
       .limit(limit);
   } catch (error) {
