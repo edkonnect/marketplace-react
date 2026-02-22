@@ -143,14 +143,10 @@ export default function TutorDashboard() {
   const handleCompleteSession = () => {
     if (!selectedSessionId) return;
 
-    const finalNotes = completionType === "no_show"
-      ? "Student did not attend the session."
-      : completionNotes;
-
     updateSessionMutation.mutate({
       id: selectedSessionId,
       status: completionType,
-      feedbackFromTutor: finalNotes || undefined,
+      feedbackFromTutor: completionNotes || undefined,
     }, {
       onSuccess: () => {
         setCompletionDialogOpen(false);
@@ -624,7 +620,7 @@ export default function TutorDashboard() {
                               </div>
                                 <div className="flex items-center gap-2">
                                   <Badge variant={statusVariant(session.status)}>
-                                    {session.status === "no_show" ? "No Show" : session.status}
+                                    {session.status === "no_show" ? "Completed (No Show)" : session.status}
                                   </Badge>
                                   {session.status !== "cancelled" && session.status !== "completed" && session.status !== "no_show" && (
                                     <Button
@@ -674,10 +670,32 @@ export default function TutorDashboard() {
                                 </div>
                               )}
 
-                              {session.status === "no_show" && session.feedbackFromTutor && (
-                                <div className="p-3 bg-muted rounded-lg">
-                                  <p className="text-sm font-medium text-muted-foreground mb-1">No-Show Note:</p>
-                                  <p className="text-sm">{session.feedbackFromTutor}</p>
+                              {session.status === "no_show" && (
+                                <div className="space-y-2">
+                                  <Label>No-Show Notes (visible to parent)</Label>
+                                  <Textarea
+                                    value={noteValue}
+                                    onChange={(e) =>
+                                      setSessionNotes((prev) => ({
+                                        ...prev,
+                                        [session.id]: e.target.value,
+                                      }))
+                                    }
+                                    placeholder="Add notes for the student (e.g., homework, materials to review)"
+                                    className="min-h-[100px]"
+                                  />
+                                  <div className="flex gap-2">
+                                    <Button
+                                      size="sm"
+                                      onClick={saveNotes}
+                                      disabled={
+                                        updateSessionMutation.isPending ||
+                                        noteValue === (session.feedbackFromTutor ?? "")
+                                      }
+                                    >
+                                      Save Notes
+                                    </Button>
+                                  </div>
                                 </div>
                               )}
                             </CardContent>
@@ -796,10 +814,32 @@ export default function TutorDashboard() {
                                   </div>
                                 )}
 
-                                {session.status === "no_show" && session.feedbackFromTutor && (
-                                  <div className="p-3 bg-muted rounded-lg">
-                                    <p className="text-sm font-medium text-muted-foreground mb-1">No-Show Note:</p>
-                                    <p className="text-sm">{session.feedbackFromTutor}</p>
+                                {session.status === "no_show" && (
+                                  <div className="space-y-2">
+                                    <Label>No-Show Notes (visible to parent)</Label>
+                                    <Textarea
+                                      value={noteValue}
+                                      onChange={(e) =>
+                                        setSessionNotes((prev) => ({
+                                          ...prev,
+                                          [session.id]: e.target.value,
+                                        }))
+                                      }
+                                      placeholder="Add notes for the student (e.g., homework, materials to review)"
+                                      className="min-h-[100px]"
+                                    />
+                                    <div className="flex gap-2">
+                                      <Button
+                                        size="sm"
+                                        onClick={saveNotes}
+                                        disabled={
+                                          updateSessionMutation.isPending ||
+                                          noteValue === (session.feedbackFromTutor ?? "")
+                                        }
+                                      >
+                                        Save Notes
+                                      </Button>
+                                    </div>
                                   </div>
                                 )}
 
@@ -895,29 +935,34 @@ export default function TutorDashboard() {
               </div>
             </RadioGroup>
 
-            {/* Session Notes - Only shown for completed sessions */}
-            {completionType === "completed" && (
-              <div className="space-y-2">
-                <Label htmlFor="notes">Session Notes</Label>
-                <p className="text-sm text-muted-foreground">
-                  These notes will be visible to the parent
-                </p>
-                <Textarea
-                  id="notes"
-                  placeholder="Add notes or summary about the session..."
-                  value={completionNotes}
-                  onChange={(e) => setCompletionNotes(e.target.value)}
-                  rows={4}
-                />
-              </div>
-            )}
+            {/* Session Notes - Shown for both completed and no-show */}
+            <div className="space-y-2">
+              <Label htmlFor="notes">
+                {completionType === "completed" ? "Session Notes" : "No-Show Notes (Optional)"}
+              </Label>
+              <p className="text-sm text-muted-foreground">
+                {completionType === "completed"
+                  ? "These notes will be visible to the parent"
+                  : "Add any notes about the no-show (e.g., homework for next session, materials to review)"}
+              </p>
+              <Textarea
+                id="notes"
+                placeholder={
+                  completionType === "completed"
+                    ? "Add notes or summary about the session..."
+                    : "E.g., Please complete Chapter 5 exercises before the next session..."
+                }
+                value={completionNotes}
+                onChange={(e) => setCompletionNotes(e.target.value)}
+                rows={4}
+              />
+            </div>
 
             {/* No-show information */}
             {completionType === "no_show" && (
-              <div className="p-4 bg-muted rounded-lg">
-                <p className="text-sm">
-                  <strong>Note:</strong> This session will be marked with "Student did not attend the session."
-                  Parents will be notified of the no-show.
+              <div className="p-4 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-lg">
+                <p className="text-sm text-amber-900 dark:text-amber-200">
+                  <strong>Note:</strong> Parents will be notified of the no-show. Any notes you add will be included in the notification email.
                 </p>
               </div>
             )}

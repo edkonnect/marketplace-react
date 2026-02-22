@@ -961,7 +961,7 @@ export function AdminDashboard() {
                                     : ""
                                 }
                               >
-                                {session.status === "no_show" ? "No Show" : session.status}
+                                {session.status === "no_show" ? "Completed (No Show)" : session.status}
                               </Badge>
                             </div>
                             <div className="space-y-1 text-sm text-muted-foreground">
