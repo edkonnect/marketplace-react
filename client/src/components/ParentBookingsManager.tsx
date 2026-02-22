@@ -194,7 +194,7 @@ export function ParentBookingsManager() {
 
     // Custom label for no_show
     const label = safeStatus === "no_show"
-      ? "No Show"
+      ? "Completed (No Show)"
       : safeStatus.charAt(0).toUpperCase() + safeStatus.slice(1);
 
     // Custom styling for no_show badge

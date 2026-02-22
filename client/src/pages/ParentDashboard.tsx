@@ -780,7 +780,7 @@ export default function ParentDashboard() {
                                   : ""
                               }
                             >
-                              {session.status === "no_show" ? "No Show" : session.status}
+                              {session.status === "no_show" ? "Completed (No Show)" : session.status}
                             </Badge>
                           </div>
                           <p className="text-sm text-muted-foreground mb-2">
