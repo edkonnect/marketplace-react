@@ -196,7 +196,7 @@ export default function Navigation() {
                       <DropdownMenuItem asChild>
                         <Link href="/parent/payments" className="flex items-center w-full cursor-pointer">
                           <CreditCard className="w-4 h-4 mr-2" />
-                          Payments
+                          Billing
                         </Link>
                       </DropdownMenuItem>
                       <DropdownMenuItem asChild>
@@ -212,7 +212,7 @@ export default function Navigation() {
                       <DropdownMenuItem asChild>
                         <Link href="/tutor/payments" className="flex items-center w-full cursor-pointer">
                           <CreditCard className="w-4 h-4 mr-2" />
-                          Payments
+                          Billing
                         </Link>
                       </DropdownMenuItem>
                       <DropdownMenuItem asChild>

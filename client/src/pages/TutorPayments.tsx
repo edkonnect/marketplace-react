@@ -51,12 +51,12 @@ export default function TutorPayments() {
 
   const requestPayoutMutation = trpc.payment.requestPayout.useMutation({
     onSuccess: () => {
-      toast.success("Payment request submitted successfully");
+      toast.success("Payout request submitted successfully");
       refetchEnrollments();
       refetchRequests();
     },
     onError: (err) => {
-      toast.error(err.message || "Failed to submit payment request");
+      toast.error(err.message || "Failed to submit payout request");
     },
   });
 
@@ -68,7 +68,7 @@ export default function TutorPayments() {
     <div className="min-h-screen flex flex-col bg-background">
       <Navigation />
       <div className="container py-8 space-y-8">
-        <h1 className="text-3xl font-bold">Payments</h1>
+        <h1 className="text-3xl font-bold">Billing & Payouts</h1>
 
         {/* Ready to Request */}
         <section className="space-y-4">
@@ -81,7 +81,7 @@ export default function TutorPayments() {
           ) : completedEnrollments.length === 0 ? (
             <Card>
               <CardContent className="py-8 text-center text-muted-foreground">
-                No completed enrollments available for payment request.
+                No completed enrollments available for payout request.
               </CardContent>
             </Card>
           ) : (
@@ -117,7 +117,7 @@ export default function TutorPayments() {
                         onClick={() => handleRequestPayout(enrollment.subscriptionId)}
                         disabled={requestPayoutMutation.isPending}
                       >
-                        Request Payment
+                        Request Payout
                       </Button>
                     </CardContent>
                   </Card>
@@ -127,15 +127,15 @@ export default function TutorPayments() {
           )}
         </section>
 
-        {/* Payment Requests History */}
+        {/* Payout Requests History */}
         <section className="space-y-4">
-          <h2 className="text-xl font-semibold">Payment Requests</h2>
+          <h2 className="text-xl font-semibold">Payout Requests</h2>
           {loadingRequests ? (
             <p className="text-muted-foreground">Loading...</p>
           ) : payoutRequests.length === 0 ? (
             <Card>
               <CardContent className="py-8 text-center text-muted-foreground">
-                No payment requests submitted yet.
+                No payout requests submitted yet.
               </CardContent>
             </Card>
           ) : (

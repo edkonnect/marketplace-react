@@ -71,7 +71,7 @@ export function PaymentHistoryTable({ payments }: PaymentHistoryTableProps) {
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <CreditCard className="h-5 w-5" />
-          Payment History
+          Billing History
         </CardTitle>
       </CardHeader>
       <CardContent>

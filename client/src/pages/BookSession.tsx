@@ -90,7 +90,7 @@ export default function BookSession() {
             <AlertDescription>
               {subscription.subscription.status !== "active" 
                 ? "This subscription is not active. Please contact support if you believe this is an error."
-                : "Payment is required before booking sessions. Please complete your payment from the dashboard."}
+                : "Billing is required before booking sessions. Please complete your billing from the dashboard."}
             </AlertDescription>
           </Alert>
           <Button asChild className="mt-4">

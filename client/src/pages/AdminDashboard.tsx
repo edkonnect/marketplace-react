@@ -260,7 +260,7 @@ export function AdminDashboard() {
         <div className="mb-8">
           <h1 className="text-4xl font-bold mb-2">Admin Dashboard</h1>
           <p className="text-muted-foreground">
-            Monitor platform activity, users, enrollments, and payments
+            Monitor platform activity, users, enrollments, and billing
           </p>
         </div>
 
@@ -344,7 +344,7 @@ export function AdminDashboard() {
               <TabsTrigger value="analytics">Analytics</TabsTrigger>
               <TabsTrigger value="users">Users</TabsTrigger>
               <TabsTrigger value="enrollments">Enrollments</TabsTrigger>
-              <TabsTrigger value="payments">Payments</TabsTrigger>
+              <TabsTrigger value="payments">Billing</TabsTrigger>
               <TabsTrigger value="sessions">Sessions</TabsTrigger>
               <TabsTrigger value="payout-requests">Payout Requests</TabsTrigger>
               <TabsTrigger value="courses">Courses</TabsTrigger>
@@ -447,15 +447,15 @@ export function AdminDashboard() {
                   </CardContent>
                 </Card>
 
-                {/* Payment Status Chart */}
+                {/* Billing Status Chart */}
                 <Card>
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2">
                       <BarChart3 className="h-5 w-5 text-green-500" />
-                      Payment Status
+                      Billing Status
                     </CardTitle>
                     <CardDescription>
-                      Payment completion rates
+                      Billing completion rates
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
@@ -615,16 +615,16 @@ export function AdminDashboard() {
                     </Select>
                   </div>
                   <div>
-                    <label className="text-sm font-medium mb-2 block">Payment Status</label>
+                    <label className="text-sm font-medium mb-2 block">Billing Status</label>
                     <Select
                       value={enrollmentFilters.paymentStatus || 'all'}
                       onValueChange={(value) => setEnrollmentFilters({ ...enrollmentFilters, paymentStatus: value === 'all' ? undefined : value as any })}
                     >
                       <SelectTrigger>
-                        <SelectValue placeholder="All payment statuses" />
+                        <SelectValue placeholder="All billing statuses" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="all">All payment statuses</SelectItem>
+                        <SelectItem value="all">All billing statuses</SelectItem>
                         <SelectItem value="paid">Paid</SelectItem>
                         <SelectItem value="pending">Pending</SelectItem>
                         <SelectItem value="failed">Failed</SelectItem>
@@ -782,9 +782,9 @@ export function AdminDashboard() {
 
             <Card>
               <CardHeader>
-                <CardTitle>All Payments</CardTitle>
+                <CardTitle>All Billing Transactions</CardTitle>
                 <CardDescription>
-                  Showing {paymentsData?.payments.length || 0} of {paymentsData?.total || 0} payments
+                  Showing {paymentsData?.payments.length || 0} of {paymentsData?.total || 0} transactions
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -850,7 +850,7 @@ export function AdminDashboard() {
                     })}
                   </div>
                 ) : (
-                  <p className="text-center text-muted-foreground py-8">No payments found</p>
+                  <p className="text-center text-muted-foreground py-8">No billing transactions found</p>
                 )}
                 
                 {paymentsData && paymentsData.total > ITEMS_PER_PAGE && (

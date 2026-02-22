@@ -410,7 +410,7 @@ export default function ParentDashboard() {
                             </Badge>
                             {subscription.paymentStatus === "pending" && subscription.paymentPlan === "full" && (
                               <Badge variant="destructive" className="text-xs">
-                                Payment Pending
+                                Billing Pending
                               </Badge>
                             )}
                             {subscription.paymentPlan === "installment" && (
@@ -420,7 +420,7 @@ export default function ParentDashboard() {
                             )}
                             {subscription.paymentPlan === "installment" && subscription.firstInstallmentPaid && !subscription.secondInstallmentPaid && (
                               <Badge variant="secondary" className="text-xs bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200">
-                                2nd Payment Due
+                                2nd Installment Due
                               </Badge>
                             )}
                             {subscription.paymentPlan === "installment" && subscription.firstInstallmentPaid && subscription.secondInstallmentPaid && (
@@ -448,7 +448,7 @@ export default function ParentDashboard() {
                         {subscription.paymentStatus === "pending" && subscription.paymentPlan === "full" && (
                           <div className="p-3 bg-amber-50 dark:bg-amber-950/20 rounded-lg border border-amber-200 dark:border-amber-900">
                             <p className="text-sm text-amber-900 dark:text-amber-200 mb-2">
-                              Complete your payment to access all course features
+                              Complete your billing to access all course features
                             </p>
                             <Button
                               size="sm"
@@ -481,7 +481,7 @@ export default function ParentDashboard() {
                         {subscription.paymentPlan === "installment" && (
                           <div className="p-3 bg-blue-50 dark:bg-blue-950/20 rounded-lg border border-blue-200 dark:border-blue-900 space-y-2">
                             <p className="text-sm font-medium text-blue-900 dark:text-blue-200">
-                              💳 Installment Payment Plan
+                              💳 Installment Billing Plan
                             </p>
                             <div className="space-y-1 text-xs text-blue-800 dark:text-blue-300">
                               <div className="flex justify-between">

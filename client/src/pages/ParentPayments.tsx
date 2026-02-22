@@ -22,7 +22,7 @@ export default function ParentPayments() {
     <div className="min-h-screen flex flex-col bg-background">
       <Navigation />
       <div className="container py-8 space-y-6">
-        <h1 className="text-3xl font-bold">Payments</h1>
+        <h1 className="text-3xl font-bold">Billing History</h1>
         {isLoading ? (
           <Card>
             <CardContent className="p-6">
