@@ -41,6 +41,7 @@ export function AdminDashboard() {
   const [enrollmentsPage, setEnrollmentsPage] = useState(1);
   const [paymentsPage, setPaymentsPage] = useState(1);
   const [tutorsPage, setTutorsPage] = useState(1);
+  const [sessionsPage, setSessionsPage] = useState(1);
   const ITEMS_PER_PAGE = 10;
 
   // Filter states
@@ -60,6 +61,12 @@ export function AdminDashboard() {
 
   const [paymentFilters, setPaymentFilters] = useState<{
     status?: "completed" | "pending" | "failed";
+    startDate?: string;
+    endDate?: string;
+  }>({});
+
+  const [sessionFilters, setSessionFilters] = useState<{
+    status?: "scheduled" | "completed" | "cancelled" | "no_show";
     startDate?: string;
     endDate?: string;
   }>({});
@@ -90,6 +97,11 @@ export function AdminDashboard() {
 
   const { data: paymentsData, isLoading: paymentsLoading } = trpc.admin.getAllPayments.useQuery(
     { limit: ITEMS_PER_PAGE, offset: (paymentsPage - 1) * ITEMS_PER_PAGE, ...paymentFilters },
+    { enabled: isAuthenticated && user?.role === "admin" }
+  );
+
+  const { data: sessionsData, isLoading: sessionsLoading } = trpc.admin.getAllSessions.useQuery(
+    { limit: ITEMS_PER_PAGE, offset: (sessionsPage - 1) * ITEMS_PER_PAGE, ...sessionFilters },
     { enabled: isAuthenticated && user?.role === "admin" }
   );
 
@@ -177,6 +189,10 @@ export function AdminDashboard() {
   }, [paymentFilters]);
 
   useEffect(() => {
+    setSessionsPage(1);
+  }, [sessionFilters]);
+
+  useEffect(() => {
     if (!loading && isAuthenticated && user?.role !== 'admin') {
       window.location.href = '/';
     }
@@ -225,6 +241,7 @@ export function AdminDashboard() {
   const resetUserFilters = () => setUserFilters({});
   const resetEnrollmentFilters = () => setEnrollmentFilters({});
   const resetPaymentFilters = () => setPaymentFilters({});
+  const resetSessionFilters = () => setSessionFilters({});
 
   if (loading || !isAuthenticated || user?.role !== 'admin') {
     return (
@@ -328,6 +345,7 @@ export function AdminDashboard() {
               <TabsTrigger value="users">Users</TabsTrigger>
               <TabsTrigger value="enrollments">Enrollments</TabsTrigger>
               <TabsTrigger value="payments">Payments</TabsTrigger>
+              <TabsTrigger value="sessions">Sessions</TabsTrigger>
               <TabsTrigger value="payout-requests">Payout Requests</TabsTrigger>
               <TabsTrigger value="courses">Courses</TabsTrigger>
               <TabsTrigger value="registered-tutors">Registered Tutors</TabsTrigger>
@@ -841,6 +859,148 @@ export function AdminDashboard() {
                     totalItems={paymentsData.total}
                     itemsPerPage={ITEMS_PER_PAGE}
                     onPageChange={setPaymentsPage}
+                  />
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Sessions Tab */}
+          <TabsContent value="sessions" forceMount className={tabContentClass}>
+            {/* Filters */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Filters</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <label className="text-sm font-medium mb-2 block">Status</label>
+                    <Select
+                      value={sessionFilters.status || 'all'}
+                      onValueChange={(value) => setSessionFilters({ ...sessionFilters, status: value === 'all' ? undefined : value as any })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="All statuses" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All statuses</SelectItem>
+                        <SelectItem value="scheduled">Scheduled</SelectItem>
+                        <SelectItem value="completed">Completed</SelectItem>
+                        <SelectItem value="cancelled">Cancelled</SelectItem>
+                        <SelectItem value="no_show">No Show</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium mb-2 block">Start Date</label>
+                    <Input
+                      type="date"
+                      value={sessionFilters.startDate || ''}
+                      onChange={(e) => setSessionFilters({ ...sessionFilters, startDate: e.target.value || undefined })}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium mb-2 block">End Date</label>
+                    <Input
+                      type="date"
+                      value={sessionFilters.endDate || ''}
+                      onChange={(e) => setSessionFilters({ ...sessionFilters, endDate: e.target.value || undefined })}
+                    />
+                  </div>
+                </div>
+                <div className="flex gap-2 mt-4">
+                  <Button variant="outline" size="sm" onClick={resetSessionFilters}>
+                    <X className="h-4 w-4 mr-2" />
+                    Reset Filters
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>All Sessions</CardTitle>
+                <CardDescription>
+                  Showing {sessionsData?.sessions.length || 0} of {sessionsData?.total || 0} sessions
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {sessionsLoading ? (
+                  <div className="space-y-4">
+                    {[1, 2, 3].map(i => <Skeleton key={i} className="h-24 w-full" />)}
+                  </div>
+                ) : sessionsData && sessionsData.sessions.length > 0 ? (
+                  <div className="space-y-4">
+                    {sessionsData.sessions.map((session) => {
+                      const studentName = [session.studentFirstName, session.studentLastName]
+                        .filter(Boolean)
+                        .join(" ")
+                        .trim() || "Student";
+
+                      return (
+                        <div
+                          key={session.id}
+                          className="flex items-start justify-between p-4 border rounded-lg hover:bg-accent transition-colors"
+                        >
+                          <div className="flex-1">
+                            <div className="flex items-center gap-3 mb-2">
+                              <p className="font-semibold">
+                                {new Date(session.scheduledAt).toLocaleDateString()} • {new Date(session.scheduledAt).toLocaleTimeString()}
+                              </p>
+                              <Badge
+                                variant={
+                                  session.status === "completed" ? "secondary" :
+                                  session.status === "cancelled" ? "destructive" :
+                                  session.status === "no_show" ? "outline" :
+                                  "default"
+                                }
+                                className={
+                                  session.status === "no_show"
+                                    ? "bg-amber-100 text-amber-900 border-amber-300 dark:bg-amber-950 dark:text-amber-200 dark:border-amber-800"
+                                    : ""
+                                }
+                              >
+                                {session.status === "no_show" ? "No Show" : session.status}
+                              </Badge>
+                            </div>
+                            <div className="space-y-1 text-sm text-muted-foreground">
+                              <p>
+                                <span className="font-medium text-foreground">Course:</span> {session.courseTitle || "Unknown"}
+                              </p>
+                              <p>
+                                <span className="font-medium text-foreground">Student:</span> {studentName}
+                              </p>
+                              <p>
+                                <span className="font-medium text-foreground">Parent:</span> {session.parentName} ({session.parentEmail})
+                              </p>
+                              <p>
+                                <span className="font-medium text-foreground">Tutor:</span> {session.tutorName}
+                              </p>
+                              <p>
+                                <span className="font-medium text-foreground">Duration:</span> {session.duration} minutes
+                              </p>
+                              {session.feedbackFromTutor && (
+                                <p className="mt-2">
+                                  <span className="font-medium text-foreground">Tutor Notes:</span> {session.feedbackFromTutor}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="text-center text-muted-foreground py-8">No sessions found</p>
+                )}
+
+                {sessionsData && sessionsData.total > ITEMS_PER_PAGE && (
+                  <Pagination
+                    currentPage={sessionsPage}
+                    totalItems={sessionsData.total}
+                    itemsPerPage={ITEMS_PER_PAGE}
+                    onPageChange={setSessionsPage}
                   />
                 )}
               </CardContent>

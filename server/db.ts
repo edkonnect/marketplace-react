@@ -2474,7 +2474,7 @@ export async function rescheduleSession(sessionId: number, newScheduledAt: numbe
 export async function getSessionWithDetails(sessionId: number) {
   const db = await getDb();
   if (!db) return null;
-  
+
   const result = await db
     .select({
       session: sessions,
@@ -2491,18 +2491,18 @@ export async function getSessionWithDetails(sessionId: number) {
     .leftJoin(users, eq(tutorProfiles.userId, users.id))
     .where(eq(sessions.id, sessionId))
     .limit(1);
-  
+
   if (result.length === 0) return null;
-  
+
   const row = result[0];
-  
+
   // Get parent user separately
   const parentResult = await db
     .select()
     .from(users)
     .where(eq(users.id, row.session.parentId))
     .limit(1);
-  
+
   return {
     ...row.session,
     subscription: row.subscription,
@@ -2511,6 +2511,51 @@ export async function getSessionWithDetails(sessionId: number) {
     tutorUser: row.tutorUser,
     parentUser: parentResult[0] || null,
   };
+}
+
+// Get all sessions with details (for admin)
+export async function getAllSessionsWithDetails() {
+  const db = await getDb();
+  if (!db) return [];
+
+  const tutorUsers = alias(users, 'tutor_users');
+  const parentUsers = alias(users, 'parent_users');
+
+  const result = await db
+    .select({
+      session: sessions,
+      subscription: subscriptions,
+      course: courses,
+      tutorUser: { id: tutorUsers.id, name: tutorUsers.name, email: tutorUsers.email },
+      parentUser: { id: parentUsers.id, name: parentUsers.name, email: parentUsers.email },
+    })
+    .from(sessions)
+    .leftJoin(subscriptions, eq(sessions.subscriptionId, subscriptions.id))
+    .leftJoin(courses, eq(subscriptions.courseId, courses.id))
+    .leftJoin(tutorUsers, eq(sessions.tutorId, tutorUsers.id))
+    .leftJoin(parentUsers, eq(sessions.parentId, parentUsers.id))
+    .orderBy(desc(sessions.scheduledAt));
+
+  return result.map(row => ({
+    id: row.session.id,
+    subscriptionId: row.session.subscriptionId,
+    tutorId: row.session.tutorId,
+    parentId: row.session.parentId,
+    scheduledAt: row.session.scheduledAt,
+    duration: row.session.duration,
+    status: row.session.status,
+    feedbackFromTutor: row.session.feedbackFromTutor,
+    feedbackFromParent: row.session.feedbackFromParent,
+    createdAt: row.session.createdAt,
+    studentFirstName: row.subscription?.studentFirstName || null,
+    studentLastName: row.subscription?.studentLastName || null,
+    courseTitle: row.course?.title || null,
+    courseSubject: row.course?.subject || null,
+    tutorName: row.tutorUser?.name || null,
+    tutorEmail: row.tutorUser?.email || null,
+    parentName: row.parentUser?.name || null,
+    parentEmail: row.parentUser?.email || null,
+  }));
 }
 
 

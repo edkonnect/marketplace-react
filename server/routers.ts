@@ -5,7 +5,7 @@ import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
 import { z } from "zod";
 import * as db from "./db";
 import { TRPCError } from "@trpc/server";
-import { sendWelcomeEmail, sendBookingConfirmation, sendEnrollmentConfirmation, sendTutorEnrollmentNotification, formatEmailDate, formatEmailTime, formatEmailPrice } from "./email-helpers";
+import { sendWelcomeEmail, sendBookingConfirmation, sendEnrollmentConfirmation, sendTutorEnrollmentNotification, sendNoShowNotification, formatEmailDate, formatEmailTime, formatEmailPrice } from "./email-helpers";
 import { generateBookingToken, isValidBookingToken } from "./booking-management";
 import { cancelAppointment } from "./acuity";
 import { sendCancellationConfirmationEmail } from "./cancellation-email";
@@ -1584,7 +1584,7 @@ export const appRouter = router({
       }))
       .mutation(async ({ ctx, input }) => {
         const { id, ...updates } = input;
-        
+
         const session = await db.getSessionById(id);
         if (!session) {
           throw new TRPCError({ code: 'NOT_FOUND', message: 'Session not found' });
@@ -1599,6 +1599,42 @@ export const appRouter = router({
         if (!success) {
           throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to update session' });
         }
+
+        // Send email notification to parent if session is marked as no-show
+        if (input.status === 'no_show') {
+          try {
+            // Get detailed session information
+            const parent = await db.getUserById(session.parentId);
+            const tutor = await db.getUserById(session.tutorId);
+            const subscription = await db.getSubscriptionById(session.subscriptionId);
+            const course = subscription ? await db.getCourseById(subscription.courseId) : null;
+
+            if (parent?.email && parent?.name && tutor?.name && course?.title) {
+              const studentName = subscription
+                ? [subscription.studentFirstName, subscription.studentLastName].filter(Boolean).join(' ').trim() || 'Student'
+                : 'Student';
+
+              const sessionDate = new Date(session.scheduledAt);
+
+              await sendNoShowNotification({
+                parentEmail: parent.email,
+                parentName: parent.name,
+                studentName,
+                courseName: course.title,
+                tutorName: tutor.name,
+                sessionDate: formatEmailDate(sessionDate),
+                sessionTime: formatEmailTime(sessionDate),
+                tutorNotes: input.feedbackFromTutor,
+              });
+
+              console.log('[No-Show Email] Sent no-show notification to parent:', parent.email);
+            }
+          } catch (emailError) {
+            console.error('[No-Show Email] Failed to send notification:', emailError);
+            // Don't fail the mutation if email fails
+          }
+        }
+
         return { success: true };
       }),
   }),
@@ -3179,6 +3215,49 @@ export const appRouter = router({
         }
 
         return { success: true };
+      }),
+
+    getAllSessions: adminProcedure
+      .input(z.object({
+        limit: z.number().optional().default(50),
+        offset: z.number().optional().default(0),
+        status: z.enum(["scheduled", "completed", "cancelled", "no_show"]).optional(),
+        startDate: z.string().optional(),
+        endDate: z.string().optional(),
+      }))
+      .query(async ({ input }) => {
+        let allSessions = await db.getAllSessionsWithDetails();
+
+        // Apply status filter
+        if (input.status) {
+          allSessions = allSessions.filter(s => s.status === input.status);
+        }
+
+        // Apply date range filter
+        if (input.startDate) {
+          const startDate = new Date(input.startDate);
+          allSessions = allSessions.filter(s => new Date(s.scheduledAt) >= startDate);
+        }
+        if (input.endDate) {
+          const endDate = new Date(input.endDate);
+          endDate.setHours(23, 59, 59, 999);
+          allSessions = allSessions.filter(s => new Date(s.scheduledAt) <= endDate);
+        }
+
+        // Sort by scheduled date (most recent first)
+        const sortedSessions = allSessions.sort((a, b) => {
+          const dateA = new Date(a.scheduledAt).getTime();
+          const dateB = new Date(b.scheduledAt).getTime();
+          return dateB - dateA;
+        });
+
+        // Apply pagination
+        const paginatedSessions = sortedSessions.slice(input.offset, input.offset + input.limit);
+
+        return {
+          sessions: paginatedSessions,
+          total: allSessions.length,
+        };
       }),
   }),
 

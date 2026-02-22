@@ -10,6 +10,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Link, useLocation } from "wouter";
 import { BookOpen, Calendar, MessageSquare, DollarSign, Users, Edit, Clock, FileText, Plus } from "lucide-react";
 import { AvailabilityManager } from "@/components/AvailabilityManager";
@@ -62,6 +64,10 @@ export default function TutorDashboard() {
 
   const [sessionNotes, setSessionNotes] = useState<Record<number, string>>({});
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [completionDialogOpen, setCompletionDialogOpen] = useState(false);
+  const [selectedSessionId, setSelectedSessionId] = useState<number | null>(null);
+  const [completionType, setCompletionType] = useState<"completed" | "no_show">("completed");
+  const [completionNotes, setCompletionNotes] = useState("");
   type PreferenceState = { preferred: boolean; hourlyRate: string; approvalStatus?: string };
   const [preferenceState, setPreferenceState] = useState<Record<number, PreferenceState>>({});
 
@@ -118,11 +124,41 @@ export default function TutorDashboard() {
     switch (status) {
       case "cancelled":
         return "destructive";
+      case "no_show":
+        return "outline";
       case "completed":
         return "secondary";
       default:
         return "default";
     }
+  };
+
+  const handleOpenCompletionDialog = (sessionId: number, existingNotes?: string) => {
+    setSelectedSessionId(sessionId);
+    setCompletionNotes(existingNotes || "");
+    setCompletionType("completed");
+    setCompletionDialogOpen(true);
+  };
+
+  const handleCompleteSession = () => {
+    if (!selectedSessionId) return;
+
+    const finalNotes = completionType === "no_show"
+      ? "Student did not attend the session."
+      : completionNotes;
+
+    updateSessionMutation.mutate({
+      id: selectedSessionId,
+      status: completionType,
+      feedbackFromTutor: finalNotes || undefined,
+    }, {
+      onSuccess: () => {
+        setCompletionDialogOpen(false);
+        setSelectedSessionId(null);
+        setCompletionNotes("");
+        setCompletionType("completed");
+      }
+    });
   };
 
   const hiddenStorageKey = user ? `tutor_hidden_sessions_${user.id}` : "tutor_hidden_sessions";
@@ -587,8 +623,10 @@ export default function TutorDashboard() {
                                 </div>
                               </div>
                                 <div className="flex items-center gap-2">
-                                  <Badge variant={statusVariant(session.status)}>{session.status}</Badge>
-                                  {session.status !== "cancelled" && session.status !== "completed" && (
+                                  <Badge variant={statusVariant(session.status)}>
+                                    {session.status === "no_show" ? "No Show" : session.status}
+                                  </Badge>
+                                  {session.status !== "cancelled" && session.status !== "completed" && session.status !== "no_show" && (
                                     <Button
                                       size="sm"
                                       onClick={() => {
@@ -606,8 +644,12 @@ export default function TutorDashboard() {
                               </div>
 
                               {canComplete(session) && (
-                                <Button size="sm" onClick={markComplete} disabled={updateSessionMutation.isPending}>
-                                  Mark session as completed
+                                <Button
+                                  size="sm"
+                                  onClick={() => handleOpenCompletionDialog(session.id, session.feedbackFromTutor)}
+                                  disabled={updateSessionMutation.isPending}
+                                >
+                                  Complete Session
                                 </Button>
                               )}
 
@@ -629,6 +671,13 @@ export default function TutorDashboard() {
                                       Save notes
                                     </Button>
                                   </div>
+                                </div>
+                              )}
+
+                              {session.status === "no_show" && session.feedbackFromTutor && (
+                                <div className="p-3 bg-muted rounded-lg">
+                                  <p className="text-sm font-medium text-muted-foreground mb-1">No-Show Note:</p>
+                                  <p className="text-sm">{session.feedbackFromTutor}</p>
                                 </div>
                               )}
                             </CardContent>
@@ -696,8 +745,10 @@ export default function TutorDashboard() {
                                     </div>
                                   </div>
                                   <div className="flex items-center gap-2">
-                                    <Badge variant={statusVariant(session.status)}>{session.status}</Badge>
-                                    {session.status !== "cancelled" && session.status !== "completed" && (
+                                    <Badge variant={statusVariant(session.status)}>
+                                      {session.status === "no_show" ? "No Show" : session.status}
+                                    </Badge>
+                                    {session.status !== "cancelled" && session.status !== "completed" && session.status !== "no_show" && (
                                       <Button
                                         size="sm"
                                         onClick={() => {
@@ -715,8 +766,12 @@ export default function TutorDashboard() {
                                 </div>
 
                                 {canComplete(session) && (
-                                  <Button size="sm" onClick={markComplete} disabled={updateSessionMutation.isPending}>
-                                    Mark session as completed
+                                  <Button
+                                    size="sm"
+                                    onClick={() => handleOpenCompletionDialog(session.id, session.feedbackFromTutor)}
+                                    disabled={updateSessionMutation.isPending}
+                                  >
+                                    Complete Session
                                   </Button>
                                 )}
 
@@ -741,7 +796,14 @@ export default function TutorDashboard() {
                                   </div>
                                 )}
 
-                                {(session.status === "cancelled" || session.status === "completed") && (
+                                {session.status === "no_show" && session.feedbackFromTutor && (
+                                  <div className="p-3 bg-muted rounded-lg">
+                                    <p className="text-sm font-medium text-muted-foreground mb-1">No-Show Note:</p>
+                                    <p className="text-sm">{session.feedbackFromTutor}</p>
+                                  </div>
+                                )}
+
+                                {(session.status === "cancelled" || session.status === "completed" || session.status === "no_show") && (
                                   <div className="flex gap-2">
                                     <Button
                                       size="sm"
@@ -802,6 +864,75 @@ export default function TutorDashboard() {
           )}
         </div>
       </div>
+
+      {/* Session Completion Dialog */}
+      <Dialog open={completionDialogOpen} onOpenChange={setCompletionDialogOpen}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Complete Session</DialogTitle>
+            <DialogDescription>
+              Mark this session as completed or record if the student did not show up.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-6 py-4">
+            {/* Completion Type Selection */}
+            <RadioGroup value={completionType} onValueChange={(value: any) => setCompletionType(value)}>
+              <div className="flex items-center space-x-2 p-3 border rounded-lg hover:bg-accent cursor-pointer">
+                <RadioGroupItem value="completed" id="completed" />
+                <Label htmlFor="completed" className="flex-1 cursor-pointer">
+                  <div className="font-medium">Session Completed Successfully</div>
+                  <div className="text-sm text-muted-foreground">Student attended and session was conducted</div>
+                </Label>
+              </div>
+
+              <div className="flex items-center space-x-2 p-3 border rounded-lg hover:bg-accent cursor-pointer">
+                <RadioGroupItem value="no_show" id="no_show" />
+                <Label htmlFor="no_show" className="flex-1 cursor-pointer">
+                  <div className="font-medium">Student No-Show</div>
+                  <div className="text-sm text-muted-foreground">Student did not attend the session</div>
+                </Label>
+              </div>
+            </RadioGroup>
+
+            {/* Session Notes - Only shown for completed sessions */}
+            {completionType === "completed" && (
+              <div className="space-y-2">
+                <Label htmlFor="notes">Session Notes</Label>
+                <p className="text-sm text-muted-foreground">
+                  These notes will be visible to the parent
+                </p>
+                <Textarea
+                  id="notes"
+                  placeholder="Add notes or summary about the session..."
+                  value={completionNotes}
+                  onChange={(e) => setCompletionNotes(e.target.value)}
+                  rows={4}
+                />
+              </div>
+            )}
+
+            {/* No-show information */}
+            {completionType === "no_show" && (
+              <div className="p-4 bg-muted rounded-lg">
+                <p className="text-sm">
+                  <strong>Note:</strong> This session will be marked with "Student did not attend the session."
+                  Parents will be notified of the no-show.
+                </p>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCompletionDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleCompleteSession} disabled={updateSessionMutation.isPending}>
+              {completionType === "completed" ? "Mark as Completed" : "Record No-Show"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

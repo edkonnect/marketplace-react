@@ -11,7 +11,8 @@ import {
   getTutorEnrollmentNotificationEmail,
   getTutorApprovalEmail,
   getPasswordSetupEmail,
-  getEmailVerificationEmail
+  getEmailVerificationEmail,
+  getNoShowNotificationEmail
 } from './email-templates';
 
 const BASE_URL = process.env.VITE_FRONTEND_FORGE_API_URL || 'http://localhost:3000';
@@ -283,6 +284,43 @@ export async function sendPasswordSetupEmail(params: SendPasswordSetupEmailParam
   return await emailService.sendEmail({
     to: tutorEmail,
     subject: '🎉 Set Up Your Tutor Account - EdKonnect Academy',
+    html,
+  });
+}
+
+interface SendNoShowNotificationParams {
+  parentEmail: string;
+  parentName: string;
+  studentName: string;
+  courseName: string;
+  tutorName: string;
+  sessionDate: string;
+  sessionTime: string;
+  tutorNotes?: string;
+}
+
+/**
+ * Send no-show notification email to parent
+ */
+export async function sendNoShowNotification(params: SendNoShowNotificationParams): Promise<boolean> {
+  const { parentEmail, parentName, studentName, courseName, tutorName, sessionDate, sessionTime, tutorNotes } = params;
+
+  const dashboardUrl = emailRedirect("/parent/dashboard");
+
+  const html = getNoShowNotificationEmail({
+    parentName,
+    studentName,
+    courseName,
+    tutorName,
+    sessionDate,
+    sessionTime,
+    tutorNotes,
+    dashboardUrl,
+  });
+
+  return await emailService.sendEmail({
+    to: parentEmail,
+    subject: `⚠️ Session No-Show Notification - ${courseName}`,
     html,
   });
 }
