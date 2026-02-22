@@ -677,3 +677,105 @@ export function getPasswordSetupEmail(props: PasswordSetupEmailProps): string {
     preheaderText: 'Set up your tutor account password'
   });
 }
+
+interface NoShowNotificationEmailProps {
+  parentName: string;
+  studentName: string;
+  courseName: string;
+  tutorName: string;
+  sessionDate: string;
+  sessionTime: string;
+  tutorNotes?: string;
+  dashboardUrl: string;
+}
+
+/**
+ * No-show notification email template for parents
+ */
+export function getNoShowNotificationEmail(props: NoShowNotificationEmailProps): string {
+  const { parentName, studentName, courseName, tutorName, sessionDate, sessionTime, tutorNotes, dashboardUrl } = props;
+
+  const content = `
+    <h1>⚠️ Session No-Show Notification</h1>
+
+    <p>Hi ${parentName},</p>
+
+    <p>We wanted to inform you that your scheduled tutoring session was marked as a no-show by the tutor.</p>
+
+    <div class="highlight-box" style="background-color: #fef3c7; border-left-color: #f59e0b;">
+      <p style="margin: 0; font-weight: 600; color: #92400e;">
+        📅 Session Details
+      </p>
+    </div>
+
+    <table style="width: 100%; margin: 24px 0; border-collapse: collapse;">
+      <tr style="border-bottom: 1px solid #e5e7eb;">
+        <td style="padding: 12px 0; font-weight: 600; color: #6b7280;">Student</td>
+        <td style="padding: 12px 0; color: #374151;">${studentName}</td>
+      </tr>
+      <tr style="border-bottom: 1px solid #e5e7eb;">
+        <td style="padding: 12px 0; font-weight: 600; color: #6b7280;">Course</td>
+        <td style="padding: 12px 0; color: #374151;">${courseName}</td>
+      </tr>
+      <tr style="border-bottom: 1px solid #e5e7eb;">
+        <td style="padding: 12px 0; font-weight: 600; color: #6b7280;">Tutor</td>
+        <td style="padding: 12px 0; color: #374151;">${tutorName}</td>
+      </tr>
+      <tr style="border-bottom: 1px solid #e5e7eb;">
+        <td style="padding: 12px 0; font-weight: 600; color: #6b7280;">Date</td>
+        <td style="padding: 12px 0; color: #374151;">${sessionDate}</td>
+      </tr>
+      <tr>
+        <td style="padding: 12px 0; font-weight: 600; color: #6b7280;">Time</td>
+        <td style="padding: 12px 0; color: #374151;">${sessionTime}</td>
+      </tr>
+    </table>
+
+    ${tutorNotes ? `
+    <div style="background-color: #f9fafb; border: 1px solid #e5e7eb; padding: 16px; margin: 24px 0; border-radius: 4px;">
+      <p style="margin: 0 0 8px 0; font-weight: 600; color: #374151;">Tutor's Notes:</p>
+      <p style="margin: 0; color: #6b7280; font-style: italic;">"${tutorNotes}"</p>
+    </div>
+    ` : ''}
+
+    <h2>What does this mean?</h2>
+
+    <p>A no-show indicates that the student did not attend the scheduled session. This could happen for various reasons:</p>
+
+    <ul style="margin: 16px 0; padding-left: 24px;">
+      <li style="margin-bottom: 8px;">The student may have forgotten about the session</li>
+      <li style="margin-bottom: 8px;">There may have been a technical issue preventing attendance</li>
+      <li style="margin-bottom: 8px;">The session time may not have been convenient</li>
+    </ul>
+
+    <h2>Next Steps</h2>
+
+    <div style="background-color: #eff6ff; border-left: 4px solid #3b82f6; padding: 16px; margin: 24px 0; border-radius: 4px;">
+      <ul style="margin: 0; padding-left: 24px; color: #1e40af;">
+        <li style="margin-bottom: 8px;">Review the session details in your dashboard</li>
+        <li style="margin-bottom: 8px;">Contact your tutor if you have questions about the no-show</li>
+        <li style="margin-bottom: 8px;">Schedule a new session at a convenient time</li>
+        <li style="margin-bottom: 0;">Consider setting calendar reminders for future sessions</li>
+      </ul>
+    </div>
+
+    <div style="text-align: center; margin: 32px 0;">
+      <a href="${dashboardUrl}" class="button">
+        View Dashboard
+      </a>
+    </div>
+
+    <p style="margin-top: 24px;">
+      If you believe this was marked in error or have any concerns, please contact our support team immediately.
+    </p>
+
+    <p style="margin-top: 16px;">
+      Best regards,<br>
+      <strong>The EdKonnect Academy Team</strong>
+    </p>
+  `;
+
+  return getEmailBase(content, {
+    preheaderText: `Session no-show notification for ${studentName} - ${courseName}`
+  });
+}

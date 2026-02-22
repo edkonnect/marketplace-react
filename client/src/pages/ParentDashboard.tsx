@@ -147,6 +147,7 @@ export default function ParentDashboard() {
   }, [activeSubscriptions]);
 
   const [selectedStudent, setSelectedStudent] = useState<string | null>(null);
+  const [selectedSubscriptionStudent, setSelectedSubscriptionStudent] = useState<string>("all");
   const [selectedNoteStudent, setSelectedNoteStudent] = useState<string>("all");
   const [selectedSubject, setSelectedSubject] = useState<string>("all");
 
@@ -204,6 +205,18 @@ export default function ParentDashboard() {
       return matchesStudent && matchesSubject;
     });
   }, [sessionNotes, selectedNoteStudent, selectedSubject, subscriptionStudentMap]);
+
+  // Filter subscriptions by selected student for the Subscriptions tab
+  const filteredSubscriptionsForTab = useMemo(() => {
+    if (selectedSubscriptionStudent === "all") return activeSubscriptions;
+
+    return activeSubscriptions.filter(({ subscription }) => {
+      const name = [subscription.studentFirstName, subscription.studentLastName].filter(Boolean).join(" ").trim() || "Student";
+      return name === selectedSubscriptionStudent;
+    });
+  }, [activeSubscriptions, selectedSubscriptionStudent]);
+
+  // Filter subscriptions by selected student for the Schedule tab
   const filteredSubscriptions =
     selectedStudent
       ? activeSubscriptions.filter(({ subscription }) => {
@@ -332,13 +345,50 @@ export default function ParentDashboard() {
                 </Button>
               </div>
 
+              {/* Student Filter Dropdown */}
+              {studentOptions.length > 1 && (
+                <div className="flex items-center gap-4">
+                  <Label htmlFor="subscription-student-filter" className="whitespace-nowrap">Filter by Student:</Label>
+                  <Select value={selectedSubscriptionStudent} onValueChange={setSelectedSubscriptionStudent}>
+                    <SelectTrigger id="subscription-student-filter" className="w-[250px]">
+                      <SelectValue placeholder="All Students" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Students</SelectItem>
+                      {studentOptions.map((student) => (
+                        <SelectItem key={student} value={student}>
+                          {student}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
               {subsLoading ? (
                 <div className="space-y-4">
                   {[1, 2].map(i => <Skeleton key={i} className="h-48 w-full" />)}
                 </div>
               ) : subscriptions && subscriptions.length > 0 ? (
-                <div className="grid md:grid-cols-2 gap-6">
-                  {subscriptions.map(({ subscription, course, tutor }) => (
+                <>
+                  {filteredSubscriptionsForTab.length === 0 ? (
+                    <Card>
+                      <CardContent className="py-16 text-center">
+                        <BookOpen className="w-16 h-16 mx-auto mb-4 text-muted-foreground" />
+                        <h3 className="text-xl font-semibold mb-2">No Subscriptions Found</h3>
+                        <p className="text-muted-foreground mb-6">
+                          {selectedSubscriptionStudent === "all"
+                            ? "No subscriptions found"
+                            : `No subscriptions found for ${selectedSubscriptionStudent}`}
+                        </p>
+                        <Button asChild>
+                          <Link href="/tutors">Browse Tutors</Link>
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  ) : (
+                    <div className="grid md:grid-cols-2 gap-6">
+                      {filteredSubscriptionsForTab.map(({ subscription, course, tutor }) => (
                     <Card key={subscription.id} className="hover:shadow-elegant transition-all">
                       <CardHeader>
                         <div className="flex items-start justify-between">
@@ -497,7 +547,9 @@ export default function ParentDashboard() {
                       </CardContent>
                     </Card>
                   ))}
-                </div>
+                    </div>
+                  )}
+                </>
               ) : (
                 <Card>
                   <CardContent className="py-16 text-center">
@@ -701,10 +753,10 @@ export default function ParentDashboard() {
                 <div className="space-y-4">
                   {[1, 2, 3].map(i => <Skeleton key={i} className="h-32 w-full" />)}
                 </div>
-              ) : sessionHistory && sessionHistory.filter(s => s.status === "scheduled" || s.status === "completed").length > 0 ? (
+              ) : sessionHistory && sessionHistory.filter(s => s.status === "scheduled" || s.status === "completed" || s.status === "no_show").length > 0 ? (
                 <div className="space-y-4">
                   {sessionHistory
-                    .filter((s) => s.status === "scheduled" || s.status === "completed")
+                    .filter((s) => s.status === "scheduled" || s.status === "completed" || s.status === "no_show")
                     .slice(0, 10)
                     .map((session) => (
                     <Card key={session.id}>
@@ -716,8 +768,12 @@ export default function ParentDashboard() {
                             <p className="font-semibold">
                               {new Date(session.scheduledAt).toLocaleDateString()} • {new Date(session.scheduledAt).toLocaleTimeString()}
                             </p>
-                            <Badge variant={session.status === "completed" ? "default" : "secondary"}>
-                              {session.status}
+                            <Badge variant={
+                              session.status === "completed" ? "default" :
+                              session.status === "no_show" ? "outline" :
+                              "secondary"
+                            }>
+                              {session.status === "no_show" ? "No Show" : session.status}
                             </Badge>
                           </div>
                           <p className="text-sm text-muted-foreground mb-2">

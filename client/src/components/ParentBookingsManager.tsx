@@ -24,6 +24,7 @@ export function ParentBookingsManager() {
   const [newTime, setNewTime] = useState<string>("");
   const [cancelReason, setCancelReason] = useState<string>("");
   const [frequency, setFrequency] = useState<"weekly" | "biweekly">("weekly");
+  const [selectedStudent, setSelectedStudent] = useState<string>("all");
 
   const { data: bookings, isLoading, refetch } = trpc.session.myBookings.useQuery();
   const { data: availabilityData } = trpc.subscription.getAvailability.useQuery(
@@ -190,14 +191,66 @@ export function ParentBookingsManager() {
       no_show: "outline",
     };
     const safeStatus = status || "pending";
-    const label = safeStatus.charAt(0).toUpperCase() + safeStatus.slice(1);
+
+    // Custom label for no_show
+    const label = safeStatus === "no_show"
+      ? "No Show"
+      : safeStatus.charAt(0).toUpperCase() + safeStatus.slice(1);
+
+    // Custom styling for no_show badge
+    const customClassName = safeStatus === "no_show"
+      ? "bg-amber-100 text-amber-900 border-amber-300 dark:bg-amber-950 dark:text-amber-200 dark:border-amber-800"
+      : "";
 
     return (
-      <Badge variant={variants[safeStatus] || "outline"}>
+      <Badge variant={variants[safeStatus] || "outline"} className={customClassName}>
         {label}
       </Badge>
     );
   };
+
+  // Extract unique student names for the filter dropdown
+  const studentOptions = useMemo(() => {
+    if (!bookings) return [];
+    const students = new Set<string>();
+
+    Object.values(bookings as Record<string, any[]>).forEach((sessions) => {
+      sessions.forEach((session: any) => {
+        const studentName = [session.studentFirstName, session.studentLastName]
+          .filter(Boolean)
+          .join(" ")
+          .trim();
+        if (studentName) {
+          students.add(studentName);
+        }
+      });
+    });
+
+    return Array.from(students).sort();
+  }, [bookings]);
+
+  // Filter bookings by selected student
+  const filteredBookings = useMemo(() => {
+    if (!bookings || selectedStudent === "all") return bookings;
+
+    const filtered: Record<string, any[]> = {};
+
+    Object.entries(bookings as Record<string, any[]>).forEach(([subscriptionId, sessions]) => {
+      const filteredSessions = sessions.filter((session: any) => {
+        const studentName = [session.studentFirstName, session.studentLastName]
+          .filter(Boolean)
+          .join(" ")
+          .trim();
+        return studentName === selectedStudent;
+      });
+
+      if (filteredSessions.length > 0) {
+        filtered[subscriptionId] = filteredSessions;
+      }
+    });
+
+    return filtered;
+  }, [bookings, selectedStudent]);
 
   const availableTimeSlots = useMemo(() => {
     if (!newDate || !availabilityData) return [];
@@ -276,7 +329,39 @@ export function ParentBookingsManager() {
         </Button>
       </div>
 
-      {Object.entries(bookings as Record<string, any[]>).map(([subscriptionId, sessions]) => {
+      {/* Student Filter Dropdown */}
+      {studentOptions.length > 0 && (
+        <div className="flex items-center gap-4">
+          <Label htmlFor="student-filter" className="whitespace-nowrap">Filter by Student:</Label>
+          <Select value={selectedStudent} onValueChange={setSelectedStudent}>
+            <SelectTrigger id="student-filter" className="w-[250px]">
+              <SelectValue placeholder="All Students" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Students</SelectItem>
+              {studentOptions.map((student) => (
+                <SelectItem key={student} value={student}>
+                  {student}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+
+      {Object.keys(filteredBookings).length === 0 ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>No Bookings Found</CardTitle>
+            <CardDescription>
+              {selectedStudent === "all"
+                ? "You don't have any bookings yet"
+                : `No bookings found for ${selectedStudent}`}
+            </CardDescription>
+          </CardHeader>
+        </Card>
+      ) : (
+        Object.entries(filteredBookings as Record<string, any[]>).map(([subscriptionId, sessions]) => {
         const scheduledSessions = sessions.filter(s => s.status === "scheduled");
         const firstSession = sessions[0];
         
@@ -368,7 +453,7 @@ export function ParentBookingsManager() {
             </CardContent>
           </Card>
         );
-      })}
+      }))}
 
       {/* Reschedule Single Session Dialog */}
       <Dialog open={rescheduleDialogOpen} onOpenChange={setRescheduleDialogOpen}>
