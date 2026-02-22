@@ -768,11 +768,18 @@ export default function ParentDashboard() {
                             <p className="font-semibold">
                               {new Date(session.scheduledAt).toLocaleDateString()} • {new Date(session.scheduledAt).toLocaleTimeString()}
                             </p>
-                            <Badge variant={
-                              session.status === "completed" ? "default" :
-                              session.status === "no_show" ? "outline" :
-                              "secondary"
-                            }>
+                            <Badge
+                              variant={
+                                session.status === "completed" ? "default" :
+                                session.status === "no_show" ? "outline" :
+                                "secondary"
+                              }
+                              className={
+                                session.status === "no_show"
+                                  ? "bg-amber-100 text-amber-900 border-amber-300 dark:bg-amber-950 dark:text-amber-200 dark:border-amber-800"
+                                  : ""
+                              }
+                            >
                               {session.status === "no_show" ? "No Show" : session.status}
                             </Badge>
                           </div>
