@@ -41,16 +41,16 @@ function SessionCard({
 
   return (
     <div className="border rounded-lg p-4">
-      <div className="flex items-start justify-between gap-4">
+      <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
         {/* Left side - Session info */}
         <div className="flex-1 space-y-2">
-          <div className="flex items-center gap-2">
-            <CalendarIcon className="w-4 h-4 text-muted-foreground" />
+          <div className="flex flex-wrap items-center gap-2">
+            <CalendarIcon className="w-4 h-4 text-muted-foreground flex-shrink-0" />
             <span className="font-medium">{formatDate(session.scheduledAt)}</span>
             {getStatusBadge(session.status)}
           </div>
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Clock className="w-4 h-4" />
+            <Clock className="w-4 h-4 flex-shrink-0" />
             <span>{formatTime(session.scheduledAt)}</span>
             <span>•</span>
             <span>{session.duration} min</span>
@@ -58,14 +58,14 @@ function SessionCard({
         </div>
 
         {/* Right side - Actions or Rating */}
-        <div className="flex items-center gap-3">
+        <div className="flex flex-col sm:flex-row md:flex-row items-stretch sm:items-center gap-3">
           {session.status === "scheduled" && (
             <>
-              <Button variant="ghost" size="sm" onClick={() => onReschedule(session.id)}>
+              <Button variant="ghost" size="sm" onClick={() => onReschedule(session.id)} className="justify-start sm:justify-center">
                 <Edit className="w-4 h-4 mr-1" />
                 Reschedule
               </Button>
-              <Button variant="ghost" size="sm" onClick={() => onCancel(session.id)}>
+              <Button variant="ghost" size="sm" onClick={() => onCancel(session.id)} className="justify-start sm:justify-center">
                 <Trash2 className="w-4 h-4 mr-1" />
                 Cancel
               </Button>
@@ -73,7 +73,7 @@ function SessionCard({
           )}
 
           {canRate && (
-            <div className="min-w-[280px]">
+            <div className="min-w-full sm:min-w-[280px]">
               {rating ? (
                 <div>
                   <p className="text-xs text-muted-foreground mb-1.5">Your Rating</p>
@@ -446,9 +446,9 @@ export function ParentBookingsManager() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <h2 className="text-2xl font-bold">My Bookings</h2>
-        <Button variant="outline" onClick={() => refetch()}>
+        <Button variant="outline" onClick={() => refetch()} className="w-full sm:w-auto">
           <RefreshCw className="w-4 h-4 mr-2" />
           Refresh
         </Button>
@@ -456,10 +456,10 @@ export function ParentBookingsManager() {
 
       {/* Student Filter Dropdown */}
       {studentOptions.length > 0 && (
-        <div className="flex items-center gap-4">
-          <Label htmlFor="student-filter" className="whitespace-nowrap">Filter by Student:</Label>
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+          <Label htmlFor="student-filter" className="whitespace-nowrap text-sm">Filter by Student:</Label>
           <Select value={selectedStudent} onValueChange={setSelectedStudent}>
-            <SelectTrigger id="student-filter" className="w-[250px]">
+            <SelectTrigger id="student-filter" className="w-full sm:w-[250px]">
               <SelectValue placeholder="All Students" />
             </SelectTrigger>
             <SelectContent>
@@ -493,9 +493,9 @@ export function ParentBookingsManager() {
         return (
           <Card key={subscriptionId}>
             <CardHeader>
-              <div className="flex items-start justify-between">
-                <div>
-                  <CardTitle className="flex items-center gap-2">
+              <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
+                <div className="flex-1">
+                  <CardTitle className="flex flex-wrap items-center gap-2">
                     {firstSession?.course?.title || "Course"}
                     {scheduledSessions.length > 1 && (
                       <Badge variant="secondary">{scheduledSessions.length} sessions</Badge>
@@ -509,11 +509,12 @@ export function ParentBookingsManager() {
                   </CardDescription>
                 </div>
                 {scheduledSessions.length > 0 && (
-                  <div className="flex gap-2">
+                  <div className="flex flex-col sm:flex-row gap-2">
                     <Button
                       variant="outline"
                       size="sm"
                       onClick={() => handleRescheduleSeries(parseInt(subscriptionId))}
+                      className="w-full sm:w-auto justify-start sm:justify-center"
                     >
                       <Edit className="w-4 h-4 mr-1" />
                       Reschedule Series
@@ -522,6 +523,7 @@ export function ParentBookingsManager() {
                       variant="destructive"
                       size="sm"
                       onClick={() => handleCancelSeries(parseInt(subscriptionId))}
+                      className="w-full sm:w-auto justify-start sm:justify-center"
                     >
                       <Trash2 className="w-4 h-4 mr-1" />
                       Cancel Series
