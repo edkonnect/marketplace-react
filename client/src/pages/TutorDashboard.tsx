@@ -596,20 +596,20 @@ export default function TutorDashboard() {
 
                         return (
                           <Card key={session.id}>
-                            <CardContent className="pt-6 space-y-4">
-                              <div className="flex items-center justify-between gap-4">
-                                <div className="flex items-center gap-4">
-                                  <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center">
-                                    <Calendar className="w-6 h-6 text-primary" />
+                            <CardContent className="pt-4 sm:pt-6 space-y-4">
+                              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
+                                <div className="flex items-start sm:items-center gap-3 sm:gap-4 flex-1 min-w-0">
+                                  <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+                                    <Calendar className="w-5 h-5 sm:w-6 sm:h-6 text-primary" />
                                   </div>
-                                  <div>
-                                    <p className="font-semibold">
+                                  <div className="flex-1 min-w-0">
+                                    <p className="font-semibold text-sm sm:text-base truncate">
                                       {session.courseTitle || "Course"}
                                     </p>
-                                    <p className="text-sm text-muted-foreground">
+                                    <p className="text-xs sm:text-sm text-muted-foreground">
                                       {new Date(session.scheduledAt).toLocaleDateString()} • {new Date(session.scheduledAt).toLocaleTimeString()} • {session.duration} min
                                     </p>
-                                    <p className="text-sm text-muted-foreground">
+                                    <p className="text-xs sm:text-sm text-muted-foreground">
                                       {session.studentFirstName || session.studentLastName
                                         ? `Student: ${[session.studentFirstName, session.studentLastName].filter(Boolean).join(" ")}`
                                         : null}
@@ -618,8 +618,8 @@ export default function TutorDashboard() {
                                     </p>
                                 </div>
                               </div>
-                                <div className="flex items-center gap-2">
-                                  <Badge variant={statusVariant(session.status)}>
+                                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-2">
+                                  <Badge variant={statusVariant(session.status)} className="text-xs">
                                     {session.status === "no_show" ? "Completed (No Show)" : session.status}
                                   </Badge>
                                   {session.status !== "cancelled" && session.status !== "completed" && session.status !== "no_show" && (
@@ -632,6 +632,7 @@ export default function TutorDashboard() {
                                           console.log("Join meeting clicked");
                                         }
                                       }}
+                                      className="w-full sm:w-auto"
                                     >
                                       Join meeting
                                     </Button>
@@ -740,20 +741,20 @@ export default function TutorDashboard() {
 
                           return (
                             <Card key={session.id}>
-                              <CardContent className="pt-6 space-y-4">
-                                <div className="flex items-center justify-between gap-4">
-                                  <div className="flex items-center gap-4">
-                                    <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center">
-                                      <Calendar className="w-6 h-6 text-primary" />
+                              <CardContent className="pt-4 sm:pt-6 space-y-4">
+                                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
+                                  <div className="flex items-start sm:items-center gap-3 sm:gap-4 flex-1 min-w-0">
+                                    <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+                                      <Calendar className="w-5 h-5 sm:w-6 sm:h-6 text-primary" />
                                     </div>
-                                    <div>
-                                      <p className="font-semibold">
+                                    <div className="flex-1 min-w-0">
+                                      <p className="font-semibold text-sm sm:text-base truncate">
                                         {session.courseTitle || session.courseSubject || "Course"}
                                       </p>
-                                      <p className="text-sm text-muted-foreground">
+                                      <p className="text-xs sm:text-sm text-muted-foreground">
                                         {new Date(session.scheduledAt).toLocaleDateString()} • {new Date(session.scheduledAt).toLocaleTimeString()} • {session.duration} min
                                       </p>
-                                      <p className="text-sm text-muted-foreground">
+                                      <p className="text-xs sm:text-sm text-muted-foreground">
                                         {(session.studentFirstName || session.studentLastName)
                                           ? `Student: ${[session.studentFirstName, session.studentLastName].filter(Boolean).join(" ")}`
                                           : null}
@@ -762,8 +763,8 @@ export default function TutorDashboard() {
                                       </p>
                                     </div>
                                   </div>
-                                  <div className="flex items-center gap-2">
-                                    <Badge variant={statusVariant(session.status)}>
+                                  <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-2">
+                                    <Badge variant={statusVariant(session.status)} className="text-xs">
                                       {session.status === "no_show" ? "No Show" : session.status}
                                     </Badge>
                                     {session.status !== "cancelled" && session.status !== "completed" && session.status !== "no_show" && (
@@ -776,6 +777,7 @@ export default function TutorDashboard() {
                                             console.log("Join meeting clicked");
                                           }
                                         }}
+                                        className="w-full sm:w-auto"
                                       >
                                         Join meeting
                                       </Button>
