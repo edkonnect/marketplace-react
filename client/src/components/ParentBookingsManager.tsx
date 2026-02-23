@@ -9,7 +9,94 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Calendar as CalendarIcon, Clock, Edit, Trash2, RefreshCw } from "lucide-react";
+import { Calendar as CalendarIcon, Clock, Edit, Trash2, RefreshCw, Star } from "lucide-react";
+import { RatingModal } from "@/components/RatingModal";
+import { StarRatingDisplay } from "@/components/StarRatingDisplay";
+
+interface SessionCardProps {
+  session: any;
+  canRate: boolean;
+  onRate: (sessionId: number) => void;
+  onReschedule: (sessionId: number) => void;
+  onCancel: (sessionId: number) => void;
+  formatDate: (timestamp: number) => string;
+  formatTime: (timestamp: number) => string;
+  getStatusBadge: (status?: string | null) => JSX.Element;
+}
+
+function SessionCard({
+  session,
+  canRate,
+  onRate,
+  onReschedule,
+  onCancel,
+  formatDate,
+  formatTime,
+  getStatusBadge,
+}: SessionCardProps) {
+  const { data: rating } = trpc.session.getSessionRating.useQuery(
+    { sessionId: session.id },
+    { enabled: canRate }
+  );
+
+  return (
+    <div className="border rounded-lg p-4">
+      <div className="flex items-start justify-between gap-4">
+        {/* Left side - Session info */}
+        <div className="flex-1 space-y-2">
+          <div className="flex items-center gap-2">
+            <CalendarIcon className="w-4 h-4 text-muted-foreground" />
+            <span className="font-medium">{formatDate(session.scheduledAt)}</span>
+            {getStatusBadge(session.status)}
+          </div>
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Clock className="w-4 h-4" />
+            <span>{formatTime(session.scheduledAt)}</span>
+            <span>•</span>
+            <span>{session.duration} min</span>
+          </div>
+        </div>
+
+        {/* Right side - Actions or Rating */}
+        <div className="flex items-center gap-3">
+          {session.status === "scheduled" && (
+            <>
+              <Button variant="ghost" size="sm" onClick={() => onReschedule(session.id)}>
+                <Edit className="w-4 h-4 mr-1" />
+                Reschedule
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => onCancel(session.id)}>
+                <Trash2 className="w-4 h-4 mr-1" />
+                Cancel
+              </Button>
+            </>
+          )}
+
+          {canRate && (
+            <div className="min-w-[280px]">
+              {rating ? (
+                <div>
+                  <p className="text-xs text-muted-foreground mb-1.5">Your Rating</p>
+                  <StarRatingDisplay rating={rating.rating} comment={rating.comment} size="sm" />
+                </div>
+              ) : (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => onRate(session.id)}
+                  className="w-full"
+                >
+                  <Star className="w-4 h-4 mr-2" />
+                  Rate this Session
+                </Button>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export function ParentBookingsManager() {
   const [selectedSeries, setSelectedSeries] = useState<number | null>(null);
@@ -25,7 +112,10 @@ export function ParentBookingsManager() {
   const [cancelReason, setCancelReason] = useState<string>("");
   const [frequency, setFrequency] = useState<"weekly" | "biweekly">("weekly");
   const [selectedStudent, setSelectedStudent] = useState<string>("all");
+  const [ratingModalOpen, setRatingModalOpen] = useState(false);
+  const [ratingSessionId, setRatingSessionId] = useState<number | null>(null);
 
+  const utils = trpc.useUtils();
   const { data: bookings, isLoading, refetch } = trpc.session.myBookings.useQuery();
   const { data: availabilityData } = trpc.subscription.getAvailability.useQuery(
     { subscriptionId: selectedSubscriptionId ?? 0 },
@@ -73,6 +163,26 @@ export function ParentBookingsManager() {
     },
     onError: (error) => {
       toast.error(`Failed to cancel series: ${error.message}`);
+    },
+  });
+
+  const rateSessionMutation = trpc.session.rateSession.useMutation({
+    onSuccess: async () => {
+      toast.success("Thank you for your feedback!");
+      setRatingModalOpen(false);
+
+      // Invalidate the rating query for the specific session
+      if (ratingSessionId) {
+        await utils.session.getSessionRating.invalidate({ sessionId: ratingSessionId });
+      }
+
+      // Refetch bookings to update the UI
+      await refetch();
+
+      setRatingSessionId(null);
+    },
+    onError: (error) => {
+      toast.error(`Failed to submit rating: ${error.message}`);
     },
   });
 
@@ -163,6 +273,21 @@ export function ParentBookingsManager() {
     cancelSeriesMutation.mutate({
       subscriptionId: selectedSeries,
       reason: cancelReason || undefined,
+    });
+  };
+
+  const handleRateSession = (sessionId: number) => {
+    setRatingSessionId(sessionId);
+    setRatingModalOpen(true);
+  };
+
+  const handleSubmitRating = (rating: number, comment: string) => {
+    if (!ratingSessionId) return;
+
+    rateSessionMutation.mutate({
+      sessionId: ratingSessionId,
+      rating,
+      comment: comment || undefined,
     });
   };
 
@@ -407,48 +532,25 @@ export function ParentBookingsManager() {
             </CardHeader>
             <CardContent>
               <div className="space-y-3">
-                {sessions.map((session: any) => (
-                  <div
-                    key={session.id}
-                    className="flex items-center justify-between p-3 border rounded-lg"
-                  >
-                    <div className="flex items-center gap-4">
-                      <div className="flex flex-col">
-                        <div className="flex items-center gap-2">
-                          <CalendarIcon className="w-4 h-4 text-muted-foreground" />
-                          <span className="font-medium">{formatDate(session.scheduledAt)}</span>
-                        </div>
-                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                          <Clock className="w-4 h-4" />
-                          <span>{formatTime(session.scheduledAt)}</span>
-                          <span>•</span>
-                          <span>{session.duration} min</span>
-                        </div>
-                      </div>
-                      {getStatusBadge(session.status)}
-                    </div>
-                    {session.status === "scheduled" && (
-                      <div className="flex gap-2">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleRescheduleSession(session.id)}
-                        >
-                          <Edit className="w-4 h-4 mr-1" />
-                          Reschedule
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleCancelSession(session.id)}
-                        >
-                          <Trash2 className="w-4 h-4 mr-1" />
-                          Cancel
-                        </Button>
-                      </div>
-                    )}
-                  </div>
-                ))}
+                {sessions.map((session: any) => {
+                  const isCompleted = session.status === "completed" || session.status === "no_show";
+                  const sessionHasPassed = session.scheduledAt < Date.now();
+                  const canRate = isCompleted && sessionHasPassed;
+
+                  return (
+                    <SessionCard
+                      key={session.id}
+                      session={session}
+                      canRate={canRate}
+                      onRate={handleRateSession}
+                      onReschedule={handleRescheduleSession}
+                      onCancel={handleCancelSession}
+                      formatDate={formatDate}
+                      formatTime={formatTime}
+                      getStatusBadge={getStatusBadge}
+                    />
+                  );
+                })}
               </div>
             </CardContent>
           </Card>
@@ -607,6 +709,17 @@ export function ParentBookingsManager() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Rating Modal */}
+      <RatingModal
+        open={ratingModalOpen}
+        onClose={() => {
+          setRatingModalOpen(false);
+          setRatingSessionId(null);
+        }}
+        onSubmit={handleSubmitRating}
+        isSubmitting={rateSessionMutation.isPending}
+      />
     </div>
   );
 }

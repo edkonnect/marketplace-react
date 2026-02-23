@@ -23,7 +23,8 @@ import {
   inAppNotifications, InsertInAppNotification,
   refreshTokens,
   tutorCoursePreferences, InsertTutorCoursePreference,
-  tutorPayoutRequests, InsertTutorPayoutRequest
+  tutorPayoutRequests, InsertTutorPayoutRequest,
+  sessionRatings, InsertSessionRating
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
@@ -2517,6 +2518,65 @@ export async function getSessionWithDetails(sessionId: number) {
     tutorUser: row.tutorUser,
     parentUser: parentResult[0] || null,
   };
+}
+
+// ============ Session Ratings ============
+
+export async function createSessionRating(rating: InsertSessionRating) {
+  const db = await getDb();
+  if (!db) return null;
+
+  try {
+    const result = await db.insert(sessionRatings).values(rating);
+    const insertedId = (result as any).insertId;
+    if (!insertedId) return null;
+    return await getSessionRatingById(insertedId);
+  } catch (error) {
+    console.error('[DB] Failed to create session rating:', error);
+    return null;
+  }
+}
+
+export async function getSessionRatingById(id: number) {
+  const db = await getDb();
+  if (!db) return null;
+
+  const result = await db
+    .select()
+    .from(sessionRatings)
+    .where(eq(sessionRatings.id, id))
+    .limit(1);
+
+  return result.length > 0 ? result[0] : null;
+}
+
+export async function getSessionRating(sessionId: number) {
+  const db = await getDb();
+  if (!db) return null;
+
+  const result = await db
+    .select()
+    .from(sessionRatings)
+    .where(eq(sessionRatings.sessionId, sessionId))
+    .limit(1);
+
+  return result.length > 0 ? result[0] : null;
+}
+
+export async function getTutorSessionRatingStats(tutorId: number) {
+  const db = await getDb();
+  if (!db) return null;
+
+  const result = await db
+    .select({
+      averageRating: sql<number>`AVG(${sessionRatings.rating})`,
+      totalRatings: sql<number>`COUNT(*)`,
+    })
+    .from(sessionRatings)
+    .where(eq(sessionRatings.tutorId, tutorId))
+    .limit(1);
+
+  return result.length > 0 ? result[0] : null;
 }
 
 // Get all sessions with details (for admin)

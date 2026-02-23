@@ -1637,6 +1637,70 @@ export const appRouter = router({
 
         return { success: true };
       }),
+
+    // Rate a session
+    rateSession: parentProcedure
+      .input(z.object({
+        sessionId: z.number(),
+        rating: z.number().min(1).max(5),
+        comment: z.string().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const session = await db.getSessionById(input.sessionId);
+        if (!session) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'Session not found' });
+        }
+
+        // Verify parent owns this session
+        if (session.parentId !== ctx.user.id) {
+          throw new TRPCError({ code: 'FORBIDDEN', message: 'Not authorized' });
+        }
+
+        // Verify session is completed
+        if (session.status !== 'completed' && session.status !== 'no_show') {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Can only rate completed sessions' });
+        }
+
+        // Verify session has already passed
+        if (session.scheduledAt > Date.now()) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Session has not started yet' });
+        }
+
+        // Check if rating already exists
+        const existingRating = await db.getSessionRating(input.sessionId);
+        if (existingRating) {
+          throw new TRPCError({ code: 'CONFLICT', message: 'Session already rated' });
+        }
+
+        // Create rating
+        const rating = await db.createSessionRating({
+          sessionId: input.sessionId,
+          parentId: ctx.user.id,
+          tutorId: session.tutorId,
+          rating: input.rating,
+          comment: input.comment || null,
+        });
+
+        return { success: true, rating };
+      }),
+
+    // Get rating for a session
+    getSessionRating: parentProcedure
+      .input(z.object({ sessionId: z.number() }))
+      .query(async ({ ctx, input }) => {
+        const session = await db.getSessionById(input.sessionId);
+        if (!session) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'Session not found' });
+        }
+
+        // Verify parent owns this session
+        if (session.parentId !== ctx.user.id) {
+          throw new TRPCError({ code: 'FORBIDDEN', message: 'Not authorized' });
+        }
+
+        const rating = await db.getSessionRating(input.sessionId);
+        return rating;
+      }),
   }),
 
   // Messaging

@@ -332,6 +332,27 @@ export type TutorPayoutRequest = typeof tutorPayoutRequests.$inferSelect;
 export type InsertTutorPayoutRequest = typeof tutorPayoutRequests.$inferInsert;
 
 /**
+ * Session ratings from parents
+ */
+export const sessionRatings = mysqlTable("session_ratings", {
+  id: int("id").autoincrement().primaryKey(),
+  sessionId: int("sessionId").notNull().references(() => sessions.id, { onDelete: "cascade" }),
+  parentId: int("parentId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  tutorId: int("tutorId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  rating: int("rating").notNull(), // 1-5 (Poor, Average, Good, Better, Excellent)
+  comment: text("comment"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => ({
+  sessionIdIdx: uniqueIndex("sessionRatings_sessionId_unique").on(table.sessionId), // One rating per session
+  parentIdIdx: index("sessionRatings_parentId_idx").on(table.parentId),
+  tutorIdIdx: index("sessionRatings_tutorId_idx").on(table.tutorId),
+}));
+
+export type SessionRating = typeof sessionRatings.$inferSelect;
+export type InsertSessionRating = typeof sessionRatings.$inferInsert;
+
+/**
  * Platform statistics displayed on home page
  */
 export const platformStats = mysqlTable("platform_stats", {
