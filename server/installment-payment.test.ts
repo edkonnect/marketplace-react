@@ -1,12 +1,35 @@
 import { describe, it, expect } from "vitest";
 import { appRouter } from "./routers";
+import type { User } from "../drizzle/schema";
+
+// Helper function to create mock user with all required fields
+function createMockUser(role: "parent" | "tutor" | "admin", id: number = 1): User {
+  return {
+    id,
+    openId: `test-${id}`,
+    email: `test${id}@example.com`,
+    passwordHash: "hash",
+    firstName: "Test",
+    lastName: "User",
+    role,
+    userType: role,
+    name: "Test User",
+    loginMethod: "email",
+    emailVerified: true,
+    emailVerifiedAt: new Date(),
+    accountSetupComplete: true,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    lastSignedIn: new Date(),
+  };
+}
 
 describe("Installment Payment Feature", () => {
   // Test API Endpoints
   describe("API Endpoints", () => {
     it("should have enrollWithInstallment endpoint", () => {
       const caller = appRouter.createCaller({
-        user: { id: 1, role: "parent" },
+        user: createMockUser("parent", 1),
         req: {} as any,
         res: {} as any,
       });
@@ -16,7 +39,7 @@ describe("Installment Payment Feature", () => {
 
     it("should have processSecondInstallment endpoint", () => {
       const caller = appRouter.createCaller({
-        user: { id: 1, role: "parent" },
+        user: createMockUser("parent", 1),
         req: {} as any,
         res: {} as any,
       });
@@ -26,7 +49,7 @@ describe("Installment Payment Feature", () => {
 
     it("should require parent role for enrollWithInstallment", async () => {
       const caller = appRouter.createCaller({
-        user: { id: 1, role: "tutor" },
+        user: createMockUser("tutor", 1),
         req: {} as any,
         res: {} as any,
       });
@@ -46,7 +69,7 @@ describe("Installment Payment Feature", () => {
 
     it("should require parent role for processSecondInstallment", async () => {
       const caller = appRouter.createCaller({
-        user: { id: 1, role: "tutor" },
+        user: createMockUser("tutor", 1),
         req: {} as any,
         res: {} as any,
       });
@@ -63,7 +86,7 @@ describe("Installment Payment Feature", () => {
 
     it("should accept student information in enrollWithInstallment", async () => {
       const caller = appRouter.createCaller({
-        user: { id: 1, role: "parent" },
+        user: createMockUser("parent", 1),
         req: {} as any,
         res: {} as any,
       });
@@ -137,7 +160,7 @@ describe("Installment Payment Feature", () => {
   describe("Business Logic", () => {
     it("should validate course price over $500 for installment", async () => {
       const caller = appRouter.createCaller({
-        user: { id: 1, role: "parent" },
+        user: createMockUser("parent", 1),
         req: {} as any,
         res: {} as any,
       });
@@ -168,7 +191,7 @@ describe("Installment Payment Feature", () => {
 
     it("should verify first installment paid before allowing second", async () => {
       const caller = appRouter.createCaller({
-        user: { id: 1, role: "parent" },
+        user: createMockUser("parent", 1),
         req: {} as any,
         res: {} as any,
       });

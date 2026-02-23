@@ -159,7 +159,7 @@ export default function BookSession() {
 
         {!hasTutor ? (
           <Alert>
-            <AlertCircle className="h-4 h-4" />
+            <AlertCircle className="h-4 w-4" />
             <AlertDescription>
               We're assigning a tutor for this course. Scheduling will be available once assigned.
             </AlertDescription>

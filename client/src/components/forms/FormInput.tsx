@@ -1,4 +1,5 @@
 import { forwardRef } from "react";
+import type { ReactElement } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -96,7 +97,7 @@ export const FormInput = forwardRef(
   }
 ) as <TValues extends Record<string, any>, K extends keyof TValues>(
   props: InputFieldProps<TValues, K> & { ref?: React.Ref<HTMLInputElement> }
-) => JSX.Element;
+) => ReactElement;
 
 type TextareaFieldProps<TValues extends Record<string, any>, K extends keyof TValues> = {
   field: RegisteredFieldReturn<TValues, K>;
@@ -132,7 +133,7 @@ export const FormTextarea = forwardRef(
   }
 ) as <TValues extends Record<string, any>, K extends keyof TValues>(
   props: TextareaFieldProps<TValues, K> & { ref?: React.Ref<HTMLTextAreaElement> }
-) => JSX.Element;
+) => ReactElement;
 
 type SelectFieldProps<TValues extends Record<string, any>, K extends keyof TValues> = {
   field: RegisteredFieldReturn<TValues, K>;

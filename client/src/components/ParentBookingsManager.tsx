@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import type { ReactElement } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -21,7 +22,7 @@ interface SessionCardProps {
   onCancel: (sessionId: number) => void;
   formatDate: (timestamp: number) => string;
   formatTime: (timestamp: number) => string;
-  getStatusBadge: (status?: string | null) => JSX.Element;
+  getStatusBadge: (status?: string | null) => ReactElement;
 }
 
 function SessionCard({
