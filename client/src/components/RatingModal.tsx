@@ -68,37 +68,37 @@ export function RatingModal({ open, onClose, onSubmit, isSubmitting }: RatingMod
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-[500px]">
+      <DialogContent className="sm:max-w-[500px] max-w-[95vw] p-4 sm:p-6">
         <DialogHeader>
-          <DialogTitle className="text-center text-2xl">Give Feedback</DialogTitle>
-          <DialogDescription className="text-center">
+          <DialogTitle className="text-center text-xl sm:text-2xl">Give Feedback</DialogTitle>
+          <DialogDescription className="text-center text-sm sm:text-base">
             How is your think of the session experience
           </DialogDescription>
         </DialogHeader>
 
-        <div className="py-6">
+        <div className="py-4 sm:py-6">
           {/* Emoji Rating Selector */}
-          <div className="flex justify-center gap-3 mb-6">
+          <div className="flex justify-center gap-1 sm:gap-3 mb-4 sm:mb-6">
             {ratingOptions.map((option) => (
               <button
                 key={option.rating}
                 type="button"
                 onClick={() => setSelectedRating(option.rating)}
-                className={`flex flex-col items-center gap-2 p-3 rounded-xl transition-all hover:bg-accent/50 ${
+                className={`flex flex-col items-center gap-1 sm:gap-2 p-1.5 sm:p-3 rounded-xl transition-all hover:bg-accent/50 ${
                   selectedRating === option.rating
                     ? "bg-primary/10 ring-2 ring-primary"
                     : ""
                 }`}
               >
                 <div
-                  className={`text-5xl transition-transform ${
+                  className={`text-3xl sm:text-5xl transition-transform ${
                     selectedRating === option.rating ? "scale-110" : ""
                   }`}
                 >
                   {option.emoji}
                 </div>
                 <span
-                  className={`text-sm font-medium ${
+                  className={`text-xs sm:text-sm font-medium ${
                     selectedRating === option.rating
                       ? "text-primary"
                       : "text-muted-foreground"
@@ -112,7 +112,7 @@ export function RatingModal({ open, onClose, onSubmit, isSubmitting }: RatingMod
 
           {/* Comment Section */}
           <div className="space-y-2">
-            <Label htmlFor="rating-comment">
+            <Label htmlFor="rating-comment" className="text-sm">
               What are the main reasons for your rating?
             </Label>
             <div className="relative">
@@ -135,25 +135,25 @@ export function RatingModal({ open, onClose, onSubmit, isSubmitting }: RatingMod
                 placeholder="Mention a reasons for your rating"
                 value={comment}
                 onChange={(e) => setComment(e.target.value)}
-                className="min-h-[100px] pl-10 resize-none"
+                className="min-h-[80px] sm:min-h-[100px] pl-10 resize-none text-sm"
               />
             </div>
           </div>
         </div>
 
-        <DialogFooter className="flex gap-3 sm:gap-3">
+        <DialogFooter className="flex flex-col sm:flex-row gap-2 sm:gap-3">
           <Button
             variant="outline"
             onClick={handleClose}
             disabled={isSubmitting}
-            className="flex-1"
+            className="flex-1 w-full"
           >
             Cancel
           </Button>
           <Button
             onClick={handleSubmit}
             disabled={selectedRating === null || isSubmitting}
-            className="flex-1 bg-gray-900 hover:bg-gray-800 text-white dark:bg-gray-100 dark:hover:bg-gray-200 dark:text-gray-900"
+            className="flex-1 w-full bg-gray-900 hover:bg-gray-800 text-white dark:bg-gray-100 dark:hover:bg-gray-200 dark:text-gray-900"
           >
             {isSubmitting ? "Submitting..." : "Submit"}
           </Button>

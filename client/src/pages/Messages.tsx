@@ -354,13 +354,13 @@ export default function Messages() {
     <div className="min-h-screen flex flex-col bg-background">
       <Navigation />
 
-      <div className="flex-1 container py-6">
-        <div className="mb-6 space-y-4">
+      <div className="flex-1 container py-4 sm:py-6">
+        <div className="mb-4 sm:mb-6 space-y-3 sm:space-y-4">
           <div>
-            <h1 className="text-3xl font-bold">Messages</h1>
-            <p className="text-muted-foreground">
-              {user?.role === "parent" 
-                ? "Select a student to view their tutors and messages" 
+            <h1 className="text-2xl sm:text-3xl font-bold">Messages</h1>
+            <p className="text-sm sm:text-base text-muted-foreground">
+              {user?.role === "parent"
+                ? "Select a student to view their tutors and messages"
                 : "Communicate with parents"}
             </p>
           </div>
@@ -368,22 +368,23 @@ export default function Messages() {
             placeholder={isTutor ? "Search by student name, parent, or course..." : "Search by student or course..."}
             value={globalSearch}
             onChange={(e) => setGlobalSearch(e.target.value)}
+            className="text-sm"
           />
         </div>
 
-        <div className="grid lg:grid-cols-4 gap-6 h-[calc(100vh-16rem)]">
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 sm:gap-6 h-[calc(100vh-12rem)] sm:h-[calc(100vh-16rem)]">
           {isParent ? (
             <>
               {/* Students List */}
-              <Card className="lg:col-span-1">
-                <CardHeader>
-                  <CardTitle className="text-lg flex items-center gap-2">
-                    <User className="w-5 h-5" />
+              <Card className={`lg:col-span-1 ${selectedStudentId && !selectedConversationId ? 'hidden lg:block' : selectedConversationId ? 'hidden lg:block' : ''}`}>
+                <CardHeader className="py-3 sm:py-4">
+                  <CardTitle className="text-base sm:text-lg flex items-center gap-2">
+                    <User className="w-4 h-4 sm:w-5 sm:h-5" />
                     Students
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="p-0">
-                  <ScrollArea className="h-[calc(100vh-20rem)]">
+                  <ScrollArea className="h-[calc(100vh-16rem)] sm:h-[calc(100vh-20rem)]">
                     {studentsLoading ? (
                       <div className="p-4 space-y-4">
                         {[1, 2, 3].map(i => (
@@ -400,7 +401,7 @@ export default function Messages() {
                           setSelectedTutorId(null);
                           setSelectedConversationId(null);
                         }}
-                            className={`w-full p-4 text-left hover:bg-muted/50 transition-colors border-b border-border ${
+                            className={`w-full p-3 sm:p-4 text-left hover:bg-muted/50 transition-colors border-b border-border ${
                               selectedStudentId === student.id ? "bg-muted" : ""
                             }`}
                           >
@@ -442,15 +443,26 @@ export default function Messages() {
               </Card>
 
               {/* Tutors List */}
-              <Card className="lg:col-span-1">
-                <CardHeader>
-                  <CardTitle className="text-lg flex items-center gap-2">
-                    <GraduationCap className="w-5 h-5" />
+              <Card className={`lg:col-span-1 ${!selectedStudentId ? 'hidden lg:block' : selectedConversationId ? 'hidden lg:block' : ''}`}>
+                <CardHeader className="py-3 sm:py-4 flex flex-row items-center justify-between space-y-0">
+                  <CardTitle className="text-base sm:text-lg flex items-center gap-2">
+                    <GraduationCap className="w-4 h-4 sm:w-5 sm:h-5" />
                     Tutors
                   </CardTitle>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="lg:hidden"
+                    onClick={() => {
+                      setSelectedStudentId(null);
+                      setSelectedConversationId(null);
+                    }}
+                  >
+                    Back
+                  </Button>
                 </CardHeader>
                 <CardContent className="p-0">
-                  <ScrollArea className="h-[calc(100vh-20rem)]">
+                  <ScrollArea className="h-[calc(100vh-16rem)] sm:h-[calc(100vh-20rem)]">
                     {selectedStudent ? (
                       filteredTutors.length > 0 ? (
                         <div>
@@ -458,7 +470,7 @@ export default function Messages() {
                             <button
                               key={`${tutor.id || 'unassigned'}-${tutor.studentId}`}
                               onClick={() => handleTutorSelect(tutor.id, tutor.studentId)}
-                              className={`w-full p-4 text-left hover:bg-muted/50 transition-colors border-b border-border ${
+                              className={`w-full p-3 sm:p-4 text-left hover:bg-muted/50 transition-colors border-b border-border ${
                                 selectedTutorId === tutor.id ? "bg-muted" : ""
                               }`}
                             >
@@ -499,15 +511,15 @@ export default function Messages() {
             </>
           ) : (
             /* Tutor view: list conversations (parents/students) */
-            <Card className="lg:col-span-1">
-              <CardHeader>
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <User className="w-5 h-5" />
+            <Card className={`lg:col-span-1 ${selectedConversationId ? 'hidden lg:block' : ''}`}>
+              <CardHeader className="py-3 sm:py-4">
+                <CardTitle className="text-base sm:text-lg flex items-center gap-2">
+                  <User className="w-4 h-4 sm:w-5 sm:h-5" />
                   Conversations
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-0">
-                <ScrollArea className="h-[calc(100vh-20rem)]">
+                <ScrollArea className="h-[calc(100vh-16rem)] sm:h-[calc(100vh-20rem)]">
                   {tutorConversationsLoading ? (
                     <div className="p-4 space-y-4">
                       {[1, 2, 3].map(i => <Skeleton key={i} className="h-20 w-full" />)}
@@ -543,7 +555,7 @@ export default function Messages() {
                               }
                             }
                           }}
-                          className={`w-full p-4 text-left hover:bg-muted/50 transition-colors border-b border-border ${
+                          className={`w-full p-3 sm:p-4 text-left hover:bg-muted/50 transition-colors border-b border-border ${
                             selectedConversationId === item.conversationId ? "bg-muted" : ""
                           }`}
                         >
@@ -587,20 +599,31 @@ export default function Messages() {
           )}
 
           {/* Messages Area */}
-          <Card className="lg:col-span-2 flex flex-col h-[70vh]">
+          <Card className={`lg:col-span-2 flex flex-col h-[calc(100vh-12rem)] sm:h-[70vh] ${!selectedConversationId ? 'hidden lg:flex' : ''}`}>
             {selectedConversationId && (selectedTutor || isTutor) ? (
               <>
-                <CardHeader>
-                  <CardTitle className="text-lg">
+                <CardHeader className="py-3 sm:py-4 flex flex-row items-start justify-between space-y-0">
+                  <CardTitle className="text-base sm:text-lg flex-1">
                     <div className="flex items-center gap-2">
-                      <span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="lg:hidden -ml-2"
+                        onClick={() => {
+                          setSelectedConversationId(null);
+                          setSelectedTutorId(null);
+                        }}
+                      >
+                        ← Back
+                      </Button>
+                      <span className="text-sm sm:text-base">
                         Chat with{" "}
                         {isTutor
                           ? tutorListForUI.find((t) => t.conversationId === selectedConversationId)?.parentName || "Parent"
                           : selectedTutor?.name || "Tutor"}
                       </span>
                     </div>
-                    <p className="text-sm font-normal text-muted-foreground mt-1">
+                    <p className="text-xs sm:text-sm font-normal text-muted-foreground mt-1">
                       {isTutor
                         ? tutorListForUI.find((t) => t.conversationId === selectedConversationId)?.studentName || "Student"
                         : `About ${selectedStudent?.firstName} ${selectedStudent?.lastName}`}
@@ -608,7 +631,7 @@ export default function Messages() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="flex-1 flex flex-col p-0">
-                  <ScrollArea className="flex-1 p-4 overflow-auto">
+                  <ScrollArea className="flex-1 p-3 sm:p-4 overflow-auto">
                     {messagesLoading ? (
                       <div className="space-y-4">
                         {[1, 2, 3].map(i => (
@@ -625,7 +648,7 @@ export default function Messages() {
                               className={`flex ${isOwn ? "justify-end" : "justify-start"}`}
                             >
                               <div
-                                className={`max-w-[70%] rounded-lg p-3 break-words ${
+                                className={`max-w-[85%] sm:max-w-[70%] rounded-lg p-2.5 sm:p-3 break-words ${
                                   isOwn
                                     ? "bg-primary text-primary-foreground"
                                     : "bg-muted"
@@ -684,7 +707,7 @@ export default function Messages() {
                   </ScrollArea>
 
                   {/* Message Input */}
-                  <div className="p-4 border-t border-border">
+                  <div className="p-3 sm:p-4 border-t border-border">
                     {selectedFile && (
                       <div className="mb-3 flex items-center gap-2 p-2 bg-muted rounded-lg">
                         <FileText className="w-4 h-4 text-muted-foreground" />
@@ -702,7 +725,7 @@ export default function Messages() {
                         </Button>
                       </div>
                     )}
-                    <div className="flex gap-2">
+                    <div className="flex gap-1.5 sm:gap-2">
                       <input
                         type="file"
                         id="file-upload"
@@ -715,6 +738,7 @@ export default function Messages() {
                         size="icon"
                         onClick={() => document.getElementById('file-upload')?.click()}
                         disabled={uploading}
+                        className="h-9 w-9 sm:h-10 sm:w-10"
                       >
                         <Paperclip className="w-4 h-4" />
                       </Button>
@@ -728,13 +752,14 @@ export default function Messages() {
                             handleSendMessage();
                           }
                         }}
-                        className="flex-1"
+                        className="flex-1 text-sm"
                         disabled={uploading}
                       />
                       <Button
                         onClick={handleSendMessage}
                         disabled={(!messageContent.trim() && !selectedFile) || uploading}
                         size="icon"
+                        className="h-9 w-9 sm:h-10 sm:w-10"
                       >
                         <Send className="w-4 h-4" />
                       </Button>
