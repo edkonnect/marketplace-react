@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Calendar as CalendarIcon, Clock, Edit, Trash2, RefreshCw, Star } from "lucide-react";
+import { Calendar as CalendarIcon, Clock, Edit, Trash2, RefreshCw, Star, Info, X } from "lucide-react";
 import { RatingModal } from "@/components/RatingModal";
 import { StarRatingDisplay } from "@/components/StarRatingDisplay";
 
@@ -40,6 +40,12 @@ function SessionCard({
     { enabled: canRate }
   );
 
+  // Check if session is within 12 hours - disable cancel/reschedule
+  const now = Date.now();
+  const sessionTime = session.scheduledAt;
+  const hoursUntilSession = (sessionTime - now) / (1000 * 60 * 60);
+  const canModifySession = hoursUntilSession >= 12;
+
   return (
     <div className="border rounded-lg p-4">
       <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
@@ -61,16 +67,35 @@ function SessionCard({
         {/* Right side - Actions or Rating */}
         <div className="flex flex-col sm:flex-row md:flex-row items-stretch sm:items-center gap-3">
           {session.status === "scheduled" && (
-            <>
-              <Button variant="ghost" size="sm" onClick={() => onReschedule(session.id)} className="justify-start sm:justify-center">
-                <Edit className="w-4 h-4 mr-1" />
-                Reschedule
-              </Button>
-              <Button variant="ghost" size="sm" onClick={() => onCancel(session.id)} className="justify-start sm:justify-center">
-                <Trash2 className="w-4 h-4 mr-1" />
-                Cancel
-              </Button>
-            </>
+            <div className="flex flex-col gap-2 w-full sm:w-auto">
+              <div className="flex gap-3">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => onReschedule(session.id)}
+                  className="justify-start sm:justify-center flex-1 sm:flex-none"
+                  disabled={!canModifySession}
+                >
+                  <Edit className="w-4 h-4 mr-1" />
+                  Reschedule
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => onCancel(session.id)}
+                  className="justify-start sm:justify-center flex-1 sm:flex-none"
+                  disabled={!canModifySession}
+                >
+                  <Trash2 className="w-4 h-4 mr-1" />
+                  Cancel
+                </Button>
+              </div>
+              {!canModifySession && (
+                <p className="text-xs text-amber-600 dark:text-amber-400 text-center sm:text-left">
+                  Changes not allowed within 12 hours of session
+                </p>
+              )}
+            </div>
           )}
 
           {canRate && (
@@ -104,6 +129,11 @@ export function ParentBookingsManager() {
   const [rescheduleDialogOpen, setRescheduleDialogOpen] = useState(false);
   const [rescheduleSeriesDialogOpen, setRescheduleSeriesDialogOpen] = useState(false);
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
+  const [showPolicyBanner, setShowPolicyBanner] = useState(() => {
+    // Check localStorage - show banner if user hasn't dismissed it
+    const dismissed = localStorage.getItem('cancellationPolicyDismissed');
+    return dismissed !== 'true';
+  });
   const [cancelSeriesDialogOpen, setCancelSeriesDialogOpen] = useState(false);
   const [selectedSessionId, setSelectedSessionId] = useState<number | null>(null);
   const [selectedSubscriptionId, setSelectedSubscriptionId] = useState<number | null>(null);
@@ -448,12 +478,54 @@ export function ParentBookingsManager() {
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <h2 className="text-2xl font-bold">My Bookings</h2>
+        <div className="flex items-center gap-3">
+          <h2 className="text-2xl font-bold">My Bookings</h2>
+          {!showPolicyBanner && (
+            <button
+              onClick={() => {
+                setShowPolicyBanner(true);
+                localStorage.removeItem('cancellationPolicyDismissed');
+              }}
+              className="text-xs text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1"
+              title="View cancellation policy"
+            >
+              <Info className="w-3 h-3" />
+              Policy
+            </button>
+          )}
+        </div>
         <Button variant="outline" onClick={() => refetch()} className="w-full sm:w-auto">
           <RefreshCw className="w-4 h-4 mr-2" />
           Refresh
         </Button>
       </div>
+
+      {/* Cancellation Policy Info - Dismissible */}
+      {showPolicyBanner && (
+        <div className="bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900 rounded-lg p-4 relative animate-in fade-in slide-in-from-top-2 duration-300">
+          <button
+            onClick={() => {
+              setShowPolicyBanner(false);
+              localStorage.setItem('cancellationPolicyDismissed', 'true');
+            }}
+            className="absolute top-3 right-3 text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-200 hover:bg-blue-100 dark:hover:bg-blue-900/50 rounded p-1 transition-all"
+            aria-label="Dismiss policy banner"
+            title="Dismiss this notice"
+          >
+            <X className="w-4 h-4" />
+          </button>
+          <div className="flex gap-3 pr-8">
+            <Info className="w-5 h-5 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
+            <div className="text-sm text-blue-900 dark:text-blue-200">
+              <p className="font-medium mb-1">Cancellation & Rescheduling Policy</p>
+              <p className="text-blue-800 dark:text-blue-300">
+                Sessions can be canceled or rescheduled up to <strong>12 hours</strong> before the scheduled start time.
+                Changes are not allowed within 12 hours of the session.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Student Filter Dropdown */}
       {studentOptions.length > 0 && (
@@ -490,7 +562,15 @@ export function ParentBookingsManager() {
         Object.entries(filteredBookings as Record<string, any[]>).map(([subscriptionId, sessions]) => {
         const scheduledSessions = sessions.filter(s => s.status === "scheduled");
         const firstSession = sessions[0];
-        
+
+        // Check if any scheduled session is within 12 hours - disable series operations
+        const now = Date.now();
+        const hasSessionWithin12Hours = scheduledSessions.some((s) => {
+          const hoursUntilSession = (s.scheduledAt - now) / (1000 * 60 * 60);
+          return hoursUntilSession < 12;
+        });
+        const canModifySeries = !hasSessionWithin12Hours;
+
         return (
           <Card key={subscriptionId}>
             <CardHeader>
@@ -516,6 +596,7 @@ export function ParentBookingsManager() {
                       size="sm"
                       onClick={() => handleRescheduleSeries(parseInt(subscriptionId))}
                       className="w-full sm:w-auto justify-start sm:justify-center"
+                      disabled={!canModifySeries}
                     >
                       <Edit className="w-4 h-4 mr-1" />
                       Reschedule Series
@@ -525,6 +606,7 @@ export function ParentBookingsManager() {
                       size="sm"
                       onClick={() => handleCancelSeries(parseInt(subscriptionId))}
                       className="w-full sm:w-auto justify-start sm:justify-center"
+                      disabled={!canModifySeries}
                     >
                       <Trash2 className="w-4 h-4 mr-1" />
                       Cancel Series
