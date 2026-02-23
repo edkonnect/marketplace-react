@@ -125,7 +125,7 @@ export const appRouter = router({
         const isAuthenticated = !!ctx.user;
         let userId: number;
 
-        if (isAuthenticated) {
+        if (isAuthenticated && ctx.user) {
           // EXISTING FLOW: User is logged in, use their ID
           userId = ctx.user.id;
 
@@ -1206,10 +1206,12 @@ export const appRouter = router({
         for (let i = 0; i < seriesSessions.length; i++) {
           const newDate = new Date(startDate);
           newDate.setDate(newDate.getDate() + (i * intervalDays));
-          
-          await db.updateSession(seriesSessions[i].id, {
-            scheduledAt: newDate.getTime(),
-          });
+
+          if (seriesSessions[i].session.id) {
+            await db.updateSession(seriesSessions[i].session.id, {
+              scheduledAt: newDate.getTime(),
+            });
+          }
         }
         
         return { success: true, rescheduledCount: seriesSessions.length };
@@ -1253,11 +1255,13 @@ export const appRouter = router({
           throw new TRPCError({ code: 'NOT_FOUND', message: 'No scheduled sessions found' });
         }
         
-        for (const session of seriesSessions) {
-          await db.updateSession(session.id, {
-            status: 'cancelled',
-            notes: input.reason ? `Canceled: ${input.reason}` : 'Canceled by parent',
-          });
+        for (const sessionData of seriesSessions) {
+          if (sessionData.session.id) {
+            await db.updateSession(sessionData.session.id, {
+              status: 'cancelled',
+              notes: input.reason ? `Canceled: ${input.reason}` : 'Canceled by parent',
+            });
+          }
         }
         
         return { success: true, canceledCount: seriesSessions.length };
@@ -2039,7 +2043,7 @@ export const appRouter = router({
                 currency: 'usd',
                 product_data: {
                   name: `${course.title} - Second Installment (2 of 2)`,
-                  description: `Student: ${subscription.studentFirstName} ${subscription.studentLastName} | Tutor: ${tutor.name || 'TBD'}`,
+                  description: `Student: ${subscription.studentFirstName} ${subscription.studentLastName} | Tutor: ${tutor?.name || 'TBD'}`,
                 },
                 unit_amount: Math.round(parseFloat(subscription.secondInstallmentAmount || '0') * 100),
               },
@@ -2345,18 +2349,20 @@ export const appRouter = router({
           parentId: subscription.parentId,
           tutorId: subscription.preferredTutorId ?? tutor?.id ?? 0,
           subscriptionId: subscription.id,
+          sessionId: null,
           amount: course?.price ?? "0",
           currency: "usd",
-          status: subscription.paymentStatus,
+          status: subscription.paymentStatus as "pending" | "completed" | "failed" | "refunded",
           paymentType: "subscription" as const,
           stripePaymentIntentId: null,
           createdAt: subscription.createdAt,
+          updatedAt: subscription.updatedAt,
         }));
 
         allPayments = [...allPayments, ...syntheticPayments];
 
         // Only show enrollment-based payments (must have a subscriptionId)
-        allPayments = allPayments.filter(p => p.subscriptionId != null);
+        allPayments = allPayments.filter((p): p is typeof p & { subscriptionId: number } => p.subscriptionId != null);
 
         // Apply status filter
         if (input.status) {
@@ -2555,17 +2561,19 @@ export const appRouter = router({
           parentId: subscription.parentId,
           tutorId: subscription.preferredTutorId ?? tutor?.id ?? 0,
           subscriptionId: subscription.id,
+          sessionId: null,
           amount: course?.price ?? "0",
           currency: "usd",
-          status: subscription.paymentStatus,
+          status: subscription.paymentStatus as "pending" | "completed" | "failed" | "refunded",
           paymentType: "subscription" as const,
           stripePaymentIntentId: null,
           createdAt: subscription.createdAt,
+          updatedAt: subscription.updatedAt,
         }));
         allPayments = [...allPayments, ...syntheticPayments];
 
         // Only show enrollment-based payments
-        allPayments = allPayments.filter(p => p.subscriptionId != null);
+        allPayments = allPayments.filter((p): p is typeof p & { subscriptionId: number } => p.subscriptionId != null);
 
         if (input.status) {
           allPayments = allPayments.filter(p => p.status === input.status);
@@ -3999,7 +4007,7 @@ export const appRouter = router({
       .mutation(async ({ ctx, input }) => {
         // Verify the parent has had a session with this tutor
         const sessions = await db.getSessionsByParentId(ctx.user.id);
-        const hasSession = sessions.some(s => s.tutorId === input.tutorId);
+        const hasSession = sessions.some(s => s.session.tutorId != null && s.session.tutorId === input.tutorId);
 
         if (!hasSession) {
           throw new TRPCError({

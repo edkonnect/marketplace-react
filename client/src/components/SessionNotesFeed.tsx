@@ -6,7 +6,7 @@ interface SessionNote {
   id: number;
   tutorName: string | null;
   subscriptionId?: number;
-  progressSummary: string;
+  progressSummary: string | null;
   homework: string | null;
   challenges: string | null;
   nextSteps: string | null;
@@ -74,12 +74,14 @@ export function SessionNotesFeed({ notes }: SessionNotesFeedProps) {
                 </div>
 
                 {/* Progress Summary */}
-                <div>
-                  <h5 className="text-sm font-medium mb-1">Notes</h5>
-                  <p className="text-sm text-muted-foreground">
-                    {note.progressSummary}
-                  </p>
-                </div>
+                {note.progressSummary && (
+                  <div>
+                    <h5 className="text-sm font-medium mb-1">Notes</h5>
+                    <p className="text-sm text-muted-foreground">
+                      {note.progressSummary}
+                    </p>
+                  </div>
+                )}
 
                 {/* Homework */}
                 {note.homework && (
