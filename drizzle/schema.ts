@@ -339,7 +339,7 @@ export const sessionRatings = mysqlTable("session_ratings", {
   sessionId: int("sessionId").notNull().references(() => sessions.id, { onDelete: "cascade" }),
   parentId: int("parentId").notNull().references(() => users.id, { onDelete: "cascade" }),
   tutorId: int("tutorId").notNull().references(() => users.id, { onDelete: "cascade" }),
-  rating: int("rating").notNull(), // 1-5 (Poor, Average, Good, Better, Excellent)
+  rating: int("rating").notNull(), // 1-5 (Poor, Average, Good, Great, Excellent)
   comment: text("comment"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),

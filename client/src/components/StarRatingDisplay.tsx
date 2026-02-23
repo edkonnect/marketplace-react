@@ -9,7 +9,7 @@ const ratingConfig = {
   1: { emoji: "😢", label: "Poor", color: "text-red-500" },
   2: { emoji: "😕", label: "Average", color: "text-orange-500" },
   3: { emoji: "😊", label: "Good", color: "text-yellow-500" },
-  4: { emoji: "😃", label: "Better", color: "text-blue-500" },
+  4: { emoji: "😃", label: "Great", color: "text-blue-500" },
   5: { emoji: "😍", label: "Excellent", color: "text-green-500" },
 };
 

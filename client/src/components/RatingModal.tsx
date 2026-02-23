@@ -40,7 +40,7 @@ const ratingOptions = [
   {
     rating: 4,
     emoji: "😃",
-    label: "Better",
+    label: "Great",
     description: "Great learning experience",
   },
   {
