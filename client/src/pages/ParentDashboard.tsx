@@ -15,6 +15,7 @@ import { LOGIN_PATH } from "@/const";
 import { SessionNotesFeed } from "@/components/SessionNotesFeed";
 import { NotificationCenter } from "@/components/NotificationCenter";
 import { ParentBookingsManager } from "@/components/ParentBookingsManager";
+import { AppointmentScheduler } from "@/components/AppointmentScheduler";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 // no additional imports needed
@@ -25,17 +26,17 @@ export default function ParentDashboard() {
   const tabContentClass =
     "space-y-6 absolute inset-0 w-full transition-all duration-300 data-[state=active]:opacity-100 data-[state=active]:translate-x-0 data-[state=inactive]:opacity-0 data-[state=inactive]:translate-x-4 data-[state=inactive]:pointer-events-none [&[hidden]]:block [&[hidden]]:opacity-0";
 
-  const { data: subscriptions, isLoading: subsLoading } = trpc.subscription.mySubscriptions.useQuery(
+  const { data: subscriptions, isLoading: subsLoading, refetch: refetchSubscriptions } = trpc.subscription.mySubscriptions.useQuery(
     undefined,
     { enabled: isAuthenticated && user?.role === "parent" }
   );
 
-  const { data: upcomingSessions, isLoading: sessionsLoading } = trpc.session.myUpcoming.useQuery(
+  const { data: upcomingSessions, isLoading: sessionsLoading, refetch: refetchSessions } = trpc.session.myUpcoming.useQuery(
     undefined,
     { enabled: isAuthenticated && user?.role === "parent" }
   );
 
-  const { data: sessionHistory, isLoading: historyLoading } = trpc.session.myHistory.useQuery(
+  const { data: sessionHistory, isLoading: historyLoading, refetch: refetchHistory } = trpc.session.myHistory.useQuery(
     undefined,
     { enabled: isAuthenticated && user?.role === "parent" }
   );
@@ -571,87 +572,20 @@ export default function ParentDashboard() {
               <ParentBookingsManager />
             </TabsContent>
 
-            {/* Schedule Tab */}
+            {/* Schedule Tab - New Acuity-style interface */}
             <TabsContent value="schedule" forceMount className={tabContentClass}>
-              <h2 className="text-2xl font-bold">Schedule Sessions</h2>
+              <h2 className="text-2xl font-bold mb-6">Schedule Sessions</h2>
 
-              <div className="flex flex-col gap-2 w-full max-w-sm">
-                <Label htmlFor="student-filter">Student</Label>
-                <Select
-                  value={selectedStudent ?? "placeholder"}
-                  onValueChange={(val) => setSelectedStudent(val === "placeholder" ? null : val)}
-                >
-                  <SelectTrigger id="student-filter">
-                    <SelectValue placeholder="Select student" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="placeholder" disabled>
-                      Select student
-                    </SelectItem>
-                    {studentOptions.map((name) => (
-                      <SelectItem key={name} value={name}>
-                        {name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              
-              {selectedStudent === null ? (
-                <Card>
-                  <CardContent className="py-10 text-center space-y-2">
-                    <h3 className="text-lg font-semibold">Select a student to view availability</h3>
-                    <p className="text-muted-foreground">Choose which student you want to schedule a session for.</p>
-                  </CardContent>
-                </Card>
-              ) : filteredSubscriptions.length > 0 ? (
-                <div className="space-y-6">
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>Select a subscription to schedule sessions</CardTitle>
-                      <CardDescription>
-                        Choose from your active subscriptions below
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="space-y-4">
-                        {filteredSubscriptions.map(({ subscription, course, tutor }) => {
-                          const tutorName = tutor?.name ?? "Tutor";
-                          const tutorId = tutor?.id;
-                          const hasTutor = typeof tutorId === "number";
-                          return (
-                          <Card key={subscription.id} className="border-2">
-                            <CardHeader>
-                              <CardTitle className="text-lg">{course.title}</CardTitle>
-                              <CardDescription>
-                                {hasTutor ? `with ${tutorName}` : "Tutor assignment pending"}
-                              </CardDescription>
-                            </CardHeader>
-                            <CardContent>
-                              {hasTutor ? (
-                                <>
-                                  <p className="text-sm text-muted-foreground mb-4">
-                                    Click on the calendar below to schedule a new session
-                                  </p>
-                                  <SchedulingCalendar
-                                    subscriptionId={subscription.id}
-                                    tutorId={tutorId!}
-                                    parentId={user?.id ?? 0}
-                                  />
-                                </>
-                              ) : (
-                                <p className="text-sm text-muted-foreground">
-                                  We’re assigning a tutor for this course. Scheduling will be available once assigned.
-                                </p>
-                              )}
-                            </CardContent>
-                          </Card>
-                          );
-                        })}
-                      </div>
-                    </CardContent>
-                  </Card>
-                </div>
+              {activeSubscriptions.length > 0 ? (
+                <AppointmentScheduler
+                  subscriptions={activeSubscriptions}
+                  onScheduleComplete={async () => {
+                    // Refresh data after scheduling
+                    await refetchSubscriptions();
+                    await refetchSessions();
+                    await refetchHistory();
+                  }}
+                />
               ) : (
                 <Card>
                   <CardContent className="py-16 text-center">

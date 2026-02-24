@@ -14,6 +14,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { NotificationBell } from "@/components/NotificationBell";
 
 export default function Navigation() {
   const { user, isAuthenticated, loading } = useAuth();
@@ -137,7 +138,11 @@ export default function Navigation() {
             {loading ? (
               <div className="w-8 h-8 rounded-full bg-muted animate-pulse" />
             ) : isAuthenticated && user ? (
-              <DropdownMenu>
+              <>
+                {/* Notification Bell */}
+                <NotificationBell />
+
+                <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <button className="relative h-10 w-10 rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                     <Avatar>
@@ -225,6 +230,7 @@ export default function Navigation() {
                   )}
                 </DropdownMenuContent>
               </DropdownMenu>
+              </>
             ) : (
               <Button asChild>
                 <a href={LOGIN_PATH}>Sign In</a>

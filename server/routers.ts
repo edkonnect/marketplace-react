@@ -1170,15 +1170,41 @@ export const appRouter = router({
         if (!session) {
           throw new TRPCError({ code: 'NOT_FOUND', message: 'Session not found' });
         }
-        
+
         if (session.parentId !== ctx.user.id) {
           throw new TRPCError({ code: 'FORBIDDEN', message: 'Not authorized' });
         }
-        
+
+        // Get session details for notification
+        const subscription = await db.getSubscriptionById(session.subscriptionId);
+        const course = subscription ? await db.getCourseById(subscription.courseId) : null;
+        const parent = await db.getUserById(ctx.user.id);
+        const oldDate = new Date(session.scheduledAt);
+        const newDate = new Date(input.newScheduledAt);
+
         await db.updateSession(input.sessionId, {
           scheduledAt: input.newScheduledAt,
         });
-        
+
+        // Create notification for tutor
+        if (session.tutorId) {
+          const formatDate = (date: Date) => date.toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            hour: 'numeric',
+            minute: '2-digit',
+            hour12: true
+          });
+
+          await db.createInAppNotification({
+            userId: session.tutorId,
+            title: 'Session Rescheduled',
+            message: `${parent?.name || 'A parent'} rescheduled ${course?.title || 'a session'} from ${formatDate(oldDate)} to ${formatDate(newDate)}`,
+            type: 'new_booking',
+            relatedId: input.sessionId,
+          });
+        }
+
         return { success: true };
       }),
 
@@ -1191,29 +1217,63 @@ export const appRouter = router({
       .mutation(async ({ ctx, input }) => {
         // Get all scheduled sessions for this subscription
         const sessions = await db.getSessionsByParentId(ctx.user.id);
-        const seriesSessions = sessions.filter((s: any) => 
-          s.subscriptionId === input.subscriptionId && s.status === 'scheduled'
-        ).sort((a: any, b: any) => a.scheduledAt - b.scheduledAt);
-        
+        const seriesSessions = sessions.filter((s: any) =>
+          s.session?.subscriptionId === input.subscriptionId && s.session?.status === 'scheduled'
+        ).sort((a: any, b: any) => (a.session?.scheduledAt || 0) - (b.session?.scheduledAt || 0));
+
         if (seriesSessions.length === 0) {
           throw new TRPCError({ code: 'NOT_FOUND', message: 'No scheduled sessions found' });
         }
-        
+
+        // Get details for notification
+        const subscription = await db.getSubscriptionById(input.subscriptionId);
+        const course = subscription ? await db.getCourseById(subscription.courseId) : null;
+        const parent = await db.getUserById(ctx.user.id);
+        const firstOldDate = seriesSessions[0]?.session?.scheduledAt
+          ? new Date(seriesSessions[0].session.scheduledAt)
+          : null;
+        const firstNewDate = new Date(input.newStartDate);
+        let tutorId: number | null = null;
+
         // Calculate new dates based on frequency
         const intervalDays = input.frequency === 'weekly' ? 7 : 14;
         const startDate = new Date(input.newStartDate);
-        
+
         for (let i = 0; i < seriesSessions.length; i++) {
           const newDate = new Date(startDate);
           newDate.setDate(newDate.getDate() + (i * intervalDays));
 
-          if (seriesSessions[i].session.id) {
+          if (seriesSessions[i].session?.id) {
             await db.updateSession(seriesSessions[i].session.id, {
               scheduledAt: newDate.getTime(),
             });
+
+            // Store tutorId from first session
+            if (!tutorId && seriesSessions[i].session.tutorId) {
+              tutorId = seriesSessions[i].session.tutorId;
+            }
           }
         }
-        
+
+        // Create notification for tutor
+        if (tutorId && firstOldDate) {
+          const formatDate = (date: Date) => date.toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            hour: 'numeric',
+            minute: '2-digit',
+            hour12: true
+          });
+
+          await db.createInAppNotification({
+            userId: tutorId,
+            title: 'Series Rescheduled',
+            message: `${parent?.name || 'A parent'} rescheduled ${seriesSessions.length} ${course?.title || 'sessions'}. New start: ${formatDate(firstNewDate)} (was ${formatDate(firstOldDate)})`,
+            type: 'new_booking',
+            relatedId: seriesSessions[0]?.session?.id || null,
+          });
+        }
+
         return { success: true, rescheduledCount: seriesSessions.length };
       }),
 
@@ -1227,16 +1287,40 @@ export const appRouter = router({
         if (!session) {
           throw new TRPCError({ code: 'NOT_FOUND', message: 'Session not found' });
         }
-        
+
         if (session.parentId !== ctx.user.id) {
           throw new TRPCError({ code: 'FORBIDDEN', message: 'Not authorized' });
         }
-        
+
+        // Get session details for notification
+        const subscription = await db.getSubscriptionById(session.subscriptionId);
+        const course = subscription ? await db.getCourseById(subscription.courseId) : null;
+        const parent = await db.getUserById(ctx.user.id);
+
         await db.updateSession(input.sessionId, {
           status: 'cancelled',
           notes: input.reason ? `Canceled: ${input.reason}` : 'Canceled by parent',
         });
-        
+
+        // Create notification for tutor
+        if (session.tutorId) {
+          const sessionDate = new Date(session.scheduledAt);
+          const formattedDate = sessionDate.toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            hour: 'numeric',
+            minute: '2-digit'
+          });
+
+          await db.createInAppNotification({
+            userId: session.tutorId,
+            title: 'Session Cancelled',
+            message: `${parent?.name || 'A parent'} cancelled ${course?.title || 'a session'} scheduled for ${formattedDate}${input.reason ? `. Reason: ${input.reason}` : ''}`,
+            type: 'session_cancelled',
+            relatedId: input.sessionId,
+          });
+        }
+
         return { success: true };
       }),
 
@@ -1247,23 +1331,45 @@ export const appRouter = router({
       }))
       .mutation(async ({ ctx, input }) => {
         const sessions = await db.getSessionsByParentId(ctx.user.id);
-        const seriesSessions = sessions.filter((s: any) => 
-          s.subscriptionId === input.subscriptionId && s.status === 'scheduled'
+        const seriesSessions = sessions.filter((s: any) =>
+          s.session?.subscriptionId === input.subscriptionId && s.session?.status === 'scheduled'
         );
-        
+
         if (seriesSessions.length === 0) {
           throw new TRPCError({ code: 'NOT_FOUND', message: 'No scheduled sessions found' });
         }
-        
+
+        // Get subscription and course details for notification
+        const subscription = await db.getSubscriptionById(input.subscriptionId);
+        const course = subscription ? await db.getCourseById(subscription.courseId) : null;
+        const parent = await db.getUserById(ctx.user.id);
+        let tutorId: number | null = null;
+
         for (const sessionData of seriesSessions) {
-          if (sessionData.session.id) {
+          if (sessionData.session?.id) {
             await db.updateSession(sessionData.session.id, {
               status: 'cancelled',
               notes: input.reason ? `Canceled: ${input.reason}` : 'Canceled by parent',
             });
+
+            // Store tutorId from first session
+            if (!tutorId && sessionData.session.tutorId) {
+              tutorId = sessionData.session.tutorId;
+            }
           }
         }
-        
+
+        // Create notification for tutor
+        if (tutorId) {
+          await db.createInAppNotification({
+            userId: tutorId,
+            title: 'Session Series Cancelled',
+            message: `${parent?.name || 'A parent'} cancelled a series of ${seriesSessions.length} ${course?.title || 'sessions'}${input.reason ? `. Reason: ${input.reason}` : ''}`,
+            type: 'session_cancelled',
+            relatedId: seriesSessions[0]?.session?.id || null,
+          });
+        }
+
         return { success: true, canceledCount: seriesSessions.length };
       }),
 
@@ -1352,7 +1458,7 @@ export const appRouter = router({
             const course = await db.getCourseById(input.courseId);
             const tutor = await db.getUserById(input.tutorId);
             const parent = await db.getUserById(ctx.user.id);
-            
+
             if (course && tutor && parent && tutor.name && parent.name && tutor.email && parent.email) {
               // Send email to parent
               sendBookingConfirmation({
@@ -1361,12 +1467,12 @@ export const appRouter = router({
                 userRole: 'parent',
                 courseName: course.title,
                 tutorName: tutor.name,
-                sessionDate: formatEmailDate(sessionDate),
-                sessionTime: formatEmailTime(sessionDate),
+                sessionDate: formatEmailDate(sessionDate, parent.timezone || undefined),
+                sessionTime: formatEmailTime(sessionDate, parent.timezone || undefined),
                 sessionDuration: `${firstSession.duration} minutes`,
                 sessionPrice: formatEmailPrice(parseInt(course.price) * 100),
               }).catch(err => console.error('[Email] Failed to send booking confirmation to parent:', err));
-              
+
               // Send email to tutor
               sendBookingConfirmation({
                 userEmail: tutor.email,
@@ -1374,11 +1480,32 @@ export const appRouter = router({
                 userRole: 'tutor',
                 courseName: course.title,
                 studentName: parent.name,
-                sessionDate: formatEmailDate(sessionDate),
-                sessionTime: formatEmailTime(sessionDate),
+                sessionDate: formatEmailDate(sessionDate, tutor.timezone || undefined),
+                sessionTime: formatEmailTime(sessionDate, tutor.timezone || undefined),
                 sessionDuration: `${firstSession.duration} minutes`,
                 sessionPrice: formatEmailPrice(parseInt(course.price) * 100),
               }).catch(err => console.error('[Email] Failed to send booking confirmation to tutor:', err));
+
+              // Create in-app notification for tutor
+              const firstDate = new Date(input.sessions[0].scheduledAt);
+              const formattedDate = firstDate.toLocaleDateString('en-US', {
+                month: 'short',
+                day: 'numeric',
+                year: 'numeric'
+              });
+              const formattedTime = firstDate.toLocaleTimeString('en-US', {
+                hour: 'numeric',
+                minute: '2-digit',
+                hour12: true
+              });
+
+              await db.createInAppNotification({
+                userId: input.tutorId,
+                title: 'New Session Booking',
+                message: `${parent.name} booked ${sessionIds.length} ${course.title} session${sessionIds.length > 1 ? 's' : ''}. First session: ${formattedDate} at ${formattedTime}`,
+                type: 'new_booking',
+                relatedId: sessionIds[0],
+              });
             }
           }
         }
@@ -1457,8 +1584,8 @@ export const appRouter = router({
               userRole: 'parent',
               courseName: course.title,
               tutorName: tutor.name,
-              sessionDate: formatEmailDate(sessionDate),
-              sessionTime: formatEmailTime(sessionDate),
+              sessionDate: formatEmailDate(sessionDate, parent.timezone || undefined),
+              sessionTime: formatEmailTime(sessionDate, parent.timezone || undefined),
               sessionDuration: `${session.duration} minutes`,
               sessionPrice: formatEmailPrice(parseInt(course.price) * 100),
             }).catch(err => console.error('[Email] Failed to send booking confirmation to parent:', err));
@@ -1470,14 +1597,34 @@ export const appRouter = router({
               userRole: 'tutor',
               courseName: course.title,
               studentName: parent.name,
-              sessionDate: formatEmailDate(sessionDate),
-              sessionTime: formatEmailTime(sessionDate),
+              sessionDate: formatEmailDate(sessionDate, tutor.timezone || undefined),
+              sessionTime: formatEmailTime(sessionDate, tutor.timezone || undefined),
               sessionDuration: `${session.duration} minutes`,
               sessionPrice: formatEmailPrice(parseInt(course.price) * 100),
             }).catch(err => console.error('[Email] Failed to send booking confirmation to tutor:', err));
+
+            // Create in-app notification for tutor
+            const formattedDate = sessionDate.toLocaleDateString('en-US', {
+              month: 'short',
+              day: 'numeric',
+              year: 'numeric'
+            });
+            const formattedTime = sessionDate.toLocaleTimeString('en-US', {
+              hour: 'numeric',
+              minute: '2-digit',
+              hour12: true
+            });
+
+            await db.createInAppNotification({
+              userId: session.tutorId,
+              title: 'New Session Booking',
+              message: `${parent.name} booked a ${course.title} session for ${formattedDate} at ${formattedTime}`,
+              type: 'new_booking',
+              relatedId: sessionId,
+            });
           }
         }
-        
+
         return { sessionId, subscriptionId };
       }),
 
@@ -1533,10 +1680,11 @@ export const appRouter = router({
           const session = await db.getSessionById(id);
           if (session) {
             const sessionDate = new Date(session.scheduledAt);
-            const course = await db.getCourseById(session.subscriptionId); // Assuming subscription has courseId
+            const subscription = await db.getSubscriptionById(session.subscriptionId);
+            const course = subscription ? await db.getCourseById(subscription.courseId) : null;
             const tutor = await db.getUserById(session.tutorId);
             const parent = await db.getUserById(session.parentId);
-            
+
             if (course && tutor && parent && tutor.name && parent.name && tutor.email && parent.email) {
               // Send email to parent
               sendBookingConfirmation({
@@ -1545,8 +1693,8 @@ export const appRouter = router({
                 userRole: 'parent',
                 courseName: course.title,
                 tutorName: tutor.name,
-                sessionDate: formatEmailDate(sessionDate),
-                sessionTime: formatEmailTime(sessionDate),
+                sessionDate: formatEmailDate(sessionDate, parent.timezone || undefined),
+                sessionTime: formatEmailTime(sessionDate, parent.timezone || undefined),
                 sessionDuration: `${session.duration} minutes`,
                 sessionPrice: formatEmailPrice(parseInt(course.price) * 100),
               }).catch(err => console.error('[Email] Failed to send booking confirmation to parent:', err));
@@ -1558,14 +1706,34 @@ export const appRouter = router({
                 userRole: 'tutor',
                 courseName: course.title,
                 studentName: parent.name,
-                sessionDate: formatEmailDate(sessionDate),
-                sessionTime: formatEmailTime(sessionDate),
+                sessionDate: formatEmailDate(sessionDate, tutor.timezone || undefined),
+                sessionTime: formatEmailTime(sessionDate, tutor.timezone || undefined),
                 sessionDuration: `${session.duration} minutes`,
                 sessionPrice: formatEmailPrice(parseInt(course.price) * 100),
               }).catch(err => console.error('[Email] Failed to send booking confirmation to tutor:', err));
+
+              // Create in-app notification for tutor
+              const formattedDate = sessionDate.toLocaleDateString('en-US', {
+                month: 'short',
+                day: 'numeric',
+                year: 'numeric'
+              });
+              const formattedTime = sessionDate.toLocaleTimeString('en-US', {
+                hour: 'numeric',
+                minute: '2-digit',
+                hour12: true
+              });
+
+              await db.createInAppNotification({
+                userId: session.tutorId,
+                title: 'New Session Booking',
+                message: `${parent.name} booked a ${course.title} session for ${formattedDate} at ${formattedTime}`,
+                type: 'new_booking',
+                relatedId: id,
+              });
             }
           }
-          
+
           return { id };
         } catch (error: any) {
           if (error?.message === "SESSION_CONFLICT") {
@@ -1626,8 +1794,8 @@ export const appRouter = router({
                 studentName,
                 courseName: course.title,
                 tutorName: tutor.name,
-                sessionDate: formatEmailDate(sessionDate),
-                sessionTime: formatEmailTime(sessionDate),
+                sessionDate: formatEmailDate(sessionDate, tutor.timezone || undefined),
+                sessionTime: formatEmailTime(sessionDate, tutor.timezone || undefined),
                 tutorNotes: input.feedbackFromTutor,
               });
 
@@ -4263,6 +4431,68 @@ export const appRouter = router({
     getEarningsHistory: tutorProcedure
       .query(async ({ ctx }) => {
         return await db.getPaymentsByTutorId(ctx.user.id);
+      }),
+  }),
+
+  /**
+   * Notifications router - in-app notifications for users
+   */
+  notifications: router({
+    /**
+     * Get notifications for current user
+     */
+    getNotifications: protectedProcedure
+      .input(z.object({
+        includeRead: z.boolean().optional().default(true),
+      }).optional())
+      .query(async ({ ctx, input }) => {
+        return await db.getInAppNotifications(ctx.user.id, input?.includeRead);
+      }),
+
+    /**
+     * Get unread notification count
+     */
+    getUnreadCount: protectedProcedure
+      .query(async ({ ctx }) => {
+        return await db.getUnreadNotificationCount(ctx.user.id);
+      }),
+
+    /**
+     * Mark notification as read
+     */
+    markAsRead: protectedProcedure
+      .input(z.object({
+        notificationId: z.number(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        // Verify notification belongs to user
+        const notifications = await db.getInAppNotifications(ctx.user.id, true);
+        const notification = notifications.find(n => n.id === input.notificationId);
+
+        if (!notification) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'Notification not found' });
+        }
+
+        await db.markNotificationAsRead(input.notificationId);
+        return { success: true };
+      }),
+
+    /**
+     * Mark all notifications as read
+     */
+    markAllAsRead: protectedProcedure
+      .mutation(async ({ ctx }) => {
+        await db.markAllNotificationsAsRead(ctx.user.id);
+        return { success: true };
+      }),
+
+    /**
+     * Delete all notifications for current user
+     */
+    deleteAll: protectedProcedure
+      .mutation(async ({ ctx }) => {
+        await db.deleteAllNotifications(ctx.user.id);
+        return { success: true };
       }),
   }),
 });

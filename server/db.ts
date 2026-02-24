@@ -3682,6 +3682,21 @@ export async function markAllNotificationsAsRead(userId: number) {
   }
 }
 
+export async function deleteAllNotifications(userId: number) {
+  const db = await getDb();
+  if (!db) return false;
+
+  try {
+    await db
+      .delete(inAppNotifications)
+      .where(eq(inAppNotifications.userId, userId));
+    return true;
+  } catch (error) {
+    console.error("[Database] Failed to delete notifications:", error);
+    return false;
+  }
+}
+
 export async function getUnreadNotificationCount(userId: number) {
   const db = await getDb();
   if (!db) return 0;
@@ -4140,3 +4155,4 @@ export async function updateTutorPayoutRequestStatus(
     .set({ status, adminNotes: adminNotes ?? null, updatedAt: new Date() })
     .where(eq(tutorPayoutRequests.id, id));
 }
+

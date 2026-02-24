@@ -19,6 +19,9 @@ export const users = mysqlTable("users", {
   emailVerified: boolean("emailVerified").default(false).notNull(),
   emailVerifiedAt: timestamp("emailVerifiedAt"),
   accountSetupComplete: boolean("accountSetupComplete").default(false).notNull(),
+  phoneNumber: varchar("phoneNumber", { length: 20 }),
+  phoneNumberVerified: boolean("phoneNumberVerified").default(false),
+  timezone: varchar("timezone", { length: 100 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
@@ -93,6 +96,8 @@ export const tutorProfiles = mysqlTable("tutor_profiles", {
   rejectionReason: text("rejectionReason"), // Optional reason for rejection
   rating: decimal("rating", { precision: 3, scale: 2 }).default("0.00"),
   totalReviews: int("totalReviews").default(0),
+  timezone: varchar("timezone", { length: 100 }),
+  businessTimezone: varchar("businessTimezone", { length: 100 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 }, (table) => ({
@@ -110,6 +115,10 @@ export const parentProfiles = mysqlTable("parent_profiles", {
   userId: int("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
   childrenInfo: text("childrenInfo"), // JSON array of children (name, age, grade)
   preferences: text("preferences"), // JSON object for learning preferences
+  preferredContactMethod: mysqlEnum("preferredContactMethod", ["email", "sms", "phone"]).default("email"),
+  emergencyContactName: varchar("emergencyContactName", { length: 255 }),
+  emergencyContactPhone: varchar("emergencyContactPhone", { length: 20 }),
+  bestTimeToContact: varchar("bestTimeToContact", { length: 100 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 }, (table) => ({
@@ -203,6 +212,8 @@ export const subscriptions = mysqlTable("subscriptions", {
   secondInstallmentPaid: boolean("secondInstallmentPaid").default(false).notNull(),
   firstInstallmentAmount: decimal("firstInstallmentAmount", { precision: 10, scale: 2 }),
   secondInstallmentAmount: decimal("secondInstallmentAmount", { precision: 10, scale: 2 }),
+  smsOptIn: boolean("smsOptIn").default(false).notNull(),
+  smsConsentTimestamp: timestamp("smsConsentTimestamp"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 }, (table) => ({
@@ -230,6 +241,12 @@ export const sessions = mysqlTable("sessions", {
   rating: int("rating"), // 1-5 rating from parent
   acuityAppointmentId: int("acuityAppointmentId"), // Link to Acuity appointment
   managementToken: varchar("managementToken", { length: 64 }), // Secure token for email-based booking management
+  meetingPlatform: varchar("meetingPlatform", { length: 50 }).default("Zoom"),
+  meetingUrl: text("meetingUrl"),
+  hostMeetingUrl: text("hostMeetingUrl"),
+  seriesId: varchar("seriesId", { length: 64 }),
+  sessionNumberInSeries: int("sessionNumberInSeries"),
+  totalSessionsInSeries: int("totalSessionsInSeries"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 }, (table) => ({
@@ -238,6 +255,7 @@ export const sessions = mysqlTable("sessions", {
   parentIdIdx: index("sessions_parentId_idx").on(table.parentId),
   scheduledAtIdx: index("sessions_scheduledAt_idx").on(table.scheduledAt),
   tutorStartUnique: uniqueIndex("sessions_tutor_start_unique").on(table.tutorId, table.scheduledAt),
+  seriesIdIdx: index("sessions_seriesId_idx").on(table.seriesId),
 }));
 
 export type Session = typeof sessions.$inferSelect;

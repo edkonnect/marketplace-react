@@ -24,6 +24,11 @@ import { toast } from "sonner";
 export default function TutorDashboard() {
   const { user, isAuthenticated, loading } = useAuth();
   const [, setLocation] = useLocation();
+
+  // Get tab from URL query parameter
+  const urlParams = new URLSearchParams(window.location.search);
+  const tabFromUrl = urlParams.get('tab') || 'courses';
+
   const tabContentClass =
     "space-y-6 absolute inset-0 w-full transition-all duration-300 data-[state=active]:opacity-100 data-[state=active]:translate-x-0 data-[state=inactive]:opacity-0 data-[state=inactive]:translate-x-4 data-[state=inactive]:pointer-events-none [&[hidden]]:block [&[hidden]]:opacity-0";
 
@@ -360,7 +365,7 @@ export default function TutorDashboard() {
               </div>
 
               {/* Main Content */}
-              <Tabs defaultValue="courses" className="space-y-6">
+              <Tabs defaultValue={tabFromUrl} className="space-y-6">
                 <div className="overflow-x-auto">
               <TabsList className="inline-flex min-w-max gap-2 sm:w-full sm:flex-wrap sm:justify-start">
                 <TabsTrigger className="whitespace-nowrap" value="profile">Profile</TabsTrigger>

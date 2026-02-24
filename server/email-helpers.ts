@@ -207,27 +207,43 @@ export async function sendTutorEnrollmentNotification(params: SendTutorEnrollmen
 
 /**
  * Format date for email display
+ * @param date - The date to format
+ * @param timezone - Optional timezone (e.g., 'America/New_York'). If not provided, uses local system time.
  */
-export function formatEmailDate(date: Date): string {
-  return date.toLocaleDateString('en-US', {
+export function formatEmailDate(date: Date, timezone?: string): string {
+  const options: Intl.DateTimeFormatOptions = {
     weekday: 'long',
     year: 'numeric',
     month: 'long',
     day: 'numeric',
-    timeZone: 'UTC',
-  });
+  };
+
+  // Only add timeZone if provided, otherwise use local time
+  if (timezone) {
+    options.timeZone = timezone;
+  }
+
+  return date.toLocaleDateString('en-US', options);
 }
 
 /**
  * Format time for email display
+ * @param date - The date to format
+ * @param timezone - Optional timezone (e.g., 'America/New_York'). If not provided, uses local system time.
  */
-export function formatEmailTime(date: Date): string {
-  return date.toLocaleTimeString('en-US', {
+export function formatEmailTime(date: Date, timezone?: string): string {
+  const options: Intl.DateTimeFormatOptions = {
     hour: 'numeric',
     minute: '2-digit',
     hour12: true,
-    timeZone: 'UTC',
-  });
+  };
+
+  // Only add timeZone if provided, otherwise use local time
+  if (timezone) {
+    options.timeZone = timezone;
+  }
+
+  return date.toLocaleTimeString('en-US', options);
 }
 
 /**
