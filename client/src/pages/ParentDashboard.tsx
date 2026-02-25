@@ -15,10 +15,10 @@ import { LOGIN_PATH } from "@/const";
 import { SessionNotesFeed } from "@/components/SessionNotesFeed";
 import { NotificationCenter } from "@/components/NotificationCenter";
 import { ParentBookingsManager } from "@/components/ParentBookingsManager";
+import { ParentSessionsManager } from "@/components/ParentSessionsManager";
 import { AppointmentScheduler } from "@/components/AppointmentScheduler";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-// no additional imports needed
 
 export default function ParentDashboard() {
   const { user, isAuthenticated, loading } = useAuth();
@@ -604,79 +604,11 @@ export default function ParentDashboard() {
 
             {/* Sessions Tab */}
             <TabsContent value="sessions" forceMount className={tabContentClass}>
-              <h2 className="text-2xl font-bold">Upcoming Sessions</h2>
-
-              {sessionsLoading ? (
-                <div className="space-y-4">
-                  {[1, 2].map(i => <Skeleton key={i} className="h-32 w-full" />)}
-                </div>
-              ) : upcomingSessions && upcomingSessions.length > 0 ? (
-                <div className="space-y-4">
-                  {upcomingSessions.map((session) => (
-                    <Card key={session.id} className="bg-muted/60">
-                      <CardContent className="pt-6">
-                        <div className="flex justify-between items-start gap-4 mb-4">
-                          <div className="flex gap-4">
-                            <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center">
-                              <Calendar className="w-6 h-6 text-primary" />
-                            </div>
-                            <div>
-                              <p className="text-lg font-semibold leading-tight">
-                                {session.courseTitle || "Course"}
-                              </p>
-                              <p className="text-sm text-muted-foreground">
-                                with {session.tutorName || "Tutor"}
-                              </p>
-                              {(session.studentFirstName || session.studentLastName) && (
-                                <p className="text-sm text-muted-foreground">
-                                  Student: {[session.studentFirstName, session.studentLastName].filter(Boolean).join(" ")}
-                                </p>
-                              )}
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                            <Video className="w-4 h-4" />
-                            <span>{session.meetingPlatform || "On Zoom"}</span>
-                          </div>
-                        </div>
-
-                        <div className="flex flex-wrap items-center justify-between gap-3">
-                          <div className="space-y-2">
-                            <p className="text-sm text-muted-foreground">Starting time</p>
-                            <p className="text-base font-medium">
-                              {new Date(session.scheduledAt).toLocaleDateString()} • {new Date(session.scheduledAt).toLocaleTimeString()} • {session.duration} minutes
-                            </p>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <Badge>{session.status}</Badge>
-                            <Button
-                              onClick={() => {
-                                if (session.joinUrl) {
-                                  window.open(session.joinUrl, "_blank");
-                                } else {
-                                  console.log("Join meeting clicked");
-                                }
-                              }}
-                            >
-                              Join meeting
-                            </Button>
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
-              ) : (
-                <Card>
-                  <CardContent className="py-16 text-center">
-                    <Calendar className="w-16 h-16 mx-auto mb-4 text-muted-foreground" />
-                    <h3 className="text-xl font-semibold mb-2">No Upcoming Sessions</h3>
-                    <p className="text-muted-foreground">
-                      Schedule sessions with your tutors to get started
-                    </p>
-                  </CardContent>
-                </Card>
-              )}
+              <h2 className="text-2xl font-bold mb-6">Upcoming Sessions</h2>
+              <ParentSessionsManager
+                upcomingSessions={upcomingSessions || []}
+                sessionsLoading={sessionsLoading}
+              />
             </TabsContent>
 
             {/* History Tab */}

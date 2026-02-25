@@ -17,6 +17,7 @@ import { BookOpen, Calendar, MessageSquare, DollarSign, Users, Edit, Clock, File
 import { AvailabilityManager } from "@/components/AvailabilityManager";
 import { TimeBlockManager } from "@/components/TimeBlockManager";
 import { VideoUploadManager } from "@/components/VideoUploadManager";
+import { TutorSessionsManager } from "@/components/TutorSessionsManager";
 import { useEffect, useMemo, useState } from "react";
 import { LOGIN_PATH } from "@/const";
 import { toast } from "sonner";
@@ -587,139 +588,16 @@ export default function TutorDashboard() {
 
                 {/* Sessions Tab */}
                 <TabsContent value="sessions" forceMount className={tabContentClass}>
-                  <h2 className="text-2xl font-bold">Upcoming Sessions</h2>
-
-                  {upcomingSessions && upcomingSessions.length > 0 ? (
-                    <div className="space-y-4">
-                      {upcomingSessions.map((session) => {
-                        const noteValue =
-                          sessionNotes[session.id] ?? session.feedbackFromTutor ?? "";
-                        const markComplete = () =>
-                          updateSessionMutation.mutate({ id: session.id, status: "completed" });
-                        const saveNotes = () =>
-                          updateSessionMutation.mutate({ id: session.id, feedbackFromTutor: noteValue });
-
-                        return (
-                          <Card key={session.id}>
-                            <CardContent className="pt-4 sm:pt-6 space-y-4">
-                              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
-                                <div className="flex items-start sm:items-center gap-3 sm:gap-4 flex-1 min-w-0">
-                                  <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
-                                    <Calendar className="w-5 h-5 sm:w-6 sm:h-6 text-primary" />
-                                  </div>
-                                  <div className="flex-1 min-w-0">
-                                    <p className="font-semibold text-sm sm:text-base truncate">
-                                      {session.courseTitle || "Course"}
-                                    </p>
-                                    <p className="text-xs sm:text-sm text-muted-foreground">
-                                      {new Date(session.scheduledAt).toLocaleDateString()} • {new Date(session.scheduledAt).toLocaleTimeString()} • {session.duration} min
-                                    </p>
-                                    <p className="text-xs sm:text-sm text-muted-foreground">
-                                      {session.studentFirstName || session.studentLastName
-                                        ? `Student: ${[session.studentFirstName, session.studentLastName].filter(Boolean).join(" ")}`
-                                        : null}
-                                      {(session.studentFirstName || session.studentLastName) && session.parentName ? " • " : null}
-                                      {session.parentName ? `Parent: ${session.parentName}` : null}
-                                    </p>
-                                </div>
-                              </div>
-                                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-2">
-                                  <Badge variant={statusVariant(session.status)} className="text-xs">
-                                    {session.status === "no_show" ? "Completed (No Show)" : session.status}
-                                  </Badge>
-                                  {session.status !== "cancelled" && session.status !== "completed" && session.status !== "no_show" && (
-                                    <Button
-                                      size="sm"
-                                      onClick={() => {
-                                        if (session.joinUrl) {
-                                          window.open(session.joinUrl, "_blank");
-                                        } else {
-                                          console.log("Join meeting clicked");
-                                        }
-                                      }}
-                                      className="w-full sm:w-auto"
-                                    >
-                                      Join meeting
-                                    </Button>
-                                  )}
-                                </div>
-                              </div>
-
-                              {canComplete(session) && (
-                                <Button
-                                  size="sm"
-                                  onClick={() => handleOpenCompletionDialog(session.id, session.feedbackFromTutor)}
-                                  disabled={updateSessionMutation.isPending}
-                                >
-                                  Complete Session
-                                </Button>
-                              )}
-
-                              {session.status === "completed" && (
-                                <div className="space-y-2">
-                                  <Label>Session Notes (visible to parent)</Label>
-                                  <Textarea
-                                    value={noteValue}
-                                    onChange={(e) =>
-                                      setSessionNotes((prev) => ({
-                                        ...prev,
-                                        [session.id]: e.target.value,
-                                      }))
-                                    }
-                                    placeholder="Add notes/summary for the student"
-                                  />
-                                  <div className="flex gap-2">
-                                    <Button size="sm" onClick={saveNotes} disabled={updateSessionMutation.isPending}>
-                                      Save notes
-                                    </Button>
-                                  </div>
-                                </div>
-                              )}
-
-                              {session.status === "no_show" && (
-                                <div className="space-y-2">
-                                  <Label>No-Show Notes (visible to parent)</Label>
-                                  <Textarea
-                                    value={noteValue}
-                                    onChange={(e) =>
-                                      setSessionNotes((prev) => ({
-                                        ...prev,
-                                        [session.id]: e.target.value,
-                                      }))
-                                    }
-                                    placeholder="Add notes for the student (e.g., homework, materials to review)"
-                                    className="min-h-[100px]"
-                                  />
-                                  <div className="flex gap-2">
-                                    <Button
-                                      size="sm"
-                                      onClick={saveNotes}
-                                      disabled={
-                                        updateSessionMutation.isPending ||
-                                        noteValue === (session.feedbackFromTutor ?? "")
-                                      }
-                                    >
-                                      Save Notes
-                                    </Button>
-                                  </div>
-                                </div>
-                              )}
-                            </CardContent>
-                          </Card>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <Card>
-                      <CardContent className="py-16 text-center">
-                        <Calendar className="w-16 h-16 mx-auto mb-4 text-muted-foreground" />
-                        <h3 className="text-xl font-semibold mb-2">No Upcoming Sessions</h3>
-                        <p className="text-muted-foreground">
-                          Your scheduled sessions will appear here
-                        </p>
-                      </CardContent>
-                    </Card>
-                  )}
+                  <h2 className="text-2xl font-bold mb-6">Upcoming Sessions</h2>
+                  <TutorSessionsManager
+                    upcomingSessions={upcomingSessions || []}
+                    sessionNotes={sessionNotes}
+                    setSessionNotes={setSessionNotes}
+                    handleOpenCompletionDialog={handleOpenCompletionDialog}
+                    updateSessionMutation={updateSessionMutation}
+                    canComplete={canComplete}
+                    statusVariant={statusVariant}
+                  />
                 </TabsContent>
 
                 {/* History Tab */}

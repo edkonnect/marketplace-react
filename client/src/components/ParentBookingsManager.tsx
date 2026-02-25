@@ -143,6 +143,7 @@ export function ParentBookingsManager() {
   const [cancelReason, setCancelReason] = useState<string>("");
   const [frequency, setFrequency] = useState<"weekly" | "biweekly">("weekly");
   const [selectedStudent, setSelectedStudent] = useState<string>("all");
+  const [statusFilter, setStatusFilter] = useState<"upcoming" | "completed" | "cancelled" | "all">("upcoming");
   const [ratingModalOpen, setRatingModalOpen] = useState(false);
   const [ratingSessionId, setRatingSessionId] = useState<number | null>(null);
 
@@ -385,19 +386,37 @@ export function ParentBookingsManager() {
     return Array.from(students).sort();
   }, [bookings]);
 
-  // Filter bookings by selected student
+  // Filter bookings by selected student and status
   const filteredBookings = useMemo(() => {
-    if (!bookings || selectedStudent === "all") return bookings;
+    if (!bookings) return bookings;
 
     const filtered: Record<string, any[]> = {};
 
     Object.entries(bookings as Record<string, any[]>).forEach(([subscriptionId, sessions]) => {
       const filteredSessions = sessions.filter((session: any) => {
-        const studentName = [session.studentFirstName, session.studentLastName]
-          .filter(Boolean)
-          .join(" ")
-          .trim();
-        return studentName === selectedStudent;
+        // Filter by status
+        let statusMatch = true;
+        if (statusFilter === "upcoming") {
+          statusMatch = session.status === "scheduled";
+        } else if (statusFilter === "completed") {
+          statusMatch = session.status === "completed" || session.status === "no_show";
+        } else if (statusFilter === "cancelled") {
+          statusMatch = session.status === "cancelled";
+        }
+        // statusFilter === "all" shows everything
+
+        if (!statusMatch) return false;
+
+        // Filter by student
+        if (selectedStudent !== "all") {
+          const studentName = [session.studentFirstName, session.studentLastName]
+            .filter(Boolean)
+            .join(" ")
+            .trim();
+          return studentName === selectedStudent;
+        }
+
+        return true;
       });
 
       if (filteredSessions.length > 0) {
@@ -406,7 +425,7 @@ export function ParentBookingsManager() {
     });
 
     return filtered;
-  }, [bookings, selectedStudent]);
+  }, [bookings, selectedStudent, statusFilter]);
 
   const availableTimeSlots = useMemo(() => {
     if (!newDate || !availabilityData) return [];
@@ -527,34 +546,78 @@ export function ParentBookingsManager() {
         </div>
       )}
 
-      {/* Student Filter Dropdown */}
-      {studentOptions.length > 0 && (
-        <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
-          <Label htmlFor="student-filter" className="whitespace-nowrap text-sm">Filter by Student:</Label>
-          <Select value={selectedStudent} onValueChange={setSelectedStudent}>
-            <SelectTrigger id="student-filter" className="w-full sm:w-[250px]">
-              <SelectValue placeholder="All Students" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Students</SelectItem>
-              {studentOptions.map((student) => (
-                <SelectItem key={student} value={student}>
-                  {student}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+      {/* Status Filter Pills */}
+      <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
+        <div className="flex flex-wrap gap-2">
+          <Button
+            variant={statusFilter === "upcoming" ? "default" : "outline"}
+            size="sm"
+            onClick={() => setStatusFilter("upcoming")}
+            className="rounded-full"
+          >
+            Upcoming
+          </Button>
+          <Button
+            variant={statusFilter === "completed" ? "default" : "outline"}
+            size="sm"
+            onClick={() => setStatusFilter("completed")}
+            className="rounded-full"
+          >
+            Completed
+          </Button>
+          <Button
+            variant={statusFilter === "cancelled" ? "default" : "outline"}
+            size="sm"
+            onClick={() => setStatusFilter("cancelled")}
+            className="rounded-full"
+          >
+            Cancelled
+          </Button>
+          <Button
+            variant={statusFilter === "all" ? "default" : "outline"}
+            size="sm"
+            onClick={() => setStatusFilter("all")}
+            className="rounded-full"
+          >
+            All
+          </Button>
         </div>
-      )}
 
-      {Object.keys(filteredBookings).length === 0 ? (
+        {/* Student Filter Dropdown */}
+        {studentOptions.length > 0 && (
+          <div className="flex items-center gap-2">
+            <Label htmlFor="student-filter" className="whitespace-nowrap text-sm">Student:</Label>
+            <Select value={selectedStudent} onValueChange={setSelectedStudent}>
+              <SelectTrigger id="student-filter" className="w-[200px]">
+                <SelectValue placeholder="All Students" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Students</SelectItem>
+                {studentOptions.map((student) => (
+                  <SelectItem key={student} value={student}>
+                    {student}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+      </div>
+
+          {Object.keys(filteredBookings).length === 0 ? (
         <Card>
           <CardHeader>
             <CardTitle>No Bookings Found</CardTitle>
             <CardDescription>
-              {selectedStudent === "all"
-                ? "You don't have any bookings yet"
-                : `No bookings found for ${selectedStudent}`}
+              {(() => {
+                const studentText = selectedStudent === "all" ? "" : ` for ${selectedStudent}`;
+                if (statusFilter === "upcoming") return `No upcoming sessions${studentText}`;
+                if (statusFilter === "completed") return `No completed sessions${studentText}`;
+                if (statusFilter === "cancelled") return `No cancelled sessions${studentText}`;
+                return selectedStudent === "all"
+                  ? "You don't have any bookings yet"
+                  : `No bookings found${studentText}`;
+              })()}
             </CardDescription>
           </CardHeader>
         </Card>
