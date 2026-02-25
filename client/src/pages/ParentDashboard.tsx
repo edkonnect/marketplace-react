@@ -389,7 +389,14 @@ export default function ParentDashboard() {
                     </Card>
                   ) : (
                     <div className="grid md:grid-cols-2 gap-6">
-                      {filteredSubscriptionsForTab.map(({ subscription, course, tutor }) => (
+                      {filteredSubscriptionsForTab.map(({ subscription, course, tutor, sessionStats }) => {
+                        // Calculate session progress
+                        const totalSessions = course.totalSessions || 0;
+                        const completedCount = sessionStats?.completedCount || 0;
+                        const scheduledCount = sessionStats?.scheduledCount || 0;
+                        const remainingSessions = totalSessions - completedCount - scheduledCount;
+
+                        return (
                     <Card key={subscription.id} className="hover:shadow-elegant transition-all">
                       <CardHeader>
                         <div className="flex items-start justify-between">
@@ -442,7 +449,10 @@ export default function ParentDashboard() {
                           </div>
                           <div>
                             <p className="text-muted-foreground">Sessions</p>
-                            <p className="font-medium">{subscription.sessionsCompleted || 0} completed</p>
+                            <p className="font-medium">
+                              {completedCount} completed, {scheduledCount} scheduled
+                              {totalSessions > 0 && remainingSessions > 0 && `, ${remainingSessions} remaining`}
+                            </p>
                           </div>
                         </div>
 
@@ -549,7 +559,8 @@ export default function ParentDashboard() {
                         </div>
                       </CardContent>
                     </Card>
-                  ))}
+                        );
+                      })}
                     </div>
                   )}
                 </>
