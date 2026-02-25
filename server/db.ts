@@ -1221,7 +1221,9 @@ export async function createSession(session: InsertSession) {
       // If exists and is cancelled, reuse it
       if (existingAtExactTime.length > 0) {
         const existing = existingAtExactTime[0];
+        console.log(`[createSession] Found existing session at time ${session.scheduledAt}, status: ${existing.status}`);
         if (existing.status === 'cancelled') {
+          console.log(`[createSession] Reusing cancelled session ID ${existing.id}`);
           // Reuse cancelled session by updating it
           await trx
             .update(sessions)
