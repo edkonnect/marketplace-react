@@ -155,6 +155,7 @@ export function AppointmentScheduler({ subscriptions, onScheduleComplete }: Appo
     }));
 
     await quickBookRecurringMutation.mutateAsync({
+      subscriptionId: selectedSubscription.subscription.id,
       courseId: selectedSubscription.course.id,
       tutorId: selectedSubscription.tutor?.id ?? 0,
       sessions,

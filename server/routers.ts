@@ -1375,6 +1375,7 @@ export const appRouter = router({
 
     quickBookRecurring: parentProcedure
       .input(z.object({
+        subscriptionId: z.number().optional(), // Use existing subscription if provided
         courseId: z.number(),
         tutorId: z.number(),
         sessions: z.array(z.object({
@@ -1385,34 +1386,40 @@ export const appRouter = router({
       }))
       .mutation(async ({ ctx, input }) => {
         console.log('[quickBookRecurring] Starting with input:', JSON.stringify(input, null, 2));
-        // Get or create subscription for this course
-        const existingSubscriptions = await db.getSubscriptionsByParentId(ctx.user.id);
-        let subscriptionId = existingSubscriptions.find(s => s.subscription.courseId === input.courseId)?.subscription.id;
-        
+
+        // Use provided subscriptionId if available, otherwise find/create one
+        let subscriptionId = input.subscriptionId;
+
         if (!subscriptionId) {
-          // Create a new subscription without payment (pending)
-          const course = await db.getCourseById(input.courseId);
-          if (!course) {
-            throw new TRPCError({ code: 'NOT_FOUND', message: 'Course not found' });
+          // Get or create subscription for this course (legacy behavior)
+          const existingSubscriptions = await db.getSubscriptionsByParentId(ctx.user.id);
+          subscriptionId = existingSubscriptions.find(s => s.subscription.courseId === input.courseId)?.subscription.id;
+
+          if (!subscriptionId) {
+            // Create a new subscription without payment (pending)
+            const course = await db.getCourseById(input.courseId);
+            if (!course) {
+              throw new TRPCError({ code: 'NOT_FOUND', message: 'Course not found' });
+            }
+
+            const newSubscriptionId = await db.createSubscription({
+              parentId: ctx.user.id,
+              courseId: input.courseId,
+              status: 'active',
+              startDate: new Date(),
+              paymentStatus: 'pending',
+              preferredTutorId: input.tutorId,
+              paymentPlan: 'full',
+              firstInstallmentPaid: false,
+              secondInstallmentPaid: false,
+            });
+            console.log('[quickBookRecurring] Subscription created:', newSubscriptionId);
+
+            if (!newSubscriptionId) {
+              throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to create subscription' });
+            }
+            subscriptionId = newSubscriptionId;
           }
-          
-          const newSubscriptionId = await db.createSubscription({
-            parentId: ctx.user.id,
-            courseId: input.courseId,
-            status: 'active',
-            startDate: new Date(),
-            paymentStatus: 'pending',
-            preferredTutorId: input.tutorId,
-            paymentPlan: 'full',
-            firstInstallmentPaid: false,
-            secondInstallmentPaid: false,
-          });
-          console.log('[quickBookRecurring] Subscription created:', newSubscriptionId);
-          
-          if (!newSubscriptionId) {
-            throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to create subscription' });
-          }
-          subscriptionId = newSubscriptionId;
         }
         
         // Create all sessions
