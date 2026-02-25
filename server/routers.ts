@@ -969,7 +969,26 @@ export const appRouter = router({
   // Subscription Management
   subscription: router({
     mySubscriptions: parentProcedure.query(async ({ ctx }) => {
-      return await db.getSubscriptionsByParentId(ctx.user.id);
+      const subs = await db.getSubscriptionsByParentId(ctx.user.id);
+
+      // Enhance each subscription with session statistics
+      const enhancedSubs = await Promise.all(
+        subs.map(async (sub) => {
+          const sessionStats = await db.getSessionStatsBySubscription(sub.subscription.id);
+          return {
+            ...sub,
+            sessionStats: sessionStats || {
+              firstSessionDate: null,
+              lastScheduledDate: null,
+              completedCount: 0,
+              scheduledCount: 0,
+              totalSessions: 0
+            }
+          };
+        })
+      );
+
+      return enhancedSubs;
     }),
 
     getAvailability: parentProcedure
