@@ -1196,7 +1196,10 @@ export async function updateSubscription(id: number, updates: Partial<InsertSubs
 
 export async function createSession(session: InsertSession) {
   const db = await getDb();
-  if (!db) return null;
+  if (!db) {
+    console.error('[Database] Failed to get database connection in createSession');
+    return null;
+  }
 
   try {
     const durationMs = (session.duration || 0) * 60000;
