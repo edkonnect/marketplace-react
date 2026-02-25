@@ -1425,7 +1425,8 @@ export const appRouter = router({
         // Create all sessions
         const sessionIds: number[] = [];
         const failedSessions: number[] = [];
-        
+        const errorDetails: Record<number, string> = {}; // Track error messages
+
         for (let i = 0; i < input.sessions.length; i++) {
           const sessionData = input.sessions[i];
           console.log(`[quickBookRecurring] Creating session ${i + 1}/${input.sessions.length}:`, {
@@ -1451,8 +1452,19 @@ export const appRouter = router({
             } else {
               failedSessions.push(i + 1);
             }
-          } catch (error) {
-            console.error(`[Recurring Booking] Failed to create session ${i + 1}:`, error);
+          } catch (error: any) {
+            const errorMsg = error?.message || String(error);
+            console.error(`[Recurring Booking] Failed to create session ${i + 1}:`, errorMsg);
+            console.error(`[Recurring Booking] Session details:`, {
+              scheduledAt: new Date(sessionData.scheduledAt).toISOString(),
+              tutorId: input.tutorId,
+              parentId: ctx.user.id,
+              subscriptionId,
+              duration: input.duration
+            });
+
+            // Store error message
+            errorDetails[i + 1] = errorMsg;
             failedSessions.push(i + 1);
           }
         }
