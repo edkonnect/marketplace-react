@@ -1204,7 +1204,43 @@ export async function createSession(session: InsertSession) {
     const endMs = startMs + durationMs;
 
     const insertId = await db.transaction(async (trx) => {
-      // Lock and check overlapping sessions for this tutor
+      // Check for existing session at exact same time (including cancelled)
+      const existingAtExactTime = await trx
+        .select()
+        .from(sessions)
+        .where(and(
+          eq(sessions.tutorId, session.tutorId),
+          eq(sessions.scheduledAt, session.scheduledAt)
+        ))
+        .for('update')
+        .limit(1);
+
+      // If exists and is cancelled, reuse it
+      if (existingAtExactTime.length > 0) {
+        const existing = existingAtExactTime[0];
+        if (existing.status === 'cancelled') {
+          // Reuse cancelled session by updating it
+          await trx
+            .update(sessions)
+            .set({
+              subscriptionId: session.subscriptionId,
+              parentId: session.parentId,
+              duration: session.duration,
+              status: 'scheduled',
+              notes: session.notes ?? null,
+              feedbackFromTutor: null,
+              feedbackFromParent: null,
+              rating: null,
+            })
+            .where(eq(sessions.id, existing.id));
+          return existing.id;
+        } else {
+          // Non-cancelled session exists at exact time
+          throw new Error("SESSION_CONFLICT");
+        }
+      }
+
+      // Check for overlapping scheduled sessions (not at exact same time)
       const conflicts = await trx.execute(sql`
         SELECT id FROM sessions
         WHERE tutorId = ${session.tutorId}
