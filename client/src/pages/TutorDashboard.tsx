@@ -542,36 +542,104 @@ export default function TutorDashboard() {
                     </div>
                   ) : subscriptions && subscriptions.length > 0 ? (
                     <div className="space-y-4">
-                      {subscriptions.map(({ subscription, course, parent }) => (
-                        <Card key={subscription.id}>
-                          <CardContent className="pt-6">
-                            <div className="flex items-center justify-between">
-                              <div className="flex-1">
-                                <p className="font-semibold">
-                                  {subscription.studentFirstName || subscription.studentLastName
-                                    ? `${subscription.studentFirstName ?? ""} ${subscription.studentLastName ?? ""}`.trim()
-                                    : "Student"}
-                                </p>
-                                <p className="text-sm text-muted-foreground">{course.title}</p>
-                                <p className="text-xs text-muted-foreground mt-1">
-                                  {subscription.sessionsCompleted || 0} sessions completed
-                                </p>
+                      {subscriptions.map(({ subscription, course, parent, sessionStats }) => {
+                        // Calculate course duration and progress
+                        const totalSessions = course.totalSessions || 0;
+                        const sessionsPerWeek = course.sessionsPerWeek || 1;
+                        const completedCount = sessionStats?.completedCount || 0;
+                        const scheduledCount = sessionStats?.scheduledCount || 0;
+                        const remainingSessions = totalSessions - completedCount - scheduledCount;
+
+                        // Course start date: first session date or subscription created date
+                        const startDate = sessionStats?.firstSessionDate
+                          ? new Date(sessionStats.firstSessionDate)
+                          : subscription.createdAt ? new Date(subscription.createdAt) : null;
+
+                        // Calculate tentative end date based on sessionsPerWeek
+                        let tentativeEndDate = null;
+                        let isTentative = true;
+                        if (startDate && totalSessions > 0) {
+                          const weeksNeeded = Math.ceil(totalSessions / sessionsPerWeek);
+                          tentativeEndDate = new Date(startDate);
+                          tentativeEndDate.setDate(tentativeEndDate.getDate() + (weeksNeeded * 7));
+                        }
+
+                        // If all sessions are scheduled, use last scheduled date as actual end
+                        if (sessionStats?.lastScheduledDate && remainingSessions <= 0) {
+                          tentativeEndDate = new Date(sessionStats.lastScheduledDate);
+                          isTentative = false;
+                        }
+
+                        // Format dates
+                        const formatDate = (date: Date | null) => {
+                          if (!date) return "N/A";
+                          return date.toLocaleDateString("en-US", {
+                            month: "short",
+                            day: "numeric",
+                            year: "numeric",
+                          });
+                        };
+
+                        // Determine status badge
+                        let statusBadge = null;
+                        if (remainingSessions > 0 && completedCount === 0 && scheduledCount === 0) {
+                          statusBadge = <Badge variant="outline">Pending Sessions</Badge>;
+                        } else if (remainingSessions === 0 && scheduledCount === 0) {
+                          statusBadge = <Badge variant="default">Completed</Badge>;
+                        } else {
+                          statusBadge = <Badge variant="secondary">In Progress</Badge>;
+                        }
+
+                        return (
+                          <Card key={subscription.id}>
+                            <CardContent className="pt-6">
+                              <div className="flex flex-col gap-4">
+                                {/* Student info and status */}
+                                <div className="flex items-start justify-between">
+                                  <div className="flex-1">
+                                    <p className="font-semibold">
+                                      {subscription.studentFirstName || subscription.studentLastName
+                                        ? `${subscription.studentFirstName ?? ""} ${subscription.studentLastName ?? ""}`.trim()
+                                        : "Student"}
+                                    </p>
+                                    <p className="text-sm text-muted-foreground">{course.title}</p>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    {statusBadge}
+                                    <Button asChild variant="outline" size="sm">
+                                      <Link href="/messages" className="flex items-center gap-2">
+                                        <MessageSquare className="w-4 h-4" />
+                                        Message
+                                      </Link>
+                                    </Button>
+                                  </div>
+                                </div>
+
+                                {/* Course duration */}
+                                <div className="flex flex-col sm:flex-row sm:items-center gap-2 text-sm">
+                                  <div className="flex items-center gap-2">
+                                    <Calendar className="w-4 h-4 text-muted-foreground" />
+                                    <span className="text-muted-foreground">Duration:</span>
+                                    <span>
+                                      {formatDate(startDate)} - {formatDate(tentativeEndDate)}
+                                      {isTentative && tentativeEndDate && (
+                                        <span className="text-xs text-muted-foreground ml-1">(tentative)</span>
+                                      )}
+                                    </span>
+                                  </div>
+                                </div>
+
+                                {/* Progress */}
+                                <div className="text-sm text-muted-foreground">
+                                  Progress: {completedCount} completed, {scheduledCount} scheduled
+                                  {remainingSessions > 0 && `, ${remainingSessions} remaining`}
+                                  {totalSessions > 0 && ` (${completedCount + scheduledCount}/${totalSessions})`}
+                                </div>
                               </div>
-                              <div className="flex items-center gap-3">
-                                <Badge variant={subscription.status === "active" ? "default" : "secondary"}>
-                                  {subscription.status}
-                                </Badge>
-                                <Button asChild variant="outline" size="sm">
-                                  <Link href="/messages" className="flex items-center gap-2">
-                                      <MessageSquare className="w-4 h-4" />
-                                      Message
-                                  </Link>
-                                </Button>
-                              </div>
-                            </div>
-                          </CardContent>
-                        </Card>
-                      ))}
+                            </CardContent>
+                          </Card>
+                        );
+                      })}
                     </div>
                   ) : (
                     <Card>

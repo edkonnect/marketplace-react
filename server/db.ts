@@ -1192,6 +1192,56 @@ export async function updateSubscription(id: number, updates: Partial<InsertSubs
   }
 }
 
+export async function getSessionStatsBySubscription(subscriptionId: number) {
+  const db = await getDb();
+  if (!db) return null;
+
+  try {
+    // Get all non-cancelled sessions for this subscription
+    const subscriptionSessions = await db
+      .select()
+      .from(sessions)
+      .where(
+        and(
+          eq(sessions.subscriptionId, subscriptionId),
+          sql`${sessions.status} != 'cancelled'`
+        )
+      );
+
+    if (subscriptionSessions.length === 0) {
+      return {
+        firstSessionDate: null,
+        lastScheduledDate: null,
+        completedCount: 0,
+        scheduledCount: 0,
+        totalSessions: 0
+      };
+    }
+
+    // Calculate statistics
+    const firstSessionDate = Math.min(...subscriptionSessions.map(s => Number(s.scheduledAt)));
+    const scheduledSessions = subscriptionSessions.filter(s => s.status === 'scheduled');
+    const lastScheduledDate = scheduledSessions.length > 0
+      ? Math.max(...scheduledSessions.map(s => Number(s.scheduledAt)))
+      : null;
+    const completedCount = subscriptionSessions.filter(
+      s => s.status === 'completed' || s.status === 'no_show'
+    ).length;
+    const scheduledCount = scheduledSessions.length;
+
+    return {
+      firstSessionDate,
+      lastScheduledDate,
+      completedCount,
+      scheduledCount,
+      totalSessions: subscriptionSessions.length
+    };
+  } catch (error) {
+    console.error("[Database] Failed to get session stats:", error);
+    return null;
+  }
+}
+
 // ============ Session Management ============
 
 export async function createSession(session: InsertSession) {

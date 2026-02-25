@@ -1023,7 +1023,24 @@ export const appRouter = router({
         }
       }
 
-      return Array.from(dedupedMap.values());
+      // Enhance each subscription with session statistics
+      const enhancedSubs = await Promise.all(
+        Array.from(dedupedMap.values()).map(async (sub) => {
+          const sessionStats = await db.getSessionStatsBySubscription(sub.subscription.id);
+          return {
+            ...sub,
+            sessionStats: sessionStats || {
+              firstSessionDate: null,
+              lastScheduledDate: null,
+              completedCount: 0,
+              scheduledCount: 0,
+              totalSessions: 0
+            }
+          };
+        })
+      );
+
+      return enhancedSubs;
     }),
 
     create: parentProcedure
