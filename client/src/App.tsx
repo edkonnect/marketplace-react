@@ -17,7 +17,6 @@ import Messages from "./pages/Messages";
 import SignUp from "./pages/SignUp";
 import Login from "./pages/Login";
 import SetupPassword from "./pages/SetupPassword";
-import BookSession from "./pages/BookSession";
 import { ManageBooking } from "./pages/ManageBooking";
 import SessionNotesHistory from "./pages/SessionNotesHistory";
 import { FindTutors } from "./pages/FindTutors";
@@ -51,7 +50,6 @@ function Router() {
       <Route path={"/parent/payments"} component={ParentPayments} />
       <Route path={"/parent/notifications"} component={ParentNotifications} />
       <Route path={"/admin/dashboard"} component={AdminDashboard} />
-      <Route path={"/book-session/:id"} component={BookSession} />
       <Route path={"/manage-booking/:token"} component={ManageBooking} />
       <Route path={"/session-notes"} component={SessionNotesHistory} />
       <Route path={"/messages"} component={Messages} />

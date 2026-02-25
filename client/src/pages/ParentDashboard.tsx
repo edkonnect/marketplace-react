@@ -1,5 +1,4 @@
 import Navigation from "@/components/Navigation";
-import SchedulingCalendar from "@/components/SchedulingCalendar";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
@@ -52,6 +51,7 @@ export default function ParentDashboard() {
   const seenFeedbackRef = useRef<Map<number, string | null>>(new Map());
   const [noteAlerts, setNoteAlerts] = useState<Record<number, string>>({});
   const [historyPulse, setHistoryPulse] = useState(false);
+  const [activeTab, setActiveTab] = useState("subscriptions");
   const notesInitialized = useRef(false);
   const seenStorageKey = user ? `parent_seen_notes_${user.id}` : "parent_seen_notes";
 
@@ -319,7 +319,7 @@ export default function ParentDashboard() {
           </div>
 
           {/* Main Content */}
-          <Tabs defaultValue="subscriptions" className="space-y-6">
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
             <div className="overflow-x-auto">
               <TabsList className="inline-flex min-w-max gap-2 sm:w-full sm:flex-wrap sm:justify-start">
                 <TabsTrigger className="whitespace-nowrap" value="subscriptions">Subscriptions</TabsTrigger>
@@ -524,11 +524,13 @@ export default function ParentDashboard() {
 
                         <div className="space-y-2">
                           {subscription.status === "active" && subscription.paymentStatus === "paid" && (
-                            <Button asChild size="sm" className="w-full">
-                              <Link href={`/book-session/${subscription.id}`} className="flex items-center gap-2">
-                                <Calendar className="w-4 h-4" />
-                                Book Session
-                              </Link>
+                            <Button
+                              size="sm"
+                              className="w-full"
+                              onClick={() => setActiveTab("schedule")}
+                            >
+                              <Calendar className="w-4 h-4 mr-2" />
+                              Book Session
                             </Button>
                           )}
                           <div className="flex gap-2">
