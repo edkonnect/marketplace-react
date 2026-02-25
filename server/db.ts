@@ -1196,10 +1196,8 @@ export async function updateSubscription(id: number, updates: Partial<InsertSubs
 
 export async function createSession(session: InsertSession) {
   const db = await getDb();
-  if (!db) {
-    console.error('[Database] Failed to get database connection in createSession');
-    return null;
-  }
+  if (!db) return null;
+  
 
   try {
     const durationMs = (session.duration || 0) * 60000;
@@ -1221,9 +1219,7 @@ export async function createSession(session: InsertSession) {
       // If exists and is cancelled, reuse it
       if (existingAtExactTime.length > 0) {
         const existing = existingAtExactTime[0];
-        console.log(`[createSession] Found existing session at time ${session.scheduledAt}, status: ${existing.status}`);
         if (existing.status === 'cancelled') {
-          console.log(`[createSession] Reusing cancelled session ID ${existing.id}`);
           // Reuse cancelled session by updating it
           await trx
             .update(sessions)
