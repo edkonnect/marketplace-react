@@ -12,8 +12,9 @@ import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Link, useLocation } from "wouter";
-import { BookOpen, Calendar, MessageSquare, DollarSign, Users, Edit, Clock, FileText, Plus } from "lucide-react";
+import { BookOpen, Calendar, MessageSquare, DollarSign, Users, Edit, Clock, FileText, Plus, Filter } from "lucide-react";
 import { AvailabilityManager } from "@/components/AvailabilityManager";
 import { TimeBlockManager } from "@/components/TimeBlockManager";
 import { VideoUploadManager } from "@/components/VideoUploadManager";
@@ -74,6 +75,7 @@ export default function TutorDashboard() {
   const [selectedSessionId, setSelectedSessionId] = useState<number | null>(null);
   const [completionType, setCompletionType] = useState<"completed" | "no_show">("completed");
   const [completionNotes, setCompletionNotes] = useState("");
+  const [selectedYear, setSelectedYear] = useState<string>("all");
   type PreferenceState = { preferred: boolean; hourlyRate: string; approvalStatus?: string };
   const [preferenceState, setPreferenceState] = useState<Record<number, PreferenceState>>({});
 
@@ -121,6 +123,32 @@ export default function TutorDashboard() {
     });
     return new Set(keys).size;
   }, [activeSubscriptions]);
+
+  // Generate available years from subscriptions based on enrollment date
+  const availableYears = useMemo(() => {
+    if (!subscriptions) return [];
+    const years = new Set<number>();
+    subscriptions.forEach(({ subscription }) => {
+      const enrollDate = subscription.startDate || subscription.createdAt;
+      if (enrollDate) {
+        const year = new Date(enrollDate).getFullYear();
+        years.add(year);
+      }
+    });
+    return Array.from(years).sort((a, b) => b - a); // Sort descending (newest first)
+  }, [subscriptions]);
+
+  // Filter subscriptions by selected year
+  const filteredSubscriptions = useMemo(() => {
+    if (!subscriptions || selectedYear === "all") return subscriptions;
+
+    return subscriptions.filter(({ subscription }) => {
+      const enrollDate = subscription.startDate || subscription.createdAt;
+      if (!enrollDate) return false;
+      const enrollYear = new Date(enrollDate).getFullYear();
+      return enrollYear.toString() === selectedYear;
+    });
+  }, [subscriptions, selectedYear]);
 
   // Helpers for session actions
   const canComplete = (session: any) =>
@@ -534,15 +562,37 @@ export default function TutorDashboard() {
 
                 {/* Students Tab */}
                 <TabsContent value="students" forceMount className={tabContentClass}>
-                  <h2 className="text-2xl font-bold">My Students</h2>
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+                    <h2 className="text-2xl font-bold">My Students</h2>
+
+                    {/* Year Filter Dropdown */}
+                    {availableYears.length > 0 && (
+                      <div className="flex items-center gap-2">
+                        <Filter className="h-4 w-4 text-muted-foreground" />
+                        <Select value={selectedYear} onValueChange={setSelectedYear}>
+                          <SelectTrigger className="w-[180px]">
+                            <SelectValue placeholder="Filter by year" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">All Years</SelectItem>
+                            {availableYears.map((year) => (
+                              <SelectItem key={year} value={year.toString()}>
+                                {year}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
+                  </div>
 
                   {subsLoading ? (
                     <div className="space-y-4">
                       {[1, 2].map(i => <Skeleton key={i} className="h-32 w-full" />)}
                     </div>
-                  ) : subscriptions && subscriptions.length > 0 ? (
+                  ) : filteredSubscriptions && filteredSubscriptions.length > 0 ? (
                     <div className="space-y-4">
-                      {subscriptions.map(({ subscription, course, parent, sessionStats }) => {
+                      {filteredSubscriptions.map(({ subscription, course, parent, sessionStats }) => {
                         // Calculate course duration and progress
                         const totalSessions = course.totalSessions || 0;
                         const sessionsPerWeek = course.sessionsPerWeek || 1;
@@ -590,6 +640,10 @@ export default function TutorDashboard() {
                           statusBadge = <Badge variant="secondary">In Progress</Badge>;
                         }
 
+                        // Calculate enrollment year for badge
+                        const enrollDate = subscription.startDate || subscription.createdAt;
+                        const enrollYear = enrollDate ? new Date(enrollDate).getFullYear() : null;
+
                         return (
                           <Card key={subscription.id}>
                             <CardContent className="pt-6">
@@ -597,14 +651,21 @@ export default function TutorDashboard() {
                                 {/* Student info and status */}
                                 <div className="flex items-start justify-between">
                                   <div className="flex-1">
-                                    <p className="font-semibold">
-                                      {subscription.studentFirstName || subscription.studentLastName
-                                        ? `${subscription.studentFirstName ?? ""} ${subscription.studentLastName ?? ""}`.trim()
-                                        : "Student"}
-                                    </p>
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <p className="font-semibold">
+                                        {subscription.studentFirstName || subscription.studentLastName
+                                          ? `${subscription.studentFirstName ?? ""} ${subscription.studentLastName ?? ""}`.trim()
+                                          : "Student"}
+                                      </p>
+                                      {enrollYear && (
+                                        <Badge variant="outline" className="text-xs">
+                                          Enrolled {enrollYear}
+                                        </Badge>
+                                      )}
+                                    </div>
                                     <p className="text-sm text-muted-foreground">{course.title}</p>
                                   </div>
-                                  <div className="flex items-center gap-2">
+                                  <div className="flex items-center gap-2 flex-wrap">
                                     {statusBadge}
                                     <Button asChild variant="outline" size="sm">
                                       <Link href="/messages" className="flex items-center gap-2">
@@ -645,10 +706,26 @@ export default function TutorDashboard() {
                     <Card>
                       <CardContent className="py-16 text-center">
                         <Users className="w-16 h-16 mx-auto mb-4 text-muted-foreground" />
-                        <h3 className="text-xl font-semibold mb-2">No Students Yet</h3>
+                        <h3 className="text-xl font-semibold mb-2">
+                          {selectedYear !== "all" && subscriptions && subscriptions.length > 0
+                            ? `No Students Enrolled in ${selectedYear}`
+                            : "No Students Yet"}
+                        </h3>
                         <p className="text-muted-foreground">
-                          Students who enroll in your courses will appear here
+                          {selectedYear !== "all" && subscriptions && subscriptions.length > 0
+                            ? `No students enrolled in ${selectedYear}. Try selecting a different year or "All Years".`
+                            : "Students who enroll in your courses will appear here"}
                         </p>
+                        {selectedYear !== "all" && subscriptions && subscriptions.length > 0 && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setSelectedYear("all")}
+                            className="mt-4"
+                          >
+                            View All Years
+                          </Button>
+                        )}
                       </CardContent>
                     </Card>
                   )}
