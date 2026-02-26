@@ -1171,6 +1171,22 @@ export const appRouter = router({
       }
     }),
 
+    getUpcomingByTutorId: publicProcedure
+      .input(z.object({ tutorId: z.number() }))
+      .query(async ({ input }) => {
+        const rows = await db.getSessionsByTutorId(input.tutorId);
+        const now = Date.now();
+        // Filter for upcoming scheduled sessions only
+        return rows
+          .filter((row: any) => row.session.scheduledAt >= now && row.session.status === 'scheduled')
+          .map((row: any) => ({
+            id: row.session.id,
+            scheduledAt: row.session.scheduledAt,
+            duration: row.session.duration,
+            status: row.session.status,
+          }));
+      }),
+
     myBookings: parentProcedure.query(async ({ ctx }) => {
       // Fetch all sessions for the parent grouped by subscription
       const rows = await db.getSessionsByParentId(ctx.user.id);

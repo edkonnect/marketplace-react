@@ -16,6 +16,7 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { LOGIN_PATH } from "@/const";
 import { toast } from "sonner";
 import { BookableCalendar } from "@/components/BookableCalendar";
+import { TutorAvailabilityModal } from "@/components/TutorAvailabilityModal";
 
 export default function CourseDetail() {
   const { id } = useParams();
@@ -28,8 +29,19 @@ export default function CourseDetail() {
   const [studentFirstName, setStudentFirstName] = React.useState("");
   const [studentLastName, setStudentLastName] = React.useState("");
   const [studentGrade, setStudentGrade] = React.useState("");
+  const [availabilityModalOpen, setAvailabilityModalOpen] = React.useState(false);
+  const [selectedTutorForAvailability, setSelectedTutorForAvailability] = React.useState<{
+    id: number;
+    name: string;
+  } | null>(null);
 
   const { data: course, isLoading } = trpc.course.get.useQuery({ id: courseId });
+
+  // Fetch availability for selected tutor
+  const { data: tutorAvailability = [] } = trpc.tutorAvailability.getByTutorId.useQuery(
+    { tutorId: selectedTutorForAvailability?.id || 0 },
+    { enabled: !!selectedTutorForAvailability?.id && availabilityModalOpen }
+  );
   const { data: tutorsWithAvailability = [] } = trpc.course.getTutorsWithAvailability.useQuery(
     { courseId },
     { enabled: courseId > 0 }
@@ -571,29 +583,54 @@ export default function CourseDetail() {
                   <CardContent>
                     <div className="space-y-6">
                       {course.tutors.map((tutorAssignment) => (
-                        <div key={tutorAssignment.tutorId} className="flex gap-4 pb-6 border-b last:border-0 last:pb-0">
-                          <Avatar className="h-16 w-16 flex-shrink-0">
-                            <AvatarImage src={tutorAssignment.profile?.profileImageUrl || undefined} alt={tutorAssignment.user.name || 'Tutor'} />
-                            <AvatarFallback className="text-lg">
-                              {tutorAssignment.user.name?.split(' ').map(n => n[0]).join('').toUpperCase() || 'T'}
-                            </AvatarFallback>
-                          </Avatar>
-                          <div className="flex-1 space-y-3">
-                            <div className="flex items-start justify-between">
+                        <div key={tutorAssignment.tutorId} className="pb-6 border-b last:border-0 last:pb-0">
+                          <div className="flex flex-col sm:flex-row gap-4">
+                            <Avatar className="h-16 w-16 flex-shrink-0">
+                              <AvatarImage src={tutorAssignment.profile?.profileImageUrl || undefined} alt={tutorAssignment.user.name || 'Tutor'} />
+                              <AvatarFallback className="text-lg">
+                                {tutorAssignment.user.name?.split(' ').map(n => n[0]).join('').toUpperCase() || 'T'}
+                              </AvatarFallback>
+                            </Avatar>
+                            <div className="flex-1 min-w-0 space-y-3">
                               <div>
-                                <h3 className="font-semibold text-lg">{tutorAssignment.user.name}</h3>
-                                {tutorAssignment.profile?.bio && (
-                                  <p className="text-sm text-muted-foreground mt-2 leading-relaxed">
-                                    {tutorAssignment.profile.bio}
-                                  </p>
-                                )}
+                                <Link href={`/tutor/${tutorAssignment.tutorId}`}>
+                                  <h3 className="font-semibold text-lg hover:text-primary cursor-pointer transition-colors break-words">
+                                    {tutorAssignment.user.name}
+                                  </h3>
+                                </Link>
+                                <p className="text-sm text-muted-foreground">
+                                  {tutorAssignment.profile?.bio ? tutorAssignment.profile.bio.split('\n')[0] : 'English tutor'}
+                                </p>
+                              </div>
+                              {tutorAssignment.profile?.bio && tutorAssignment.profile.bio.includes('\n') && (
+                                <p className="text-sm text-muted-foreground leading-relaxed break-words">
+                                  {tutorAssignment.profile.bio.split('\n').slice(1).join('\n')}
+                                </p>
+                              )}
+                              <div className="flex flex-col xs:flex-row gap-2">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="w-full xs:w-auto whitespace-nowrap"
+                                  onClick={() => {
+                                    setSelectedTutorForAvailability({
+                                      id: tutorAssignment.tutorId,
+                                      name: tutorAssignment.user.name || "Tutor"
+                                    });
+                                    setAvailabilityModalOpen(true);
+                                  }}
+                                >
+                                  View Availability
+                                </Button>
+                                <Button
+                                  variant="default"
+                                  size="sm"
+                                  className="w-full xs:w-auto whitespace-nowrap"
+                                >
+                                  Book Trial Session
+                                </Button>
                               </div>
                             </div>
-                            <Button asChild variant="outline" size="sm">
-                              <Link href={`/tutor/${tutorAssignment.tutorId}`}>
-                                View Full Profile
-                              </Link>
-                            </Button>
                           </div>
                         </div>
                       ))}
@@ -605,6 +642,17 @@ export default function CourseDetail() {
           </div>
         </div>
       </div>
+
+      {/* Tutor Availability Modal */}
+      {selectedTutorForAvailability && (
+        <TutorAvailabilityModal
+          open={availabilityModalOpen}
+          onOpenChange={setAvailabilityModalOpen}
+          tutorId={selectedTutorForAvailability.id}
+          tutorName={selectedTutorForAvailability.name}
+          availability={tutorAvailability}
+        />
+      )}
     </div>
   );
 }
