@@ -14,7 +14,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Link, useLocation } from "wouter";
-import { BookOpen, Calendar, MessageSquare, DollarSign, Users, Edit, Clock, FileText, Plus, Filter } from "lucide-react";
+import { BookOpen, Calendar, MessageSquare, DollarSign, Users, Edit, Clock, FileText, Plus, Filter, Search, X } from "lucide-react";
 import { AvailabilityManager } from "@/components/AvailabilityManager";
 import { TimeBlockManager } from "@/components/TimeBlockManager";
 import { VideoUploadManager } from "@/components/VideoUploadManager";
@@ -76,6 +76,9 @@ export default function TutorDashboard() {
   const [completionType, setCompletionType] = useState<"completed" | "no_show">("completed");
   const [completionNotes, setCompletionNotes] = useState("");
   const [selectedYear, setSelectedYear] = useState<string>("all");
+  const [courseSearchQuery, setCourseSearchQuery] = useState("");
+  const [courseSubjectFilter, setCourseSubjectFilter] = useState<string>("all");
+  const [showOnlySelected, setShowOnlySelected] = useState(false);
   type PreferenceState = { preferred: boolean; hourlyRate: string; approvalStatus?: string };
   const [preferenceState, setPreferenceState] = useState<Record<number, PreferenceState>>({});
 
@@ -149,6 +152,51 @@ export default function TutorDashboard() {
       return enrollYear.toString() === selectedYear;
     });
   }, [subscriptions, selectedYear]);
+
+  // Extract unique subjects from available courses
+  const availableSubjects = useMemo(() => {
+    if (!availableCourses) return [];
+    const subjects = new Set<string>();
+    availableCourses.forEach((course: any) => {
+      if (course.subject) {
+        subjects.add(course.subject);
+      }
+    });
+    return Array.from(subjects).sort();
+  }, [availableCourses]);
+
+  // Filter courses based on search, subject, and selection
+  const filteredCourses = useMemo(() => {
+    if (!availableCourses) return [];
+
+    return availableCourses.filter((course: any) => {
+      // Search filter
+      if (courseSearchQuery) {
+        const query = courseSearchQuery.toLowerCase();
+        const matchesTitle = course.title?.toLowerCase().includes(query);
+        const matchesSubject = course.subject?.toLowerCase().includes(query);
+        const matchesGrade = course.gradeLevel?.toLowerCase().includes(query);
+        if (!matchesTitle && !matchesSubject && !matchesGrade) {
+          return false;
+        }
+      }
+
+      // Subject filter
+      if (courseSubjectFilter !== "all" && course.subject !== courseSubjectFilter) {
+        return false;
+      }
+
+      // Show only selected filter
+      if (showOnlySelected) {
+        const pref = preferenceState[course.id];
+        if (!pref || !pref.preferred) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+  }, [availableCourses, courseSearchQuery, courseSubjectFilter, showOnlySelected, preferenceState]);
 
   // Helpers for session actions
   const canComplete = (session: any) =>
@@ -478,7 +526,7 @@ export default function TutorDashboard() {
 
                 {/* Course Preferences Tab */}
                 <TabsContent value="course-preferences" forceMount className={tabContentClass}>
-                  <div className="flex items-center justify-between gap-4 flex-wrap">
+                  <div className="flex items-center justify-between gap-4 flex-wrap mb-6">
                     <h2 className="text-2xl font-bold">My Course Preferences</h2>
                     <Button
                       onClick={handleSavePreferences}
@@ -495,15 +543,73 @@ export default function TutorDashboard() {
                         New or updated preferences will be reviewed by an admin.
                       </p>
 
+                      {/* Search and Filter Controls */}
+                      {availableCourses && availableCourses.length > 0 && (
+                        <div className="space-y-3">
+                          <div className="flex flex-col sm:flex-row gap-3">
+                            {/* Search Bar */}
+                            <div className="relative flex-1">
+                              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                              <Input
+                                placeholder="Search courses by title, subject, or grade..."
+                                value={courseSearchQuery}
+                                onChange={(e) => setCourseSearchQuery(e.target.value)}
+                                className="pl-9 pr-9"
+                              />
+                              {courseSearchQuery && (
+                                <button
+                                  onClick={() => setCourseSearchQuery("")}
+                                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                                >
+                                  <X className="h-4 w-4" />
+                                </button>
+                              )}
+                            </div>
+
+                            {/* Subject Filter */}
+                            <Select value={courseSubjectFilter} onValueChange={setCourseSubjectFilter}>
+                              <SelectTrigger className="w-full sm:w-[200px]">
+                                <SelectValue placeholder="Filter by subject" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="all">All Subjects</SelectItem>
+                                {availableSubjects.map((subject) => (
+                                  <SelectItem key={subject} value={subject}>
+                                    {subject}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+
+                          {/* Show Only Selected Toggle */}
+                          <div className="flex items-center gap-2">
+                            <Checkbox
+                              id="show-only-selected"
+                              checked={showOnlySelected}
+                              onCheckedChange={(checked) => setShowOnlySelected(Boolean(checked))}
+                            />
+                            <Label htmlFor="show-only-selected" className="text-sm font-normal cursor-pointer">
+                              Show only selected courses
+                            </Label>
+                          </div>
+
+                          {/* Results count */}
+                          <div className="text-sm text-muted-foreground">
+                            Showing {filteredCourses.length} of {availableCourses.length} courses
+                          </div>
+                        </div>
+                      )}
+
                       {preferencesLoading || availableCoursesLoading ? (
                         <div className="space-y-3">
                           {[1, 2, 3].map((i) => (
                             <Skeleton key={i} className="h-16 w-full" />
                           ))}
                         </div>
-                      ) : availableCourses && availableCourses.length > 0 ? (
-                        <div className="space-y-3">
-                          {availableCourses.map((course: any) => {
+                      ) : filteredCourses && filteredCourses.length > 0 ? (
+                        <div className="space-y-3 max-h-[600px] overflow-y-auto pr-2">
+                          {filteredCourses.map((course: any) => {
                             const pref = preferenceState[course.id] || { preferred: false, hourlyRate: "" };
                             const status = pref.approvalStatus || "PENDING";
                             const statusVariant =
@@ -550,6 +656,39 @@ export default function TutorDashboard() {
                               </div>
                             );
                           })}
+                        </div>
+                      ) : availableCourses && availableCourses.length > 0 ? (
+                        <div className="text-center text-muted-foreground py-8">
+                          <p className="mb-4">No courses match your current filters.</p>
+                          <div className="flex flex-wrap gap-2 justify-center">
+                            {courseSearchQuery && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setCourseSearchQuery("")}
+                              >
+                                Clear search
+                              </Button>
+                            )}
+                            {courseSubjectFilter !== "all" && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setCourseSubjectFilter("all")}
+                              >
+                                Clear subject filter
+                              </Button>
+                            )}
+                            {showOnlySelected && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setShowOnlySelected(false)}
+                              >
+                                Show all courses
+                              </Button>
+                            )}
+                          </div>
                         </div>
                       ) : (
                         <div className="text-center text-muted-foreground py-6">
