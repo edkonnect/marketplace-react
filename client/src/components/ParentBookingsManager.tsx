@@ -172,20 +172,23 @@ function CalendarView({
       {/* Month Navigation */}
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Button variant="outline" size="icon" onClick={goToPreviousMonth}>
-                <ChevronLeft className="w-4 h-4" />
-              </Button>
-              <Button variant="outline" size="icon" onClick={goToNextMonth}>
-                <ChevronRight className="w-4 h-4" />
-              </Button>
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-2 justify-between sm:justify-start">
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="icon" onClick={goToPreviousMonth}>
+                  <ChevronLeft className="w-4 h-4" />
+                </Button>
+                <Button variant="outline" size="icon" onClick={goToNextMonth}>
+                  <ChevronRight className="w-4 h-4" />
+                </Button>
+              </div>
               <Button variant="outline" size="sm" onClick={goToToday}>
                 Today
               </Button>
             </div>
-            <CardTitle className="text-2xl font-bold">{monthName}</CardTitle>
-            <div className="w-32"></div> {/* Spacer for balance */}
+            <CardTitle className="text-xl sm:text-2xl font-bold text-center sm:absolute sm:left-1/2 sm:transform sm:-translate-x-1/2">
+              {monthName}
+            </CardTitle>
           </div>
         </CardHeader>
       </Card>

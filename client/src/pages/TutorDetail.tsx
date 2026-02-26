@@ -5,12 +5,22 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useParams, Link } from "wouter";
-import { Star, BookOpen, Clock, DollarSign, MessageSquare } from "lucide-react";
+import { Star, BookOpen, Clock, DollarSign, MessageSquare, Calendar as CalendarIcon } from "lucide-react";
 import { VideoPlayerWithRecommendations } from "@/components/VideoPlayerWithRecommendations";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { LOGIN_PATH } from "@/const";
 import AvailabilityCalendar from "@/components/AvailabilityCalendar";
 import TutorAvailabilityDisplay from "@/components/TutorAvailabilityDisplay";
+
+const DAYS_OF_WEEK = [
+  { value: 0, label: "Sunday" },
+  { value: 1, label: "Monday" },
+  { value: 2, label: "Tuesday" },
+  { value: 3, label: "Wednesday" },
+  { value: 4, label: "Thursday" },
+  { value: 5, label: "Friday" },
+  { value: 6, label: "Saturday" },
+];
 
 export default function TutorDetail() {
   const { id } = useParams();
@@ -118,7 +128,7 @@ export default function TutorDetail() {
               <div className="flex-1">
                 <div className="flex items-start justify-between mb-4">
                   <div>
-                    <h1 className="text-4xl font-bold mb-2">Tutor Profile</h1>
+                    <h1 className="text-4xl font-bold mb-2">{tutorProfile.name || "Tutor Profile"}</h1>
                     {tutorProfile.yearsOfExperience && (
                       <div className="flex items-center gap-2 text-muted-foreground">
                         <Clock className="w-4 h-4" />
@@ -286,16 +296,62 @@ export default function TutorDetail() {
 
             {/* Sidebar */}
             <div className="space-y-6">
-              {/* Weekly Availability Schedule */}
+              {/* Available Slots (Next 7 Days) */}
               {availability && availability.length > 0 && (
-                <TutorAvailabilityDisplay availability={availability} />
+                <TutorAvailabilityDisplay availability={availability} tutorId={tutorId} />
               )}
-              
-              {/* Availability Calendar */}
-              <AvailabilityCalendar 
-                availability={tutorProfile.availability} 
-                tutorName={tutorProfile.name || undefined}
-              />
+
+              {/* General Weekly Availability */}
+              {availability && availability.length > 0 && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <CalendarIcon className="w-5 h-5" />
+                      General Availability
+                    </CardTitle>
+                    <CardDescription>
+                      {tutorProfile.name ? `${tutorProfile.name}'s usual weekly schedule` : "Usual weekly schedule"}
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-3">
+                      {DAYS_OF_WEEK.map(day => {
+                        const daySlots = availability.filter(slot => slot.dayOfWeek === day.value && slot.isActive);
+                        return (
+                          <div
+                            key={day.value}
+                            className={`flex items-start gap-4 p-3 rounded-lg border transition-colors ${
+                              daySlots.length > 0
+                                ? "bg-primary/5 border-primary/20"
+                                : "bg-muted/30 border-border"
+                            }`}
+                          >
+                            <div className="min-w-[80px]">
+                              <p className={`text-sm font-medium ${daySlots.length > 0 ? "text-foreground" : "text-muted-foreground"}`}>
+                                {day.label}
+                              </p>
+                            </div>
+                            <div className="flex-1">
+                              {daySlots.length > 0 ? (
+                                <div className="space-y-1">
+                                  {daySlots.map(slot => (
+                                    <div key={slot.id} className="flex items-center gap-2 text-sm">
+                                      <Clock className="w-3 h-3 text-primary" />
+                                      <span>{slot.startTime} - {slot.endTime}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : (
+                                <p className="text-sm text-muted-foreground italic">Not available</p>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
 
               {/* Qualifications */}
               {tutorProfile.qualifications && (

@@ -66,10 +66,10 @@ export default function AvailabilityCalendar({ availability, tutorName }: Availa
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Calendar className="h-5 w-5" />
-          Weekly Availability
+          General Availability
         </CardTitle>
         <CardDescription>
-          {tutorName ? `${tutorName}'s available time slots` : "Available time slots for booking"}
+          {tutorName ? `${tutorName}'s typical weekly schedule` : "Typical weekly availability schedule"}
         </CardDescription>
       </CardHeader>
       <CardContent>
