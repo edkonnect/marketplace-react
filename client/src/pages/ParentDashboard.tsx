@@ -151,6 +151,10 @@ export default function ParentDashboard() {
   const [selectedSubscriptionStudent, setSelectedSubscriptionStudent] = useState<string>("all");
   const [selectedNoteStudent, setSelectedNoteStudent] = useState<string>("all");
   const [selectedSubject, setSelectedSubject] = useState<string>("all");
+  const [selectedTimeFilter, setSelectedTimeFilter] = useState<string>("all");
+  const [selectedHistoryStudent, setSelectedHistoryStudent] = useState<string>("all");
+  const [selectedHistoryTime, setSelectedHistoryTime] = useState<string>("all");
+  const [selectedHistoryCourse, setSelectedHistoryCourse] = useState<string>("all");
 
   const subscriptionStudentMap = useMemo(() => {
     const map = new Map<number, string>();
@@ -163,10 +167,47 @@ export default function ParentDashboard() {
     return map;
   }, [activeSubscriptions]);
 
+  // Combine structured notes with feedbackFromTutor from session history
+  const combinedNotes = useMemo(() => {
+    const notesMap = new Map();
+
+    // Add structured notes from sessionNotes query
+    (sessionNotes || []).forEach((note) => {
+      notesMap.set(note.id, note);
+    });
+
+    // Add feedback from completed/no_show sessions in history
+    (sessionHistory || [])
+      .filter((s) => (s.status === "completed" || s.status === "no_show") && s.feedbackFromTutor)
+      .forEach((session) => {
+        // Only add if not already present from sessionNotes (to avoid duplicates)
+        if (!notesMap.has(session.id)) {
+          notesMap.set(session.id, {
+            id: session.id,
+            sessionId: session.id,
+            tutorName: session.tutorName,
+            subscriptionId: session.subscriptionId,
+            progressSummary: session.feedbackFromTutor,
+            homework: null,
+            challenges: null,
+            nextSteps: null,
+            createdAt: session.updatedAt || new Date(session.scheduledAt),
+            scheduledAt: session.scheduledAt,
+            studentFirstName: session.studentFirstName,
+            studentLastName: session.studentLastName,
+            courseSubject: session.courseSubject,
+            courseTitle: session.courseTitle,
+          });
+        }
+      });
+
+    return Array.from(notesMap.values());
+  }, [sessionNotes, sessionHistory]);
+
   const noteStudentOptions = useMemo(() => {
     const set = new Set<string>();
     // Include students that have notes
-    sessionNotes?.forEach((note) => {
+    combinedNotes.forEach((note) => {
       const name = [note.studentFirstName, note.studentLastName].filter(Boolean).join(" ").trim()
         || (note.subscriptionId ? subscriptionStudentMap.get(note.subscriptionId) ?? "" : "");
       if (name) set.add(name);
@@ -177,12 +218,12 @@ export default function ParentDashboard() {
       if (name) set.add(name);
     });
     return Array.from(set);
-  }, [sessionNotes, activeSubscriptions, subscriptionStudentMap]);
+  }, [combinedNotes, activeSubscriptions, subscriptionStudentMap]);
 
   const subjectOptions = useMemo(() => {
     const set = new Set<string>();
-    // Courses/titles from notes
-    sessionNotes?.forEach((note) => {
+    // Courses/titles from combined notes
+    combinedNotes.forEach((note) => {
       if (note.courseTitle) set.add(note.courseTitle);
       else if (note.courseSubject) set.add(note.courseSubject);
     });
@@ -192,20 +233,78 @@ export default function ParentDashboard() {
       else if (course?.subject) set.add(course.subject);
     });
     return Array.from(set);
-  }, [sessionNotes, activeSubscriptions]);
+  }, [combinedNotes, activeSubscriptions]);
 
   const filteredSessionNotes = useMemo(() => {
-    if (!sessionNotes) return [];
-    return sessionNotes.filter((note) => {
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
+
+    return combinedNotes.filter((note) => {
       const studentName =
         [note.studentFirstName, note.studentLastName].filter(Boolean).join(" ").trim() ||
         (note.subscriptionId ? subscriptionStudentMap.get(note.subscriptionId) ?? "" : "");
       const subject = note.courseTitle || note.courseSubject || "";
+
       const matchesStudent = selectedNoteStudent === "all" || studentName === selectedNoteStudent;
       const matchesSubject = selectedSubject === "all" || subject === selectedSubject;
-      return matchesStudent && matchesSubject;
+
+      // Time filter logic
+      let matchesTime = true;
+      if (selectedTimeFilter !== "all") {
+        const noteDate = new Date(note.scheduledAt);
+        const noteMonth = noteDate.getMonth();
+        const noteYear = noteDate.getFullYear();
+
+        if (selectedTimeFilter === "this_month") {
+          matchesTime = noteMonth === currentMonth && noteYear === currentYear;
+        } else if (selectedTimeFilter === "last_month") {
+          const lastMonth = currentMonth === 0 ? 11 : currentMonth - 1;
+          const lastMonthYear = currentMonth === 0 ? currentYear - 1 : currentYear;
+          matchesTime = noteMonth === lastMonth && noteYear === lastMonthYear;
+        }
+      }
+
+      return matchesStudent && matchesSubject && matchesTime;
     });
-  }, [sessionNotes, selectedNoteStudent, selectedSubject, subscriptionStudentMap]);
+  }, [combinedNotes, selectedNoteStudent, selectedSubject, selectedTimeFilter, subscriptionStudentMap]);
+
+  // Filtered history sessions
+  const filteredHistorySessions = useMemo(() => {
+    if (!sessionHistory) return [];
+
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
+
+    return sessionHistory
+      .filter((s) => s.status === "scheduled" || s.status === "completed" || s.status === "no_show")
+      .filter((session) => {
+        const studentName = [session.studentFirstName, session.studentLastName].filter(Boolean).join(" ").trim();
+        const courseName = session.courseTitle || "";
+
+        const matchesStudent = selectedHistoryStudent === "all" || studentName === selectedHistoryStudent;
+        const matchesCourse = selectedHistoryCourse === "all" || courseName === selectedHistoryCourse;
+
+        // Time filter logic
+        let matchesTime = true;
+        if (selectedHistoryTime !== "all") {
+          const sessionDate = new Date(session.scheduledAt);
+          const sessionMonth = sessionDate.getMonth();
+          const sessionYear = sessionDate.getFullYear();
+
+          if (selectedHistoryTime === "this_month") {
+            matchesTime = sessionMonth === currentMonth && sessionYear === currentYear;
+          } else if (selectedHistoryTime === "last_month") {
+            const lastMonth = currentMonth === 0 ? 11 : currentMonth - 1;
+            const lastMonthYear = currentMonth === 0 ? currentYear - 1 : currentYear;
+            matchesTime = sessionMonth === lastMonth && sessionYear === lastMonthYear;
+          }
+        }
+
+        return matchesStudent && matchesCourse && matchesTime;
+      });
+  }, [sessionHistory, selectedHistoryStudent, selectedHistoryTime, selectedHistoryCourse]);
 
   // Filter subscriptions by selected student for the Subscriptions tab
   const filteredSubscriptionsForTab = useMemo(() => {
@@ -628,14 +727,59 @@ export default function ParentDashboard() {
             <TabsContent value="history" forceMount className={tabContentClass}>
               <h2 className="text-2xl font-bold">Session History</h2>
 
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 mt-4">
+                <div className="space-y-2">
+                  <Label htmlFor="history-student">Student</Label>
+                  <Select value={selectedHistoryStudent} onValueChange={setSelectedHistoryStudent}>
+                    <SelectTrigger id="history-student">
+                      <SelectValue placeholder="All students" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All students</SelectItem>
+                      {noteStudentOptions.map((name) => (
+                        <SelectItem key={name} value={name}>{name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="history-time">Time Period</Label>
+                  <Select value={selectedHistoryTime} onValueChange={setSelectedHistoryTime}>
+                    <SelectTrigger id="history-time">
+                      <SelectValue placeholder="All time" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All time</SelectItem>
+                      <SelectItem value="this_month">This month</SelectItem>
+                      <SelectItem value="last_month">Last month</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="history-course">Course</Label>
+                  <Select value={selectedHistoryCourse} onValueChange={setSelectedHistoryCourse}>
+                    <SelectTrigger id="history-course">
+                      <SelectValue placeholder="All courses" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All courses</SelectItem>
+                      {subjectOptions.map((subject) => (
+                        <SelectItem key={subject} value={subject}>{subject}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
               {historyLoading ? (
-                <div className="space-y-4">
+                <div className="space-y-4 mt-6">
                   {[1, 2, 3].map(i => <Skeleton key={i} className="h-32 w-full" />)}
                 </div>
-              ) : sessionHistory && sessionHistory.filter(s => s.status === "scheduled" || s.status === "completed" || s.status === "no_show").length > 0 ? (
-                <div className="space-y-4">
-                  {sessionHistory
-                    .filter((s) => s.status === "scheduled" || s.status === "completed" || s.status === "no_show")
+              ) : filteredHistorySessions.length > 0 ? (
+                <div className="space-y-4 mt-6">
+                  {filteredHistorySessions
                     .slice(0, 10)
                     .map((session) => (
                     <Card key={session.id}>
@@ -669,19 +813,29 @@ export default function ParentDashboard() {
                             )}
                           </p>
                           {session.feedbackFromTutor && (
-                            <div className="flex items-center gap-2 text-xs text-primary">
-                              {noteAlerts[session.id] ? (
-                                <span className="inline-block h-2 w-2 rounded-full bg-primary animate-pulse" />
-                              ) : (
-                                <span className="inline-block h-2 w-2 rounded-full bg-primary/50" />
-                              )}
-                              <span>{noteAlerts[session.id] ? "Notes updated" : "Notes available"}</span>
+                            <div className="mt-3 p-4 sm:p-5 rounded-xl border-l-4 border-blue-500 bg-gradient-to-br from-blue-50 to-blue-100/50 dark:from-blue-950/30 dark:to-blue-900/20 shadow-sm">
+                              <div className="flex items-start gap-3">
+                                <div className="w-10 h-10 rounded-lg bg-blue-500/10 dark:bg-blue-500/20 flex items-center justify-center flex-shrink-0">
+                                  <FileText className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                                </div>
+                                <div className="flex-1 space-y-2">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="text-base font-semibold text-blue-900 dark:text-blue-100">Session Summary</span>
+                                    {noteAlerts[session.id] && (
+                                      <Badge variant="default" className="text-xs flex items-center gap-1 bg-green-500 hover:bg-green-600">
+                                        <span className="inline-block h-2 w-2 rounded-full bg-white animate-pulse" />
+                                        New Update
+                                      </Badge>
+                                    )}
+                                  </div>
+                                  <div className="pl-4 border-l-2 border-blue-300 dark:border-blue-700">
+                                    <p className="text-sm text-blue-900 dark:text-blue-50 leading-relaxed whitespace-pre-wrap break-words">
+                                      {session.feedbackFromTutor}
+                                    </p>
+                                  </div>
+                                </div>
+                              </div>
                             </div>
-                          )}
-                          {session.feedbackFromTutor && (
-                            <p className="text-sm text-muted-foreground">
-                              <span className="font-medium">Notes :</span> {session.feedbackFromTutor}
-                            </p>
                           )}
                           </div>
                         </div>
@@ -718,6 +872,20 @@ export default function ParentDashboard() {
                       {noteStudentOptions.map((name) => (
                         <SelectItem key={name} value={name}>{name}</SelectItem>
                       ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="note-time">Time Period</Label>
+                  <Select value={selectedTimeFilter} onValueChange={setSelectedTimeFilter}>
+                    <SelectTrigger id="note-time">
+                      <SelectValue placeholder="All time" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All time</SelectItem>
+                      <SelectItem value="this_month">This month</SelectItem>
+                      <SelectItem value="last_month">Last month</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
