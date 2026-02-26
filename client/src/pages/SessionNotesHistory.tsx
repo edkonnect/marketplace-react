@@ -34,6 +34,7 @@ export default function SessionNotesHistory() {
 
   const [selectedCourse, setSelectedCourse] = useState<string>("all");
   const [selectedYear, setSelectedYear] = useState<string>("all");
+  const [selectedStudent, setSelectedStudent] = useState<string>("all");
 
   const tutorNotesWithFeedback = useMemo(() => {
     const fromSessions = (tutorHistory || [])
@@ -92,13 +93,24 @@ export default function SessionNotesHistory() {
     return Array.from(set);
   }, [tutorNotesWithFeedback]);
 
+  const studentOptions = useMemo(() => {
+    const set = new Set<string>();
+    tutorNotesWithFeedback.forEach((n) => {
+      if (n.studentName && n.studentName.trim()) {
+        set.add(n.studentName);
+      }
+    });
+    return Array.from(set);
+  }, [tutorNotesWithFeedback]);
+
   const filteredTutorNotes = useMemo(() => {
     return tutorNotesWithFeedback.filter((n) => {
       const yearMatch = selectedYear === "all" || new Date(n.scheduledAt).getFullYear().toString() === selectedYear;
       const courseMatch = selectedCourse === "all" || n.courseTitle === selectedCourse;
-      return yearMatch && courseMatch;
+      const studentMatch = selectedStudent === "all" || n.studentName === selectedStudent;
+      return yearMatch && courseMatch && studentMatch;
     });
-  }, [tutorNotesWithFeedback, selectedCourse, selectedYear]);
+  }, [tutorNotesWithFeedback, selectedCourse, selectedYear, selectedStudent]);
 
   const groupedByMonth = useMemo(() => {
     const map = new Map<string, typeof filteredTutorNotes>();
@@ -155,6 +167,20 @@ export default function SessionNotesHistory() {
 
         {user.role === "tutor" && (
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 mb-6">
+            <div className="space-y-2">
+              <Label htmlFor="student-filter">Student</Label>
+              <Select value={selectedStudent} onValueChange={setSelectedStudent}>
+                <SelectTrigger id="student-filter">
+                  <SelectValue placeholder="All students" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All students</SelectItem>
+                  {studentOptions.map((s) => (
+                    <SelectItem key={s} value={s}>{s}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <div className="space-y-2">
               <Label htmlFor="course-filter">Course</Label>
               <Select value={selectedCourse} onValueChange={setSelectedCourse}>
@@ -244,7 +270,7 @@ export default function SessionNotesHistory() {
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <Link href={"/tutor-dashboard"}>
+                <Link href={"/tutor/dashboard"}>
                   <a className="text-primary hover:underline">
                     Go to Dashboard
                   </a>
