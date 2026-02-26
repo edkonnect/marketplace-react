@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Calendar, Clock, Video, ChevronDown, ChevronUp } from "lucide-react";
+import { Calendar, Clock, Video, ChevronDown, ChevronUp, FileText } from "lucide-react";
 
 interface ParentSessionsManagerProps {
   upcomingSessions: any[];
@@ -196,9 +196,22 @@ export function ParentSessionsManager({
 
                   {/* Show tutor's notes if session is completed */}
                   {(session.status === "completed" || session.status === "no_show") && session.feedbackFromTutor && (
-                    <div className="mt-3 pt-3 border-t">
-                      <p className="text-sm font-medium mb-1">Tutor's Notes:</p>
-                      <p className="text-sm text-muted-foreground">{session.feedbackFromTutor}</p>
+                    <div className="mt-3 p-4 sm:p-5 rounded-xl border-l-4 border-blue-500 bg-gradient-to-br from-blue-50 to-blue-100/50 dark:from-blue-950/30 dark:to-blue-900/20 shadow-sm">
+                      <div className="flex items-start gap-3">
+                        <div className="w-10 h-10 rounded-lg bg-blue-500/10 dark:bg-blue-500/20 flex items-center justify-center flex-shrink-0">
+                          <FileText className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                        </div>
+                        <div className="flex-1 space-y-2">
+                          <span className="text-base font-semibold text-blue-900 dark:text-blue-100 block">
+                            Session Summary
+                          </span>
+                          <div className="pl-4 border-l-2 border-blue-300 dark:border-blue-700">
+                            <p className="text-sm text-blue-900 dark:text-blue-50 leading-relaxed whitespace-pre-wrap break-words">
+                              {session.feedbackFromTutor}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   )}
                 </div>

@@ -963,51 +963,67 @@ export default function TutorDashboard() {
                                 )}
 
                                 {session.status === "completed" && (
-                                  <div className="space-y-2">
-                                    <Label>Session Notes (visible to parent)</Label>
-                                    <Textarea
-                                      value={noteValue}
-                                      onChange={(e) =>
-                                        setSessionNotes((prev) => ({
-                                          ...prev,
-                                          [session.id]: e.target.value,
-                                        }))
-                                      }
-                                      placeholder="Add notes/summary for the student"
-                                    />
-                                    <div className="flex gap-2">
-                                      <Button size="sm" onClick={saveNotes} disabled={updateSessionMutation.isPending}>
-                                        Save notes
-                                      </Button>
+                                  <div className="mt-4 p-3 sm:p-4 rounded-lg border-l-4 border-blue-500 bg-blue-50 dark:bg-blue-950/20">
+                                    <div className="flex items-start gap-3">
+                                      <FileText className="w-5 h-5 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
+                                      <div className="flex-1 space-y-2">
+                                        <Label className="text-sm font-semibold text-blue-900 dark:text-blue-100">
+                                          Session Notes
+                                        </Label>
+                                        <Textarea
+                                          value={noteValue}
+                                          onChange={(e) =>
+                                            setSessionNotes((prev) => ({
+                                              ...prev,
+                                              [session.id]: e.target.value,
+                                            }))
+                                          }
+                                          placeholder="What did you cover today? How did the student perform? Any homework assigned?"
+                                          className="bg-white dark:bg-gray-900 min-h-[100px] text-sm"
+                                        />
+                                        <Button size="sm" onClick={saveNotes} disabled={updateSessionMutation.isPending}>
+                                          <FileText className="w-3 h-3 mr-1" />
+                                          Save Notes
+                                        </Button>
+                                      </div>
                                     </div>
                                   </div>
                                 )}
 
                                 {session.status === "no_show" && (
-                                  <div className="space-y-2">
-                                    <Label>No-Show Notes (visible to parent)</Label>
-                                    <Textarea
-                                      value={noteValue}
-                                      onChange={(e) =>
-                                        setSessionNotes((prev) => ({
-                                          ...prev,
-                                          [session.id]: e.target.value,
-                                        }))
-                                      }
-                                      placeholder="Add notes for the student (e.g., homework, materials to review)"
-                                      className="min-h-[100px]"
-                                    />
-                                    <div className="flex gap-2">
-                                      <Button
-                                        size="sm"
-                                        onClick={saveNotes}
-                                        disabled={
-                                          updateSessionMutation.isPending ||
-                                          noteValue === (session.feedbackFromTutor ?? "")
-                                        }
-                                      >
-                                        Save Notes
-                                      </Button>
+                                  <div className="mt-4 p-3 sm:p-4 rounded-lg border-l-4 border-amber-500 bg-amber-50 dark:bg-amber-950/20">
+                                    <div className="flex items-start gap-3">
+                                      <FileText className="w-5 h-5 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
+                                      <div className="flex-1 space-y-2">
+                                        <Label className="text-sm font-semibold text-amber-900 dark:text-amber-100">
+                                          No-Show Notes
+                                        </Label>
+                                        <p className="text-xs text-amber-700 dark:text-amber-300">
+                                          These notes are visible to the parent and student
+                                        </p>
+                                        <Textarea
+                                          value={noteValue}
+                                          onChange={(e) =>
+                                            setSessionNotes((prev) => ({
+                                              ...prev,
+                                              [session.id]: e.target.value,
+                                            }))
+                                          }
+                                          placeholder="Add notes for the student (e.g., homework, materials to review)"
+                                          className="bg-white dark:bg-gray-900 min-h-[100px] text-sm"
+                                        />
+                                        <Button
+                                          size="sm"
+                                          onClick={saveNotes}
+                                          disabled={
+                                            updateSessionMutation.isPending ||
+                                            noteValue === (session.feedbackFromTutor ?? "")
+                                          }
+                                        >
+                                          <FileText className="w-3 h-3 mr-1" />
+                                          Save Notes
+                                        </Button>
+                                      </div>
                                     </div>
                                   </div>
                                 )}
