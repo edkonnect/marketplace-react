@@ -1274,10 +1274,11 @@ export async function createSession(session: InsertSession) {
           await trx
             .update(sessions)
             .set({
-              subscriptionId: session.subscriptionId,
+              subscriptionId: session.subscriptionId ?? null, // Allow null for trial sessions
               parentId: session.parentId,
               duration: session.duration,
               status: 'scheduled',
+              isTrial: session.isTrial ?? false,
               notes: session.notes ?? null,
               feedbackFromTutor: null,
               feedbackFromParent: null,
@@ -1348,42 +1349,124 @@ export async function getSessionsByParentId(parentId: number) {
   const db = await getDb();
   if (!db) return [];
 
-  return await db
+  const subscriptionCourses = alias(courses, "subscriptionCourse");
+  const sessionCourses = alias(courses, "sessionCourse");
+
+  const rows = await db
     .select({
       session: sessions,
-      courseTitle: courses.title,
-      courseSubject: courses.subject,
+      subscriptionCourseTitle: subscriptionCourses.title,
+      subscriptionCourseSubject: subscriptionCourses.subject,
+      sessionCourseTitle: sessionCourses.title,
+      sessionCourseSubject: sessionCourses.subject,
       tutorName: users.name,
-      studentFirstName: subscriptions.studentFirstName,
-      studentLastName: subscriptions.studentLastName,
+      subscriptionStudentFirstName: subscriptions.studentFirstName,
+      subscriptionStudentLastName: subscriptions.studentLastName,
     })
     .from(sessions)
     .leftJoin(subscriptions, eq(sessions.subscriptionId, subscriptions.id))
-    .leftJoin(courses, eq(subscriptions.courseId, courses.id))
+    .leftJoin(subscriptionCourses, eq(subscriptions.courseId, subscriptionCourses.id))
+    .leftJoin(sessionCourses, eq(sessions.courseId, sessionCourses.id))
     .leftJoin(users, eq(sessions.tutorId, users.id))
     .where(eq(sessions.parentId, parentId))
     .orderBy(desc(sessions.scheduledAt));
+
+  // Merge subscription and session data (prefer session data for trial sessions)
+  return rows.map((row) => ({
+    session: row.session,
+    courseTitle: row.session.isTrial ? row.sessionCourseTitle : (row.subscriptionCourseTitle || row.sessionCourseTitle),
+    courseSubject: row.session.isTrial ? row.sessionCourseSubject : (row.subscriptionCourseSubject || row.sessionCourseSubject),
+    tutorName: row.tutorName,
+    studentFirstName: row.session.isTrial ? row.session.studentFirstName : (row.subscriptionStudentFirstName || row.session.studentFirstName),
+    studentLastName: row.session.isTrial ? row.session.studentLastName : (row.subscriptionStudentLastName || row.session.studentLastName),
+  }));
+}
+
+/**
+ * Get trial sessions for a parent
+ */
+export async function getTrialSessionsByParentId(parentId: number) {
+  const db = await getDb();
+  if (!db) return [];
+
+  try {
+    const results = await db
+      .select({
+        session: sessions,
+        courseTitle: courses.title,
+        courseSubject: courses.subject,
+        tutorName: users.name,
+        studentFirstName: subscriptions.studentFirstName,
+        studentLastName: subscriptions.studentLastName,
+      })
+      .from(sessions)
+      .leftJoin(subscriptions, eq(sessions.subscriptionId, subscriptions.id))
+      .leftJoin(courses, eq(subscriptions.courseId, courses.id))
+      .leftJoin(users, eq(sessions.tutorId, users.id))
+      .where(
+        and(
+          eq(sessions.parentId, parentId),
+          eq(sessions.isTrial, true)
+        )
+      )
+      .orderBy(desc(sessions.scheduledAt));
+
+    return results.map(row => ({
+      ...row.session,
+      courseTitle: row.courseTitle,
+      courseSubject: row.courseSubject,
+      tutorName: row.tutorName,
+      studentFirstName: row.studentFirstName,
+      studentLastName: row.studentLastName,
+    }));
+  } catch (error) {
+    console.error('[Database] Failed to get trial sessions:', error);
+    return [];
+  }
+}
+
+/**
+ * Create trial session (wrapper around createSession for type safety)
+ */
+export async function createTrialSession(session: Omit<InsertSession, 'subscriptionId' | 'isTrial'> & { subscriptionId: null, isTrial: true }) {
+  return await createSession(session as InsertSession);
 }
 
 export async function getSessionsByTutorId(tutorId: number) {
   const db = await getDb();
   if (!db) return [];
 
-  return await db
+  const subscriptionCourses = alias(courses, "subscriptionCourse");
+  const sessionCourses = alias(courses, "sessionCourse");
+
+  const rows = await db
     .select({
       session: sessions,
-      courseTitle: courses.title,
-      courseSubject: courses.subject,
+      subscriptionCourseTitle: subscriptionCourses.title,
+      subscriptionCourseSubject: subscriptionCourses.subject,
+      sessionCourseTitle: sessionCourses.title,
+      sessionCourseSubject: sessionCourses.subject,
       tutorName: users.name,
-      studentFirstName: subscriptions.studentFirstName,
-      studentLastName: subscriptions.studentLastName,
+      subscriptionStudentFirstName: subscriptions.studentFirstName,
+      subscriptionStudentLastName: subscriptions.studentLastName,
     })
     .from(sessions)
     .leftJoin(subscriptions, eq(sessions.subscriptionId, subscriptions.id))
-    .leftJoin(courses, eq(subscriptions.courseId, courses.id))
+    .leftJoin(subscriptionCourses, eq(subscriptions.courseId, subscriptionCourses.id))
+    .leftJoin(sessionCourses, eq(sessions.courseId, sessionCourses.id))
     .leftJoin(users, eq(sessions.tutorId, users.id))
     .where(eq(sessions.tutorId, tutorId))
     .orderBy(desc(sessions.scheduledAt));
+
+  // Merge subscription and session data (prefer session data for trial sessions)
+  return rows.map((row) => ({
+    session: row.session,
+    courseTitle: row.session.isTrial ? row.sessionCourseTitle : (row.subscriptionCourseTitle || row.sessionCourseTitle),
+    courseSubject: row.session.isTrial ? row.sessionCourseSubject : (row.subscriptionCourseSubject || row.sessionCourseSubject),
+    tutorName: row.tutorName,
+    studentFirstName: row.session.isTrial ? row.session.studentFirstName : (row.subscriptionStudentFirstName || row.session.studentFirstName),
+    studentLastName: row.session.isTrial ? row.session.studentLastName : (row.subscriptionStudentLastName || row.session.studentLastName),
+  }));
 }
 
 // Completed sessions (for history views)
@@ -1391,18 +1474,24 @@ export async function getCompletedSessionsByParentId(parentId: number) {
   const db = await getDb();
   if (!db) return [];
 
-  return await db
+  const subscriptionCourses = alias(courses, "subscriptionCourse");
+  const sessionCourses = alias(courses, "sessionCourse");
+
+  const rows = await db
     .select({
       session: sessions,
-      courseTitle: courses.title,
-      courseSubject: courses.subject,
+      subscriptionCourseTitle: subscriptionCourses.title,
+      subscriptionCourseSubject: subscriptionCourses.subject,
+      sessionCourseTitle: sessionCourses.title,
+      sessionCourseSubject: sessionCourses.subject,
       tutorName: users.name,
-      studentFirstName: subscriptions.studentFirstName,
-      studentLastName: subscriptions.studentLastName,
+      subscriptionStudentFirstName: subscriptions.studentFirstName,
+      subscriptionStudentLastName: subscriptions.studentLastName,
     })
     .from(sessions)
     .leftJoin(subscriptions, eq(sessions.subscriptionId, subscriptions.id))
-    .leftJoin(courses, eq(subscriptions.courseId, courses.id))
+    .leftJoin(subscriptionCourses, eq(subscriptions.courseId, subscriptionCourses.id))
+    .leftJoin(sessionCourses, eq(sessions.courseId, sessionCourses.id))
     .leftJoin(users, eq(sessions.tutorId, users.id))
     .where(and(
       eq(sessions.parentId, parentId),
@@ -1412,6 +1501,16 @@ export async function getCompletedSessionsByParentId(parentId: number) {
       )
     ))
     .orderBy(desc(sessions.scheduledAt));
+
+  // Merge subscription and session data (prefer session data for trial sessions)
+  return rows.map((row) => ({
+    session: row.session,
+    courseTitle: row.session.isTrial ? row.sessionCourseTitle : (row.subscriptionCourseTitle || row.sessionCourseTitle),
+    courseSubject: row.session.isTrial ? row.sessionCourseSubject : (row.subscriptionCourseSubject || row.sessionCourseSubject),
+    tutorName: row.tutorName,
+    studentFirstName: row.session.isTrial ? row.session.studentFirstName : (row.subscriptionStudentFirstName || row.session.studentFirstName),
+    studentLastName: row.session.isTrial ? row.session.studentLastName : (row.subscriptionStudentLastName || row.session.studentLastName),
+  }));
 }
 
 export async function getCompletedSessionsByTutorId(tutorId: number) {
@@ -1420,20 +1519,25 @@ export async function getCompletedSessionsByTutorId(tutorId: number) {
 
   const tutorUsers = alias(users, "tutorUser");
   const parentUsers = alias(users, "parentUser");
+  const subscriptionCourses = alias(courses, "subscriptionCourse");
+  const sessionCourses = alias(courses, "sessionCourse");
 
-  return await db
+  const rows = await db
     .select({
       session: sessions,
-      courseTitle: courses.title,
-      courseSubject: courses.subject,
+      subscriptionCourseTitle: subscriptionCourses.title,
+      subscriptionCourseSubject: subscriptionCourses.subject,
+      sessionCourseTitle: sessionCourses.title,
+      sessionCourseSubject: sessionCourses.subject,
       tutorName: tutorUsers.name,
       parentName: parentUsers.name,
-      studentFirstName: subscriptions.studentFirstName,
-      studentLastName: subscriptions.studentLastName,
+      subscriptionStudentFirstName: subscriptions.studentFirstName,
+      subscriptionStudentLastName: subscriptions.studentLastName,
     })
     .from(sessions)
     .leftJoin(subscriptions, eq(sessions.subscriptionId, subscriptions.id))
-    .leftJoin(courses, eq(subscriptions.courseId, courses.id))
+    .leftJoin(subscriptionCourses, eq(subscriptions.courseId, subscriptionCourses.id))
+    .leftJoin(sessionCourses, eq(sessions.courseId, sessionCourses.id))
     .leftJoin(tutorUsers, eq(sessions.tutorId, tutorUsers.id))
     .leftJoin(parentUsers, eq(sessions.parentId, parentUsers.id))
     .where(and(
@@ -1449,6 +1553,17 @@ export async function getCompletedSessionsByTutorId(tutorId: number) {
       )
     ))
     .orderBy(desc(sessions.scheduledAt));
+
+  // Merge subscription and session data (prefer session data for trial sessions)
+  return rows.map((row) => ({
+    session: row.session,
+    courseTitle: row.session.isTrial ? row.sessionCourseTitle : (row.subscriptionCourseTitle || row.sessionCourseTitle),
+    courseSubject: row.session.isTrial ? row.sessionCourseSubject : (row.subscriptionCourseSubject || row.sessionCourseSubject),
+    tutorName: row.tutorName,
+    parentName: row.parentName,
+    studentFirstName: row.session.isTrial ? row.session.studentFirstName : (row.subscriptionStudentFirstName || row.session.studentFirstName),
+    studentLastName: row.session.isTrial ? row.session.studentLastName : (row.subscriptionStudentLastName || row.session.studentLastName),
+  }));
 }
 
 export async function getUpcomingSessions(userId: number, role: "parent" | "tutor") {

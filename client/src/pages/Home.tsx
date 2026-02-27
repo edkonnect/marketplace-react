@@ -175,7 +175,7 @@ export default function Home() {
       <Navigation />
 
       {/* Hero Section */}
-      <motion.section className="relative py-20 lg:py-32 overflow-hidden" {...scrollReveal}>
+      <motion.section className="relative py-20 lg:py-32 overflow-hidden mt-20" {...scrollReveal}>
         {/* Background image */}
         <div
     className="absolute inset-0 z-0 bg-center bg-cover bg-no-repeat"

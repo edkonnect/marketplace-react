@@ -221,7 +221,7 @@ export default function TutorRegistration() {
     <div className="min-h-screen flex flex-col bg-background">
       <Navigation />
 
-      <div className="flex-1 bg-gradient-to-br from-primary/5 via-accent/5 to-background">
+      <div className="flex-1 bg-gradient-to-br from-primary/5 via-accent/5 to-background mt-20">
         <div className="container py-12">
           <div className="max-w-3xl mx-auto">
             <div className="mb-8">

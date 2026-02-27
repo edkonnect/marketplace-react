@@ -37,7 +37,7 @@ export default function TutorListing() {
     <div className="min-h-screen flex flex-col bg-background">
       <Navigation />
 
-      <div className="flex-1">
+      <div className="flex-1 mt-20">
         {/* Header */}
         <div className="bg-gradient-to-br from-primary/5 via-accent/5 to-background border-b border-border">
           <div className="container py-12">
