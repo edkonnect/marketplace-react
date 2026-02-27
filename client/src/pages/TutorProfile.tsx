@@ -18,7 +18,7 @@ export default function TutorProfile() {
 
   if (isLoading) {
     return (
-      <div className="container mx-auto py-12 px-4">
+      <div className="container mx-auto py-12 px-4 mt-20">
         <div className="max-w-4xl mx-auto space-y-6">
           <Skeleton className="h-12 w-3/4" />
           <Skeleton className="h-64 w-full" />
@@ -30,7 +30,7 @@ export default function TutorProfile() {
 
   if (error || !tutor) {
     return (
-      <div className="container mx-auto py-12 px-4">
+      <div className="container mx-auto py-12 px-4 mt-20">
         <div className="max-w-4xl mx-auto text-center">
           <h1 className="text-3xl font-bold mb-4">Tutor Not Found</h1>
           <p className="text-muted-foreground mb-6">
@@ -93,7 +93,7 @@ export default function TutorProfile() {
       </div>
 
       {/* Main Content */}
-      <div className="container mx-auto py-12 px-4">
+      <div className="container mx-auto py-12 px-4 mt-20">
         <div className="max-w-4xl mx-auto space-y-8">
           {/* About Section */}
           <Card>

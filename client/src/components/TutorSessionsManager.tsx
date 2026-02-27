@@ -45,13 +45,18 @@ export function TutorSessionsManager({
         .trim() || "Unknown Student";
       const courseName = session.courseTitle || "Course";
 
+      // For trial sessions, add "(Trial)" to distinguish them
+      const displayCourseName = session.isTrial ? `${courseName} (Trial)` : courseName;
+
       // Create a unique key for student + course combination
-      const key = `${studentName}|${courseName}`;
+      const key = session.isTrial
+        ? `TRIAL_${studentName}|${courseName}`
+        : `${studentName}|${courseName}`;
 
       if (!grouped[key]) {
         grouped[key] = {
           student: studentName,
-          course: courseName,
+          course: displayCourseName,
           sessions: [],
         };
       }
@@ -171,9 +176,15 @@ export function TutorSessionsManager({
                         <div className="flex flex-wrap items-center gap-2">
                           <Calendar className="w-4 h-4 text-muted-foreground flex-shrink-0" />
                           <span className="font-medium">{formatDate(session.scheduledAt)}</span>
-                          <Badge variant={statusVariant(session.status)} className="text-xs">
-                            {session.status === "no_show" ? "Completed (No Show)" : session.status}
-                          </Badge>
+                          {session.isTrial ? (
+                            <Badge variant="outline" className="text-xs border-blue-500 text-blue-700 bg-blue-50 dark:bg-blue-950/20">
+                              Trial Lesson
+                            </Badge>
+                          ) : (
+                            <Badge variant={statusVariant(session.status)} className="text-xs">
+                              {session.status === "no_show" ? "Completed (No Show)" : session.status}
+                            </Badge>
+                          )}
                         </div>
                         <div className="flex items-center gap-2 text-sm text-muted-foreground">
                           <Clock className="w-4 h-4 flex-shrink-0" />

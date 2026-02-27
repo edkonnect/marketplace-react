@@ -2375,6 +2375,226 @@ export const appRouter = router({
       }),
   }),
 
+  // Trial Lesson Booking
+  trialLesson: router({
+    // Check if parent is eligible to book trial lessons
+    checkEligibility: parentProcedure
+      .input(z.object({
+        courseId: z.number(),
+      }))
+      .query(async ({ ctx, input }) => {
+        // Count existing trial sessions for this parent
+        const trialSessions = await db.getTrialSessionsByParentId(ctx.user.id);
+        const trialCount = trialSessions.length;
+        const hasReachedLimit = trialCount >= 2;
+
+        return {
+          eligible: !hasReachedLimit,
+          trialsUsed: trialCount,
+          trialsRemaining: Math.max(0, 2 - trialCount),
+        };
+      }),
+
+    // Create Stripe checkout session for trial lesson ($1 charge)
+    createCheckoutSession: parentProcedure
+      .input(z.object({
+        courseId: z.number(),
+        tutorId: z.number(),
+        scheduledAt: z.number(),
+        duration: z.number().default(60),
+        studentFirstName: z.string(),
+        studentLastName: z.string(),
+        studentGrade: z.string().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const { default: Stripe } = await import('stripe');
+        const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: '2025-12-15.clover' });
+
+        // Verify eligibility
+        const trialSessions = await db.getTrialSessionsByParentId(ctx.user.id);
+        if (trialSessions.length >= 2) {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: 'You have already used your 2 trial lessons. Please enroll in the course to continue.',
+          });
+        }
+
+        // Verify course and tutor exist
+        const course = await db.getCourseById(input.courseId);
+        if (!course) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'Course not found' });
+        }
+
+        const tutor = await db.getUserById(input.tutorId);
+        if (!tutor) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'Tutor not found' });
+        }
+
+        // Create Stripe checkout session for $1 trial lesson
+        const session = await stripe.checkout.sessions.create({
+          payment_method_types: ['card'],
+          line_items: [
+            {
+              price_data: {
+                currency: 'usd',
+                product_data: {
+                  name: `Trial Lesson - ${course.title}`,
+                  description: `60-minute trial lesson with ${tutor.name} | Student: ${input.studentFirstName} ${input.studentLastName}`,
+                },
+                unit_amount: 100, // $1.00 in cents
+              },
+              quantity: 1,
+            },
+          ],
+          mode: 'payment',
+          success_url: `${ctx.req.protocol}://${ctx.req.get('host')}/parent/dashboard?trial=success`,
+          cancel_url: `${ctx.req.protocol}://${ctx.req.get('host')}/course/${input.courseId}?trial=cancelled`,
+          metadata: {
+            type: 'trial_lesson',
+            courseId: input.courseId.toString(),
+            tutorId: input.tutorId.toString(),
+            parentId: ctx.user.id.toString(),
+            scheduledAt: input.scheduledAt.toString(),
+            duration: input.duration.toString(),
+            studentFirstName: input.studentFirstName,
+            studentLastName: input.studentLastName,
+            studentGrade: input.studentGrade || '',
+          },
+        });
+
+        return { checkoutUrl: session.url };
+      }),
+
+    // Book a trial lesson (called after successful Stripe payment)
+    book: parentProcedure
+      .input(z.object({
+        courseId: z.number(),
+        tutorId: z.number(),
+        scheduledAt: z.number(), // Unix timestamp in milliseconds
+        duration: z.number().default(60),
+        studentFirstName: z.string(),
+        studentLastName: z.string(),
+        studentGrade: z.string().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        // Verify eligibility
+        const trialSessions = await db.getTrialSessionsByParentId(ctx.user.id);
+        if (trialSessions.length >= 2) {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: 'You have already used your 2 free trial lessons. Please enroll in the course to continue.',
+          });
+        }
+
+        // Verify course and tutor exist
+        const course = await db.getCourseById(input.courseId);
+        if (!course) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'Course not found' });
+        }
+
+        const tutor = await db.getUserById(input.tutorId);
+        if (!tutor) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'Tutor not found' });
+        }
+
+        // Verify scheduled time is in the future
+        if (input.scheduledAt <= Date.now()) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Cannot schedule sessions in the past' });
+        }
+
+        // Create trial session (no subscription required)
+        const sessionId = await db.createTrialSession({
+          subscriptionId: null,
+          tutorId: input.tutorId,
+          parentId: ctx.user.id,
+          scheduledAt: input.scheduledAt,
+          duration: input.duration,
+          isTrial: true,
+          status: 'scheduled',
+          studentFirstName: input.studentFirstName,
+          studentLastName: input.studentLastName,
+          studentGrade: input.studentGrade || null,
+          courseId: input.courseId,
+          notes: `Trial lesson for ${input.studentFirstName} ${input.studentLastName}${input.studentGrade ? ` (${input.studentGrade})` : ''}`,
+        });
+
+        if (!sessionId) {
+          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to create trial session' });
+        }
+
+        // Get the created session for email details
+        const session = await db.getSessionById(sessionId);
+        if (session && ctx.user.email && ctx.user.name && tutor.email && tutor.name) {
+          const sessionDate = new Date(session.scheduledAt);
+          const studentName = `${input.studentFirstName} ${input.studentLastName}`;
+
+          // Send confirmation emails asynchronously (don't block on email failures)
+          try {
+            // Email to parent
+            await sendBookingConfirmation({
+              userEmail: ctx.user.email,
+              userName: ctx.user.name,
+              userRole: 'parent',
+              courseName: course.title,
+              tutorName: tutor.name,
+              sessionDate: formatEmailDate(sessionDate, ctx.user.timezone || undefined),
+              sessionTime: formatEmailTime(sessionDate, ctx.user.timezone || undefined),
+              sessionDuration: `${session.duration} minutes`,
+              sessionPrice: 'FREE - Trial Lesson',
+            });
+
+            // Email to tutor
+            await sendBookingConfirmation({
+              userEmail: tutor.email,
+              userName: tutor.name,
+              userRole: 'tutor',
+              courseName: course.title,
+              studentName,
+              sessionDate: formatEmailDate(sessionDate, tutor.timezone || undefined),
+              sessionTime: formatEmailTime(sessionDate, tutor.timezone || undefined),
+              sessionDuration: `${session.duration} minutes`,
+              sessionPrice: 'FREE - Trial Lesson',
+            });
+
+            console.log('[Trial Booking] Confirmation emails sent for session', sessionId);
+          } catch (err) {
+            console.error('[Trial Booking Email] Failed to send confirmation emails:', err);
+            // Don't fail the mutation if email fails
+          }
+
+          // Create in-app notification for tutor
+          try {
+            await db.createInAppNotification({
+              userId: input.tutorId,
+              title: 'New Trial Lesson Booking',
+              message: `${ctx.user.name} booked a trial lesson for ${course.title} with ${studentName} on ${formatEmailDate(sessionDate)}`,
+              type: 'new_booking',
+              relatedId: sessionId,
+            });
+          } catch (err) {
+            console.error('[Trial Booking] Failed to create notification:', err);
+            // Don't fail the mutation if notification fails
+          }
+        }
+
+        return {
+          success: true,
+          sessionId,
+          trialsRemaining: 2 - trialSessions.length - 1,
+        };
+      }),
+
+    // Get parent's trial history
+    myTrials: parentProcedure.query(async ({ ctx }) => {
+      const trialSessions = await db.getTrialSessionsByParentId(ctx.user.id);
+
+      return trialSessions.map((session: any) => ({
+        ...session,
+        joinUrl: generateJoinUrl(session.id),
+      }));
+    }),
+  }),
+
   // Home Page Data
   home: router({
     stats: publicProcedure.query(async () => {
@@ -3692,6 +3912,24 @@ export const appRouter = router({
       .query(async ({ ctx, input }) => {
         const blocks = await db.getTutorTimeBlocks(
           ctx.user.id,
+          input.startTime,
+          input.endTime
+        );
+        return blocks;
+      }),
+
+    /**
+     * Get tutor's time blocks by tutor ID (public - for booking calendar)
+     */
+    getTimeBlocksByTutorId: publicProcedure
+      .input(z.object({
+        tutorId: z.number(),
+        startTime: z.number().optional(),
+        endTime: z.number().optional(),
+      }))
+      .query(async ({ input }) => {
+        const blocks = await db.getTutorTimeBlocks(
+          input.tutorId,
           input.startTime,
           input.endTime
         );

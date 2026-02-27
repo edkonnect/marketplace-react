@@ -20,7 +20,33 @@ export default function Navigation() {
   const { user, isAuthenticated, loading } = useAuth();
   const [location] = useLocation();
   const [isVideoModalOpen, setIsVideoModalOpen] = React.useState(false);
+  const [isVisible, setIsVisible] = React.useState(true);
+  const [lastScrollY, setLastScrollY] = React.useState(0);
   const logoutMutation = trpc.auth.logout.useMutation();
+
+  // Scroll behavior for show/hide navbar
+  React.useEffect(() => {
+    const controlNavbar = () => {
+      const currentScrollY = window.scrollY;
+
+      // Show navbar when scrolling up or at top
+      if (currentScrollY < lastScrollY || currentScrollY < 10) {
+        setIsVisible(true);
+      }
+      // Hide navbar when scrolling down and not at top
+      else if (currentScrollY > lastScrollY && currentScrollY > 100) {
+        setIsVisible(false);
+      }
+
+      setLastScrollY(currentScrollY);
+    };
+
+    window.addEventListener('scroll', controlNavbar, { passive: true });
+
+    return () => {
+      window.removeEventListener('scroll', controlNavbar);
+    };
+  }, [lastScrollY]);
 
   const { data: unreadData } = trpc.messaging.getUnreadMessageCount.useQuery(
     undefined,
@@ -68,9 +94,14 @@ export default function Navigation() {
   }
 
   return (
-    <nav className="border-b border-border bg-card/50 backdrop-blur-sm sticky top-0 z-50">
-      <div className="container mx-auto">
-        <div className="flex items-center justify-between h-16">
+    <nav
+      className={`fixed top-0 left-0 right-0 z-50 transition-transform duration-300 ease-in-out ${
+        isVisible ? 'translate-y-0' : '-translate-y-full'
+      }`}
+    >
+      <div className="mx-4 mt-4">
+        <div className="container mx-auto bg-card/80 backdrop-blur-md border border-border/50 rounded-2xl shadow-lg">
+          <div className="flex items-center justify-between h-16 px-6">
           {/* Logo */}
           <Link href="/" className="flex items-center gap-2 text-xl font-semibold text-primary hover:text-primary/80 transition-colors">
             <GraduationCap className="w-8 h-8" />
@@ -240,6 +271,7 @@ export default function Navigation() {
         </div>
       </div>
       <VideoModal open={isVideoModalOpen} onOpenChange={setIsVideoModalOpen} />
+    </div>
     </nav>
   );
 }

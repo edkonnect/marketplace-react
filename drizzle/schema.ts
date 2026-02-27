@@ -229,12 +229,17 @@ export type InsertSubscription = typeof subscriptions.$inferInsert;
  */
 export const sessions = mysqlTable("sessions", {
   id: int("id").autoincrement().primaryKey(),
-  subscriptionId: int("subscriptionId").notNull().references(() => subscriptions.id, { onDelete: "cascade" }),
+  subscriptionId: int("subscriptionId").references(() => subscriptions.id, { onDelete: "cascade" }), // Made nullable for trial sessions
   tutorId: int("tutorId").notNull().references(() => users.id, { onDelete: "cascade" }),
   parentId: int("parentId").notNull().references(() => users.id, { onDelete: "cascade" }),
   scheduledAt: bigint("scheduledAt", { mode: "number" }).notNull(), // Unix timestamp in milliseconds
   duration: int("duration").notNull(), // Duration in minutes
   status: mysqlEnum("status", ["scheduled", "completed", "cancelled", "no_show"]).default("scheduled").notNull(),
+  isTrial: boolean("isTrial").default(false).notNull(), // Flag for trial sessions
+  studentFirstName: varchar("studentFirstName", { length: 255 }), // For trial sessions (duplicates subscription data for regular sessions)
+  studentLastName: varchar("studentLastName", { length: 255 }), // For trial sessions
+  studentGrade: varchar("studentGrade", { length: 50 }), // For trial sessions
+  courseId: int("courseId").references(() => courses.id, { onDelete: "cascade" }), // For trial sessions (duplicates subscription.courseId for regular sessions)
   notes: text("notes"),
   feedbackFromTutor: text("feedbackFromTutor"),
   feedbackFromParent: text("feedbackFromParent"),
@@ -254,8 +259,10 @@ export const sessions = mysqlTable("sessions", {
   tutorIdIdx: index("sessions_tutorId_idx").on(table.tutorId),
   parentIdIdx: index("sessions_parentId_idx").on(table.parentId),
   scheduledAtIdx: index("sessions_scheduledAt_idx").on(table.scheduledAt),
+  courseIdIdx: index("sessions_courseId_idx").on(table.courseId),
   tutorStartUnique: uniqueIndex("sessions_tutor_start_unique").on(table.tutorId, table.scheduledAt),
   seriesIdIdx: index("sessions_seriesId_idx").on(table.seriesId),
+  trialParentIdx: index("sessions_trial_parent_idx").on(table.parentId, table.isTrial), // Index for trial counting
 }));
 
 export type Session = typeof sessions.$inferSelect;

@@ -21,7 +21,8 @@ interface BookableCalendarProps {
   courseId: number;
   courseName: string;
   sessionDuration: number; // in minutes
-  onBookingComplete: () => void;
+  isTrial?: boolean; // Flag for trial booking mode
+  onBookingComplete: (scheduledAt?: number) => void; // Pass scheduledAt for trial mode
 }
 
 type RecurringFrequency = 'once' | 'weekly' | 'biweekly';
@@ -37,6 +38,7 @@ export function BookableCalendar({
   courseId,
   courseName,
   sessionDuration,
+  isTrial = false,
   onBookingComplete,
 }: BookableCalendarProps) {
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date());
@@ -46,17 +48,125 @@ export function BookableCalendar({
   const [numberOfWeeks, setNumberOfWeeks] = useState<number>(4);
   const [recurringSessions, setRecurringSessions] = useState<RecurringSession[]>([]);
 
-  // Generate time slots from 8 AM to 8 PM
+  // Fetch tutor's weekly availability
+  const { data: tutorAvailability = [] } = trpc.tutorAvailability.getByTutorId.useQuery(
+    { tutorId },
+    { enabled: !!tutorId }
+  );
+
+  // Fetch tutor's time blocks (unavailable periods)
+  const { data: tutorTimeBlocks = [] } = trpc.tutorAvailability.getTimeBlocksByTutorId.useQuery(
+    { tutorId },
+    { enabled: !!tutorId }
+  );
+
+  // Fetch tutor's upcoming sessions to check for conflicts
+  const { data: tutorSessions = [] } = trpc.session.getUpcomingByTutorId.useQuery(
+    { tutorId },
+    { enabled: !!tutorId }
+  );
+
+  // Generate time slots from 8 AM to 8 PM based on actual availability
   const generateTimeSlots = (): TimeSlot[] => {
+    if (!selectedDate) return [];
+
     const slots: TimeSlot[] = [];
+    const dayOfWeek = selectedDate.getDay(); // 0 = Sunday, 6 = Saturday
+
+    // Get availability for this day of week
+    const dayAvailability = tutorAvailability.filter(
+      (slot: any) => slot.dayOfWeek === dayOfWeek && slot.isActive
+    );
+
+    // If no availability defined for this day, return empty slots
+    if (dayAvailability.length === 0) {
+      // Still generate slots but mark them all as unavailable
+      for (let hour = 8; hour <= 20; hour++) {
+        for (let minute = 0; minute < 60; minute += 30) {
+          const time = `${hour.toString().padStart(2, "0")}:${minute.toString().padStart(2, "0")}`;
+          slots.push({ time, available: false });
+        }
+      }
+      return slots;
+    }
+
+    // Generate all possible slots for the day
     for (let hour = 8; hour <= 20; hour++) {
       for (let minute = 0; minute < 60; minute += 30) {
         const time = `${hour.toString().padStart(2, "0")}:${minute.toString().padStart(2, "0")}`;
-        // TODO: Check actual tutor availability from backend
-        const available = Math.random() > 0.3; // Mock availability
-        slots.push({ time, available });
+        const [slotHour, slotMinute] = time.split(':').map(Number);
+        const slotMinutes = slotHour * 60 + slotMinute;
+
+        // Check if this time falls within any availability window
+        let isInAvailabilityWindow = false;
+        for (const availability of dayAvailability) {
+          const [startHour, startMin] = availability.startTime.split(':').map(Number);
+          const [endHour, endMin] = availability.endTime.split(':').map(Number);
+          const startMinutes = startHour * 60 + startMin;
+          const endMinutes = endHour * 60 + endMin;
+
+          if (slotMinutes >= startMinutes && slotMinutes < endMinutes) {
+            isInAvailabilityWindow = true;
+            break;
+          }
+        }
+
+        if (!isInAvailabilityWindow) {
+          slots.push({ time, available: false });
+          continue;
+        }
+
+        // Check if this time is blocked by a time block
+        const slotDateTime = new Date(selectedDate);
+        slotDateTime.setHours(slotHour, slotMinute, 0, 0);
+        const slotTimestamp = slotDateTime.getTime();
+
+        let isBlocked = false;
+        for (const block of tutorTimeBlocks) {
+          if (slotTimestamp >= block.startTime && slotTimestamp < block.endTime) {
+            isBlocked = true;
+            break;
+          }
+        }
+
+        if (isBlocked) {
+          slots.push({ time, available: false });
+          continue;
+        }
+
+        // Check if this time conflicts with an existing session
+        // Need to check both:
+        // 1. If new session START falls within an existing session
+        // 2. If new session END would overlap with an existing session
+        let hasConflict = false;
+        const newSessionStart = slotTimestamp;
+        const newSessionEnd = slotTimestamp + (sessionDuration * 60000); // sessionDuration in minutes
+
+        for (const session of tutorSessions) {
+          const existingSessionStart = session.scheduledAt;
+          const existingSessionEnd = existingSessionStart + (session.duration * 60000);
+
+          // Check for overlap: two sessions overlap if one starts before the other ends
+          // Overlap occurs if:
+          // - New session starts during existing session (newStart < existingEnd AND newStart >= existingStart)
+          // - New session ends during existing session (newEnd > existingStart AND newEnd <= existingEnd)
+          // - New session completely contains existing session (newStart <= existingStart AND newEnd >= existingEnd)
+          const overlaps = (
+            (newSessionStart >= existingSessionStart && newSessionStart < existingSessionEnd) || // New starts during existing
+            (newSessionEnd > existingSessionStart && newSessionEnd <= existingSessionEnd) ||     // New ends during existing
+            (newSessionStart <= existingSessionStart && newSessionEnd >= existingSessionEnd)     // New contains existing
+          );
+
+          if (overlaps) {
+            hasConflict = true;
+            break;
+          }
+        }
+
+        slots.push({ time, available: !hasConflict });
       }
     }
+
     return slots;
   };
 
@@ -114,7 +224,16 @@ export function BookableCalendar({
     if (!selectedDate || !selectedTime) return;
 
     const [hours, minutes] = selectedTime.split(":").map(Number);
-    
+
+    if (isTrial) {
+      // For trial mode, just pass the scheduled time back to parent component
+      const scheduledDate = new Date(selectedDate);
+      scheduledDate.setHours(hours, minutes, 0, 0);
+      onBookingComplete(scheduledDate.getTime());
+      setIsConfirmDialogOpen(false);
+      return;
+    }
+
     if (recurringSessions.length > 0) {
       // Book multiple recurring sessions
       const sessions = recurringSessions.map(session => {
@@ -123,7 +242,7 @@ export function BookableCalendar({
         scheduledDate.setHours(h, m, 0, 0);
         return { scheduledAt: scheduledDate.getTime() };
       });
-      
+
       bookRecurringMutation.mutate({
         courseId,
         tutorId,
@@ -156,26 +275,27 @@ export function BookableCalendar({
 
   return (
     <div className="space-y-6">
-      {/* Recurring Options */}
-      <Card className="p-4">
-        <div className="flex items-center gap-2 mb-4">
-          <Repeat className="w-5 h-5" />
-          <h3 className="text-lg font-semibold">Booking Options</h3>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <Label htmlFor="frequency">Frequency</Label>
-            <Select value={recurringFrequency} onValueChange={(value) => setRecurringFrequency(value as RecurringFrequency)}>
-              <SelectTrigger id="frequency">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="once">One-time session</SelectItem>
-                <SelectItem value="weekly">Weekly</SelectItem>
-                <SelectItem value="biweekly">Bi-weekly (every 2 weeks)</SelectItem>
-              </SelectContent>
-            </Select>
+      {/* Recurring Options - Hide for trial lessons */}
+      {!isTrial && (
+        <Card className="p-4">
+          <div className="flex items-center gap-2 mb-4">
+            <Repeat className="w-5 h-5" />
+            <h3 className="text-lg font-semibold">Booking Options</h3>
           </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <Label htmlFor="frequency">Frequency</Label>
+              <Select value={recurringFrequency} onValueChange={(value) => setRecurringFrequency(value as RecurringFrequency)}>
+                <SelectTrigger id="frequency">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="once">One-time session</SelectItem>
+                  <SelectItem value="weekly">Weekly</SelectItem>
+                  <SelectItem value="biweekly">Bi-weekly (every 2 weeks)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           {recurringFrequency !== 'once' && (
             <div>
               <Label htmlFor="weeks">Number of Sessions</Label>
@@ -196,6 +316,19 @@ export function BookableCalendar({
           </p>
         )}
       </Card>
+      )}
+
+      {isTrial && (
+        <div className="bg-gradient-to-r from-blue-50 to-cyan-50 dark:from-blue-950/20 dark:to-cyan-950/20 border-2 border-blue-200 dark:border-blue-800 rounded-lg p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-2xl">🎉</span>
+            <h3 className="text-lg font-semibold text-blue-900 dark:text-blue-100">Free Trial Lesson</h3>
+          </div>
+          <p className="text-sm text-blue-700 dark:text-blue-300">
+            Select a convenient time for your 60-minute trial session.
+          </p>
+        </div>
+      )}
 
       <div>
         <h3 className="text-lg font-semibold mb-4">Select a Date</h3>
@@ -204,7 +337,21 @@ export function BookableCalendar({
             mode="single"
             selected={selectedDate}
             onSelect={setSelectedDate}
-            disabled={(date) => date < new Date() || date.getDay() === 0} // Disable past dates and Sundays
+            disabled={(date) => {
+              // Disable past dates
+              if (date < new Date()) return true;
+
+              // Disable Sundays
+              if (date.getDay() === 0) return true;
+
+              // Disable dates with no availability slots
+              const dayOfWeek = date.getDay();
+              const hasAvailability = tutorAvailability.some(
+                (slot: any) => slot.dayOfWeek === dayOfWeek && slot.isActive
+              );
+
+              return !hasAvailability;
+            }}
             className="rounded-md"
           />
         </Card>

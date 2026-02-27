@@ -54,9 +54,102 @@ export async function handleStripeWebhook(req: Request, res: Response) {
         const subscriptionId = parseInt(session.metadata?.subscriptionId || "0");
         const paymentType = session.metadata?.paymentType || "full";
         const installmentNumber = session.metadata?.installmentNumber || "";
+        const type = session.metadata?.type || "";
 
-        // Handle installment payments
-        if (paymentType === "installment" && subscriptionId) {
+        // Handle trial lesson payments
+        if (type === "trial_lesson") {
+          console.log("[Webhook] Processing trial lesson payment");
+
+          const scheduledAt = parseInt(session.metadata?.scheduledAt || "0");
+          const duration = parseInt(session.metadata?.duration || "60");
+
+          // Verify eligibility again
+          const trialSessions = await db.getTrialSessionsByParentId(userId);
+          if (trialSessions.length >= 2) {
+            console.error("[Webhook] Trial lesson limit exceeded:", userId);
+            return res.status(400).send("Trial lesson limit exceeded");
+          }
+
+          // Create trial session
+          const sessionId = await db.createTrialSession({
+            subscriptionId: null,
+            tutorId,
+            parentId: userId,
+            scheduledAt,
+            duration,
+            isTrial: true,
+            status: 'scheduled',
+            notes: `Trial lesson for ${studentFirstName} ${studentLastName}${studentGrade ? ` (${studentGrade})` : ''}`,
+          });
+
+          if (sessionId) {
+            console.log("[Webhook] Trial session created:", sessionId);
+
+            // Create payment record
+            await db.createPayment({
+              parentId: userId,
+              tutorId,
+              subscriptionId: null,
+              sessionId,
+              amount: ((session.amount_total || 0) / 100).toString(),
+              currency: session.currency || "usd",
+              status: "completed",
+              stripePaymentIntentId: session.payment_intent as string || null,
+              paymentType: "session",
+            });
+
+            console.log("[Webhook] Trial lesson payment record created");
+
+            // Send confirmation emails
+            const course = await db.getCourseById(courseId);
+            const user = await db.getUserById(userId);
+            const tutor = await db.getUserById(tutorId);
+            const trialSession = await db.getSessionById(sessionId);
+
+            if (course && user && tutor && trialSession && user.email && user.name && tutor.email && tutor.name) {
+              const { sendBookingConfirmation, formatEmailDate, formatEmailTime } = await import('./email-helpers');
+              const sessionDate = new Date(trialSession.scheduledAt);
+              const studentName = `${studentFirstName} ${studentLastName}`;
+
+              // Email to parent
+              sendBookingConfirmation({
+                userEmail: user.email,
+                userName: user.name,
+                userRole: 'parent',
+                courseName: course.title,
+                tutorName: tutor.name,
+                sessionDate: formatEmailDate(sessionDate, user.timezone || undefined),
+                sessionTime: formatEmailTime(sessionDate, user.timezone || undefined),
+                sessionDuration: `${trialSession.duration} minutes`,
+                sessionPrice: '$1.00 - Trial Lesson',
+              }).catch(err => console.error('[Email] Failed to send trial confirmation to parent:', err));
+
+              // Email to tutor
+              sendBookingConfirmation({
+                userEmail: tutor.email,
+                userName: tutor.name,
+                userRole: 'tutor',
+                courseName: course.title,
+                studentName,
+                sessionDate: formatEmailDate(sessionDate, tutor.timezone || undefined),
+                sessionTime: formatEmailTime(sessionDate, tutor.timezone || undefined),
+                sessionDuration: `${trialSession.duration} minutes`,
+                sessionPrice: '$1.00 - Trial Lesson',
+              }).catch(err => console.error('[Email] Failed to send trial confirmation to tutor:', err));
+
+              // Create in-app notification for tutor
+              await db.createInAppNotification({
+                userId: tutorId,
+                title: 'New Trial Lesson Booking',
+                message: `${user.name} booked a trial lesson for ${course.title} with ${studentName} on ${formatEmailDate(sessionDate)}`,
+                type: 'new_booking',
+                relatedId: sessionId,
+              }).catch(err => console.error('[Webhook] Failed to create notification:', err));
+
+              console.log("[Webhook] Trial lesson emails and notifications sent");
+            }
+          }
+        } else if (paymentType === "installment" && subscriptionId) {
           console.log(`[Webhook] Processing installment payment ${installmentNumber} for subscription:`, subscriptionId);
           
           // Update subscription installment status

@@ -54,6 +54,37 @@ export default function CourseDetail() {
   const enrollWithoutPaymentMutation = trpc.course.enrollWithoutPayment.useMutation();
   const enrollWithInstallmentMutation = trpc.course.enrollWithInstallment.useMutation();
 
+  // Trial lesson state
+  const [isTrialDialogOpen, setIsTrialDialogOpen] = React.useState(false);
+  const [selectedTrialTutorId, setSelectedTrialTutorId] = React.useState<number | null>(null);
+  const [trialStudentFirstName, setTrialStudentFirstName] = React.useState("");
+  const [trialStudentLastName, setTrialStudentLastName] = React.useState("");
+  const [trialStudentGrade, setTrialStudentGrade] = React.useState("");
+  const [selectedTrialTime, setSelectedTrialTime] = React.useState<number | null>(null);
+
+  // Check trial eligibility
+  const { data: trialEligibility } = trpc.trialLesson.checkEligibility.useQuery(
+    { courseId },
+    { enabled: isAuthenticated && user?.role === 'parent' }
+  );
+
+  // Book trial lesson directly (Stripe integration disabled for now)
+  const bookTrialMutation = trpc.trialLesson.book.useMutation({
+    onSuccess: (data) => {
+      toast.success(`Trial lesson booked successfully! ${data.trialsRemaining} trial(s) remaining.`);
+      setIsTrialDialogOpen(false);
+      setSelectedTrialTutorId(null);
+      setTrialStudentFirstName("");
+      setTrialStudentLastName("");
+      setTrialStudentGrade("");
+      setSelectedTrialTime(null);
+      setLocation("/parent/dashboard");
+    },
+    onError: (error) => {
+      toast.error(error.message);
+    },
+  });
+
   // Extract unique students from existing subscriptions
   const existingStudents = React.useMemo(() => {
     const students = mySubscriptionsData
@@ -182,11 +213,55 @@ export default function CourseDetail() {
     }
   };
 
+  const handleBookTrial = (tutorId: number) => {
+    if (!isAuthenticated) {
+      window.location.href = LOGIN_PATH;
+      return;
+    }
+
+    if (user?.role !== 'parent') {
+      toast.error("Only parents can book trial lessons");
+      return;
+    }
+
+    // Check if eligible
+    if (!trialEligibility?.eligible) {
+      toast.error("You have used all your trial lessons. Please enroll in the course.");
+      return;
+    }
+
+    setSelectedTrialTutorId(tutorId);
+    setIsTrialDialogOpen(true);
+  };
+
+  const handleTrialBookingComplete = (scheduledAt: number) => {
+    if (!selectedTrialTutorId || !scheduledAt) {
+      toast.error("Please select a time slot");
+      return;
+    }
+
+    if (!trialStudentFirstName || !trialStudentLastName) {
+      toast.error("Please provide student's first and last name");
+      return;
+    }
+
+    // Book trial lesson directly (Stripe integration disabled)
+    bookTrialMutation.mutate({
+      courseId,
+      tutorId: selectedTrialTutorId,
+      scheduledAt,
+      duration: 60,
+      studentFirstName: trialStudentFirstName,
+      studentLastName: trialStudentLastName,
+      studentGrade: trialStudentGrade,
+    });
+  };
+
   if (isLoading) {
     return (
       <div className="min-h-screen flex flex-col bg-background">
         <Navigation />
-        <div className="container py-12">
+        <div className="container py-12 mt-20">
           <Skeleton className="h-96 w-full" />
         </div>
       </div>
@@ -197,7 +272,7 @@ export default function CourseDetail() {
     return (
       <div className="min-h-screen flex flex-col bg-background">
         <Navigation />
-        <div className="container py-12 text-center">
+        <div className="container py-12 text-center mt-20">
           <h1 className="text-2xl font-bold mb-4">Course Not Found</h1>
           <Button asChild>
             <Link href="/tutors">Back to Tutors</Link>
@@ -213,7 +288,7 @@ export default function CourseDetail() {
     <div className="min-h-screen flex flex-col bg-background">
       <Navigation />
 
-      <div className="flex-1">
+      <div className="flex-1 mt-20">
         {/* Course Header */}
         <div className="bg-gradient-to-br from-primary/5 via-accent/5 to-background border-b border-border">
           <div className="container py-12">
@@ -626,8 +701,13 @@ export default function CourseDetail() {
                                   variant="default"
                                   size="sm"
                                   className="w-full xs:w-auto whitespace-nowrap"
+                                  onClick={() => handleBookTrial(tutorAssignment.tutorId)}
+                                  disabled={!trialEligibility?.eligible}
                                 >
-                                  Book Trial Session
+                                  {trialEligibility?.eligible
+                                    ? `Book Trial Lesson (${trialEligibility.trialsRemaining}/2 left)`
+                                    : "Trial Limit Reached"
+                                  }
                                 </Button>
                               </div>
                             </div>
@@ -642,6 +722,95 @@ export default function CourseDetail() {
           </div>
         </div>
       </div>
+
+      {/* Trial Booking Dialog */}
+      <Dialog open={isTrialDialogOpen} onOpenChange={setIsTrialDialogOpen}>
+        <DialogContent className="sm:max-w-[900px] max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Book Your Trial Lesson</DialogTitle>
+            <DialogDescription>
+              Experience our teaching style with a free trial lesson!
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            {trialEligibility && (
+              <div className="bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-sm text-blue-900 dark:text-blue-200">
+                    <strong>Trials Remaining:</strong> {trialEligibility.trialsRemaining} of 2
+                  </p>
+                </div>
+                <p className="text-xs text-blue-700 dark:text-blue-300">
+                  Book a full 60-minute trial session to experience our teaching quality!
+                </p>
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="trial-firstName">Student First Name *</Label>
+                <Input
+                  id="trial-firstName"
+                  value={trialStudentFirstName}
+                  onChange={(e) => setTrialStudentFirstName(e.target.value)}
+                  placeholder="John"
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="trial-lastName">Student Last Name *</Label>
+                <Input
+                  id="trial-lastName"
+                  value={trialStudentLastName}
+                  onChange={(e) => setTrialStudentLastName(e.target.value)}
+                  placeholder="Doe"
+                  required
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="trial-grade">Grade (Optional)</Label>
+              <Select value={trialStudentGrade} onValueChange={setTrialStudentGrade}>
+                <SelectTrigger id="trial-grade">
+                  <SelectValue placeholder="Select grade level" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Kindergarten">Kindergarten</SelectItem>
+                  <SelectItem value="1st Grade">1st Grade</SelectItem>
+                  <SelectItem value="2nd Grade">2nd Grade</SelectItem>
+                  <SelectItem value="3rd Grade">3rd Grade</SelectItem>
+                  <SelectItem value="4th Grade">4th Grade</SelectItem>
+                  <SelectItem value="5th Grade">5th Grade</SelectItem>
+                  <SelectItem value="6th Grade">6th Grade</SelectItem>
+                  <SelectItem value="7th Grade">7th Grade</SelectItem>
+                  <SelectItem value="8th Grade">8th Grade</SelectItem>
+                  <SelectItem value="9th Grade">9th Grade</SelectItem>
+                  <SelectItem value="10th Grade">10th Grade</SelectItem>
+                  <SelectItem value="11th Grade">11th Grade</SelectItem>
+                  <SelectItem value="12th Grade">12th Grade</SelectItem>
+                  <SelectItem value="College">College</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {selectedTrialTutorId && course && (
+              <div className="border-t pt-4">
+                <h3 className="font-semibold mb-3">Select a Time for Your Trial Lesson</h3>
+                <BookableCalendar
+                  tutorId={selectedTrialTutorId}
+                  tutorName={course.tutors?.find((t: any) => t.tutorId === selectedTrialTutorId)?.user.name || 'Tutor'}
+                  courseId={course.id}
+                  courseName={course.title}
+                  sessionDuration={60}
+                  isTrial={true}
+                  onBookingComplete={handleTrialBookingComplete}
+                />
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Tutor Availability Modal */}
       {selectedTutorForAvailability && (

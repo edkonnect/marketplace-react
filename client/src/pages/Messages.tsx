@@ -354,7 +354,7 @@ export default function Messages() {
     <div className="min-h-screen flex flex-col bg-background">
       <Navigation />
 
-      <div className="flex-1 container py-4 sm:py-6">
+      <div className="flex-1 container py-4 sm:py-6 mt-20">
         <div className="mb-4 sm:mb-6 space-y-3 sm:space-y-4">
           <div>
             <h1 className="text-2xl sm:text-3xl font-bold">Messages</h1>

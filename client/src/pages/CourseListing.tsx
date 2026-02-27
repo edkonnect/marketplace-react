@@ -49,7 +49,7 @@ export default function CourseListing() {
     <div className="min-h-screen flex flex-col bg-background">
       <Navigation />
 
-      <main className="flex-1">
+      <main className="flex-1 mt-20">
         {/* Header Section */}
         <section className="bg-gradient-to-br from-primary/5 via-primary/10 to-background py-16 border-b border-border">
           <div className="container">
