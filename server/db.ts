@@ -274,7 +274,9 @@ export async function consumePasswordSetupToken(token: string, newPasswordHash: 
       .update(users)
       .set({
         passwordHash: newPasswordHash,
-        accountSetupComplete: true
+        accountSetupComplete: true,
+        emailVerified: true,
+        emailVerifiedAt: new Date()
       })
       .where(eq(users.id, setupToken.userId));
   });
