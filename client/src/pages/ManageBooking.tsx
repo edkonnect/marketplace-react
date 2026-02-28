@@ -34,11 +34,6 @@ export function ManageBooking() {
     },
   });
 
-  const { data: rescheduleData } = trpc.bookingManagement.getRescheduleUrl.useQuery(
-    { token },
-    { enabled: !!token && !!session && !cancelled }
-  );
-
   if (isLoading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 py-12 px-4">
@@ -208,18 +203,6 @@ export function ManageBooking() {
             {/* Action Buttons */}
             {canManage && (
               <div className="flex flex-col sm:flex-row gap-3 pt-4 border-t">
-                {rescheduleData?.rescheduleUrl && (
-                  <Button
-                    className="flex-1"
-                    onClick={() => {
-                      window.open(rescheduleData.rescheduleUrl, "_blank");
-                    }}
-                  >
-                    <Calendar className="h-4 w-4 mr-2" />
-                    Reschedule Session
-                  </Button>
-                )}
-
                 <AlertDialog>
                   <AlertDialogTrigger asChild>
                     <Button variant="destructive" className="flex-1">

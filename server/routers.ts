@@ -7,7 +7,6 @@ import * as db from "./db";
 import { TRPCError } from "@trpc/server";
 import { sendWelcomeEmail, sendBookingConfirmation, sendEnrollmentConfirmation, sendTutorEnrollmentNotification, sendNoShowNotification, formatEmailDate, formatEmailTime, formatEmailPrice } from "./email-helpers";
 import { generateBookingToken, isValidBookingToken } from "./booking-management";
-import { cancelAppointment } from "./acuity";
 import { sendCancellationConfirmationEmail } from "./cancellation-email";
 import { generateCurriculumPDF } from "./pdf-generator";
 import { sendSessionNotesEmail } from "./session-notes-email";
@@ -118,7 +117,6 @@ export const appRouter = router({
         hourlyRate: z.number(),
         subjects: z.array(z.string()),
         gradeLevels: z.array(z.string()),
-        acuityLink: z.string().optional(),
       }))
       .mutation(async ({ ctx, input }) => {
         // Determine if user is authenticated
@@ -182,7 +180,6 @@ export const appRouter = router({
           hourlyRate: input.hourlyRate.toString(),
           subjects: JSON.stringify(input.subjects),
           gradeLevels: JSON.stringify(input.gradeLevels),
-          acuityLink: input.acuityLink,
           approvalStatus: 'pending' as const,
         };
 
@@ -248,7 +245,6 @@ export const appRouter = router({
         yearsOfExperience: z.number().optional(),
         availability: z.string().optional(),
         profileImageUrl: z.string().optional(),
-        acuityLink: z.string().optional(),
         isActive: z.boolean().optional(),
       }))
       .mutation(async ({ ctx, input }) => {
@@ -3312,217 +3308,6 @@ export const appRouter = router({
         return { success: true };
       }),
 
-    // Acuity Mapping Endpoints
-    getAcuityAppointmentTypes: adminProcedure
-      .query(async () => {
-        const { getAppointmentTypes } = await import("./acuity");
-        const appointmentTypes = await getAppointmentTypes();
-        return appointmentTypes;
-      }),
-
-    getAcuityCalendars: adminProcedure
-      .query(async () => {
-        const { getCalendars } = await import("./acuity");
-        const calendars = await getCalendars();
-        return calendars;
-      }),
-
-    updateCourseAcuityMapping: adminProcedure
-      .input(z.object({
-        courseId: z.number(),
-        acuityAppointmentTypeId: z.number().nullable(),
-        acuityCalendarId: z.number().nullable(),
-      }))
-      .mutation(async ({ input }) => {
-        const success = await db.updateCourseAcuityMapping(
-          input.courseId,
-          input.acuityAppointmentTypeId,
-          input.acuityCalendarId
-        );
-        if (!success) {
-          throw new TRPCError({ 
-            code: 'INTERNAL_SERVER_ERROR', 
-            message: 'Failed to update course Acuity mapping' 
-          });
-        }
-        return { success: true };
-      }),
-
-    // Acuity Mapping Templates
-    getAllMappingTemplates: adminProcedure
-      .query(async () => {
-        const templates = await db.getAllAcuityMappingTemplates();
-        return templates;
-      }),
-
-    getMappingTemplateById: adminProcedure
-      .input(z.object({ id: z.number() }))
-      .query(async ({ input }) => {
-        const template = await db.getAcuityMappingTemplateById(input.id);
-        if (!template) {
-          throw new TRPCError({ code: 'NOT_FOUND', message: 'Template not found' });
-        }
-        return template;
-      }),
-
-    createMappingTemplate: adminProcedure
-      .input(z.object({
-        name: z.string(),
-        description: z.string().optional(),
-        acuityAppointmentTypeId: z.number(),
-        acuityCalendarId: z.number(),
-      }))
-      .mutation(async ({ ctx, input }) => {
-        const templateId = await db.createAcuityMappingTemplate({
-          ...input,
-          createdBy: ctx.user.id,
-        });
-        if (!templateId) {
-          throw new TRPCError({ 
-            code: 'INTERNAL_SERVER_ERROR', 
-            message: 'Failed to create template' 
-          });
-        }
-        return { success: true, templateId };
-      }),
-
-    updateMappingTemplate: adminProcedure
-      .input(z.object({
-        id: z.number(),
-        name: z.string().optional(),
-        description: z.string().optional(),
-        acuityAppointmentTypeId: z.number().optional(),
-        acuityCalendarId: z.number().optional(),
-      }))
-      .mutation(async ({ input }) => {
-        const { id, ...updates } = input;
-        const success = await db.updateAcuityMappingTemplate(id, updates);
-        if (!success) {
-          throw new TRPCError({ 
-            code: 'INTERNAL_SERVER_ERROR', 
-            message: 'Failed to update template' 
-          });
-        }
-        return { success: true };
-      }),
-
-    deleteMappingTemplate: adminProcedure
-      .input(z.object({ id: z.number() }))
-      .mutation(async ({ input }) => {
-        const success = await db.deleteAcuityMappingTemplate(input.id);
-        if (!success) {
-          throw new TRPCError({ 
-            code: 'INTERNAL_SERVER_ERROR', 
-            message: 'Failed to delete template' 
-          });
-        }
-        return { success: true };
-      }),
-
-    bulkApplyMapping: adminProcedure
-      .input(z.object({
-        courseIds: z.array(z.number()),
-        acuityAppointmentTypeId: z.number(),
-        acuityCalendarId: z.number(),
-      }))
-      .mutation(async ({ input }) => {
-        const success = await db.bulkApplyAcuityMapping(
-          input.courseIds,
-          input.acuityAppointmentTypeId,
-          input.acuityCalendarId
-        );
-        if (!success) {
-          throw new TRPCError({ 
-            code: 'INTERNAL_SERVER_ERROR', 
-            message: 'Failed to apply bulk mapping' 
-          });
-        }
-        return { success: true, count: input.courseIds.length };
-      }),
-
-    // Export templates
-    exportTemplates: adminProcedure
-      .input(z.object({
-        templateIds: z.array(z.number()).optional(), // If not provided, export all
-      }))
-      .query(async ({ input }) => {
-        const templates = input.templateIds && input.templateIds.length > 0
-          ? await Promise.all(input.templateIds.map(id => db.getAcuityMappingTemplateById(id)))
-          : await db.getAllAcuityMappingTemplates();
-
-        const validTemplates = templates.filter((t): t is NonNullable<typeof t> => t !== null);
-        
-        return {
-          version: "1.0",
-          exportDate: new Date().toISOString(),
-          templates: validTemplates.map((t) => ({
-            name: t!.name,
-            description: t!.description,
-            acuityAppointmentTypeId: t!.acuityAppointmentTypeId,
-            acuityCalendarId: t!.acuityCalendarId,
-          })),
-        };
-      }),
-
-    // Import templates
-    importTemplates: adminProcedure
-      .input(z.object({
-        templates: z.array(z.object({
-          name: z.string(),
-          description: z.string().optional(),
-          acuityAppointmentTypeId: z.number(),
-          acuityCalendarId: z.number(),
-        })),
-        conflictResolution: z.enum(['skip', 'rename', 'overwrite']).default('rename'),
-      }))
-      .mutation(async ({ ctx, input }) => {
-        const results = {
-          imported: 0,
-          skipped: 0,
-          errors: [] as string[],
-        };
-
-        for (const template of input.templates) {
-          try {
-            // Check for existing template with same name
-            const existing = await db.getMappingTemplateByName(template.name);
-
-            if (existing) {
-              if (input.conflictResolution === 'skip') {
-                results.skipped++;
-                continue;
-              } else if (input.conflictResolution === 'rename') {
-                // Find unique name
-                let newName = `${template.name} (Imported)`;
-                let counter = 1;
-                while (await db.getMappingTemplateByName(newName)) {
-                  newName = `${template.name} (Imported ${counter})`;
-                  counter++;
-                }
-                template.name = newName;
-              } else if (input.conflictResolution === 'overwrite') {
-                // Delete existing template
-                await db.deleteAcuityMappingTemplate(existing.id);
-              }
-            }
-
-            // Create new template
-            await db.createAcuityMappingTemplate({
-              name: template.name,
-              description: template.description || '',
-              acuityAppointmentTypeId: template.acuityAppointmentTypeId,
-              acuityCalendarId: template.acuityCalendarId,
-              createdBy: ctx.user.id,
-            });
-            results.imported++;
-          } catch (error) {
-            results.errors.push(`Failed to import "${template.name}": ${error instanceof Error ? error.message : String(error)}`);
-          }
-        }
-
-        return results;
-      }),
-
     // Email Settings Management
     getEmailSettings: adminProcedure
       .query(async () => {
@@ -4584,20 +4369,10 @@ export const appRouter = router({
 
         // Check if session is in the past
         if (session.scheduledAt < Date.now()) {
-          throw new TRPCError({ 
-            code: 'BAD_REQUEST', 
-            message: 'Cannot cancel a session that has already passed' 
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: 'Cannot cancel a session that has already passed'
           });
-        }
-
-        // Cancel in Acuity Scheduling if appointment exists
-        if (session.acuityAppointmentId) {
-          try {
-            await cancelAppointment(session.acuityAppointmentId);
-          } catch (error) {
-            console.error('[Booking Management] Failed to cancel in Acuity:', error);
-            // Continue with local cancellation even if Acuity fails
-          }
         }
 
         const success = await db.cancelSession(session.id);
@@ -4629,55 +4404,6 @@ export const appRouter = router({
         }
 
         return { success: true, message: 'Session cancelled successfully' };
-      }),
-
-    /**
-     * Request reschedule for a session (returns Acuity reschedule URL)
-     */
-    getRescheduleUrl: publicProcedure
-      .input(z.object({ token: z.string() }))
-      .query(async ({ input }) => {
-        if (!isValidBookingToken(input.token)) {
-          throw new TRPCError({ 
-            code: 'BAD_REQUEST', 
-            message: 'Invalid booking token' 
-          });
-        }
-
-        const session = await db.getSessionByToken(input.token);
-        if (!session) {
-          throw new TRPCError({ 
-            code: 'NOT_FOUND', 
-            message: 'Booking not found' 
-          });
-        }
-
-        // Check if session can be rescheduled
-        if (session.status === 'cancelled') {
-          throw new TRPCError({ 
-            code: 'BAD_REQUEST', 
-            message: 'Cannot reschedule a cancelled session' 
-          });
-        }
-
-        if (session.status === 'completed') {
-          throw new TRPCError({ 
-            code: 'BAD_REQUEST', 
-            message: 'Cannot reschedule a completed session' 
-          });
-        }
-
-        if (!session.acuityAppointmentId) {
-          throw new TRPCError({ 
-            code: 'BAD_REQUEST', 
-            message: 'This session is not linked to Acuity Scheduling' 
-          });
-        }
-
-        // Generate Acuity reschedule URL
-        const rescheduleUrl = `https://app.acuityscheduling.com/schedule.php?action=reschedule&id=${session.acuityAppointmentId}`;
-
-        return { rescheduleUrl };
       }),
   }),
 

@@ -16,7 +16,6 @@ describe("Booking Confirmation Email", () => {
     sessionDate: new Date("2024-03-15T10:00:00Z"),
     sessionDuration: 60,
     sessionNotes: "Please bring calculus textbook",
-    acuityAppointmentId: "12345",
   };
 
   describe("generateCalendarInvite", () => {

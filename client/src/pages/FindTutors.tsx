@@ -2,7 +2,6 @@ import { useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { TutorFilters, TutorFilterState } from "@/components/TutorFilters";
 import { WeeklyAvailabilityCalendar } from "@/components/WeeklyAvailabilityCalendar";
-import { AcuitySchedulingEmbed } from "@/components/AcuitySchedulingEmbed";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -232,15 +231,10 @@ function TutorCard({ tutor }: TutorCardProps) {
           </div>
         )}
 
-        {/* Availability - Show Acuity if available, otherwise show manual calendar */}
-        {tutor.acuityLink ? (
-          <AcuitySchedulingEmbed 
-            acuityLink={tutor.acuityLink} 
-            compact={true}
-          />
-        ) : tutor.availability && tutor.availability.length > 0 ? (
-          <WeeklyAvailabilityCalendar 
-            availability={tutor.availability} 
+        {/* Availability Calendar */}
+        {tutor.availability && tutor.availability.length > 0 ? (
+          <WeeklyAvailabilityCalendar
+            availability={tutor.availability}
             compact={true}
           />
         ) : null}

@@ -11,7 +11,6 @@ import {
   platformStats, featuredCourses, testimonials, faqs, blogPosts,
   tutorAvailability, InsertTutorAvailability,
   tutorTimeBlocks, InsertTutorTimeBlock,
-  acuityMappingTemplates, InsertAcuityMappingTemplate,
   emailSettings, InsertEmailSettings,
   emailVerifications, EmailVerification,
   passwordSetupTokens, PasswordSetupToken,
@@ -2367,175 +2366,6 @@ export async function getAllTutorsWithAvailability() {
   }
 }
 
-/**
- * Update course Acuity mapping
- */
-export async function updateCourseAcuityMapping(
-  courseId: number,
-  acuityAppointmentTypeId: number | null,
-  acuityCalendarId: number | null
-) {
-  const db = await getDb();
-  if (!db) return false;
-
-  try {
-    await db
-      .update(courses)
-      .set({
-        acuityAppointmentTypeId,
-        acuityCalendarId,
-      })
-      .where(eq(courses.id, courseId));
-    return true;
-  } catch (error) {
-    console.error("[Database] Error updating course Acuity mapping:", error);
-    return false;
-  }
-}
-
-/**
- * Get all Acuity mapping templates
- */
-export async function getAllAcuityMappingTemplates() {
-  const db = await getDb();
-  if (!db) return [];
-
-  try {
-    const templates = await db
-      .select()
-      .from(acuityMappingTemplates)
-      .orderBy(desc(acuityMappingTemplates.createdAt));
-    return templates;
-  } catch (error) {
-    console.error("[Database] Error fetching Acuity mapping templates:", error);
-    return [];
-  }
-}
-
-/**
- * Get Acuity mapping template by ID
- */
-export async function getAcuityMappingTemplateById(id: number) {
-  const db = await getDb();
-  if (!db) return null;
-
-  try {
-    const [template] = await db
-      .select()
-      .from(acuityMappingTemplates)
-      .where(eq(acuityMappingTemplates.id, id))
-      .limit(1);
-    return template || null;
-  } catch (error) {
-    console.error("[Database] Error fetching Acuity mapping template:", error);
-    return null;
-  }
-}
-
-/**
- * Create new Acuity mapping template
- */
-export async function createAcuityMappingTemplate(template: InsertAcuityMappingTemplate) {
-  const db = await getDb();
-  if (!db) return null;
-
-  try {
-    const [result] = await db
-      .insert(acuityMappingTemplates)
-      .values(template);
-    return result.insertId;
-  } catch (error) {
-    console.error("[Database] Error creating Acuity mapping template:", error);
-    return null;
-  }
-}
-
-/**
- * Update Acuity mapping template
- */
-export async function updateAcuityMappingTemplate(
-  id: number,
-  updates: Partial<InsertAcuityMappingTemplate>
-) {
-  const db = await getDb();
-  if (!db) return false;
-
-  try {
-    await db
-      .update(acuityMappingTemplates)
-      .set(updates)
-      .where(eq(acuityMappingTemplates.id, id));
-    return true;
-  } catch (error) {
-    console.error("[Database] Error updating Acuity mapping template:", error);
-    return false;
-  }
-}
-
-/**
- * Delete Acuity mapping template
- */
-export async function deleteAcuityMappingTemplate(id: number) {
-  const db = await getDb();
-  if (!db) return false;
-
-  try {
-    await db
-      .delete(acuityMappingTemplates)
-      .where(eq(acuityMappingTemplates.id, id));
-    return true;
-  } catch (error) {
-    console.error("[Database] Error deleting Acuity mapping template:", error);
-    return false;
-  }
-}
-
-/**
- * Bulk apply Acuity mapping to multiple courses
- */
-export async function bulkApplyAcuityMapping(
-  courseIds: number[],
-  acuityAppointmentTypeId: number,
-  acuityCalendarId: number
-) {
-  const db = await getDb();
-  if (!db) return false;
-
-  try {
-    await db
-      .update(courses)
-      .set({
-        acuityAppointmentTypeId,
-        acuityCalendarId,
-      })
-      .where(inArray(courses.id, courseIds));
-    return true;
-  } catch (error) {
-    console.error("[Database] Error bulk applying Acuity mapping:", error);
-    return false;
-  }
-}
-
-/**
- * Get Acuity mapping template by name
- */
-export async function getMappingTemplateByName(name: string) {
-  const db = await getDb();
-  if (!db) return null;
-
-  try {
-    const result = await db
-      .select()
-      .from(acuityMappingTemplates)
-      .where(eq(acuityMappingTemplates.name, name))
-      .limit(1);
-    return result[0] || null;
-  } catch (error) {
-    console.error("[Database] Error getting mapping template by name:", error);
-    return null;
-  }
-}
-
 // ============ Email Settings ============
 
 /**
@@ -3362,7 +3192,6 @@ export async function searchTutors(filters: TutorFilterOptions) {
         hourlyRate: tutorProfiles.hourlyRate,
         yearsOfExperience: tutorProfiles.yearsOfExperience,
         profileImageUrl: tutorProfiles.profileImageUrl,
-        acuityLink: tutorProfiles.acuityLink,
         rating: tutorProfiles.rating,
         totalReviews: tutorProfiles.totalReviews,
         userName: users.name,
@@ -3564,7 +3393,6 @@ export async function getParentUpcomingSessions(parentId: number) {
         scheduledAt: sessions.scheduledAt,
         duration: sessions.duration,
         status: sessions.status,
-        acuityAppointmentId: sessions.acuityAppointmentId,
       })
       .from(sessions)
       .innerJoin(users, eq(sessions.tutorId, users.id))

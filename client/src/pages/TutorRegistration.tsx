@@ -309,16 +309,6 @@ export default function TutorRegistration() {
                         helperText="Enter a single rate or a range (e.g., 50-80)"
                       />
                     </div>
-
-                    {/* Acuity Scheduling Link - Commented Out
-                    <FormInput
-                      field={register("acuityLink")}
-                      label="Acuity Scheduling Link (Optional)"
-                      type="url"
-                      placeholder="https://app.acuityscheduling.com/schedule.php?owner=..."
-                      helperText="Share your scheduling link to display real-time availability to parents."
-                    />
-                    */}
                   </div>
 
                   {/* Subjects */}
