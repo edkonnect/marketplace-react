@@ -63,11 +63,7 @@ async function startServer() {
   // Stripe webhook MUST be registered before express.json() for signature verification
   const { handleStripeWebhook } = await import("../stripeWebhook");
   app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), handleStripeWebhook);
-  
-  // Acuity webhook
-  const { handleAcuityWebhook } = await import("../acuityWebhook");
-  app.post("/api/acuity/webhook", handleAcuityWebhook);
-  
+
   // Configure body parser with larger size limit for file uploads
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));

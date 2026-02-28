@@ -23,7 +23,6 @@ export interface BookingConfirmationData {
   sessionDate: Date;
   sessionDuration: number; // in minutes
   sessionNotes?: string;
-  acuityAppointmentId: string;
   managementToken?: string; // Token for email-based booking management
 }
 

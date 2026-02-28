@@ -18,8 +18,6 @@ import { UserDistributionChart } from "@/components/charts/UserDistributionChart
 import { PaymentStatusChart } from "@/components/charts/PaymentStatusChart";
 import { DateRangeSelector } from "@/components/DateRangeSelector";
 import { TutorAvailabilityManager } from "@/components/TutorAvailabilityManager";
-// import { CourseAcuityMapping } from "@/components/CourseAcuityMapping";
-// import { QuickSetup } from "@/components/QuickSetup";
 import { EmailSettings } from "@/components/EmailSettings";
 import { RegisteredTutorsManager } from "@/components/RegisteredTutorsManager";
 import { Pagination } from "@/components/Pagination";
@@ -1260,16 +1258,6 @@ export function AdminDashboard() {
           <TabsContent value="availability" forceMount className={tabContentClass}>
             <TutorAvailabilityManager />
           </TabsContent>
-
-          {/* Acuity Mapping Tab */}
-          {/* <TabsContent value="acuity" forceMount className={tabContentClass}>
-            <CourseAcuityMapping />
-          </TabsContent> */}
-
-          {/* Quick Setup Tab */}
-          {/* <TabsContent value="quicksetup" forceMount className={tabContentClass}>
-            <QuickSetup />
-          </TabsContent> */}
 
           {/* Email Settings Tab */}
           <TabsContent value="email" forceMount className={tabContentClass}>

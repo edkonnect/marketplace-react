@@ -90,7 +90,6 @@ export const tutorProfiles = mysqlTable("tutor_profiles", {
   profileImageUrl: text("profileImageUrl"),
   introVideoUrl: text("introVideoUrl"), // URL to intro video in S3
   introVideoKey: varchar("introVideoKey", { length: 512 }), // S3 key for video file
-  acuityLink: text("acuityLink"), // Acuity scheduling link for this tutor
   isActive: boolean("isActive").default(true).notNull(),
   approvalStatus: varchar("approvalStatus", { length: 20 }).default("pending").notNull(), // pending, approved, rejected
   rejectionReason: text("rejectionReason"), // Optional reason for rejection
@@ -144,8 +143,6 @@ export const courses = mysqlTable("courses", {
   isActive: boolean("isActive").default(true).notNull(),
   imageUrl: text("imageUrl"),
   curriculum: text("curriculum"),
-  acuityAppointmentTypeId: int("acuityAppointmentTypeId"), // Link to Acuity appointment type
-  acuityCalendarId: int("acuityCalendarId"), // Link to Acuity calendar
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 }, (table) => ({
@@ -244,7 +241,6 @@ export const sessions = mysqlTable("sessions", {
   feedbackFromTutor: text("feedbackFromTutor"),
   feedbackFromParent: text("feedbackFromParent"),
   rating: int("rating"), // 1-5 rating from parent
-  acuityAppointmentId: int("acuityAppointmentId"), // Link to Acuity appointment
   managementToken: varchar("managementToken", { length: 64 }), // Secure token for email-based booking management
   meetingPlatform: varchar("meetingPlatform", { length: 50 }).default("Zoom"),
   meetingUrl: text("meetingUrl"),
@@ -504,7 +500,6 @@ export const tutorTimeBlocks = mysqlTable("tutor_time_blocks", {
   startTime: bigint("startTime", { mode: "number" }).notNull(), // Unix timestamp in milliseconds
   endTime: bigint("endTime", { mode: "number" }).notNull(), // Unix timestamp in milliseconds
   reason: varchar("reason", { length: 255 }), // Optional reason (vacation, appointment, etc.)
-  acuityBlockId: int("acuityBlockId"), // Link to Acuity block if synced
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 }, (table) => ({
@@ -514,23 +509,6 @@ export const tutorTimeBlocks = mysqlTable("tutor_time_blocks", {
 
 export type TutorTimeBlock = typeof tutorTimeBlocks.$inferSelect;
 export type InsertTutorTimeBlock = typeof tutorTimeBlocks.$inferInsert;
-
-/**
- * Acuity mapping templates for bulk course configuration
- */
-export const acuityMappingTemplates = mysqlTable("acuity_mapping_templates", {
-  id: int("id").autoincrement().primaryKey(),
-  name: varchar("name", { length: 255 }).notNull(),
-  description: text("description"),
-  acuityAppointmentTypeId: int("acuityAppointmentTypeId").notNull(),
-  acuityCalendarId: int("acuityCalendarId").notNull(),
-  createdBy: int("createdBy").notNull().references(() => users.id, { onDelete: "cascade" }),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
-});
-
-export type AcuityMappingTemplate = typeof acuityMappingTemplates.$inferSelect;
-export type InsertAcuityMappingTemplate = typeof acuityMappingTemplates.$inferInsert;
 
 /**
  * Email template settings for customizing booking confirmation emails

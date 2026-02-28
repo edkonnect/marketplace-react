@@ -10,13 +10,7 @@ export const ENV = {
   forgeApiKey: process.env.BUILT_IN_FORGE_API_KEY ?? "",
   stripeSecretKey: process.env.STRIPE_SECRET_KEY ?? "",
   stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET ?? "",
-  acuityUserId: process.env.ACUITY_USER_ID ?? "",
-  acuityApiKey: process.env.ACUITY_API_KEY ?? "",
   corsOrigin: process.env.CORS_ORIGIN ?? "http://localhost:5173",
   cookieSecure: process.env.COOKIE_SECURE === "true",
   cookieDomain: process.env.COOKIE_DOMAIN ?? undefined,
 };
-
-// Export individual constants for convenience
-export const ACUITY_USER_ID = ENV.acuityUserId;
-export const ACUITY_API_KEY = ENV.acuityApiKey;

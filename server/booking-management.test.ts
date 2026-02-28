@@ -251,26 +251,6 @@ describe("Booking Management Feature", () => {
     });
   });
 
-  describe("Acuity Integration", () => {
-    it("should generate correct Acuity reschedule URL format", () => {
-      const appointmentId = 12345;
-      const expectedUrl = `https://app.acuityscheduling.com/schedule.php?action=reschedule&id=${appointmentId}`;
-      
-      expect(expectedUrl).toContain("action=reschedule");
-      expect(expectedUrl).toContain(`id=${appointmentId}`);
-    });
-
-    it("should handle missing Acuity appointment ID gracefully", async () => {
-      // When session has no acuityAppointmentId, should return error
-      const caller = appRouter.createCaller(createContext(null));
-      const validToken = generateBookingToken();
-
-      await expect(
-        caller.bookingManagement.getRescheduleUrl({ token: validToken })
-      ).rejects.toThrow();
-    });
-  });
-
   describe("User Experience", () => {
     it("should provide clear error messages", async () => {
       const caller = appRouter.createCaller(createContext(null));
