@@ -59,7 +59,7 @@ export default function TutorRegistration() {
       hourlyRate: "",
       subjects: [] as string[],
       gradeLevels: [] as string[],
-      acuityLink: "",
+      // acuityLink: "",
     },
     {
       name: required("Full name is required"),
@@ -76,7 +76,7 @@ export default function TutorRegistration() {
       ],
       subjects: arrayMin(1, "Select at least one subject"),
       gradeLevels: arrayMin(1, "Select at least one grade level"),
-      acuityLink: urlValidator("Enter a valid scheduling link"),
+      // acuityLink: urlValidator("Enter a valid scheduling link"),
     }
   );
 
@@ -149,7 +149,6 @@ export default function TutorRegistration() {
       hourlyRate: numericRate,
       subjects: values.subjects,
       gradeLevels: values.gradeLevels,
-      acuityLink: values.acuityLink || undefined,
     });
   };
 
@@ -311,6 +310,7 @@ export default function TutorRegistration() {
                       />
                     </div>
 
+                    {/* Acuity Scheduling Link - Commented Out
                     <FormInput
                       field={register("acuityLink")}
                       label="Acuity Scheduling Link (Optional)"
@@ -318,6 +318,7 @@ export default function TutorRegistration() {
                       placeholder="https://app.acuityscheduling.com/schedule.php?owner=..."
                       helperText="Share your scheduling link to display real-time availability to parents."
                     />
+                    */}
                   </div>
 
                   {/* Subjects */}
