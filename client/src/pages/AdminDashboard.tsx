@@ -18,8 +18,8 @@ import { UserDistributionChart } from "@/components/charts/UserDistributionChart
 import { PaymentStatusChart } from "@/components/charts/PaymentStatusChart";
 import { DateRangeSelector } from "@/components/DateRangeSelector";
 import { TutorAvailabilityManager } from "@/components/TutorAvailabilityManager";
-import { CourseAcuityMapping } from "@/components/CourseAcuityMapping";
-import { QuickSetup } from "@/components/QuickSetup";
+// import { CourseAcuityMapping } from "@/components/CourseAcuityMapping";
+// import { QuickSetup } from "@/components/QuickSetup";
 import { EmailSettings } from "@/components/EmailSettings";
 import { RegisteredTutorsManager } from "@/components/RegisteredTutorsManager";
 import { Pagination } from "@/components/Pagination";
@@ -350,8 +350,8 @@ export function AdminDashboard() {
               <TabsTrigger value="courses">Courses</TabsTrigger>
               <TabsTrigger value="registered-tutors">Registered Tutors</TabsTrigger>
               <TabsTrigger value="availability">Tutor Availability</TabsTrigger>
-              <TabsTrigger value="acuity">Acuity Mapping</TabsTrigger>
-              <TabsTrigger value="quicksetup">Quick Setup</TabsTrigger>
+              {/* <TabsTrigger value="acuity">Acuity Mapping</TabsTrigger>
+              <TabsTrigger value="quicksetup">Quick Setup</TabsTrigger> */}
               <TabsTrigger value="email">Email Settings</TabsTrigger>
               <TabsTrigger value="course-approval">Tutor Course Approval</TabsTrigger>
             </TabsList>
@@ -1262,14 +1262,14 @@ export function AdminDashboard() {
           </TabsContent>
 
           {/* Acuity Mapping Tab */}
-          <TabsContent value="acuity" forceMount className={tabContentClass}>
+          {/* <TabsContent value="acuity" forceMount className={tabContentClass}>
             <CourseAcuityMapping />
-          </TabsContent>
+          </TabsContent> */}
 
           {/* Quick Setup Tab */}
-          <TabsContent value="quicksetup" forceMount className={tabContentClass}>
+          {/* <TabsContent value="quicksetup" forceMount className={tabContentClass}>
             <QuickSetup />
-          </TabsContent>
+          </TabsContent> */}
 
           {/* Email Settings Tab */}
           <TabsContent value="email" forceMount className={tabContentClass}>
