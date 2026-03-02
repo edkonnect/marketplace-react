@@ -111,56 +111,69 @@ export default function Navigation() {
 
           {/* Navigation Links */}
           <div className="hidden md:flex items-center gap-6">
-            <Link href="/tutors" className={`text-sm font-medium transition-colors hover:text-primary ${
-              location === "/tutors" ? "text-primary" : "text-muted-foreground"
-            }`}>
-              Find Tutors
-            </Link>
-
-            <Link href="/courses" className={`text-sm font-medium transition-colors hover:text-primary ${
-              location === "/courses" ? "text-primary" : "text-muted-foreground"
-            }`}>
-              Browse Courses
-            </Link>
-
-            {user?.role !== "tutor" && (
-              <Link href="/tutor-registration" className={`text-sm font-medium transition-colors hover:text-primary ${
-                location === "/tutor-registration" ? "text-primary" : "text-muted-foreground"
+            {/* For coordinators, only show Dashboard */}
+            {user?.role === "coordinator" ? (
+              <Link href={getDashboardLink()} className={`flex items-center gap-2 text-sm font-medium transition-colors hover:text-primary ${
+                location.includes("/dashboard") ? "text-primary" : "text-muted-foreground"
               }`}>
-                Become a Tutor
+                <LayoutDashboard className="w-4 h-4" />
+                Dashboard
               </Link>
-            )}
-
-            <button
-              onClick={() => setIsVideoModalOpen(true)}
-              className="flex items-center gap-2 text-sm font-medium transition-colors hover:text-primary text-muted-foreground"
-            >
-              <Play className="w-4 h-4" />
-              What's EdKonnect
-            </button>
-
-            {isAuthenticated && (
+            ) : (
               <>
-                <Link href={getDashboardLink()} className={`flex items-center gap-2 text-sm font-medium transition-colors hover:text-primary ${
-                  location.includes("/dashboard") ? "text-primary" : "text-muted-foreground"
+                {/* Public navigation links for all other roles */}
+                <Link href="/tutors" className={`text-sm font-medium transition-colors hover:text-primary ${
+                  location === "/tutors" ? "text-primary" : "text-muted-foreground"
                 }`}>
-                  <LayoutDashboard className="w-4 h-4" />
-                  Dashboard
+                  Find Tutors
                 </Link>
 
-                <Link href="/messages" className={`flex items-center gap-2 text-sm font-medium transition-colors hover:text-primary ${
-                  location === "/messages" ? "text-primary" : "text-muted-foreground"
+                <Link href="/courses" className={`text-sm font-medium transition-colors hover:text-primary ${
+                  location === "/courses" ? "text-primary" : "text-muted-foreground"
                 }`}>
-                  <span className="relative">
-                    <MessageSquare className="w-4 h-4" />
-                    {unreadCount > 0 && (
-                      <span className="absolute -top-1.5 -right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white">
-                        {unreadCount > 9 ? "9+" : unreadCount}
-                      </span>
-                    )}
-                  </span>
-                  Messages
+                  Browse Courses
                 </Link>
+
+                {user?.role !== "tutor" && (
+                  <Link href="/tutor-registration" className={`text-sm font-medium transition-colors hover:text-primary ${
+                    location === "/tutor-registration" ? "text-primary" : "text-muted-foreground"
+                  }`}>
+                    Become a Tutor
+                  </Link>
+                )}
+
+                <button
+                  onClick={() => setIsVideoModalOpen(true)}
+                  className="flex items-center gap-2 text-sm font-medium transition-colors hover:text-primary text-muted-foreground"
+                >
+                  <Play className="w-4 h-4" />
+                  What's EdKonnect
+                </button>
+
+                {isAuthenticated && (
+                  <>
+                    <Link href={getDashboardLink()} className={`flex items-center gap-2 text-sm font-medium transition-colors hover:text-primary ${
+                      location.includes("/dashboard") ? "text-primary" : "text-muted-foreground"
+                    }`}>
+                      <LayoutDashboard className="w-4 h-4" />
+                      Dashboard
+                    </Link>
+
+                    <Link href="/messages" className={`flex items-center gap-2 text-sm font-medium transition-colors hover:text-primary ${
+                      location === "/messages" ? "text-primary" : "text-muted-foreground"
+                    }`}>
+                      <span className="relative">
+                        <MessageSquare className="w-4 h-4" />
+                        {unreadCount > 0 && (
+                          <span className="absolute -top-1.5 -right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white">
+                            {unreadCount > 9 ? "9+" : unreadCount}
+                          </span>
+                        )}
+                      </span>
+                      Messages
+                    </Link>
+                  </>
+                )}
               </>
             )}
           </div>
@@ -199,22 +212,25 @@ export default function Navigation() {
                       Dashboard
                     </Link>
                   </DropdownMenuItem>
-                  <DropdownMenuItem asChild>
-                    <Link href="/messages" className="flex items-center w-full cursor-pointer">
-                      <span className="relative mr-2">
-                        <MessageSquare className="w-4 h-4" />
+                  {/* Hide Messages for coordinators - they access via dashboard */}
+                  {user.role !== 'coordinator' && (
+                    <DropdownMenuItem asChild>
+                      <Link href="/messages" className="flex items-center w-full cursor-pointer">
+                        <span className="relative mr-2">
+                          <MessageSquare className="w-4 h-4" />
+                          {unreadCount > 0 && (
+                            <span className="absolute -top-1.5 -right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white">
+                              {unreadCount > 9 ? "9+" : unreadCount}
+                            </span>
+                          )}
+                        </span>
+                        Messages
                         {unreadCount > 0 && (
-                          <span className="absolute -top-1.5 -right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white">
-                            {unreadCount > 9 ? "9+" : unreadCount}
-                          </span>
+                          <span className="ml-auto text-xs font-semibold text-red-500">{unreadCount} new</span>
                         )}
-                      </span>
-                      Messages
-                      {unreadCount > 0 && (
-                        <span className="ml-auto text-xs font-semibold text-red-500">{unreadCount} new</span>
-                      )}
-                    </Link>
-                  </DropdownMenuItem>
+                      </Link>
+                    </DropdownMenuItem>
+                  )}
                   {user.role === 'admin' && (
                     <DropdownMenuItem asChild>
                       <Link href="/admin/dashboard" className="flex items-center w-full cursor-pointer">
