@@ -733,9 +733,13 @@ export async function getCoordinatorAssignmentsByParent(parentId: number) {
 
 export async function getCoordinatorAssignmentsByCoordinator(coordinatorId: number) {
   const db = await getDb();
-  if (!db) return [];
+  if (!db) {
+    console.error("[Database] getDb() returned null");
+    return [];
+  }
 
   try {
+    console.log(`[Database] Querying coordinator_assignments for coordinatorId: ${coordinatorId}`);
     const parent = alias(users, "parent");
     const result = await db
       .select({
@@ -763,6 +767,7 @@ export async function getCoordinatorAssignmentsByCoordinator(coordinatorId: numb
       ))
       .orderBy(desc(coordinatorAssignments.assignedAt));
 
+    console.log(`[Database] Query returned ${result.length} assignments`);
     return result;
   } catch (error) {
     console.error("[Database] Failed to get coordinator assignments by coordinator:", error);

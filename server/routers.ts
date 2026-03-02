@@ -4596,7 +4596,9 @@ export const appRouter = router({
      */
     getMyAssignments: coordinatorProcedure
       .query(async ({ ctx }) => {
+        console.log('[Coordinator] Fetching assignments for coordinator ID:', ctx.user.id);
         const assignments = await db.getCoordinatorAssignmentsByCoordinator(ctx.user.id);
+        console.log('[Coordinator] Found assignments:', assignments.length);
         return assignments;
       }),
 
