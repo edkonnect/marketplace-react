@@ -107,10 +107,10 @@ export function CoordinatorDashboard() {
                         </div>
                       </div>
 
-                      <div className="flex gap-3">
+                      <div className="flex flex-col sm:flex-row gap-3">
                         <Button
                           onClick={() => setLocation(`/coordinator/parent/${assignment.parentId}/messages`)}
-                          className="flex-1"
+                          className="flex-1 w-full sm:w-auto"
                         >
                           <MessageSquare className="h-4 w-4 mr-2" />
                           View Messages
@@ -118,7 +118,7 @@ export function CoordinatorDashboard() {
                         <Button
                           onClick={() => setLocation(`/coordinator/parent/${assignment.parentId}/schedule`)}
                           variant="outline"
-                          className="flex-1"
+                          className="flex-1 w-full sm:w-auto"
                         >
                           <Calendar className="h-4 w-4 mr-2" />
                           View Schedule

@@ -234,7 +234,7 @@ export function CoordinatorManager() {
           ) : coordinators && coordinators.length > 0 ? (
             <div className="space-y-4">
               {coordinators.map((coordinator: any) => (
-                <div key={coordinator.id} className="flex items-center justify-between p-4 border rounded-lg">
+                <div key={coordinator.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-4 border rounded-lg gap-3 sm:gap-0">
                   <div className="flex-1">
                     <div className="flex items-center gap-3">
                       <h3 className="font-semibold">
@@ -261,21 +261,24 @@ export function CoordinatorManager() {
                       )}
                     </div>
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex flex-col sm:flex-row gap-2 mt-3 sm:mt-0">
                     <Button
                       variant="outline"
                       size="sm"
                       onClick={() => resendPasswordMutation.mutate({ coordinatorId: coordinator.id })}
                       disabled={resendPasswordMutation.isPending}
+                      className="w-full sm:w-auto"
                     >
                       <Key className="mr-2 h-4 w-4" />
                       {resendPasswordMutation.isPending ? "Sending..." : "Send Password Link"}
                     </Button>
                     <Button
+                      size="sm"
                       onClick={() => {
                         setSelectedCoordinatorId(coordinator.id);
                         setIsAssignDialogOpen(true);
                       }}
+                      className="w-full sm:w-auto"
                     >
                       <Users className="mr-2 h-4 w-4" />
                       Assign to Parent
