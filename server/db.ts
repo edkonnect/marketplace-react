@@ -756,7 +756,18 @@ export async function getCoordinatorAssignmentsByCoordinator(coordinatorId: numb
           email: parent.email,
           phoneNumber: parent.phoneNumber,
         },
-        parentProfile: parentProfiles,
+        parentProfile: {
+          id: parentProfiles.id,
+          userId: parentProfiles.userId,
+          childrenInfo: parentProfiles.childrenInfo,
+          preferences: parentProfiles.preferences,
+          preferredContactMethod: parentProfiles.preferredContactMethod,
+          emergencyContactName: parentProfiles.emergencyContactName,
+          emergencyContactPhone: parentProfiles.emergencyContactPhone,
+          bestTimeToContact: parentProfiles.bestTimeToContact,
+          createdAt: parentProfiles.createdAt,
+          updatedAt: parentProfiles.updatedAt,
+        },
       })
       .from(coordinatorAssignments)
       .leftJoin(parent, eq(coordinatorAssignments.parentId, parent.id))
