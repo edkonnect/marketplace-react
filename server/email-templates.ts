@@ -678,6 +678,81 @@ export function getPasswordSetupEmail(props: PasswordSetupEmailProps): string {
   });
 }
 
+interface CoordinatorPasswordSetupEmailProps {
+  coordinatorName: string;
+  setupUrl: string;
+  expiresAt: Date;
+}
+
+/**
+ * Password setup email template for coordinators
+ */
+export function getCoordinatorPasswordSetupEmail(props: CoordinatorPasswordSetupEmailProps): string {
+  const { coordinatorName, setupUrl, expiresAt } = props;
+
+  const expiresIn = Math.round((expiresAt.getTime() - Date.now()) / (1000 * 60 * 60));
+
+  const content = `
+    <h1>🎓 Welcome to EdKonnect Academy!</h1>
+
+    <p>Hi ${coordinatorName},</p>
+
+    <p>You've been added as an Academic Coordinator at EdKonnect Academy. You'll be working with parents and families to support their students' academic journey.</p>
+
+    <div class="highlight-box">
+      <p style="margin: 0; font-weight: 600; color: #1e40af;">
+        🔐 Complete your account setup to get started
+      </p>
+    </div>
+
+    <p style="margin-top: 24px;">
+      To access your coordinator dashboard and view your assigned families, please set up your account password by clicking the button below:
+    </p>
+
+    <div style="text-align: center; margin: 32px 0;">
+      <a href="${setupUrl}" class="button">
+        Set Up Your Account
+      </a>
+    </div>
+
+    <div style="background-color: #fef3c7; border-left: 4px solid #f59e0b; padding: 16px; margin: 24px 0; border-radius: 4px;">
+      <p style="margin: 0; color: #92400e; font-size: 14px;">
+        <strong>⏰ This link expires in ${expiresIn} hours</strong><br>
+        If your link expires, please contact the administrator to resend the setup link.
+      </p>
+    </div>
+
+    <h2>What you can do as a coordinator:</h2>
+
+    <ul style="margin: 16px 0; padding-left: 24px;">
+      <li style="margin-bottom: 8px;">View all assigned parent accounts and their students</li>
+      <li style="margin-bottom: 8px;">Monitor messages between parents and tutors</li>
+      <li style="margin-bottom: 8px;">Track upcoming tutoring sessions for your families</li>
+      <li style="margin-bottom: 8px;">Help parents with administrative tasks and student progress</li>
+    </ul>
+
+    <div style="background-color: #eff6ff; border-left: 4px solid #3b82f6; padding: 16px; margin: 24px 0; border-radius: 4px;">
+      <p style="margin: 0; color: #1e40af; font-size: 14px;">
+        <strong>🔒 Security Note:</strong><br>
+        This link is unique to you and can only be used once. Do not share it with anyone.
+      </p>
+    </div>
+
+    <p style="margin-top: 24px;">
+      If you have any questions or need assistance, feel free to reach out to the administrator or our support team.
+    </p>
+
+    <p style="margin-top: 16px;">
+      Welcome to the team!<br>
+      <strong>The EdKonnect Academy Team</strong>
+    </p>
+  `;
+
+  return getEmailBase(content, {
+    preheaderText: 'Set up your coordinator account password'
+  });
+}
+
 interface NoShowNotificationEmailProps {
   parentName: string;
   studentName: string;

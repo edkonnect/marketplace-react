@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
-import { MessageSquare, Send, User, GraduationCap, ChevronRight, Paperclip, X, FileText, Download } from "lucide-react";
+import { MessageSquare, Send, User, Users, GraduationCap, ChevronRight, Paperclip, X, FileText, Download, ArrowLeft } from "lucide-react";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
@@ -27,17 +27,35 @@ export default function Messages() {
   const [readConversationIds, setReadConversationIds] = useState<Set<number>>(new Set());
   const RECENCY_MS = 10 * 24 * 60 * 60 * 1000;
 
+  // Get parentId from URL query params if coordinator is filtering
+  const urlParams = new URLSearchParams(window.location.search);
+  const filterParentId = urlParams.get('parentId');
+
   const isParent = user?.role === "parent";
   const isTutor = user?.role === "tutor";
+  const isCoordinator = user?.role === "coordinator";
 
-  const { data: studentsWithTutors, isLoading: studentsLoading } = trpc.messaging.getStudentsWithTutors.useQuery(
+  const { data: studentsWithTutorsData, isLoading: studentsLoading } = trpc.messaging.getStudentsWithTutors.useQuery(
     undefined,
     { enabled: isAuthenticated && isParent, refetchInterval: 10000 }
   );
 
+  const studentsWithTutors = studentsWithTutorsData?.students || [];
+  const coordinator = studentsWithTutorsData?.coordinator || null;
+
   const { data: tutorConversations, isLoading: tutorConversationsLoading } = trpc.messaging.getTutorConversations.useQuery(
     undefined,
     { enabled: isAuthenticated && isTutor, refetchInterval: 10000 }
+  );
+
+  const { data: coordinatorParents, isLoading: coordinatorParentsLoading } = trpc.messaging.getCoordinatorParents.useQuery(
+    undefined,
+    { enabled: isAuthenticated && isCoordinator, refetchInterval: 10000 }
+  );
+
+  const { data: coordinatorConversations, isLoading: coordinatorConversationsLoading } = trpc.messaging.getCoordinatorConversations.useQuery(
+    undefined,
+    { enabled: isAuthenticated && isCoordinator, refetchInterval: 10000 }
   );
 
   const { data: enrolledSubscriptions } = trpc.subscription.mySubscriptionsAsTutor.useQuery(
@@ -75,6 +93,7 @@ export default function Messages() {
             utils.messaging.getUnreadMessageCount.invalidate();
             utils.messaging.getStudentsWithTutors.invalidate();
             utils.messaging.getTutorConversations.invalidate();
+            utils.messaging.getCoordinatorConversations.invalidate();
           },
         }
       );
@@ -206,6 +225,12 @@ export default function Messages() {
       setMessageContent("");
       setSelectedFile(null);
       refetchMessages();
+
+      // Refresh conversation lists for all roles
+      utils.messaging.getStudentsWithTutors.invalidate();
+      utils.messaging.getTutorConversations.invalidate();
+      utils.messaging.getCoordinatorConversations.invalidate();
+
       toast.success("Message sent");
     } catch (error) {
       toast.error("Failed to send message");
@@ -355,12 +380,31 @@ export default function Messages() {
       <Navigation />
 
       <div className="flex-1 container py-4 sm:py-6 mt-20">
+        {/* Back button for filtered coordinator view */}
+        {isCoordinator && filterParentId && (
+          <Button
+            variant="ghost"
+            className="mb-4"
+            onClick={() => setLocation("/messages")}
+          >
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Back to All Messages
+          </Button>
+        )}
+
         <div className="mb-4 sm:mb-6 space-y-3 sm:space-y-4">
           <div>
             <h1 className="text-2xl sm:text-3xl font-bold">Messages</h1>
             <p className="text-sm sm:text-base text-muted-foreground">
               {user?.role === "parent"
                 ? "Select a student to view their tutors and messages"
+                : user?.role === "coordinator"
+                ? filterParentId
+                  ? (() => {
+                      const parent = coordinatorConversations?.find((c: any) => c.parentId === parseInt(filterParentId));
+                      return parent ? `Viewing messages for ${parent.parentName}` : "View messages for your assigned families";
+                    })()
+                  : "View messages for your assigned families"
                 : "Communicate with parents"}
             </p>
           </div>
@@ -373,7 +417,109 @@ export default function Messages() {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 sm:gap-6 h-[calc(100vh-12rem)] sm:h-[calc(100vh-16rem)]">
-          {isParent ? (
+          {isCoordinator ? (
+            /* Coordinator view: simple flat list of all conversations */
+            <Card className={`lg:col-span-1 ${selectedConversationId ? 'hidden lg:block' : ''}`}>
+              <CardHeader className="py-3 sm:py-4">
+                <CardTitle className="text-base sm:text-lg flex items-center gap-2">
+                  <MessageSquare className="w-4 h-4 sm:w-5 sm:h-5" />
+                  Conversations
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                <ScrollArea className="h-[calc(100vh-20rem)] sm:h-[calc(100vh-24rem)]">
+                  {coordinatorConversationsLoading ? (
+                    <div className="p-4 space-y-4">
+                      {[1, 2, 3].map(i => <Skeleton key={i} className="h-20 w-full" />)}
+                    </div>
+                  ) : coordinatorConversations && coordinatorConversations.length > 0 ? (
+                    <div>
+                      {coordinatorConversations
+                        .filter((conv: any) => {
+                          // Filter by parentId if specified in URL
+                          if (filterParentId && conv.parentId !== parseInt(filterParentId)) {
+                            return false;
+                          }
+                          // Filter by search term
+                          if (!globalSearch) return true;
+                          return [
+                            conv.parentName,
+                            conv.studentFirstName,
+                            conv.studentLastName,
+                            conv.tutorName,
+                            conv.courseTitle,
+                          ]
+                            .filter(Boolean)
+                            .some((value) => value!.toLowerCase().includes(globalSearch.toLowerCase()));
+                        })
+                        .map((conv: any) => (
+                          <button
+                            key={`${conv.subscriptionId}-${conv.tutorId}`}
+                            onClick={async () => {
+                              if (conv.conversationId) {
+                                setSelectedConversationId(conv.conversationId);
+                                setSelectedStudentId(conv.subscriptionId);
+                                setSelectedTutorId(conv.tutorId);
+                              } else {
+                                // Create conversation if it doesn't exist
+                                try {
+                                  const result = await createConversationMutation.mutateAsync({
+                                    parentId: conv.parentId,
+                                    tutorId: conv.tutorId,
+                                    studentId: conv.subscriptionId,
+                                  });
+                                  setSelectedConversationId(result.conversationId);
+                                  setSelectedStudentId(conv.subscriptionId);
+                                  setSelectedTutorId(conv.tutorId);
+                                } catch (error) {
+                                  toast.error("Failed to create conversation");
+                                }
+                              }
+                            }}
+                            className={`w-full p-3 sm:p-4 text-left hover:bg-muted/50 transition-colors border-b border-border ${
+                              selectedConversationId === conv.conversationId ? 'bg-muted' : ''
+                            }`}
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <GraduationCap className="w-3 h-3 sm:w-4 sm:h-4 text-muted-foreground flex-shrink-0" />
+                                  <p className="font-medium text-xs sm:text-sm truncate">
+                                    {conv.courseTitle}
+                                  </p>
+                                </div>
+                                <p className="text-xs text-muted-foreground truncate">
+                                  Student: {conv.studentFirstName} {conv.studentLastName}
+                                </p>
+                                <p className="text-xs text-muted-foreground truncate">
+                                  Parent: {conv.parentName}
+                                </p>
+                                <p className="text-xs text-muted-foreground truncate">
+                                  Tutor: {conv.tutorName}
+                                </p>
+                                {!conv.hasMessages && (
+                                  <Badge variant="outline" className="mt-1 text-[10px]">No messages yet</Badge>
+                                )}
+                              </div>
+                              {conv.unreadCount > 0 && (
+                                <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white px-1.5 flex-shrink-0">
+                                  {conv.unreadCount > 9 ? "9+" : conv.unreadCount}
+                                </span>
+                              )}
+                            </div>
+                          </button>
+                        ))}
+                    </div>
+                  ) : (
+                    <div className="p-8 text-center">
+                      <MessageSquare className="w-12 h-12 mx-auto mb-3 text-muted-foreground" />
+                      <p className="text-sm text-muted-foreground">No conversations available yet</p>
+                    </div>
+                  )}
+                </ScrollArea>
+              </CardContent>
+            </Card>
+          ) : isParent ? (
             <>
               {/* Students List */}
               <Card className={`lg:col-span-1 ${selectedStudentId && !selectedConversationId ? 'hidden lg:block' : selectedConversationId ? 'hidden lg:block' : ''}`}>
@@ -600,7 +746,7 @@ export default function Messages() {
 
           {/* Messages Area */}
           <Card className={`lg:col-span-2 flex flex-col h-[calc(100vh-12rem)] sm:h-[70vh] ${!selectedConversationId ? 'hidden lg:flex' : ''}`}>
-            {selectedConversationId && (selectedTutor || isTutor) ? (
+            {selectedConversationId && (selectedTutor || isTutor || isCoordinator) ? (
               <>
                 <CardHeader className="py-3 sm:py-4 flex flex-row items-start justify-between space-y-0">
                   <CardTitle className="text-base sm:text-lg flex-1">
@@ -620,13 +766,20 @@ export default function Messages() {
                         Chat with{" "}
                         {isTutor
                           ? tutorListForUI.find((t) => t.conversationId === selectedConversationId)?.parentName || "Parent"
-                          : selectedTutor?.name || "Tutor"}
+                          : isCoordinator
+                            ? coordinatorConversations?.find((c: any) => c.conversationId === selectedConversationId)?.tutorName || "Tutor"
+                            : selectedTutor?.name || "Tutor"}
                       </span>
                     </div>
                     <p className="text-xs sm:text-sm font-normal text-muted-foreground mt-1">
                       {isTutor
                         ? tutorListForUI.find((t) => t.conversationId === selectedConversationId)?.studentName || "Student"
-                        : `About ${selectedStudent?.firstName} ${selectedStudent?.lastName}`}
+                        : isCoordinator
+                          ? (() => {
+                              const conv = coordinatorConversations?.find((c: any) => c.conversationId === selectedConversationId);
+                              return conv ? `${conv.courseTitle}: ${conv.studentFirstName} ${conv.studentLastName}` : "Student";
+                            })()
+                          : `About ${selectedStudent?.firstName} ${selectedStudent?.lastName}`}
                     </p>
                   </CardTitle>
                 </CardHeader>
@@ -641,7 +794,19 @@ export default function Messages() {
                     ) : messages && messages.length > 0 ? (
                       <div className="space-y-4">
                         {messages.slice().reverse().map((msg) => {
-                          const isOwn = msg.senderId === user?.id;
+                          // For coordinators, align messages based on whether sender is tutor or parent
+                          let isOwn = msg.senderId === user?.id;
+                          let senderLabel = "";
+
+                          if (isCoordinator && coordinatorConversations) {
+                            const conv = coordinatorConversations.find((c: any) => c.conversationId === selectedConversationId);
+                            if (conv) {
+                              // Tutors on right (primary), parents on left (muted)
+                              isOwn = msg.senderId === conv.tutorId;
+                              senderLabel = msg.senderId === conv.tutorId ? conv.tutorName : conv.parentName;
+                            }
+                          }
+
                           return (
                             <div
                               key={msg.id}
@@ -654,6 +819,15 @@ export default function Messages() {
                                     : "bg-muted"
                                 }`}
                               >
+                                {/* Sender label for coordinators */}
+                                {isCoordinator && senderLabel && (
+                                  <p className={`text-xs font-semibold mb-1 ${
+                                    isOwn ? "text-primary-foreground" : "text-foreground"
+                                  }`}>
+                                    {senderLabel}
+                                  </p>
+                                )}
+
                                 {/* File attachment */}
                                 {msg.fileUrl && msg.fileName && (
                                   <div className={`mb-2 flex items-center gap-2 p-2 rounded border ${
@@ -706,65 +880,104 @@ export default function Messages() {
                     )}
                   </ScrollArea>
 
-                  {/* Message Input */}
-                  <div className="p-3 sm:p-4 border-t border-border">
-                    {selectedFile && (
-                      <div className="mb-3 flex items-center gap-2 p-2 bg-muted rounded-lg">
-                        <FileText className="w-4 h-4 text-muted-foreground" />
-                        <span className="text-sm flex-1 truncate">{selectedFile.name}</span>
-                        <span className="text-xs text-muted-foreground">
-                          {(selectedFile.size / 1024).toFixed(1)} KB
-                        </span>
+                  {/* Message Input - Hide for coordinators (read-only access) */}
+                  {!isCoordinator && (
+                    <div className="p-3 sm:p-4 border-t border-border">
+                      {selectedFile && (
+                        <div className="mb-3 flex items-center gap-2 p-2 bg-muted rounded-lg">
+                          <FileText className="w-4 h-4 text-muted-foreground" />
+                          <span className="text-sm flex-1 truncate">{selectedFile.name}</span>
+                          <span className="text-xs text-muted-foreground">
+                            {(selectedFile.size / 1024).toFixed(1)} KB
+                          </span>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6"
+                            onClick={handleRemoveFile}
+                          >
+                            <X className="w-3 h-3" />
+                          </Button>
+                        </div>
+                      )}
+                      <div className="flex gap-1.5 sm:gap-2">
+                        <input
+                          type="file"
+                          id="file-upload"
+                          className="hidden"
+                          onChange={handleFileSelect}
+                          accept=".pdf,.docx,.xlsx"
+                        />
                         <Button
-                          variant="ghost"
+                          variant="outline"
                           size="icon"
-                          className="h-6 w-6"
-                          onClick={handleRemoveFile}
+                          onClick={() => document.getElementById('file-upload')?.click()}
+                          disabled={uploading}
+                          className="h-9 w-9 sm:h-10 sm:w-10"
                         >
-                          <X className="w-3 h-3" />
+                          <Paperclip className="w-4 h-4" />
+                        </Button>
+                        <Input
+                          placeholder="Type your message..."
+                          value={messageContent}
+                          onChange={(e) => setMessageContent(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" && !e.shiftKey) {
+                              e.preventDefault();
+                              handleSendMessage();
+                            }
+                          }}
+                          className="flex-1 text-sm"
+                          disabled={uploading}
+                        />
+                        <Button
+                          onClick={handleSendMessage}
+                          disabled={(!messageContent.trim() && !selectedFile) || uploading}
+                          size="icon"
+                          className="h-9 w-9 sm:h-10 sm:w-10"
+                        >
+                          <Send className="w-4 h-4" />
                         </Button>
                       </div>
-                    )}
-                    <div className="flex gap-1.5 sm:gap-2">
-                      <input
-                        type="file"
-                        id="file-upload"
-                        className="hidden"
-                        onChange={handleFileSelect}
-                        accept=".pdf,.docx,.xlsx"
-                      />
-                      <Button
-                        variant="outline"
-                        size="icon"
-                        onClick={() => document.getElementById('file-upload')?.click()}
-                        disabled={uploading}
-                        className="h-9 w-9 sm:h-10 sm:w-10"
-                      >
-                        <Paperclip className="w-4 h-4" />
-                      </Button>
-                      <Input
-                        placeholder="Type your message..."
-                        value={messageContent}
-                        onChange={(e) => setMessageContent(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" && !e.shiftKey) {
-                            e.preventDefault();
-                            handleSendMessage();
-                          }
-                        }}
-                        className="flex-1 text-sm"
-                        disabled={uploading}
-                      />
-                      <Button
-                        onClick={handleSendMessage}
-                        disabled={(!messageContent.trim() && !selectedFile) || uploading}
-                        size="icon"
-                        className="h-9 w-9 sm:h-10 sm:w-10"
-                      >
-                        <Send className="w-4 h-4" />
-                      </Button>
+
+                      {/* Academic Coordinator Info */}
+                      {isParent && coordinator && (
+                        <div className="mt-3 pt-3 border-t border-border">
+                          <div className="flex items-start gap-2">
+                            <User className="w-4 h-4 text-muted-foreground mt-0.5 flex-shrink-0" />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-medium text-muted-foreground">Your Academic Coordinator</p>
+                              <p className="text-sm font-medium mt-1">
+                                {coordinator.firstName} {coordinator.lastName}
+                              </p>
+                              <p className="text-xs text-muted-foreground truncate">
+                                {coordinator.email}
+                              </p>
+                              {coordinator.phoneNumber && (
+                                <p className="text-xs text-muted-foreground">
+                                  {coordinator.phoneNumber}
+                                </p>
+                              )}
+                              {coordinator.specialization && (
+                                <Badge variant="secondary" className="mt-1.5 text-xs">
+                                  {coordinator.specialization}
+                                </Badge>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </div>
-                  </div>
+                  )}
+
+                  {/* Read-only notice for coordinators */}
+                  {isCoordinator && (
+                    <div className="p-3 sm:p-4 border-t border-border bg-muted/30">
+                      <p className="text-xs text-center text-muted-foreground">
+                        You have read-only access to view this conversation
+                      </p>
+                    </div>
+                  )}
                 </CardContent>
               </>
             ) : (

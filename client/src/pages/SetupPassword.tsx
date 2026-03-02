@@ -65,9 +65,15 @@ export default function SetupPassword() {
 
       toast.success("Account set up successfully! Redirecting...");
 
-      // Auto-logged in, redirect to tutor dashboard
+      // Auto-logged in, redirect to appropriate dashboard based on role
+      const dashboardPath =
+        data.user.role === 'coordinator' ? '/coordinator/dashboard' :
+        data.user.role === 'parent' ? '/parent/dashboard' :
+        data.user.role === 'admin' ? '/admin/dashboard' :
+        '/tutor/dashboard'; // default to tutor dashboard
+
       setTimeout(() => {
-        window.location.href = "/tutor/dashboard";
+        window.location.href = dashboardPath;
       }, 1500);
     } catch (error: any) {
       console.error("Setup password error:", error);

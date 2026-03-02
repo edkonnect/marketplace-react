@@ -12,8 +12,8 @@ export const users = mysqlTable("users", {
   passwordHash: varchar("passwordHash", { length: 255 }),
   firstName: varchar("firstName", { length: 100 }).notNull(),
   lastName: varchar("lastName", { length: 100 }).notNull(),
-  role: mysqlEnum("role", ["parent", "tutor", "admin"]).default("parent").notNull(),
-  userType: mysqlEnum("userType", ["parent", "tutor", "admin"]).default("parent").notNull(),
+  role: mysqlEnum("role", ["parent", "tutor", "admin", "coordinator"]).default("parent").notNull(),
+  userType: mysqlEnum("userType", ["parent", "tutor", "admin", "coordinator"]).default("parent").notNull(),
   name: text("name"),
   loginMethod: varchar("loginMethod", { length: 64 }),
   emailVerified: boolean("emailVerified").default(false).notNull(),
@@ -126,6 +126,47 @@ export const parentProfiles = mysqlTable("parent_profiles", {
 
 export type ParentProfile = typeof parentProfiles.$inferSelect;
 export type InsertParentProfile = typeof parentProfiles.$inferInsert;
+
+/**
+ * Coordinator profiles with professional information
+ */
+export const coordinatorProfiles = mysqlTable("coordinator_profiles", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  bio: text("bio"),
+  specialization: varchar("specialization", { length: 255 }), // e.g., "K-12", "College Prep", "Special Education"
+  phoneNumber: varchar("phoneNumber", { length: 20 }),
+  isActive: boolean("isActive").default(true).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => ({
+  userIdIdx: index("coordinator_profiles_userId_idx").on(table.userId),
+}));
+
+export type CoordinatorProfile = typeof coordinatorProfiles.$inferSelect;
+export type InsertCoordinatorProfile = typeof coordinatorProfiles.$inferInsert;
+
+/**
+ * Junction table for coordinator-parent assignments
+ */
+export const coordinatorAssignments = mysqlTable("coordinator_assignments", {
+  id: int("id").autoincrement().primaryKey(),
+  coordinatorId: int("coordinatorId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  parentId: int("parentId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  assignedAt: timestamp("assignedAt").defaultNow().notNull(),
+  assignedBy: int("assignedBy").references(() => users.id, { onDelete: "set null" }), // Admin who made assignment
+  isActive: boolean("isActive").default(true).notNull(),
+  notes: text("notes"), // Optional assignment notes
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => ({
+  coordinatorIdIdx: index("coordinator_assignments_coordinatorId_idx").on(table.coordinatorId),
+  parentIdIdx: index("coordinator_assignments_parentId_idx").on(table.parentId),
+  uniqueAssignment: uniqueIndex("coordinator_assignments_unique").on(table.coordinatorId, table.parentId, table.isActive),
+}));
+
+export type CoordinatorAssignment = typeof coordinatorAssignments.$inferSelect;
+export type InsertCoordinatorAssignment = typeof coordinatorAssignments.$inferInsert;
 
 /**
  * Courses/tutoring packages created by tutors
@@ -271,6 +312,7 @@ export const conversations = mysqlTable("conversations", {
   id: int("id").autoincrement().primaryKey(),
   parentId: int("parentId").notNull().references(() => users.id, { onDelete: "cascade" }),
   tutorId: int("tutorId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  coordinatorId: int("coordinatorId").references(() => users.id, { onDelete: "set null" }), // Optional coordinator who can view this conversation
   studentId: int("studentId"), // Reference to which student this conversation is about
   lastMessageAt: bigint("lastMessageAt", { mode: "number" }), // Unix timestamp in milliseconds
   createdAt: timestamp("createdAt").defaultNow().notNull(),
@@ -278,6 +320,7 @@ export const conversations = mysqlTable("conversations", {
 }, (table) => ({
   parentIdIdx: index("conversations_parentId_idx").on(table.parentId),
   tutorIdIdx: index("conversations_tutorId_idx").on(table.tutorId),
+  coordinatorIdIdx: index("conversations_coordinatorId_idx").on(table.coordinatorId),
 }));
 
 export type Conversation = typeof conversations.$inferSelect;
@@ -666,12 +709,17 @@ export const usersRelations = relations(users, ({ one, many }) => ({
     fields: [users.id],
     references: [parentProfiles.userId],
   }),
+  coordinatorProfile: one(coordinatorProfiles, {
+    fields: [users.id],
+    references: [coordinatorProfiles.userId],
+  }),
   courses: many(courses),
   subscriptions: many(subscriptions),
   sessionsAsTutor: many(sessions, { relationName: "tutorSessions" }),
   sessionsAsParent: many(sessions, { relationName: "parentSessions" }),
   conversationsAsParent: many(conversations, { relationName: "parentConversations" }),
   conversationsAsTutor: many(conversations, { relationName: "tutorConversations" }),
+  conversationsAsCoordinator: many(conversations, { relationName: "coordinatorConversations" }),
   messages: many(messages),
 }));
 
@@ -685,6 +733,13 @@ export const tutorProfilesRelations = relations(tutorProfiles, ({ one }) => ({
 export const parentProfilesRelations = relations(parentProfiles, ({ one }) => ({
   user: one(users, {
     fields: [parentProfiles.userId],
+    references: [users.id],
+  }),
+}));
+
+export const coordinatorProfilesRelations = relations(coordinatorProfiles, ({ one }) => ({
+  user: one(users, {
+    fields: [coordinatorProfiles.userId],
     references: [users.id],
   }),
 }));
@@ -739,6 +794,10 @@ export const conversationsRelations = relations(conversations, ({ one, many }) =
   }),
   tutor: one(users, {
     fields: [conversations.tutorId],
+    references: [users.id],
+  }),
+  coordinator: one(users, {
+    fields: [conversations.coordinatorId],
     references: [users.id],
   }),
   messages: many(messages),

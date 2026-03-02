@@ -11,6 +11,7 @@ import {
   getTutorEnrollmentNotificationEmail,
   getTutorApprovalEmail,
   getPasswordSetupEmail,
+  getCoordinatorPasswordSetupEmail,
   getEmailVerificationEmail,
   getNoShowNotificationEmail
 } from './email-templates';
@@ -300,6 +301,32 @@ export async function sendPasswordSetupEmail(params: SendPasswordSetupEmailParam
   return await emailService.sendEmail({
     to: tutorEmail,
     subject: '🎉 Set Up Your Tutor Account - EdKonnect Academy',
+    html,
+  });
+}
+
+interface SendCoordinatorPasswordSetupEmailParams {
+  coordinatorEmail: string;
+  coordinatorName: string;
+  setupUrl: string;
+  expiresAt: Date;
+}
+
+/**
+ * Send password setup email to newly created coordinator
+ */
+export async function sendCoordinatorPasswordSetupEmail(params: SendCoordinatorPasswordSetupEmailParams): Promise<boolean> {
+  const { coordinatorEmail, coordinatorName, setupUrl, expiresAt } = params;
+
+  const html = getCoordinatorPasswordSetupEmail({
+    coordinatorName,
+    setupUrl,
+    expiresAt,
+  });
+
+  return await emailService.sendEmail({
+    to: coordinatorEmail,
+    subject: '🎓 Set Up Your Coordinator Account - EdKonnect Academy',
     html,
   });
 }

@@ -62,6 +62,8 @@ export default function Login() {
         setLocation("/tutor/dashboard");
       } else if (user?.role === "admin") {
         setLocation("/admin/dashboard");
+      } else if (user?.role === "coordinator") {
+        setLocation("/coordinator/dashboard");
       } else {
         setLocation("/parent/dashboard");
       }

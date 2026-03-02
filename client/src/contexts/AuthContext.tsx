@@ -6,14 +6,14 @@ type User = {
   name?: string | null;
   firstName?: string | null;
   lastName?: string | null;
-  role: "parent" | "tutor" | "admin";
+  role: "parent" | "tutor" | "admin" | "coordinator";
 };
 
 type AuthContextValue = {
   user: User | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<User | null>;
-  signup: (data: { firstName: string; lastName: string; email: string; password: string; role: "parent" | "tutor" | "admin" }) => Promise<User | null>;
+  signup: (data: { firstName: string; lastName: string; email: string; password: string; role: "parent" | "tutor" | "admin" | "coordinator" }) => Promise<User | null>;
   logout: () => Promise<void>;
   refreshProfile: () => Promise<void>;
 };
@@ -73,7 +73,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return next;
   }, [fetchProfile]);
 
-  const signup = useCallback(async (data: { firstName: string; lastName: string; email: string; password: string; role: "parent" | "tutor" | "admin" }) => {
+  const signup = useCallback(async (data: { firstName: string; lastName: string; email: string; password: string; role: "parent" | "tutor" | "admin" | "coordinator" }) => {
     await request<{ user: User }>("/api/auth/signup", {
       method: "POST",
       body: JSON.stringify(data),

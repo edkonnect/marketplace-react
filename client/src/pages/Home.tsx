@@ -153,6 +153,7 @@ export default function Home() {
     if (user?.role === "admin") return "/admin/dashboard";
     if (user?.role === "tutor") return "/tutor/dashboard";
     if (user?.role === "parent") return "/parent/dashboard";
+    if (user?.role === "coordinator") return "/coordinator/dashboard";
     return "/role-selection";
   };
   const phrases = [

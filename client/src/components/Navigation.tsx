@@ -51,7 +51,7 @@ export default function Navigation() {
   const { data: unreadData } = trpc.messaging.getUnreadMessageCount.useQuery(
     undefined,
     {
-      enabled: isAuthenticated && (user?.role === "parent" || user?.role === "tutor"),
+      enabled: isAuthenticated && (user?.role === "parent" || user?.role === "tutor" || user?.role === "coordinator"),
       // Avoid constant polling; refresh on tab focus and every 60s instead of ~5–10s
       refetchOnWindowFocus: true,
       refetchInterval: 60_000,
@@ -68,6 +68,7 @@ export default function Navigation() {
     if (user?.role === "admin") return "/admin/dashboard";
     if (user?.role === "tutor") return "/tutor/dashboard";
     if (user?.role === "parent") return "/parent/dashboard";
+    if (user?.role === "coordinator") return "/coordinator/dashboard";
     return "/"; // Default to home if no role assigned
   };
 

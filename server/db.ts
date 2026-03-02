@@ -3,9 +3,9 @@ import { alias } from "drizzle-orm/mysql-core";
 import { drizzle } from "drizzle-orm/mysql2";
 import crypto from "crypto";
 import {
-  InsertUser, users, tutorProfiles, parentProfiles, courses,
+  InsertUser, users, tutorProfiles, parentProfiles, coordinatorProfiles, courses,
   subscriptions, sessions, conversations, messages, payments,
-  InsertTutorProfile, InsertParentProfile, InsertCourse,
+  InsertTutorProfile, InsertParentProfile, InsertCoordinatorProfile, InsertCourse,
   InsertSubscription, InsertSession, InsertConversation,
   InsertMessage, InsertPayment, courseTutors, InsertCourseTutor,
   platformStats, featuredCourses, testimonials, faqs, blogPosts,
@@ -23,7 +23,8 @@ import {
   refreshTokens,
   tutorCoursePreferences, InsertTutorCoursePreference,
   tutorPayoutRequests, InsertTutorPayoutRequest,
-  sessionRatings, InsertSessionRating
+  sessionRatings, InsertSessionRating,
+  coordinatorAssignments, InsertCoordinatorAssignment
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
@@ -56,8 +57,8 @@ export async function createAuthUser(input: {
   passwordHash: string | null;
   firstName: string;
   lastName: string;
-  role: "parent" | "tutor" | "admin";
-  userType?: "parent" | "tutor" | "admin";
+  role: "parent" | "tutor" | "admin" | "coordinator";
+  userType?: "parent" | "tutor" | "admin" | "coordinator";
 }) {
   const db = await getDb();
   if (!db) return null;
@@ -575,6 +576,254 @@ export async function updateParentProfile(userId: number, updates: Partial<Inser
     return true;
   } catch (error) {
     console.error("[Database] Failed to update parent profile:", error);
+    return false;
+  }
+}
+
+// ============ Coordinator Profile Management ============
+
+export async function createCoordinatorProfile(profile: InsertCoordinatorProfile) {
+  const db = await getDb();
+  if (!db) {
+    console.error("[Database] No database connection available");
+    return null;
+  }
+
+  try {
+    console.log("[Database] Creating coordinator profile with data:", profile);
+    const result = await db.insert(coordinatorProfiles).values(profile) as any;
+    console.log("[Database] Insert result:", result);
+
+    // Handle both array and direct object response from drizzle
+    const resultSetHeader = Array.isArray(result) ? result[0] : result;
+
+    if (!resultSetHeader || !resultSetHeader.insertId) {
+      console.error("[Database] No insertId returned from coordinator profile creation");
+      return null;
+    }
+
+    console.log("[Database] Successfully created coordinator profile with ID:", resultSetHeader.insertId);
+    return Number(resultSetHeader.insertId);
+  } catch (error) {
+    console.error("[Database] Failed to create coordinator profile:", error);
+    console.error("[Database] Profile data was:", profile);
+    return null;
+  }
+}
+
+export async function getCoordinatorProfileByUserId(userId: number) {
+  const db = await getDb();
+  if (!db) return null;
+
+  const result = await db.select().from(coordinatorProfiles).where(eq(coordinatorProfiles.userId, userId)).limit(1);
+  return result.length > 0 ? result[0] : null;
+}
+
+export async function updateCoordinatorProfile(userId: number, updates: Partial<InsertCoordinatorProfile>) {
+  const db = await getDb();
+  if (!db) return false;
+
+  try {
+    await db.update(coordinatorProfiles).set(updates).where(eq(coordinatorProfiles.userId, userId));
+    return true;
+  } catch (error) {
+    console.error("[Database] Failed to update coordinator profile:", error);
+    return false;
+  }
+}
+
+export async function getAllCoordinators() {
+  const db = await getDb();
+  if (!db) return [];
+
+  try {
+    const result = await db
+      .select({
+        id: users.id,
+        email: users.email,
+        firstName: users.firstName,
+        lastName: users.lastName,
+        phoneNumber: users.phoneNumber,
+        createdAt: users.createdAt,
+        profile: coordinatorProfiles,
+      })
+      .from(users)
+      .leftJoin(coordinatorProfiles, eq(users.id, coordinatorProfiles.userId))
+      .where(eq(users.role, "coordinator"))
+      .orderBy(desc(users.createdAt));
+
+    return result;
+  } catch (error) {
+    console.error("[Database] Failed to get coordinators:", error);
+    return [];
+  }
+}
+
+// ============ Coordinator Assignment Management ============
+
+export async function createCoordinatorAssignment(assignment: InsertCoordinatorAssignment) {
+  const db = await getDb();
+  if (!db) return null;
+
+  try {
+    // First, deactivate any existing active assignments for this parent
+    await db
+      .update(coordinatorAssignments)
+      .set({ isActive: false })
+      .where(and(
+        eq(coordinatorAssignments.parentId, assignment.parentId),
+        eq(coordinatorAssignments.isActive, true)
+      ));
+
+    // Then create the new assignment
+    const result = await db.insert(coordinatorAssignments).values(assignment) as any;
+
+    // Handle both array and direct object response from drizzle
+    const resultSetHeader = Array.isArray(result) ? result[0] : result;
+
+    if (!resultSetHeader || !resultSetHeader.insertId) {
+      console.error("[Database] No insertId returned from coordinator assignment creation");
+      return null;
+    }
+
+    return Number(resultSetHeader.insertId);
+  } catch (error) {
+    console.error("[Database] Failed to create coordinator assignment:", error);
+    return null;
+  }
+}
+
+export async function getCoordinatorAssignmentsByParent(parentId: number) {
+  const db = await getDb();
+  if (!db) return [];
+
+  try {
+    const coordinator = alias(users, "coordinator");
+    const result = await db
+      .select({
+        id: coordinatorAssignments.id,
+        coordinatorId: coordinatorAssignments.coordinatorId,
+        parentId: coordinatorAssignments.parentId,
+        assignedAt: coordinatorAssignments.assignedAt,
+        isActive: coordinatorAssignments.isActive,
+        notes: coordinatorAssignments.notes,
+        coordinator: {
+          id: coordinator.id,
+          firstName: coordinator.firstName,
+          lastName: coordinator.lastName,
+          email: coordinator.email,
+          phoneNumber: coordinator.phoneNumber,
+        },
+        coordinatorProfile: coordinatorProfiles,
+      })
+      .from(coordinatorAssignments)
+      .leftJoin(coordinator, eq(coordinatorAssignments.coordinatorId, coordinator.id))
+      .leftJoin(coordinatorProfiles, eq(coordinator.id, coordinatorProfiles.userId))
+      .where(and(
+        eq(coordinatorAssignments.parentId, parentId),
+        eq(coordinatorAssignments.isActive, true)
+      ));
+
+    return result;
+  } catch (error) {
+    console.error("[Database] Failed to get coordinator assignments by parent:", error);
+    return [];
+  }
+}
+
+export async function getCoordinatorAssignmentsByCoordinator(coordinatorId: number) {
+  const db = await getDb();
+  if (!db) return [];
+
+  try {
+    const parent = alias(users, "parent");
+    const result = await db
+      .select({
+        id: coordinatorAssignments.id,
+        coordinatorId: coordinatorAssignments.coordinatorId,
+        parentId: coordinatorAssignments.parentId,
+        assignedAt: coordinatorAssignments.assignedAt,
+        isActive: coordinatorAssignments.isActive,
+        notes: coordinatorAssignments.notes,
+        parent: {
+          id: parent.id,
+          firstName: parent.firstName,
+          lastName: parent.lastName,
+          email: parent.email,
+          phoneNumber: parent.phoneNumber,
+        },
+        parentProfile: parentProfiles,
+      })
+      .from(coordinatorAssignments)
+      .leftJoin(parent, eq(coordinatorAssignments.parentId, parent.id))
+      .leftJoin(parentProfiles, eq(parent.id, parentProfiles.userId))
+      .where(and(
+        eq(coordinatorAssignments.coordinatorId, coordinatorId),
+        eq(coordinatorAssignments.isActive, true)
+      ))
+      .orderBy(desc(coordinatorAssignments.assignedAt));
+
+    return result;
+  } catch (error) {
+    console.error("[Database] Failed to get coordinator assignments by coordinator:", error);
+    return [];
+  }
+}
+
+export async function getAllCoordinatorAssignments() {
+  const db = await getDb();
+  if (!db) return [];
+
+  try {
+    const parent = alias(users, "parent");
+    const coordinator = alias(users, "coordinator");
+
+    const result = await db
+      .select({
+        id: coordinatorAssignments.id,
+        coordinatorId: coordinatorAssignments.coordinatorId,
+        parentId: coordinatorAssignments.parentId,
+        assignedAt: coordinatorAssignments.assignedAt,
+        isActive: coordinatorAssignments.isActive,
+        notes: coordinatorAssignments.notes,
+        parent: {
+          id: parent.id,
+          firstName: parent.firstName,
+          lastName: parent.lastName,
+          email: parent.email,
+        },
+        coordinator: {
+          id: coordinator.id,
+          firstName: coordinator.firstName,
+          lastName: coordinator.lastName,
+          email: coordinator.email,
+        },
+      })
+      .from(coordinatorAssignments)
+      .leftJoin(parent, eq(coordinatorAssignments.parentId, parent.id))
+      .leftJoin(coordinator, eq(coordinatorAssignments.coordinatorId, coordinator.id))
+      .where(eq(coordinatorAssignments.isActive, true))
+      .orderBy(desc(coordinatorAssignments.assignedAt));
+
+    return result;
+  } catch (error) {
+    console.error("[Database] Failed to get all coordinator assignments:", error);
+    return [];
+  }
+}
+
+export async function deactivateCoordinatorAssignment(assignmentId: number) {
+  const db = await getDb();
+  if (!db) return false;
+
+  try {
+    await db
+      .update(coordinatorAssignments)
+      .set({ isActive: false })
+      .where(eq(coordinatorAssignments.id, assignmentId));
+    return true;
+  } catch (error) {
+    console.error("[Database] Failed to deactivate coordinator assignment:", error);
     return false;
   }
 }
@@ -1353,16 +1602,14 @@ export async function getSessionsByParentId(parentId: number) {
   const subscriptionCourses = alias(courses, "subscriptionCourse");
   const sessionCourses = alias(courses, "sessionCourse");
 
-  const rows = await db
+  return await db
     .select({
       session: sessions,
-      subscriptionCourseTitle: subscriptionCourses.title,
-      subscriptionCourseSubject: subscriptionCourses.subject,
-      sessionCourseTitle: sessionCourses.title,
-      sessionCourseSubject: sessionCourses.subject,
+      courseTitle: sql<string | null>`COALESCE(${subscriptionCourses.title}, ${sessionCourses.title})`.as('courseTitle'),
+      courseSubject: sql<string | null>`COALESCE(${subscriptionCourses.subject}, ${sessionCourses.subject})`.as('courseSubject'),
       tutorName: users.name,
-      subscriptionStudentFirstName: subscriptions.studentFirstName,
-      subscriptionStudentLastName: subscriptions.studentLastName,
+      studentFirstName: sql<string | null>`COALESCE(${sessions.studentFirstName}, ${subscriptions.studentFirstName})`.as('studentFirstName'),
+      studentLastName: sql<string | null>`COALESCE(${sessions.studentLastName}, ${subscriptions.studentLastName})`.as('studentLastName'),
     })
     .from(sessions)
     .leftJoin(subscriptions, eq(sessions.subscriptionId, subscriptions.id))
@@ -1371,16 +1618,6 @@ export async function getSessionsByParentId(parentId: number) {
     .leftJoin(users, eq(sessions.tutorId, users.id))
     .where(eq(sessions.parentId, parentId))
     .orderBy(desc(sessions.scheduledAt));
-
-  // Merge subscription and session data (prefer session data for trial sessions)
-  return rows.map((row) => ({
-    session: row.session,
-    courseTitle: row.session.isTrial ? row.sessionCourseTitle : (row.subscriptionCourseTitle || row.sessionCourseTitle),
-    courseSubject: row.session.isTrial ? row.sessionCourseSubject : (row.subscriptionCourseSubject || row.sessionCourseSubject),
-    tutorName: row.tutorName,
-    studentFirstName: row.session.isTrial ? row.session.studentFirstName : (row.subscriptionStudentFirstName || row.session.studentFirstName),
-    studentLastName: row.session.isTrial ? row.session.studentLastName : (row.subscriptionStudentLastName || row.session.studentLastName),
-  }));
 }
 
 /**
@@ -1391,18 +1628,21 @@ export async function getTrialSessionsByParentId(parentId: number) {
   if (!db) return [];
 
   try {
+    const sessionCourses = alias(courses, "sessionCourse");
+
     const results = await db
       .select({
         session: sessions,
-        courseTitle: courses.title,
-        courseSubject: courses.subject,
+        courseTitle: sql<string | null>`COALESCE(${courses.title}, ${sessionCourses.title})`.as('courseTitle'),
+        courseSubject: sql<string | null>`COALESCE(${courses.subject}, ${sessionCourses.subject})`.as('courseSubject'),
         tutorName: users.name,
-        studentFirstName: subscriptions.studentFirstName,
-        studentLastName: subscriptions.studentLastName,
+        studentFirstName: sql<string | null>`COALESCE(${sessions.studentFirstName}, ${subscriptions.studentFirstName})`.as('studentFirstName'),
+        studentLastName: sql<string | null>`COALESCE(${sessions.studentLastName}, ${subscriptions.studentLastName})`.as('studentLastName'),
       })
       .from(sessions)
       .leftJoin(subscriptions, eq(sessions.subscriptionId, subscriptions.id))
       .leftJoin(courses, eq(subscriptions.courseId, courses.id))
+      .leftJoin(sessionCourses, eq(sessions.courseId, sessionCourses.id))
       .leftJoin(users, eq(sessions.tutorId, users.id))
       .where(
         and(
@@ -1440,16 +1680,14 @@ export async function getSessionsByTutorId(tutorId: number) {
   const subscriptionCourses = alias(courses, "subscriptionCourse");
   const sessionCourses = alias(courses, "sessionCourse");
 
-  const rows = await db
+  return await db
     .select({
       session: sessions,
-      subscriptionCourseTitle: subscriptionCourses.title,
-      subscriptionCourseSubject: subscriptionCourses.subject,
-      sessionCourseTitle: sessionCourses.title,
-      sessionCourseSubject: sessionCourses.subject,
+      courseTitle: sql<string | null>`COALESCE(${subscriptionCourses.title}, ${sessionCourses.title})`.as('courseTitle'),
+      courseSubject: sql<string | null>`COALESCE(${subscriptionCourses.subject}, ${sessionCourses.subject})`.as('courseSubject'),
       tutorName: users.name,
-      subscriptionStudentFirstName: subscriptions.studentFirstName,
-      subscriptionStudentLastName: subscriptions.studentLastName,
+      studentFirstName: sql<string | null>`COALESCE(${sessions.studentFirstName}, ${subscriptions.studentFirstName})`.as('studentFirstName'),
+      studentLastName: sql<string | null>`COALESCE(${sessions.studentLastName}, ${subscriptions.studentLastName})`.as('studentLastName'),
     })
     .from(sessions)
     .leftJoin(subscriptions, eq(sessions.subscriptionId, subscriptions.id))
@@ -1458,16 +1696,6 @@ export async function getSessionsByTutorId(tutorId: number) {
     .leftJoin(users, eq(sessions.tutorId, users.id))
     .where(eq(sessions.tutorId, tutorId))
     .orderBy(desc(sessions.scheduledAt));
-
-  // Merge subscription and session data (prefer session data for trial sessions)
-  return rows.map((row) => ({
-    session: row.session,
-    courseTitle: row.session.isTrial ? row.sessionCourseTitle : (row.subscriptionCourseTitle || row.sessionCourseTitle),
-    courseSubject: row.session.isTrial ? row.sessionCourseSubject : (row.subscriptionCourseSubject || row.sessionCourseSubject),
-    tutorName: row.tutorName,
-    studentFirstName: row.session.isTrial ? row.session.studentFirstName : (row.subscriptionStudentFirstName || row.session.studentFirstName),
-    studentLastName: row.session.isTrial ? row.session.studentLastName : (row.subscriptionStudentLastName || row.session.studentLastName),
-  }));
 }
 
 // Completed sessions (for history views)
@@ -1478,16 +1706,14 @@ export async function getCompletedSessionsByParentId(parentId: number) {
   const subscriptionCourses = alias(courses, "subscriptionCourse");
   const sessionCourses = alias(courses, "sessionCourse");
 
-  const rows = await db
+  return await db
     .select({
       session: sessions,
-      subscriptionCourseTitle: subscriptionCourses.title,
-      subscriptionCourseSubject: subscriptionCourses.subject,
-      sessionCourseTitle: sessionCourses.title,
-      sessionCourseSubject: sessionCourses.subject,
+      courseTitle: sql<string | null>`COALESCE(${subscriptionCourses.title}, ${sessionCourses.title})`.as('courseTitle'),
+      courseSubject: sql<string | null>`COALESCE(${subscriptionCourses.subject}, ${sessionCourses.subject})`.as('courseSubject'),
       tutorName: users.name,
-      subscriptionStudentFirstName: subscriptions.studentFirstName,
-      subscriptionStudentLastName: subscriptions.studentLastName,
+      studentFirstName: sql<string | null>`COALESCE(${sessions.studentFirstName}, ${subscriptions.studentFirstName})`.as('studentFirstName'),
+      studentLastName: sql<string | null>`COALESCE(${sessions.studentLastName}, ${subscriptions.studentLastName})`.as('studentLastName'),
     })
     .from(sessions)
     .leftJoin(subscriptions, eq(sessions.subscriptionId, subscriptions.id))
@@ -1502,16 +1728,6 @@ export async function getCompletedSessionsByParentId(parentId: number) {
       )
     ))
     .orderBy(desc(sessions.scheduledAt));
-
-  // Merge subscription and session data (prefer session data for trial sessions)
-  return rows.map((row) => ({
-    session: row.session,
-    courseTitle: row.session.isTrial ? row.sessionCourseTitle : (row.subscriptionCourseTitle || row.sessionCourseTitle),
-    courseSubject: row.session.isTrial ? row.sessionCourseSubject : (row.subscriptionCourseSubject || row.sessionCourseSubject),
-    tutorName: row.tutorName,
-    studentFirstName: row.session.isTrial ? row.session.studentFirstName : (row.subscriptionStudentFirstName || row.session.studentFirstName),
-    studentLastName: row.session.isTrial ? row.session.studentLastName : (row.subscriptionStudentLastName || row.session.studentLastName),
-  }));
 }
 
 export async function getCompletedSessionsByTutorId(tutorId: number) {
@@ -1523,17 +1739,15 @@ export async function getCompletedSessionsByTutorId(tutorId: number) {
   const subscriptionCourses = alias(courses, "subscriptionCourse");
   const sessionCourses = alias(courses, "sessionCourse");
 
-  const rows = await db
+  return await db
     .select({
       session: sessions,
-      subscriptionCourseTitle: subscriptionCourses.title,
-      subscriptionCourseSubject: subscriptionCourses.subject,
-      sessionCourseTitle: sessionCourses.title,
-      sessionCourseSubject: sessionCourses.subject,
+      courseTitle: sql<string | null>`COALESCE(${subscriptionCourses.title}, ${sessionCourses.title})`.as('courseTitle'),
+      courseSubject: sql<string | null>`COALESCE(${subscriptionCourses.subject}, ${sessionCourses.subject})`.as('courseSubject'),
       tutorName: tutorUsers.name,
       parentName: parentUsers.name,
-      subscriptionStudentFirstName: subscriptions.studentFirstName,
-      subscriptionStudentLastName: subscriptions.studentLastName,
+      studentFirstName: sql<string | null>`COALESCE(${sessions.studentFirstName}, ${subscriptions.studentFirstName})`.as('studentFirstName'),
+      studentLastName: sql<string | null>`COALESCE(${sessions.studentLastName}, ${subscriptions.studentLastName})`.as('studentLastName'),
     })
     .from(sessions)
     .leftJoin(subscriptions, eq(sessions.subscriptionId, subscriptions.id))
@@ -1554,17 +1768,6 @@ export async function getCompletedSessionsByTutorId(tutorId: number) {
       )
     ))
     .orderBy(desc(sessions.scheduledAt));
-
-  // Merge subscription and session data (prefer session data for trial sessions)
-  return rows.map((row) => ({
-    session: row.session,
-    courseTitle: row.session.isTrial ? row.sessionCourseTitle : (row.subscriptionCourseTitle || row.sessionCourseTitle),
-    courseSubject: row.session.isTrial ? row.sessionCourseSubject : (row.subscriptionCourseSubject || row.sessionCourseSubject),
-    tutorName: row.tutorName,
-    parentName: row.parentName,
-    studentFirstName: row.session.isTrial ? row.session.studentFirstName : (row.subscriptionStudentFirstName || row.session.studentFirstName),
-    studentLastName: row.session.isTrial ? row.session.studentLastName : (row.subscriptionStudentLastName || row.session.studentLastName),
-  }));
 }
 
 export async function getUpcomingSessions(userId: number, role: "parent" | "tutor") {
@@ -1578,20 +1781,22 @@ export async function getUpcomingSessions(userId: number, role: "parent" | "tuto
 
   const tutorUsers = alias(users, "tutorUser");
   const parentUsers = alias(users, "parentUser");
+  const sessionCourses = alias(courses, "sessionCourse");
 
   return await db
     .select({
       session: sessions,
-      courseTitle: courses.title,
-      courseSubject: courses.subject,
+      courseTitle: sql<string | null>`COALESCE(${courses.title}, ${sessionCourses.title})`.as('courseTitle'),
+      courseSubject: sql<string | null>`COALESCE(${courses.subject}, ${sessionCourses.subject})`.as('courseSubject'),
       tutorName: tutorUsers.name,
       parentName: parentUsers.name,
-      studentFirstName: subscriptions.studentFirstName,
-      studentLastName: subscriptions.studentLastName,
+      studentFirstName: sql<string | null>`COALESCE(${sessions.studentFirstName}, ${subscriptions.studentFirstName})`.as('studentFirstName'),
+      studentLastName: sql<string | null>`COALESCE(${sessions.studentLastName}, ${subscriptions.studentLastName})`.as('studentLastName'),
     })
     .from(sessions)
     .leftJoin(subscriptions, eq(sessions.subscriptionId, subscriptions.id))
     .leftJoin(courses, eq(subscriptions.courseId, courses.id))
+    .leftJoin(sessionCourses, eq(sessions.courseId, sessionCourses.id))
     .leftJoin(tutorUsers, eq(sessions.tutorId, tutorUsers.id))
     .leftJoin(parentUsers, eq(sessions.parentId, parentUsers.id))
     .where(and(condition, gte(sessions.scheduledAt, now), eq(sessions.status, "scheduled")))
@@ -1690,6 +1895,99 @@ export async function getTutorConversationsWithDetails(tutorId: number) {
     ...row,
     unreadCount: unreadMap.get(Number(row.conversation.id)) ?? 0,
   }));
+}
+
+/**
+ * Get all conversations (existing and potential) for a coordinator's assigned families
+ * Returns a flat list with parent, student, tutor, and course information
+ */
+export async function getCoordinatorConversations(coordinatorId: number) {
+  const db = await getDb();
+  if (!db) return [];
+
+  try {
+    // Get all assigned parents for this coordinator
+    const assignments = await getCoordinatorAssignmentsByCoordinator(coordinatorId);
+    if (assignments.length === 0) return [];
+
+    const parentIds = assignments.map(a => a.parentId);
+
+    // Get all subscriptions for assigned parents with their tutors and courses
+    const rows = await db
+      .select({
+        subscriptionId: subscriptions.id,
+        parentId: subscriptions.parentId,
+        parentName: users.name,
+        parentEmail: users.email,
+        studentFirstName: subscriptions.studentFirstName,
+        studentLastName: subscriptions.studentLastName,
+        studentGrade: subscriptions.studentGrade,
+        courseId: courses.id,
+        courseTitle: courses.title,
+        courseSubject: courses.subject,
+        preferredTutorId: subscriptions.preferredTutorId,
+        tutorName: sql<string>`tutor_users.name`.as('tutorName'),
+        tutorEmail: sql<string>`tutor_users.email`.as('tutorEmail'),
+        conversationId: conversations.id,
+        lastMessageAt: conversations.lastMessageAt,
+      })
+      .from(subscriptions)
+      .innerJoin(users, eq(subscriptions.parentId, users.id))
+      .leftJoin(courses, eq(subscriptions.courseId, courses.id))
+      .leftJoin(
+        alias(users, 'tutor_users'),
+        eq(subscriptions.preferredTutorId, sql`tutor_users.id`)
+      )
+      .leftJoin(
+        conversations,
+        and(
+          eq(conversations.parentId, subscriptions.parentId),
+          eq(conversations.studentId, subscriptions.id),
+          eq(conversations.tutorId, subscriptions.preferredTutorId as any)
+        )
+      )
+      .where(
+        and(
+          sql`${subscriptions.parentId} IN (${sql.join(parentIds.map(id => sql`${id}`), sql`, `)})`,
+          eq(subscriptions.status, 'active' as any),
+          sql`${subscriptions.preferredTutorId} IS NOT NULL`
+        )
+      )
+      .orderBy(desc(conversations.lastMessageAt));
+
+    // Get unread counts for all conversations
+    const unreadMap = new Map<number, number>();
+    for (const parentId of parentIds) {
+      const counts = await getUnreadCountsByConversation(parentId);
+      counts.forEach((count, conversationId) => {
+        unreadMap.set(conversationId, count);
+      });
+    }
+
+    // Transform to flat list
+    return rows.map(row => ({
+      subscriptionId: row.subscriptionId,
+      parentId: row.parentId,
+      parentName: row.parentName || 'Unknown Parent',
+      parentEmail: row.parentEmail || '',
+      studentFirstName: row.studentFirstName || 'Unknown',
+      studentLastName: row.studentLastName || 'Student',
+      studentGrade: row.studentGrade,
+      courseId: row.courseId,
+      courseTitle: row.courseTitle || 'Unknown Course',
+      courseSubject: row.courseSubject,
+      tutorId: row.preferredTutorId,
+      tutorName: row.tutorName || 'Unknown Tutor',
+      tutorEmail: row.tutorEmail || '',
+      conversationId: row.conversationId,
+      lastMessageAt: row.lastMessageAt,
+      unreadCount: row.conversationId ? (unreadMap.get(Number(row.conversationId)) ?? 0) : 0,
+      hasMessages: !!row.conversationId,
+    }));
+  } catch (error) {
+    console.error("[Database] Error getting coordinator conversations:", error);
+    return [];
+  }
 }
 
 export async function createMessage(message: InsertMessage) {
@@ -2041,6 +2339,17 @@ export async function getStudentsWithTutors(parentId: number) {
   if (!db) return [];
 
   try {
+    // Get coordinator for this parent
+    const coordinatorAssignments = await getCoordinatorAssignmentsByParent(parentId);
+    const coordinatorInfo = coordinatorAssignments.length > 0 ? {
+      id: coordinatorAssignments[0].coordinator?.id,
+      firstName: coordinatorAssignments[0].coordinator?.firstName,
+      lastName: coordinatorAssignments[0].coordinator?.lastName,
+      email: coordinatorAssignments[0].coordinator?.email,
+      phoneNumber: coordinatorAssignments[0].coordinator?.phoneNumber,
+      specialization: coordinatorAssignments[0].coordinatorProfile?.specialization,
+    } : null;
+
     // Single query: subscriptions → course → preferredTutor → existing conversation
     // Only rows with a preferredTutorId will have tutor data (LEFT JOIN handles nulls)
     const [rows, unreadMap] = await Promise.all([
@@ -2126,13 +2435,18 @@ export async function getStudentsWithTutors(parentId: number) {
       }
     }
 
-    return Array.from(studentMap.values()).map((s: any) => ({
+    const students = Array.from(studentMap.values()).map((s: any) => ({
       ...s,
       courseTitles: Array.from(s.courseTitles),
     }));
+
+    return {
+      students,
+      coordinator: coordinatorInfo,
+    };
   } catch (error) {
     console.error("[Database] Error getting students with tutors:", error);
-    return [];
+    return { students: [], coordinator: null };
   }
 }
 
@@ -3385,7 +3699,8 @@ export async function getParentUpcomingSessions(parentId: number) {
 
   try {
     const now = Date.now();
-    
+    const sessionCourses = alias(courses, "sessionCourse");
+
     return await db
       .select({
         id: sessions.id,
@@ -3395,9 +3710,16 @@ export async function getParentUpcomingSessions(parentId: number) {
         scheduledAt: sessions.scheduledAt,
         duration: sessions.duration,
         status: sessions.status,
+        courseTitle: sql<string | null>`COALESCE(${courses.title}, ${sessionCourses.title})`.as('courseTitle'),
+        courseSubject: sql<string | null>`COALESCE(${courses.subject}, ${sessionCourses.subject})`.as('courseSubject'),
+        studentFirstName: sql<string | null>`COALESCE(${sessions.studentFirstName}, ${subscriptions.studentFirstName})`.as('studentFirstName'),
+        studentLastName: sql<string | null>`COALESCE(${sessions.studentLastName}, ${subscriptions.studentLastName})`.as('studentLastName'),
       })
       .from(sessions)
       .innerJoin(users, eq(sessions.tutorId, users.id))
+      .leftJoin(subscriptions, eq(sessions.subscriptionId, subscriptions.id))
+      .leftJoin(courses, eq(subscriptions.courseId, courses.id))
+      .leftJoin(sessionCourses, eq(sessions.courseId, sessionCourses.id))
       .where(and(
         eq(sessions.parentId, parentId),
         gte(sessions.scheduledAt, now)
@@ -3416,7 +3738,8 @@ export async function getParentPastSessions(parentId: number, limit: number = 10
 
   try {
     const now = Date.now();
-    
+    const sessionCourses = alias(courses, "sessionCourse");
+
     return await db
       .select({
         id: sessions.id,
@@ -3426,9 +3749,16 @@ export async function getParentPastSessions(parentId: number, limit: number = 10
         scheduledAt: sessions.scheduledAt,
         duration: sessions.duration,
         status: sessions.status,
+        courseTitle: sql<string | null>`COALESCE(${courses.title}, ${sessionCourses.title})`.as('courseTitle'),
+        courseSubject: sql<string | null>`COALESCE(${courses.subject}, ${sessionCourses.subject})`.as('courseSubject'),
+        studentFirstName: sql<string | null>`COALESCE(${sessions.studentFirstName}, ${subscriptions.studentFirstName})`.as('studentFirstName'),
+        studentLastName: sql<string | null>`COALESCE(${sessions.studentLastName}, ${subscriptions.studentLastName})`.as('studentLastName'),
       })
       .from(sessions)
       .innerJoin(users, eq(sessions.tutorId, users.id))
+      .leftJoin(subscriptions, eq(sessions.subscriptionId, subscriptions.id))
+      .leftJoin(courses, eq(subscriptions.courseId, courses.id))
+      .leftJoin(sessionCourses, eq(sessions.courseId, sessionCourses.id))
       .where(and(
         eq(sessions.parentId, parentId),
         lt(sessions.scheduledAt, now)
@@ -3955,7 +4285,8 @@ export async function getUpcomingSessionsByTutorId(tutorId: number) {
   if (!db) return [];
 
   const now = Date.now(); // Current timestamp in milliseconds
-  
+  const sessionCourses = alias(courses, "sessionCourse");
+
   try {
     const results = await db
       .select({
@@ -3969,12 +4300,15 @@ export async function getUpcomingSessionsByTutorId(tutorId: number) {
         notes: sessions.notes,
         parentName: users.name,
         parentEmail: users.email,
-        courseTitle: courses.title,
+        courseTitle: sql<string | null>`COALESCE(${courses.title}, ${sessionCourses.title})`.as('courseTitle'),
+        studentFirstName: sql<string | null>`COALESCE(${sessions.studentFirstName}, ${subscriptions.studentFirstName})`.as('studentFirstName'),
+        studentLastName: sql<string | null>`COALESCE(${sessions.studentLastName}, ${subscriptions.studentLastName})`.as('studentLastName'),
       })
       .from(sessions)
       .leftJoin(users, eq(sessions.parentId, users.id))
       .leftJoin(subscriptions, eq(sessions.subscriptionId, subscriptions.id))
       .leftJoin(courses, eq(subscriptions.courseId, courses.id))
+      .leftJoin(sessionCourses, eq(sessions.courseId, sessionCourses.id))
       .where(
         and(
           eq(sessions.tutorId, tutorId),

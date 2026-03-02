@@ -39,6 +39,14 @@ const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
   return next({ ctx });
 });
 
+// Helper to check if user is a coordinator
+const coordinatorProcedure = protectedProcedure.use(({ ctx, next }) => {
+  if (ctx.user.role !== 'coordinator' && ctx.user.role !== 'admin') {
+    throw new TRPCError({ code: 'FORBIDDEN', message: 'Only coordinators can access this resource' });
+  }
+  return next({ ctx });
+});
+
 function generateJoinUrl(sessionId: number) {
   // Deterministic pseudo Zoom link so parent/tutor see the same URL without storing in DB
   const padded = sessionId.toString().padStart(9, "0");
@@ -60,7 +68,7 @@ export const appRouter = router({
       return { success: true } as const;
     }),
     updateRole: protectedProcedure
-      .input(z.object({ role: z.enum(['parent', 'tutor']) }))
+      .input(z.object({ role: z.enum(['parent', 'tutor', 'coordinator']) }))
       .mutation(async ({ ctx, input }) => {
         const success = await db.updateUserRole(ctx.user.id, input.role);
         if (!success) {
@@ -77,6 +85,30 @@ export const appRouter = router({
         }
         
         return { success: true };
+      }),
+  }),
+
+  // User Management
+  users: router({
+    getById: coordinatorProcedure
+      .input(z.object({ userId: z.number() }))
+      .query(async ({ ctx, input }) => {
+        // Verify coordinator has access to this user (if they're a parent)
+        const assignments = await db.getCoordinatorAssignmentsByCoordinator(ctx.user.id);
+        const hasAccess = assignments.some(a => a.parentId === input.userId);
+
+        if (!hasAccess) {
+          throw new TRPCError({ code: 'FORBIDDEN', message: 'Not authorized to view this user' });
+        }
+
+        const user = await db.getUserById(input.userId);
+        if (!user) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'User not found' });
+        }
+
+        // Don't return sensitive data
+        const { passwordHash, ...safeUser } = user as any;
+        return safeUser;
       }),
   }),
 
@@ -1119,7 +1151,17 @@ export const appRouter = router({
         }
 
         // Verify authorization
-        if (session.parentId !== ctx.user.id && session.tutorId !== ctx.user.id && ctx.user.role !== 'admin') {
+        const isParticipant = session.parentId === ctx.user.id || session.tutorId === ctx.user.id;
+        const isAdmin = ctx.user.role === 'admin';
+
+        // Check if user is coordinator for this parent
+        let isCoordinator = false;
+        if (ctx.user.role === 'coordinator' && session.parentId) {
+          const assignments = await db.getCoordinatorAssignmentsByCoordinator(ctx.user.id);
+          isCoordinator = assignments.some(a => a.parentId === session.parentId);
+        }
+
+        if (!isParticipant && !isAdmin && !isCoordinator) {
           throw new TRPCError({ code: 'FORBIDDEN', message: 'Not authorized' });
         }
 
@@ -1127,6 +1169,26 @@ export const appRouter = router({
     }),
 
     myUpcoming: protectedProcedure.query(async ({ ctx }) => {
+      if (ctx.user.role === 'coordinator') {
+        // For coordinators, get sessions for all assigned parents
+        const assignments = await db.getCoordinatorAssignmentsByCoordinator(ctx.user.id);
+        const allSessions = await Promise.all(
+          assignments.map(async (assignment) => {
+            const rows = await db.getUpcomingSessions(assignment.parentId, 'parent');
+            return rows.map((row: any) => ({
+              ...(row.session || row),
+              courseTitle: row.courseTitle,
+              tutorName: row.tutorName,
+              parentName: assignment.parent?.firstName + ' ' + assignment.parent?.lastName,
+              studentFirstName: row.studentFirstName,
+              studentLastName: row.studentLastName,
+              joinUrl: generateJoinUrl((row.session || row).id),
+            }));
+          })
+        );
+        return allSessions.flat();
+      }
+
       const role = ctx.user.role === 'tutor' ? 'tutor' : 'parent';
       const rows = await db.getUpcomingSessions(ctx.user.id, role);
       return rows.map((row: any) => ({
@@ -1166,6 +1228,53 @@ export const appRouter = router({
         }));
       }
     }),
+
+    // Coordinator-specific: Get upcoming sessions for a specific parent
+    getParentUpcomingSessions: coordinatorProcedure
+      .input(z.object({ parentId: z.number() }))
+      .query(async ({ ctx, input }) => {
+        // Verify coordinator has access to this parent
+        const assignments = await db.getCoordinatorAssignmentsByCoordinator(ctx.user.id);
+        const hasAccess = assignments.some(a => a.parentId === input.parentId);
+
+        if (!hasAccess) {
+          throw new TRPCError({ code: 'FORBIDDEN', message: 'Not authorized to view this parent\'s sessions' });
+        }
+
+        const rows = await db.getUpcomingSessions(input.parentId, 'parent');
+        return rows.map((row: any) => ({
+          ...(row.session || row),
+          courseTitle: row.courseTitle,
+          tutorName: row.tutorName,
+          studentFirstName: row.studentFirstName,
+          studentLastName: row.studentLastName,
+          joinUrl: generateJoinUrl((row.session || row).id),
+        }));
+      }),
+
+    // Coordinator-specific: Get past sessions for a specific parent
+    getParentPastSessions: coordinatorProcedure
+      .input(z.object({ parentId: z.number() }))
+      .query(async ({ ctx, input }) => {
+        // Verify coordinator has access to this parent
+        const assignments = await db.getCoordinatorAssignmentsByCoordinator(ctx.user.id);
+        const hasAccess = assignments.some(a => a.parentId === input.parentId);
+
+        if (!hasAccess) {
+          throw new TRPCError({ code: 'FORBIDDEN', message: 'Not authorized to view this parent\'s sessions' });
+        }
+
+        const rows = await db.getCompletedSessionsByParentId(input.parentId);
+        return rows.map((row: any) => ({
+          ...(row.session || row),
+          courseTitle: row.courseTitle,
+          courseSubject: row.courseSubject,
+          tutorName: row.tutorName,
+          studentFirstName: row.studentFirstName,
+          studentLastName: row.studentLastName,
+          joinUrl: generateJoinUrl((row.session || row).id),
+        }));
+      }),
 
     getUpcomingByTutorId: publicProcedure
       .input(z.object({ tutorId: z.number() }))
@@ -1982,7 +2091,26 @@ export const appRouter = router({
         limit: z.number().optional(),
       }))
       .query(async ({ ctx, input }) => {
-        // TODO: Verify user is part of conversation
+        // Verify user is part of conversation or is coordinator for the parent
+        const conversation = await db.getConversationById(input.conversationId);
+        if (!conversation) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'Conversation not found' });
+        }
+
+        const isParticipant = conversation.parentId === ctx.user.id || conversation.tutorId === ctx.user.id;
+        const isAdmin = ctx.user.role === 'admin';
+
+        // Check if user is coordinator for this parent
+        let isCoordinator = false;
+        if (ctx.user.role === 'coordinator') {
+          const assignments = await db.getCoordinatorAssignmentsByCoordinator(ctx.user.id);
+          isCoordinator = assignments.some(a => a.parentId === conversation.parentId);
+        }
+
+        if (!isParticipant && !isAdmin && !isCoordinator) {
+          throw new TRPCError({ code: 'FORBIDDEN', message: 'Not authorized to view this conversation' });
+        }
+
         return await db.getMessagesByConversationId(input.conversationId, input.limit);
       }),
 
@@ -1996,13 +2124,22 @@ export const appRouter = router({
         fileSize: z.number().optional(),
       }))
       .mutation(async ({ ctx, input }) => {
-        // Verify user is part of conversation
+        // Verify user is part of conversation (coordinators have read-only access)
         const conversation = await db.getConversationById(input.conversationId);
         if (!conversation) {
           throw new TRPCError({ code: 'NOT_FOUND', message: 'Conversation not found' });
         }
-        if (conversation.parentId !== ctx.user.id && conversation.tutorId !== ctx.user.id && ctx.user.role !== 'admin') {
-          throw new TRPCError({ code: 'FORBIDDEN', message: 'Not part of this conversation' });
+
+        // Coordinators have read-only access and cannot send messages
+        if (ctx.user.role === 'coordinator') {
+          throw new TRPCError({ code: 'FORBIDDEN', message: 'Coordinators have read-only access and cannot send messages' });
+        }
+
+        const isParticipant = conversation.parentId === ctx.user.id || conversation.tutorId === ctx.user.id;
+        const isAdmin = ctx.user.role === 'admin';
+
+        if (!isParticipant && !isAdmin) {
+          throw new TRPCError({ code: 'FORBIDDEN', message: 'Not authorized to send messages in this conversation' });
         }
 
         const id = await db.createMessage({
@@ -2090,6 +2227,31 @@ export const appRouter = router({
       return await db.getTutorConversationsWithDetails(ctx.user.id);
     }),
 
+    getCoordinatorParents: coordinatorProcedure.query(async ({ ctx }) => {
+      // Get all assigned parents for this coordinator
+      const assignments = await db.getCoordinatorAssignmentsByCoordinator(ctx.user.id);
+
+      // For each parent, get their students with tutors
+      const parentsWithStudents = await Promise.all(
+        assignments.map(async (assignment) => {
+          const studentData = await db.getStudentsWithTutors(assignment.parentId);
+          return {
+            parent: assignment.parent,
+            parentProfile: assignment.parentProfile,
+            students: studentData.students || [],
+            coordinator: studentData.coordinator,
+          };
+        })
+      );
+
+      return parentsWithStudents;
+    }),
+
+    getCoordinatorConversations: coordinatorProcedure.query(async ({ ctx }) => {
+      // Get flat list of all conversations for assigned families
+      return await db.getCoordinatorConversations(ctx.user.id);
+    }),
+
     getUnreadMessageCount: protectedProcedure.query(async ({ ctx }) => {
       const count = await db.getUnreadMessageCount(ctx.user.id);
       return { count };
@@ -2102,8 +2264,18 @@ export const appRouter = router({
         studentId: z.number(),
       }))
       .mutation(async ({ ctx, input }) => {
-        // Verify authorization
-        if (input.parentId !== ctx.user.id && input.tutorId !== ctx.user.id && ctx.user.role !== 'admin') {
+        // Verify authorization - allow parent, tutor, admin, or coordinator
+        const isParticipant = input.parentId === ctx.user.id || input.tutorId === ctx.user.id;
+        const isAdmin = ctx.user.role === 'admin';
+
+        // Check if user is coordinator for this parent
+        let isCoordinator = false;
+        if (ctx.user.role === 'coordinator') {
+          const assignments = await db.getCoordinatorAssignmentsByCoordinator(ctx.user.id);
+          isCoordinator = assignments.some(a => a.parentId === input.parentId);
+        }
+
+        if (!isParticipant && !isAdmin && !isCoordinator) {
           throw new TRPCError({ code: 'FORBIDDEN', message: 'Not authorized' });
         }
 
@@ -2669,7 +2841,7 @@ export const appRouter = router({
       .input(z.object({
         limit: z.number().optional().default(50),
         offset: z.number().optional().default(0),
-        role: z.enum(["admin", "parent", "tutor"]).optional(),
+        role: z.enum(["admin", "parent", "tutor", "coordinator"]).optional(),
         search: z.string().optional(),
         startDate: z.string().optional(),
         endDate: z.string().optional(),
@@ -2907,7 +3079,7 @@ export const appRouter = router({
 
     exportUsersCSV: adminProcedure
       .input(z.object({
-        role: z.enum(["admin", "parent", "tutor"]).optional(),
+        role: z.enum(["admin", "parent", "tutor", "coordinator"]).optional(),
         search: z.string().optional(),
         startDate: z.string().optional(),
         endDate: z.string().optional(),
@@ -4211,6 +4383,242 @@ export const appRouter = router({
       .mutation(async ({ input }) => {
         await db.updateTutorPayoutRequestStatus(input.id, input.status, input.adminNotes);
         return { success: true };
+      }),
+  }),
+
+  // Coordinator Management
+  coordinators: router({
+    /**
+     * Create a new coordinator (admin only)
+     */
+    create: adminProcedure
+      .input(z.object({
+        email: z.string().email(),
+        firstName: z.string().min(1),
+        lastName: z.string().min(1),
+        specialization: z.string().optional(),
+        phoneNumber: z.string().optional(),
+        bio: z.string().optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        console.log("[Coordinator Create] Starting creation with input:", input);
+
+        // Check if email already exists
+        const existingUser = await db.getUserByEmail(input.email);
+        if (existingUser) {
+          console.log("[Coordinator Create] Email already in use:", input.email);
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Email already in use' });
+        }
+
+        // Create user with coordinator role
+        console.log("[Coordinator Create] Creating user account...");
+        const user = await db.createAuthUser({
+          email: input.email,
+          firstName: input.firstName,
+          lastName: input.lastName,
+          role: 'coordinator',
+          userType: 'coordinator',
+          passwordHash: null, // Will need to set password via setup token
+        });
+
+        if (!user) {
+          console.error("[Coordinator Create] Failed to create user account");
+          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to create coordinator' });
+        }
+
+        console.log("[Coordinator Create] User created with ID:", user.id);
+
+        // Create coordinator profile
+        console.log("[Coordinator Create] Creating coordinator profile...");
+        const profileData = {
+          userId: user.id,
+          specialization: input.specialization,
+          phoneNumber: input.phoneNumber,
+          bio: input.bio,
+          isActive: true,
+        };
+        console.log("[Coordinator Create] Profile data:", profileData);
+
+        const profileId = await db.createCoordinatorProfile(profileData);
+
+        if (!profileId) {
+          console.error("[Coordinator Create] Failed to create coordinator profile for user:", user.id);
+          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to create coordinator profile' });
+        }
+
+        console.log("[Coordinator Create] Profile created with ID:", profileId);
+
+        // Create password setup token and send email
+        console.log("[Coordinator Create] Creating password setup token...");
+        try {
+          const setupToken = await db.createPasswordSetupToken(user.id);
+          console.log("[Coordinator Create] Password setup token created:", setupToken ? "success" : "failed");
+
+          if (setupToken) {
+            console.log("[Coordinator Create] Sending password setup email to:", user.email);
+            const setupUrl = `${process.env.VITE_FRONTEND_FORGE_API_URL || 'http://localhost:3000'}/setup-password?token=${setupToken}`;
+            const expiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000); // 48 hours from now
+
+            const { sendCoordinatorPasswordSetupEmail } = await import('./email-helpers');
+            const emailSent = await sendCoordinatorPasswordSetupEmail({
+              coordinatorEmail: user.email,
+              coordinatorName: `${user.firstName} ${user.lastName}`,
+              setupUrl,
+              expiresAt,
+            });
+            console.log("[Coordinator Create] Password setup email sent:", emailSent ? "success" : "failed");
+          } else {
+            console.error("[Coordinator Create] No password setup token generated");
+          }
+        } catch (emailError) {
+          console.error('[Coordinator Creation] Failed to send password setup email:', emailError);
+          console.error('[Coordinator Creation] Email error details:', JSON.stringify(emailError, null, 2));
+          // Don't fail the entire operation if email fails
+        }
+
+        return {
+          success: true,
+          coordinatorId: user.id,
+          message: 'Coordinator created successfully. Password setup email sent.'
+        };
+      }),
+
+    /**
+     * Resend password setup email for coordinator (admin only)
+     */
+    resendPasswordSetup: adminProcedure
+      .input(z.object({
+        coordinatorId: z.number(),
+      }))
+      .mutation(async ({ input }) => {
+        const user = await db.getUserById(input.coordinatorId);
+        if (!user || user.role !== 'coordinator') {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'Coordinator not found' });
+        }
+
+        // Create new password setup token
+        const setupToken = await db.createPasswordSetupToken(user.id);
+        if (!setupToken) {
+          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to create password setup token' });
+        }
+
+        // Send email
+        try {
+          const setupUrl = `${process.env.VITE_FRONTEND_FORGE_API_URL || 'http://localhost:3000'}/setup-password?token=${setupToken}`;
+          const expiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000); // 48 hours from now
+
+          const { sendCoordinatorPasswordSetupEmail } = await import('./email-helpers');
+          await sendCoordinatorPasswordSetupEmail({
+            coordinatorEmail: user.email,
+            coordinatorName: `${user.firstName} ${user.lastName}`,
+            setupUrl,
+            expiresAt,
+          });
+
+          return {
+            success: true,
+            message: 'Password setup email sent successfully',
+            setupLink: setupUrl
+          };
+        } catch (error) {
+          console.error('[Resend Password Setup] Email failed:', error);
+          // Return the link anyway so admin can manually share it
+          return {
+            success: false,
+            message: 'Email failed but here is the setup link',
+            setupLink: setupUrl
+          };
+        }
+      }),
+
+    /**
+     * Get all coordinators (admin only)
+     */
+    getAll: adminProcedure
+      .query(async () => {
+        const coordinators = await db.getAllCoordinators();
+        return coordinators;
+      }),
+
+    /**
+     * Assign coordinator to parent (admin only)
+     */
+    assignToParent: adminProcedure
+      .input(z.object({
+        coordinatorId: z.number(),
+        parentId: z.number(),
+        notes: z.string().optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const assignmentId = await db.createCoordinatorAssignment({
+          coordinatorId: input.coordinatorId,
+          parentId: input.parentId,
+          assignedBy: ctx.user.id,
+          notes: input.notes,
+          isActive: true,
+        });
+
+        if (!assignmentId) {
+          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to create assignment' });
+        }
+
+        return { success: true, assignmentId };
+      }),
+
+    /**
+     * Remove coordinator assignment (admin only)
+     */
+    removeAssignment: adminProcedure
+      .input(z.object({
+        assignmentId: z.number(),
+      }))
+      .mutation(async ({ input }) => {
+        const success = await db.deactivateCoordinatorAssignment(input.assignmentId);
+
+        if (!success) {
+          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to remove assignment' });
+        }
+
+        return { success: true };
+      }),
+
+    /**
+     * Get all coordinator assignments (admin only)
+     */
+    getAllAssignments: adminProcedure
+      .query(async () => {
+        const assignments = await db.getAllCoordinatorAssignments();
+        return assignments;
+      }),
+
+    /**
+     * Get coordinator's assignments (simple list for dashboard)
+     */
+    getMyAssignments: coordinatorProcedure
+      .query(async ({ ctx }) => {
+        const assignments = await db.getCoordinatorAssignmentsByCoordinator(ctx.user.id);
+        return assignments;
+      }),
+
+    /**
+     * Get coordinator's assigned parents (coordinator or admin)
+     */
+    getMyAssignedParents: coordinatorProcedure
+      .query(async ({ ctx }) => {
+        const assignments = await db.getCoordinatorAssignmentsByCoordinator(ctx.user.id);
+        return assignments;
+      }),
+
+    /**
+     * Get parent's assigned coordinator (accessible by parent/tutor/coordinator/admin)
+     */
+    getParentCoordinator: protectedProcedure
+      .input(z.object({
+        parentId: z.number(),
+      }))
+      .query(async ({ input }) => {
+        const assignments = await db.getCoordinatorAssignmentsByParent(input.parentId);
+        return assignments.length > 0 ? assignments[0] : null;
       }),
   }),
 

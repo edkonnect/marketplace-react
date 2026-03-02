@@ -18,7 +18,7 @@ const authSchema = {
     password: z.string().min(8).max(100),
     firstName: z.string().min(1).max(100),
     lastName: z.string().min(1).max(100),
-    role: z.enum(["parent", "tutor", "admin"]).default("parent"),
+    role: z.enum(["parent", "tutor", "admin", "coordinator"]).default("parent"),
   }),
   login: z.object({
     email: z.string().email(),
@@ -29,7 +29,7 @@ const authSchema = {
 type JwtPayload = {
   sub: number;
   email: string;
-  role: "parent" | "tutor" | "admin";
+  role: "parent" | "tutor" | "admin" | "coordinator";
 };
 
 const accessSecret = new TextEncoder().encode(ENV.cookieSecret);

@@ -20,6 +20,7 @@ import { DateRangeSelector } from "@/components/DateRangeSelector";
 import { TutorAvailabilityManager } from "@/components/TutorAvailabilityManager";
 import { EmailSettings } from "@/components/EmailSettings";
 import { RegisteredTutorsManager } from "@/components/RegisteredTutorsManager";
+import { CoordinatorManager } from "@/components/CoordinatorManager";
 import { Pagination } from "@/components/Pagination";
 import { CourseCreationForm } from "@/components/CourseCreationForm";
 import { CourseManagementTable } from "@/components/CourseManagementTable";
@@ -44,7 +45,7 @@ export function AdminDashboard() {
 
   // Filter states
   const [userFilters, setUserFilters] = useState<{
-    role?: "admin" | "parent" | "tutor";
+    role?: "admin" | "parent" | "tutor" | "coordinator";
     search?: string;
     startDate?: string;
     endDate?: string;
@@ -347,6 +348,7 @@ export function AdminDashboard() {
               <TabsTrigger value="payout-requests">Payout Requests</TabsTrigger>
               <TabsTrigger value="courses">Courses</TabsTrigger>
               <TabsTrigger value="registered-tutors">Registered Tutors</TabsTrigger>
+              <TabsTrigger value="coordinators">Coordinators</TabsTrigger>
               <TabsTrigger value="availability">Tutor Availability</TabsTrigger>
               {/* <TabsTrigger value="acuity">Acuity Mapping</TabsTrigger>
               <TabsTrigger value="quicksetup">Quick Setup</TabsTrigger> */}
@@ -497,6 +499,7 @@ export function AdminDashboard() {
                         <SelectItem value="admin">Admin</SelectItem>
                         <SelectItem value="parent">Parent</SelectItem>
                         <SelectItem value="tutor">Tutor</SelectItem>
+                        <SelectItem value="coordinator">Coordinator</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -1131,6 +1134,11 @@ export function AdminDashboard() {
           {/* Registered Tutors Tab */}
           <TabsContent value="registered-tutors" forceMount className={tabContentClass}>
             <RegisteredTutorsManager />
+          </TabsContent>
+
+          {/* Coordinators Tab */}
+          <TabsContent value="coordinators" forceMount className={tabContentClass}>
+            <CoordinatorManager />
           </TabsContent>
 
           {/* Tutor Course Approval Tab */}
