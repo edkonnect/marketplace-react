@@ -686,7 +686,12 @@ export default function ParentDashboard() {
 
             {/* Schedule Tab - New Acuity-style interface */}
             <TabsContent value="schedule" forceMount className={tabContentClass}>
-              <h2 className="text-2xl font-bold mb-6">Schedule Sessions</h2>
+              <div className="mb-6">
+                <h2 className="text-2xl sm:text-3xl font-bold mb-2">Schedule Sessions</h2>
+                <p className="text-sm text-muted-foreground">
+                  Book tutoring sessions with your subscribed tutors
+                </p>
+              </div>
 
               {activeSubscriptions.length > 0 ? (
                 <AppointmentScheduler

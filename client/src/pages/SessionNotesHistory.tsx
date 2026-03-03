@@ -152,7 +152,7 @@ export default function SessionNotesHistory() {
   return (
     <div className="min-h-screen bg-background">
       <Navigation />
-      <div className="container py-8">
+      <div className="container py-8 mt-20">
         <div className="mb-8">
           <div className="flex items-center gap-2 mb-2">
             <FileText className="h-8 w-8 text-primary" />
