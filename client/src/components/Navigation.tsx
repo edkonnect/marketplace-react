@@ -206,12 +206,15 @@ export default function Navigation() {
                     </p>
                   </div>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem asChild>
-                    <Link href={getDashboardLink()} className="flex items-center w-full cursor-pointer">
-                      <LayoutDashboard className="w-4 h-4 mr-2" />
-                      Dashboard
-                    </Link>
-                  </DropdownMenuItem>
+                  {/* Show Dashboard for non-admin roles */}
+                  {user.role !== 'admin' && (
+                    <DropdownMenuItem asChild>
+                      <Link href={getDashboardLink()} className="flex items-center w-full cursor-pointer">
+                        <LayoutDashboard className="w-4 h-4 mr-2" />
+                        Dashboard
+                      </Link>
+                    </DropdownMenuItem>
+                  )}
                   {/* Hide Messages for coordinators - they access via dashboard */}
                   {user.role !== 'coordinator' && (
                     <DropdownMenuItem asChild>
@@ -231,6 +234,7 @@ export default function Navigation() {
                       </Link>
                     </DropdownMenuItem>
                   )}
+                  {/* Show Admin Panel for admin role */}
                   {user.role === 'admin' && (
                     <DropdownMenuItem asChild>
                       <Link href="/admin/dashboard" className="flex items-center w-full cursor-pointer">
