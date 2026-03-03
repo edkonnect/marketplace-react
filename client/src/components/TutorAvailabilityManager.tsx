@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -6,7 +6,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Loader2, Plus, Trash2, Clock } from "lucide-react";
+import { Loader2, Plus, Trash2, Clock, Globe } from "lucide-react";
+import { COMMON_TIMEZONES } from "@/../../shared/timezone-utils";
 
 const DAYS_OF_WEEK = [
   { value: 0, label: "Sunday" },
@@ -27,6 +28,12 @@ export function TutorAvailabilityManager() {
   const { data: tutorsData, isLoading: tutorsLoading } = trpc.admin.getAllTutorsWithAvailability.useQuery();
   const { data: availabilityData, refetch: refetchAvailability } = trpc.admin.getTutorAvailability.useQuery(
     { tutorId: selectedTutorId! },
+    { enabled: !!selectedTutorId }
+  );
+
+  // Fetch the selected tutor's profile to get their timezone
+  const { data: tutorProfile } = trpc.tutorProfile.get.useQuery(
+    { userId: selectedTutorId! },
     { enabled: !!selectedTutorId }
   );
 
@@ -75,6 +82,13 @@ export function TutorAvailabilityManager() {
 
   const selectedTutor = tutorsData?.find(t => t.id === selectedTutorId);
 
+  // Get timezone display information
+  const tutorTimezone = tutorProfile?.timezone || 'America/New_York';
+  const tutorTimezoneFriendlyName = useMemo(() => {
+    const tz = COMMON_TIMEZONES.find(t => t.value === tutorTimezone);
+    return tz?.label || tutorTimezone;
+  }, [tutorTimezone]);
+
   // Group availability by day of week
   const availabilityByDay = DAYS_OF_WEEK.map(day => ({
     ...day,
@@ -118,6 +132,25 @@ export function TutorAvailabilityManager() {
 
       {selectedTutorId && (
         <>
+          {/* Timezone Display */}
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 text-sm bg-blue-50 dark:bg-blue-950/30 rounded-lg p-4 border border-blue-200 dark:border-blue-800">
+            <div className="flex items-center gap-2">
+              <Globe className="w-5 h-5 text-blue-600 dark:text-blue-400 flex-shrink-0" />
+              <span className="font-semibold text-blue-900 dark:text-blue-100">Tutor's Time Zone:</span>
+            </div>
+            <span className="text-blue-800 dark:text-blue-200 font-medium ml-7 sm:ml-0">
+              {tutorTimezoneFriendlyName}
+            </span>
+            {!tutorProfile?.timezone && (
+              <span className="text-xs text-amber-700 dark:text-amber-300 ml-7 sm:ml-auto bg-amber-100 dark:bg-amber-900/30 px-2 py-1 rounded">
+                ⚠️ Timezone not set (using default: ET)
+              </span>
+            )}
+            <span className="text-xs text-blue-700/70 dark:text-blue-300/70 ml-7 sm:ml-auto">
+              All times shown in tutor's local timezone
+            </span>
+          </div>
+
           {/* Add New Availability Slot */}
           <Card>
             <CardHeader>
