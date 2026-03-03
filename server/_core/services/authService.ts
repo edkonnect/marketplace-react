@@ -19,6 +19,7 @@ const authSchema = {
     firstName: z.string().min(1).max(100),
     lastName: z.string().min(1).max(100),
     role: z.enum(["parent", "tutor", "admin", "coordinator"]).default("parent"),
+    timezone: z.string().optional(),
   }),
   login: z.object({
     email: z.string().email(),

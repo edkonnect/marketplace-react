@@ -13,7 +13,7 @@ authRouter.post("/signup", async (req, res) => {
     const firstError = parsed.error.issues[0]?.message ?? "Invalid input";
     return res.status(400).json({ error: firstError });
   }
-  const { email, password, firstName, lastName, role } = parsed.data;
+  const { email, password, firstName, lastName, role, timezone } = parsed.data;
 
   const existing = await db.getUserByEmail(email);
   if (existing) {
@@ -55,6 +55,7 @@ authRouter.post("/signup", async (req, res) => {
         userId: user.id,
         childrenInfo: null,
         preferences: null,
+        timezone: timezone || 'America/New_York',
       });
     } else if (role === "tutor") {
       await db.createTutorProfile({
@@ -65,6 +66,7 @@ authRouter.post("/signup", async (req, res) => {
         gradeLevels: JSON.stringify([]),
         hourlyRate: "0",
         yearsOfExperience: 0,
+        timezone: timezone || 'America/New_York',
         approvalStatus: "pending",
         isActive: false,
       });

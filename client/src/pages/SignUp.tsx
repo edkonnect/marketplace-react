@@ -15,6 +15,8 @@ import {
   email as emailValidator,
   required,
 } from "@/lib/validation";
+import { detectUserTimezone } from "@/../../shared/timezone-utils";
+import { TimezoneSelector } from "@/components/TimezoneSelector";
 
 export default function SignUp() {
   const [, setLocation] = useLocation();
@@ -38,6 +40,7 @@ export default function SignUp() {
   );
   const { values, register, validateForm } = form;
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [timezone, setTimezone] = useState(detectUserTimezone());
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -56,6 +59,7 @@ export default function SignUp() {
         email: values.email,
         password: values.password,
         role: values.role,
+        timezone: timezone,
       });
       toast.success("Account created! Check your email for the verification link.");
       setLocation("/login");
@@ -135,6 +139,13 @@ export default function SignUp() {
                   placeholder="Tell us about your learning goals, subjects you need help with, or any specific requirements..."
                   rows={4}
                   helperText="Help us match you with the perfect tutor by sharing your educational goals."
+                />
+
+                <TimezoneSelector
+                  value={timezone}
+                  onChange={setTimezone}
+                  label="Your Time Zone"
+                  showDetected={true}
                 />
 
                 <Button

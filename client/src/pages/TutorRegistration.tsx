@@ -20,6 +20,8 @@ import {
   FormInput,
   FormTextarea,
 } from "@/components/forms/FormInput";
+import { detectUserTimezone } from "@/../../shared/timezone-utils";
+import { TimezoneSelector } from "@/components/TimezoneSelector";
 
 const SUBJECTS = [
   "Mathematics",
@@ -47,6 +49,7 @@ export default function TutorRegistration() {
   const { user, isAuthenticated } = useAuth();
   const [, navigate] = useLocation();
   const [submitted, setSubmitted] = useState(false);
+  const [timezone, setTimezone] = useState(detectUserTimezone());
 
   const form = useValidatedForm(
     {
@@ -149,6 +152,7 @@ export default function TutorRegistration() {
       hourlyRate: numericRate,
       subjects: values.subjects,
       gradeLevels: values.gradeLevels,
+      timezone: timezone,
     });
   };
 
@@ -333,11 +337,19 @@ export default function TutorRegistration() {
                     columns={2}
                   />
 
-                  <div className="flex gap-4 pt-4">
+                  {/* Timezone */}
+                  <TimezoneSelector
+                    value={timezone}
+                    onChange={setTimezone}
+                    label="Your Time Zone"
+                    showDetected={true}
+                  />
+
+                  <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 pt-4">
                     <button
                       type="submit"
                       disabled={registerMutation.isPending}
-                      className="flex-1 bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed px-4 py-2 rounded-md font-medium flex items-center justify-center"
+                      className="w-full sm:flex-1 bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed px-4 py-2.5 sm:py-2 rounded-md font-medium flex items-center justify-center text-sm sm:text-base"
                     >
                       {registerMutation.isPending && (
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -347,7 +359,7 @@ export default function TutorRegistration() {
                     <button
                       type="button"
                       onClick={() => navigate("/")}
-                      className="px-4 py-2 border border-input rounded-md hover:bg-accent"
+                      className="w-full sm:w-auto px-4 py-2.5 sm:py-2 border border-input rounded-md hover:bg-accent text-sm sm:text-base"
                     >
                       Cancel
                     </button>
