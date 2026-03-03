@@ -117,7 +117,9 @@ export const appRouter = router({
     get: publicProcedure
       .input(z.object({ userId: z.number() }))
       .query(async ({ input }) => {
-        return await db.getTutorProfileByUserId(input.userId);
+        const profile = await db.getTutorProfileByUserId(input.userId);
+        console.log('[DEBUG tutorProfile.get] userId:', input.userId, 'timezone:', profile?.timezone);
+        return profile;
       }),
     
     getMy: tutorProcedure.query(async ({ ctx }) => {
@@ -149,6 +151,7 @@ export const appRouter = router({
         hourlyRate: z.number(),
         subjects: z.array(z.string()),
         gradeLevels: z.array(z.string()),
+        timezone: z.string().optional(),
       }))
       .mutation(async ({ ctx, input }) => {
         // Determine if user is authenticated
@@ -212,6 +215,7 @@ export const appRouter = router({
           hourlyRate: input.hourlyRate.toString(),
           subjects: JSON.stringify(input.subjects),
           gradeLevels: JSON.stringify(input.gradeLevels),
+          timezone: input.timezone || 'America/New_York',
           approvalStatus: 'pending' as const,
         };
 
@@ -407,6 +411,14 @@ export const appRouter = router({
 
   // Parent Profile Management
   parentProfile: router({
+    get: publicProcedure
+      .input(z.object({ userId: z.number() }))
+      .query(async ({ input }) => {
+        const profile = await db.getParentProfileByUserId(input.userId);
+        console.log('[DEBUG parentProfile.get] userId:', input.userId, 'timezone:', profile?.timezone);
+        return profile;
+      }),
+
     getMy: parentProcedure.query(async ({ ctx }) => {
       return await db.getParentProfileByUserId(ctx.user.id);
     }),
@@ -1635,6 +1647,18 @@ export const appRouter = router({
             const tutor = await db.getUserById(input.tutorId);
             const parent = await db.getUserById(ctx.user.id);
 
+            // Get tutor profile for timezone
+            const tutorProfile = await db.getTutorProfileByUserId(input.tutorId);
+
+            // Get parent profile for timezone
+            const parentProfile = await db.getParentProfileByUserId(ctx.user.id);
+
+            // Get subscription to get student name
+            const subscription = await db.getSubscriptionById(subscriptionId);
+            const studentName = subscription
+              ? [subscription.studentFirstName, subscription.studentLastName].filter(Boolean).join(' ').trim()
+              : undefined;
+
             if (course && tutor && parent && tutor.name && parent.name && tutor.email && parent.email) {
               // Send email to parent
               sendBookingConfirmation({
@@ -1643,8 +1667,9 @@ export const appRouter = router({
                 userRole: 'parent',
                 courseName: course.title,
                 tutorName: tutor.name,
-                sessionDate: formatEmailDate(sessionDate, parent.timezone || undefined),
-                sessionTime: formatEmailTime(sessionDate, parent.timezone || undefined),
+                studentName: studentName,
+                sessionDate: formatEmailDate(sessionDate, parentProfile?.timezone || undefined),
+                sessionTime: formatEmailTime(sessionDate, parentProfile?.timezone || undefined),
                 sessionDuration: `${firstSession.duration} minutes`,
                 sessionPrice: formatEmailPrice(parseInt(course.price) * 100),
               }).catch(err => console.error('[Email] Failed to send booking confirmation to parent:', err));
@@ -1655,9 +1680,9 @@ export const appRouter = router({
                 userName: tutor.name,
                 userRole: 'tutor',
                 courseName: course.title,
-                studentName: parent.name,
-                sessionDate: formatEmailDate(sessionDate, tutor.timezone || undefined),
-                sessionTime: formatEmailTime(sessionDate, tutor.timezone || undefined),
+                studentName: studentName || parent.name,
+                sessionDate: formatEmailDate(sessionDate, tutorProfile?.timezone || undefined),
+                sessionTime: formatEmailTime(sessionDate, tutorProfile?.timezone || undefined),
                 sessionDuration: `${firstSession.duration} minutes`,
                 sessionPrice: formatEmailPrice(parseInt(course.price) * 100),
               }).catch(err => console.error('[Email] Failed to send booking confirmation to tutor:', err));
@@ -1751,7 +1776,19 @@ export const appRouter = router({
           const course = await db.getCourseById(input.courseId);
           const tutor = await db.getUserById(session.tutorId);
           const parent = await db.getUserById(ctx.user.id);
-          
+
+          // Get tutor profile for timezone
+          const tutorProfile = await db.getTutorProfileByUserId(session.tutorId);
+
+          // Get parent profile for timezone
+          const parentProfile = await db.getParentProfileByUserId(ctx.user.id);
+
+          // Get subscription to get student name
+          const subscription = await db.getSubscriptionById(subscriptionId);
+          const studentName = subscription
+            ? [subscription.studentFirstName, subscription.studentLastName].filter(Boolean).join(' ').trim()
+            : undefined;
+
           if (course && tutor && parent && tutor.name && parent.name && tutor.email && parent.email) {
             // Send email to parent
             sendBookingConfirmation({
@@ -1760,21 +1797,22 @@ export const appRouter = router({
               userRole: 'parent',
               courseName: course.title,
               tutorName: tutor.name,
-              sessionDate: formatEmailDate(sessionDate, parent.timezone || undefined),
-              sessionTime: formatEmailTime(sessionDate, parent.timezone || undefined),
+              studentName: studentName,
+              sessionDate: formatEmailDate(sessionDate, parentProfile?.timezone || undefined),
+              sessionTime: formatEmailTime(sessionDate, parentProfile?.timezone || undefined),
               sessionDuration: `${session.duration} minutes`,
               sessionPrice: formatEmailPrice(parseInt(course.price) * 100),
             }).catch(err => console.error('[Email] Failed to send booking confirmation to parent:', err));
-            
+
             // Send email to tutor
             sendBookingConfirmation({
               userEmail: tutor.email,
               userName: tutor.name,
               userRole: 'tutor',
               courseName: course.title,
-              studentName: parent.name,
-              sessionDate: formatEmailDate(sessionDate, tutor.timezone || undefined),
-              sessionTime: formatEmailTime(sessionDate, tutor.timezone || undefined),
+              studentName: studentName || parent.name,
+              sessionDate: formatEmailDate(sessionDate, tutorProfile?.timezone || undefined),
+              sessionTime: formatEmailTime(sessionDate, tutorProfile?.timezone || undefined),
               sessionDuration: `${session.duration} minutes`,
               sessionPrice: formatEmailPrice(parseInt(course.price) * 100),
             }).catch(err => console.error('[Email] Failed to send booking confirmation to tutor:', err));
@@ -1861,6 +1899,17 @@ export const appRouter = router({
             const tutor = await db.getUserById(session.tutorId);
             const parent = await db.getUserById(session.parentId);
 
+            // Get tutor profile for timezone
+            const tutorProfile = await db.getTutorProfileByUserId(session.tutorId);
+
+            // Get parent profile for timezone
+            const parentProfile = await db.getParentProfileByUserId(session.parentId);
+
+            // Get student name from subscription
+            const studentName = subscription
+              ? [subscription.studentFirstName, subscription.studentLastName].filter(Boolean).join(' ').trim()
+              : undefined;
+
             if (course && tutor && parent && tutor.name && parent.name && tutor.email && parent.email) {
               // Send email to parent
               sendBookingConfirmation({
@@ -1869,21 +1918,22 @@ export const appRouter = router({
                 userRole: 'parent',
                 courseName: course.title,
                 tutorName: tutor.name,
-                sessionDate: formatEmailDate(sessionDate, parent.timezone || undefined),
-                sessionTime: formatEmailTime(sessionDate, parent.timezone || undefined),
+                studentName: studentName,
+                sessionDate: formatEmailDate(sessionDate, parentProfile?.timezone || undefined),
+                sessionTime: formatEmailTime(sessionDate, parentProfile?.timezone || undefined),
                 sessionDuration: `${session.duration} minutes`,
                 sessionPrice: formatEmailPrice(parseInt(course.price) * 100),
               }).catch(err => console.error('[Email] Failed to send booking confirmation to parent:', err));
-              
+
               // Send email to tutor
               sendBookingConfirmation({
                 userEmail: tutor.email,
                 userName: tutor.name,
                 userRole: 'tutor',
                 courseName: course.title,
-                studentName: parent.name,
-                sessionDate: formatEmailDate(sessionDate, tutor.timezone || undefined),
-                sessionTime: formatEmailTime(sessionDate, tutor.timezone || undefined),
+                studentName: studentName || parent.name,
+                sessionDate: formatEmailDate(sessionDate, tutorProfile?.timezone || undefined),
+                sessionTime: formatEmailTime(sessionDate, tutorProfile?.timezone || undefined),
                 sessionDuration: `${session.duration} minutes`,
                 sessionPrice: formatEmailPrice(parseInt(course.price) * 100),
               }).catch(err => console.error('[Email] Failed to send booking confirmation to tutor:', err));
@@ -2696,6 +2746,12 @@ export const appRouter = router({
           const sessionDate = new Date(session.scheduledAt);
           const studentName = `${input.studentFirstName} ${input.studentLastName}`;
 
+          // Get parent profile for timezone
+          const parentProfile = await db.getParentProfileByUserId(ctx.user.id);
+
+          // Get tutor profile for timezone
+          const tutorProfile = await db.getTutorProfileByUserId(input.tutorId);
+
           // Send confirmation emails asynchronously (don't block on email failures)
           try {
             // Email to parent
@@ -2705,8 +2761,9 @@ export const appRouter = router({
               userRole: 'parent',
               courseName: course.title,
               tutorName: tutor.name,
-              sessionDate: formatEmailDate(sessionDate, ctx.user.timezone || undefined),
-              sessionTime: formatEmailTime(sessionDate, ctx.user.timezone || undefined),
+              studentName: studentName,
+              sessionDate: formatEmailDate(sessionDate, parentProfile?.timezone || undefined),
+              sessionTime: formatEmailTime(sessionDate, parentProfile?.timezone || undefined),
               sessionDuration: `${session.duration} minutes`,
               sessionPrice: 'FREE - Trial Lesson',
             });
@@ -2718,8 +2775,8 @@ export const appRouter = router({
               userRole: 'tutor',
               courseName: course.title,
               studentName,
-              sessionDate: formatEmailDate(sessionDate, tutor.timezone || undefined),
-              sessionTime: formatEmailTime(sessionDate, tutor.timezone || undefined),
+              sessionDate: formatEmailDate(sessionDate, tutorProfile?.timezone || undefined),
+              sessionTime: formatEmailTime(sessionDate, tutorProfile?.timezone || undefined),
               sessionDuration: `${session.duration} minutes`,
               sessionPrice: 'FREE - Trial Lesson',
             });
@@ -3767,6 +3824,7 @@ export const appRouter = router({
       .input(z.object({ tutorId: z.number() }))
       .query(async ({ input }) => {
         const availability = await db.getTutorAvailability(input.tutorId);
+        console.log('[DEBUG tutorAvailability.getByTutorId] tutorId:', input.tutorId, 'slots:', availability.length);
         return availability;
       }),
 

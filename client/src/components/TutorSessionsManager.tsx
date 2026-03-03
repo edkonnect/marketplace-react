@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Calendar, Clock, ChevronDown, ChevronUp } from "lucide-react";
+import { formatSessionTime } from "@/../../shared/timezone-utils";
 
 interface TutorSessionsManagerProps {
   upcomingSessions: any[];
@@ -14,6 +15,7 @@ interface TutorSessionsManagerProps {
   updateSessionMutation: any;
   canComplete: (session: any) => boolean;
   statusVariant: (status?: string | null) => "default" | "secondary" | "outline" | "destructive";
+  tutorTimezone?: string;
 }
 
 export function TutorSessionsManager({
@@ -24,8 +26,12 @@ export function TutorSessionsManager({
   updateSessionMutation,
   canComplete,
   statusVariant,
+  tutorTimezone,
 }: TutorSessionsManagerProps) {
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
+
+  // Use tutor's timezone or fallback to browser timezone
+  const timezone = tutorTimezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
 
   const toggleGroup = (key: string) => {
     setExpandedGroups((prev) => ({
@@ -73,19 +79,11 @@ export function TutorSessionsManager({
   }, [upcomingSessions]);
 
   const formatDate = (timestamp: number) => {
-    return new Date(timestamp).toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-    });
+    return formatSessionTime(timestamp, timezone, 'MMM d, yyyy');
   };
 
   const formatTime = (timestamp: number) => {
-    return new Date(timestamp).toLocaleTimeString("en-US", {
-      hour: "numeric",
-      minute: "2-digit",
-      hour12: true,
-    });
+    return formatSessionTime(timestamp, timezone, 'h:mm a');
   };
 
   if (Object.keys(groupedSessions).length === 0) {

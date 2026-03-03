@@ -14,7 +14,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Link, useLocation } from "wouter";
-import { BookOpen, Calendar, MessageSquare, DollarSign, Users, Edit, Clock, FileText, Plus, Filter, Search, X } from "lucide-react";
+import { BookOpen, Calendar, MessageSquare, DollarSign, Users, Edit, Clock, FileText, Plus, Filter, Search, X, Globe } from "lucide-react";
 import { AvailabilityManager } from "@/components/AvailabilityManager";
 import { TimeBlockManager } from "@/components/TimeBlockManager";
 import { VideoUploadManager } from "@/components/VideoUploadManager";
@@ -22,6 +22,7 @@ import { TutorSessionsManager } from "@/components/TutorSessionsManager";
 import { useEffect, useMemo, useState } from "react";
 import { LOGIN_PATH } from "@/const";
 import { toast } from "sonner";
+import { formatSessionTime, COMMON_TIMEZONES } from "@/../../shared/timezone-utils";
 
 export default function TutorDashboard() {
   const { user, isAuthenticated, loading } = useAuth();
@@ -126,6 +127,30 @@ export default function TutorDashboard() {
     });
     return new Set(keys).size;
   }, [activeSubscriptions]);
+
+  // Get tutor's timezone for displaying session times correctly
+  const tutorTimezone = tutorProfile?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+  // Get friendly timezone label
+  const timezoneFriendlyName = useMemo(() => {
+    const found = COMMON_TIMEZONES.find(tz => tz.value === tutorTimezone);
+    return found ? found.label : tutorTimezone;
+  }, [tutorTimezone]);
+
+  // Get timezone abbreviation
+  const timezoneAbbr = useMemo(() => {
+    return new Date().toLocaleTimeString('en-US', {
+      timeZone: tutorTimezone,
+      timeZoneName: 'short'
+    }).split(' ').pop();
+  }, [tutorTimezone]);
+
+  // Helper function to format session date and time in tutor's timezone
+  const formatSessionDateTime = (scheduledAt: number) => {
+    const date = formatSessionTime(scheduledAt, tutorTimezone, 'PPP'); // e.g., "April 29, 2023"
+    const time = formatSessionTime(scheduledAt, tutorTimezone, 'p'); // e.g., "9:00 AM"
+    return { date, time };
+  };
 
   // Generate available years from subscriptions based on enrollment date
   const availableYears = useMemo(() => {
@@ -455,10 +480,10 @@ export default function TutorDashboard() {
               </TabsList>
                 </div>
 
-                <div className="relative min-h-[540px]">
+                <div className="relative min-h-[540px] pt-6">
                 {/* Profile Tab */}
                 <TabsContent value="profile" forceMount className={tabContentClass}>
-                  <h2 className="text-2xl font-bold">Profile Settings</h2>
+                  <h2 className="text-2xl font-bold mb-6">Profile Settings</h2>
                   <VideoUploadManager 
                     currentVideoUrl={(tutorProfile as any)?.introVideoUrl}
                   />
@@ -872,7 +897,24 @@ export default function TutorDashboard() {
 
                 {/* Sessions Tab */}
                 <TabsContent value="sessions" forceMount className={tabContentClass}>
-                  <h2 className="text-2xl font-bold mb-6">Upcoming Sessions</h2>
+                  <div className="mb-6">
+                    <h2 className="text-2xl sm:text-3xl font-bold mb-4">Upcoming Sessions</h2>
+
+                    {/* Timezone Indicator Banner */}
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 text-sm bg-blue-50/50 dark:bg-blue-950/20 rounded-md p-3 sm:p-4 border border-blue-200 dark:border-blue-800">
+                      <div className="flex items-center gap-2">
+                        <Globe className="w-5 h-5 text-blue-600 dark:text-blue-400 flex-shrink-0" />
+                        <span className="font-semibold text-blue-900 dark:text-blue-100">Your Time Zone:</span>
+                      </div>
+                      <span className="text-blue-800 dark:text-blue-200 font-medium ml-7 sm:ml-0">
+                        {timezoneFriendlyName} ({timezoneAbbr})
+                      </span>
+                      <span className="text-xs text-blue-700/70 dark:text-blue-300/70 ml-7 sm:ml-auto">
+                        All times shown in your local timezone
+                      </span>
+                    </div>
+                  </div>
+
                   <TutorSessionsManager
                     upcomingSessions={upcomingSessions || []}
                     sessionNotes={sessionNotes}
@@ -881,12 +923,13 @@ export default function TutorDashboard() {
                     updateSessionMutation={updateSessionMutation}
                     canComplete={canComplete}
                     statusVariant={statusVariant}
+                    tutorTimezone={tutorTimezone}
                   />
                 </TabsContent>
 
                 {/* History Tab */}
                 <TabsContent value="history" forceMount className={tabContentClass}>
-                  <h2 className="text-2xl font-bold">Session History</h2>
+                  <h2 className="text-2xl font-bold mb-6">Session History</h2>
 
                   {historyLoading ? (
                     <div className="space-y-4">
@@ -919,7 +962,10 @@ export default function TutorDashboard() {
                                         {session.courseTitle || session.courseSubject || "Course"}
                                       </p>
                                       <p className="text-xs sm:text-sm text-muted-foreground">
-                                        {new Date(session.scheduledAt).toLocaleDateString()} • {new Date(session.scheduledAt).toLocaleTimeString()} • {session.duration} min
+                                        {(() => {
+                                          const { date, time } = formatSessionDateTime(session.scheduledAt);
+                                          return `${date} • ${time} • ${session.duration} min`;
+                                        })()}
                                       </p>
                                       <p className="text-xs sm:text-sm text-muted-foreground">
                                         {(session.studentFirstName || session.studentLastName)

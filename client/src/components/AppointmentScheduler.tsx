@@ -20,9 +20,15 @@ import {
 } from "@/components/ui/alert-dialog";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Calendar as CalendarIcon, Clock, AlertCircle } from "lucide-react";
+import { Calendar as CalendarIcon, Clock, AlertCircle, Globe } from "lucide-react";
 import { format } from "date-fns";
 import crypto from "crypto-js";
+import {
+  COMMON_TIMEZONES,
+  detectUserTimezone,
+  convertToUTC,
+  convertFromUTC
+} from "@/../../shared/timezone-utils";
 
 interface AppointmentSchedulerProps {
   subscriptions: Array<{
@@ -49,22 +55,58 @@ export function AppointmentScheduler({ subscriptions, onScheduleComplete }: Appo
   } | null>(null);
 
   const utils = trpc.useUtils();
+
+  // Get selected subscription details FIRST (before other hooks that depend on it)
+  const selectedSubscription = useMemo(() => {
+    return subscriptions.find(s => s.subscription.id === selectedSubscriptionId);
+  }, [subscriptions, selectedSubscriptionId]);
+
   const { data: availabilityData } = trpc.subscription.getAvailability.useQuery(
     { subscriptionId: selectedSubscriptionId ?? 0 },
     { enabled: !!selectedSubscriptionId }
   );
 
+  // Fetch tutor's timezone
+  const { data: tutorProfile } = trpc.tutorProfile.get.useQuery(
+    { userId: selectedSubscription?.tutor?.id ?? 0 },
+    { enabled: !!selectedSubscription?.tutor?.id }
+  );
+
+  // Fetch parent's timezone
+  const { data: parentProfile } = trpc.parentProfile.getMy.useQuery(
+    undefined,
+    { enabled: true }
+  );
+
   const createSessionMutation = trpc.session.create.useMutation();
   const quickBookRecurringMutation = trpc.session.quickBookRecurring.useMutation();
 
-  // Get user timezone
-  const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  const timezoneOffset = new Date().toLocaleTimeString('en-US', { timeZoneName: 'short' }).split(' ').pop();
+  // Determine timezones
+  const tutorTimezone = tutorProfile?.timezone || detectUserTimezone();
+  const parentTimezone = parentProfile?.timezone || detectUserTimezone();
 
-  // Get selected subscription details
-  const selectedSubscription = useMemo(() => {
-    return subscriptions.find(s => s.subscription.id === selectedSubscriptionId);
-  }, [subscriptions, selectedSubscriptionId]);
+  // Get timezone abbreviation for parent
+  const parentTimezoneAbbr = useMemo(() => {
+    try {
+      return new Date().toLocaleTimeString('en-US', {
+        timeZone: parentTimezone,
+        timeZoneName: 'short'
+      }).split(' ').pop() || '';
+    } catch {
+      return '';
+    }
+  }, [parentTimezone]);
+
+  // Get friendly timezone label
+  const parentTimezoneFriendlyName = useMemo(() => {
+    const found = COMMON_TIMEZONES.find(tz => tz.value === parentTimezone);
+    return found ? found.label : parentTimezone;
+  }, [parentTimezone]);
+
+  const tutorTimezoneFriendlyName = useMemo(() => {
+    const found = COMMON_TIMEZONES.find(tz => tz.value === tutorTimezone);
+    return found ? found.label : tutorTimezone;
+  }, [tutorTimezone]);
 
   // Get duration from selected subscription's course
   const duration = selectedSubscription?.course.duration || 60;
@@ -78,51 +120,99 @@ export function AppointmentScheduler({ subscriptions, onScheduleComplete }: Appo
     }
   }, [selectedSubscriptionId, selectedDate]);
 
-  // Calculate available time slots
+  // Calculate available time slots with timezone conversion
   const availableTimeSlots = useMemo(() => {
     if (!selectedDate || !availabilityData) return [];
 
-    const day = selectedDate.getDay();
-    const windows = (availabilityData.availability || []).filter((w: any) => w.dayOfWeek === day);
-    if (!windows.length) return [];
+    const selectedDayStart = new Date(selectedDate);
+    selectedDayStart.setHours(0, 0, 0, 0);
+    const selectedDayEnd = new Date(selectedDate);
+    selectedDayEnd.setHours(23, 59, 59, 999);
 
+    const slotsMap = new Map<string, number>(); // time string -> UTC timestamp
     const booked = availabilityData.booked || [];
-    const slots: string[] = [];
     const now = Date.now();
 
-    windows.forEach((w: any) => {
-      const [sh, sm] = w.startTime.split(":").map(Number);
-      const [eh, em] = w.endTime.split(":").map(Number);
-      let cursor = sh * 60 + sm;
-      const end = eh * 60 + em;
+    // Check adjacent days to handle timezone crossovers
+    for (let dayOffset = -1; dayOffset <= 1; dayOffset++) {
+      const checkDate = new Date(selectedDate);
+      checkDate.setDate(checkDate.getDate() + dayOffset);
+      checkDate.setHours(12, 0, 0, 0);
 
-      while (cursor + duration <= end) {
-        const start = new Date(selectedDate);
-        start.setHours(Math.floor(cursor / 60), cursor % 60, 0, 0);
-        const startMs = start.getTime();
-        const endMs = startMs + duration * 60000;
+      // Convert to tutor's timezone to find day of week
+      const checkDateUTC = convertToUTC(checkDate, parentTimezone);
+      const checkDateInTutorTZ = convertFromUTC(checkDateUTC, tutorTimezone);
+      const tutorDayOfWeek = checkDateInTutorTZ.getDay();
 
-        if (startMs <= now) {
+      // Get tutor's availability for this day
+      const windows = (availabilityData.availability || []).filter(
+        (w: any) => w.dayOfWeek === tutorDayOfWeek
+      );
+
+      if (!windows.length) continue;
+
+      // Generate slots in tutor's timezone
+      windows.forEach((w: any) => {
+        const [sh, sm] = w.startTime.split(":").map(Number);
+        const [eh, em] = w.endTime.split(":").map(Number);
+        let cursor = sh * 60 + sm;
+        const end = eh * 60 + em;
+
+        while (cursor + duration <= end) {
+          const tutorHour = Math.floor(cursor / 60);
+          const tutorMinute = cursor % 60;
+
+          // Create date in tutor's timezone
+          const tutorSlotDate = new Date(checkDateInTutorTZ);
+          tutorSlotDate.setHours(tutorHour, tutorMinute, 0, 0);
+
+          // Convert to UTC
+          const slotTimestampUTC = convertToUTC(tutorSlotDate, tutorTimezone);
+
+          // Convert to parent's timezone for display
+          const slotInParentTZ = convertFromUTC(slotTimestampUTC, parentTimezone);
+
+          // Only include slots within selected day in parent's timezone
+          if (slotInParentTZ < selectedDayStart || slotInParentTZ > selectedDayEnd) {
+            cursor += 30;
+            continue;
+          }
+
+          // Check if slot is in the past
+          if (slotTimestampUTC <= now) {
+            cursor += 30;
+            continue;
+          }
+
+          // Check for conflicts with existing bookings
+          const slotEndUTC = slotTimestampUTC + duration * 60000;
+          const overlaps = booked.some((b: any) => {
+            const bs = b.scheduledAt;
+            const be = bs + b.duration * 60000;
+            return slotTimestampUTC < be && slotEndUTC > bs;
+          });
+
+          if (!overlaps) {
+            const displayTime = slotInParentTZ.toLocaleTimeString("en-US", {
+              hour: "numeric",
+              minute: "2-digit",
+              hour12: true
+            });
+            slotsMap.set(displayTime, slotTimestampUTC);
+          }
+
           cursor += 30;
-          continue;
         }
+      });
+    }
 
-        const overlaps = booked.some((b: any) => {
-          const bs = b.scheduledAt;
-          const be = bs + b.duration * 60000;
-          return startMs < be && endMs > bs;
-        });
-
-        if (!overlaps) {
-          slots.push(start.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true }));
-        }
-
-        cursor += 30;
-      }
+    // Return sorted array of time strings
+    return Array.from(slotsMap.keys()).sort((a, b) => {
+      const timeA = slotsMap.get(a)!;
+      const timeB = slotsMap.get(b)!;
+      return timeA - timeB;
     });
-
-    return Array.from(new Set(slots));
-  }, [availabilityData, selectedDate, duration]);
+  }, [availabilityData, selectedDate, duration, tutorTimezone, parentTimezone]);
 
   // Generate preview of recurring sessions
   const recurringPreview = useMemo(() => {
@@ -321,13 +411,28 @@ export function AppointmentScheduler({ subscriptions, onScheduleComplete }: Appo
           </div>
 
           {selectedSubscriptionId && (
-            <div className="flex flex-wrap items-center gap-2 text-sm pt-2 border-t">
-              <Clock className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-              <span className="font-medium">Client's Time Zone:</span>
-              <span className="text-muted-foreground truncate">
-                ({timezoneOffset}) {userTimezone}
-              </span>
-            </div>
+            <>
+              <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 text-sm pt-3 border-t bg-blue-50/50 dark:bg-blue-950/20 rounded-md p-3 sm:p-4">
+                <div className="flex items-center gap-2">
+                  <Globe className="w-5 h-5 text-blue-600 dark:text-blue-400 flex-shrink-0" />
+                  <span className="font-semibold text-blue-900 dark:text-blue-100">Your Time Zone:</span>
+                </div>
+                <span className="text-blue-800 dark:text-blue-200 font-medium ml-7 sm:ml-0">
+                  {parentTimezoneFriendlyName} ({parentTimezoneAbbr})
+                </span>
+                <span className="text-xs text-blue-700/70 dark:text-blue-300/70 ml-7 sm:ml-auto">
+                  All times shown in your local timezone
+                </span>
+              </div>
+
+              {tutorTimezone !== parentTimezone && selectedSubscription && (
+                <div className="flex flex-col sm:flex-row sm:items-center gap-2 text-xs sm:text-sm bg-amber-50/50 dark:bg-amber-950/20 rounded-md p-3 border border-amber-200 dark:border-amber-800">
+                  <span className="text-amber-800 dark:text-amber-200">
+                    <span className="font-semibold">Note:</span> {selectedSubscription.tutor?.name} is in {tutorTimezoneFriendlyName}. Times shown are automatically converted to your timezone.
+                  </span>
+                </div>
+              )}
+            </>
           )}
         </CardContent>
       </Card>
