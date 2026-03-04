@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
-import { MessageSquare, Send, User, Users, GraduationCap, ChevronRight, Paperclip, X, FileText, Download, ArrowLeft } from "lucide-react";
+import { MessageSquare, Send, User, Users, GraduationCap, ChevronRight, Paperclip, X, FileText, Download, ArrowLeft, Mail, Phone } from "lucide-react";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
@@ -25,6 +25,7 @@ export default function Messages() {
   const [uploading, setUploading] = useState(false);
   const [globalSearch, setGlobalSearch] = useState("");
   const [readConversationIds, setReadConversationIds] = useState<Set<number>>(new Set());
+  const [showCoordinatorCard, setShowCoordinatorCard] = useState(false);
   const RECENCY_MS = 10 * 24 * 60 * 60 * 1000;
 
   // Get parentId from URL query params if coordinator is filtering
@@ -390,6 +391,76 @@ export default function Messages() {
             <ArrowLeft className="h-4 w-4 mr-2" />
             Back to All Messages
           </Button>
+        )}
+
+        {/* Floating Coordinator Card */}
+        {isParent && coordinator && showCoordinatorCard && (
+          <div className="fixed bottom-6 right-6 z-40 w-80 sm:w-96 animate-in slide-in-from-bottom-5 fade-in duration-300">
+            <Card className="border-primary/30 bg-card shadow-2xl">
+              <CardHeader className="pb-3">
+                <div className="flex items-start justify-between">
+                  <div className="flex items-center gap-2">
+                    <User className="w-4 h-4 text-primary" />
+                    <CardTitle className="text-sm">Your Academic Coordinator</CardTitle>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6 -mt-1 -mr-2"
+                    onClick={() => setShowCoordinatorCard(false)}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center text-base font-semibold text-primary flex-shrink-0">
+                    {coordinator.firstName?.charAt(0)}{coordinator.lastName?.charAt(0)}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-base">
+                      {coordinator.firstName} {coordinator.lastName}
+                    </p>
+                    {coordinator.specialization && (
+                      <Badge variant="secondary" className="text-xs mt-1">
+                        {coordinator.specialization}
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+                <div className="space-y-2 pt-2 border-t">
+                  <a
+                    href={`mailto:${coordinator.email}`}
+                    className="flex items-center gap-2 text-sm text-muted-foreground hover:text-primary transition-colors"
+                  >
+                    <Mail className="w-4 h-4 flex-shrink-0" />
+                    <span className="truncate">{coordinator.email}</span>
+                  </a>
+                  {coordinator.phoneNumber && (
+                    <a
+                      href={`tel:${coordinator.phoneNumber}`}
+                      className="flex items-center gap-2 text-sm text-muted-foreground hover:text-primary transition-colors"
+                    >
+                      <Phone className="w-4 h-4 flex-shrink-0" />
+                      <span>{coordinator.phoneNumber}</span>
+                    </a>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {/* Floating Button to show coordinator */}
+        {isParent && coordinator && !showCoordinatorCard && (
+          <button
+            onClick={() => setShowCoordinatorCard(true)}
+            className="fixed bottom-6 right-6 z-40 h-14 w-14 rounded-full bg-primary text-primary-foreground shadow-lg hover:shadow-xl transition-all hover:scale-105 flex items-center justify-center"
+            title="View your coordinator"
+          >
+            <User className="w-6 h-6" />
+          </button>
         )}
 
         <div className="mb-4 sm:mb-6 space-y-3 sm:space-y-4">
@@ -939,34 +1010,6 @@ export default function Messages() {
                           <Send className="w-4 h-4" />
                         </Button>
                       </div>
-
-                      {/* Academic Coordinator Info */}
-                      {isParent && coordinator && (
-                        <div className="mt-3 pt-3 border-t border-border">
-                          <div className="flex items-start gap-2">
-                            <User className="w-4 h-4 text-muted-foreground mt-0.5 flex-shrink-0" />
-                            <div className="flex-1 min-w-0">
-                              <p className="text-xs font-medium text-muted-foreground">Your Academic Coordinator</p>
-                              <p className="text-sm font-medium mt-1">
-                                {coordinator.firstName} {coordinator.lastName}
-                              </p>
-                              <p className="text-xs text-muted-foreground truncate">
-                                {coordinator.email}
-                              </p>
-                              {coordinator.phoneNumber && (
-                                <p className="text-xs text-muted-foreground">
-                                  {coordinator.phoneNumber}
-                                </p>
-                              )}
-                              {coordinator.specialization && (
-                                <Badge variant="secondary" className="mt-1.5 text-xs">
-                                  {coordinator.specialization}
-                                </Badge>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      )}
                     </div>
                   )}
 
