@@ -227,7 +227,7 @@ export default function TutorDashboard() {
   const canComplete = (session: any) =>
     session.status === "scheduled" && session.scheduledAt <= Date.now();
 
-  const statusVariant = (status: string) => {
+  const statusVariant = (status?: string | null) => {
     switch (status) {
       case "cancelled":
         return "destructive";
@@ -240,7 +240,7 @@ export default function TutorDashboard() {
     }
   };
 
-  const handleOpenCompletionDialog = (sessionId: number, existingNotes?: string) => {
+  const handleOpenCompletionDialog = (sessionId: number, existingNotes?: string | null) => {
     setSelectedSessionId(sessionId);
     setCompletionNotes(existingNotes || "");
     setCompletionType("completed");
@@ -252,7 +252,7 @@ export default function TutorDashboard() {
 
     updateSessionMutation.mutate({
       id: selectedSessionId,
-      status: completionType,
+      status: completionType as "completed" | "no_show",
       feedbackFromTutor: completionNotes || undefined,
     }, {
       onSuccess: () => {

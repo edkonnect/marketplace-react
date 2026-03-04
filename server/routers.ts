@@ -70,20 +70,20 @@ export const appRouter = router({
     updateRole: protectedProcedure
       .input(z.object({ role: z.enum(['parent', 'tutor', 'coordinator']) }))
       .mutation(async ({ ctx, input }) => {
-        const success = await db.updateUserRole(ctx.user.id, input.role);
+        const success = await db.updateUserRole(ctx.user.id, input.role as 'parent' | 'tutor' | 'admin');
         if (!success) {
           throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to update role' });
         }
-        
+
         // Send welcome email (async, don't wait)
         if (ctx.user.email && ctx.user.name) {
           sendWelcomeEmail({
             userEmail: ctx.user.email,
             userName: ctx.user.name,
-            userRole: input.role,
+            userRole: input.role as 'parent' | 'tutor',
           }).catch(err => console.error('[Email] Failed to send welcome email:', err));
         }
-        
+
         return { success: true };
       }),
   }),
@@ -1345,7 +1345,7 @@ export const appRouter = router({
         }
 
         // Get session details for notification
-        const subscription = await db.getSubscriptionById(session.subscriptionId);
+        const subscription = session.subscriptionId ? await db.getSubscriptionById(session.subscriptionId) : null;
         const course = subscription ? await db.getCourseById(subscription.courseId) : null;
         const parent = await db.getUserById(ctx.user.id);
         const oldDate = new Date(session.scheduledAt);
@@ -1462,7 +1462,7 @@ export const appRouter = router({
         }
 
         // Get session details for notification
-        const subscription = await db.getSubscriptionById(session.subscriptionId);
+        const subscription = session.subscriptionId ? await db.getSubscriptionById(session.subscriptionId) : null;
         const course = subscription ? await db.getCourseById(subscription.courseId) : null;
         const parent = await db.getUserById(ctx.user.id);
 
@@ -1894,7 +1894,7 @@ export const appRouter = router({
           const session = await db.getSessionById(id);
           if (session) {
             const sessionDate = new Date(session.scheduledAt);
-            const subscription = await db.getSubscriptionById(session.subscriptionId);
+            const subscription = session.subscriptionId ? await db.getSubscriptionById(session.subscriptionId) : null;
             const course = subscription ? await db.getCourseById(subscription.courseId) : null;
             const tutor = await db.getUserById(session.tutorId);
             const parent = await db.getUserById(session.parentId);
@@ -2004,7 +2004,7 @@ export const appRouter = router({
             // Get detailed session information
             const parent = await db.getUserById(session.parentId);
             const tutor = await db.getUserById(session.tutorId);
-            const subscription = await db.getSubscriptionById(session.subscriptionId);
+            const subscription = session.subscriptionId ? await db.getSubscriptionById(session.subscriptionId) : null;
             const course = subscription ? await db.getCourseById(subscription.courseId) : null;
 
             if (parent?.email && parent?.name && tutor?.name && course?.title) {
@@ -2288,8 +2288,8 @@ export const appRouter = router({
           return {
             parent: assignment.parent,
             parentProfile: assignment.parentProfile,
-            students: studentData.students || [],
-            coordinator: studentData.coordinator,
+            students: (studentData as any)?.students || [],
+            coordinator: (studentData as any)?.coordinator,
           };
         })
       );
@@ -4581,10 +4581,11 @@ export const appRouter = router({
         } catch (error) {
           console.error('[Resend Password Setup] Email failed:', error);
           // Return the link anyway so admin can manually share it
+          const setupUrlFallback = `${process.env.VITE_FRONTEND_FORGE_API_URL || 'http://localhost:3000'}/setup-password?token=${setupToken}`;
           return {
             success: false,
             message: 'Email failed but here is the setup link',
-            setupLink: setupUrl
+            setupLink: setupUrlFallback
           };
         }
       }),

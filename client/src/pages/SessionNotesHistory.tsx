@@ -50,7 +50,7 @@ export default function SessionNotesHistory() {
         studentName: [s.studentFirstName, s.studentLastName].filter(Boolean).join(" "),
         parentName: s.parentName || "",
         tutorName: s.tutorName || "",
-        duration: s.duration,
+        duration: s.duration as number | undefined,
         source: "session" as const,
       }));
 
@@ -65,8 +65,8 @@ export default function SessionNotesHistory() {
       studentName: [n.studentFirstName, n.studentLastName].filter(Boolean).join(" "),
       parentName: n.parentName || "",
       tutorName: n.tutorName || "",
-      duration: undefined,
-      source: "note" as const,
+      duration: undefined as number | undefined,
+      source: "session" as const,
     }));
 
     // Prefer session-sourced records (carry more up-to-date feedback) when same sessionId
@@ -120,7 +120,11 @@ export default function SessionNotesHistory() {
       map.get(key)!.push(n);
     });
     return Array.from(map.entries()).sort(
-      (a, b) => new Date(b[0]).getTime() - new Date(a[0]).getTime()
+      (a, b) => {
+        const dateA = new Date(a[1][0]?.scheduledAt || 0);
+        const dateB = new Date(b[1][0]?.scheduledAt || 0);
+        return dateB.getTime() - dateA.getTime();
+      }
     );
   }, [filteredTutorNotes]);
 
@@ -278,9 +282,9 @@ export default function SessionNotesHistory() {
               </CardContent>
             </Card>
           )
-        ) : notes && notes.length > 0 ? (
+        ) : (notes as any) && (notes as any).length > 0 ? (
           <div className="space-y-6">
-            {notes.map((note) => (
+            {(notes as any).map((note: any) => (
               <div key={note.id}>
                 <SessionNotesView note={note} />
               </div>
@@ -291,13 +295,11 @@ export default function SessionNotesHistory() {
             <CardHeader>
               <CardTitle>No Session Notes Yet</CardTitle>
               <CardDescription>
-                {user.role === "tutor"
-                  ? "You haven't created any session notes yet. Add notes after completing a session to share feedback with parents."
-                  : "Your tutor hasn't added any session notes yet. Notes will appear here after each completed session."}
+                Your tutor hasn't added any session notes yet. Notes will appear here after each completed session.
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <Link href={user.role === "tutor" ? "/tutor-dashboard" : "/parent-dashboard"}>
+              <Link href="/parent-dashboard">
                 <a className="text-primary hover:underline">
                   Go to Dashboard
                 </a>

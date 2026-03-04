@@ -13,6 +13,65 @@ import { toast } from "sonner";
 import { useLocation } from "wouter";
 import { LOGIN_PATH } from "@/const";
 
+// TypeScript interfaces for proper type safety
+interface TutorInfo {
+  id: number;
+  name: string | null;
+  conversationId?: number;
+  unreadCount?: number;
+  courseTitles?: string[];
+  courseTitle?: string;
+  studentId?: number;
+}
+
+interface StudentWithTutors {
+  id: number;
+  firstName: string;
+  lastName: string;
+  tutors: TutorInfo[];
+}
+
+interface Coordinator {
+  id?: number;
+  firstName?: string;
+  lastName?: string;
+  email?: string;
+  phoneNumber?: string | null;
+  specialization?: string | null;
+}
+
+interface StudentsWithTutorsData {
+  students: StudentWithTutors[];
+  coordinator: Coordinator | null;
+}
+
+interface TutorConversation {
+  conversationId: number | null;
+  parentName: string;
+  studentName: string;
+  courseTitle: string;
+  studentId: number;
+  parentId: number | null;
+  enrollmentDateLabel: string;
+  lastMessageAt: number;
+  hasConversation: boolean;
+  unreadCount: number;
+}
+
+interface CoordinatorConversation {
+  conversationId?: number;
+  parentId: number;
+  tutorId: number;
+  subscriptionId: number;
+  parentName: string;
+  studentFirstName: string;
+  studentLastName: string;
+  tutorName: string;
+  courseTitle: string;
+  unreadCount: number;
+  hasMessages: boolean;
+}
+
 export default function Messages() {
   const { user, isAuthenticated, loading } = useAuth();
   const utils = trpc.useUtils();
@@ -41,8 +100,8 @@ export default function Messages() {
     { enabled: isAuthenticated && isParent, refetchInterval: 10000 }
   );
 
-  const studentsWithTutors = studentsWithTutorsData?.students || [];
-  const coordinator = studentsWithTutorsData?.coordinator || null;
+  const studentsWithTutors = (studentsWithTutorsData as StudentsWithTutorsData)?.students || [];
+  const coordinator = (studentsWithTutorsData as StudentsWithTutorsData)?.coordinator || null;
 
   const { data: tutorConversations, isLoading: tutorConversationsLoading } = trpc.messaging.getTutorConversations.useQuery(
     undefined,
@@ -248,26 +307,26 @@ export default function Messages() {
     );
   }
 
-  const selectedStudent = studentsWithTutors?.find(s => s.id === selectedStudentId);
-  const selectedTutor = selectedStudent?.tutors.find((t: any) => t.id === selectedTutorId);
+  const selectedStudent = studentsWithTutors?.find((s: StudentWithTutors) => s.id === selectedStudentId);
+  const selectedTutor = selectedStudent?.tutors?.find((t: TutorInfo) => t.id === selectedTutorId);
 
   const searchTerm = globalSearch.trim().toLowerCase();
 
-  const filteredStudents = (studentsWithTutors || []).filter((student) => {
-    const hasConversation = (student.tutors || []).some((t: any) => t.conversationId);
+  const filteredStudents = (studentsWithTutors || []).filter((student: StudentWithTutors) => {
+    const hasConversation = (student.tutors || []).some((t: TutorInfo) => t.conversationId);
     if (!searchTerm) {
       // Default list: only students with an existing conversation
       return hasConversation;
     }
     // Searching: include enrolled students even if they have no conversation yet
     const nameMatch = `${student.firstName} ${student.lastName}`.toLowerCase().includes(searchTerm);
-    const tutorMatch = (student.tutors || []).some((t: any) => {
+    const tutorMatch = (student.tutors || []).some((t: TutorInfo) => {
       // Check tutor name
       const tutorNameMatch = (t.name || "").toLowerCase().includes(searchTerm);
 
       // Check all course titles
       const titles = (t.courseTitles && Array.isArray(t.courseTitles) ? t.courseTitles : [t.courseTitle]).filter(Boolean) as string[];
-      const courseMatch = titles.some((title) => title.toLowerCase().includes(searchTerm));
+      const courseMatch = titles.some((title: string) => title.toLowerCase().includes(searchTerm));
 
       return tutorNameMatch || courseMatch;
     });
@@ -279,8 +338,8 @@ export default function Messages() {
     `${selectedStudent.firstName} ${selectedStudent.lastName}`.toLowerCase().includes(searchTerm);
 
   const filteredTutors = selectedStudent
-    ? selectedStudent.tutors
-        .filter((tutor: any) => {
+    ? (selectedStudent.tutors || [])
+        .filter((tutor: TutorInfo) => {
           // If we're typing the student's name, still show all tutors for that student
           if (!searchTerm || selectedMatchesSearch) return true;
           return (
@@ -289,16 +348,16 @@ export default function Messages() {
               ? tutor.courseTitles
               : [tutor.courseTitle]
             ) || [])
-              .filter(Boolean)
-              .some((title: string) => title.toLowerCase().includes(searchTerm))
+              .filter((t): t is string => Boolean(t))
+              .some((title) => title.toLowerCase().includes(searchTerm))
           );
         })
     : [];
 
-  const tutorListForUI = isTutor
+  const tutorListForUI: TutorConversation[] = isTutor
     ? (() => {
         // Existing conversations
-        const existingConvs = (tutorConversations || []).map((c: any) => {
+        const existingConvs: TutorConversation[] = (tutorConversations || []).map((c: any) => {
           const enrollmentDate = c.subscription?.startDate || c.subscription?.createdAt;
           const enrollmentDateLabel = enrollmentDate
             ? new Date(enrollmentDate).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })
@@ -472,7 +531,7 @@ export default function Messages() {
                 : user?.role === "coordinator"
                 ? filterParentId
                   ? (() => {
-                      const parent = coordinatorConversations?.find((c: any) => c.parentId === parseInt(filterParentId));
+                      const parent = coordinatorConversations?.find((c) => c.parentId === parseInt(filterParentId));
                       return parent ? `Viewing messages for ${parent.parentName}` : "View messages for your assigned families";
                     })()
                   : "View messages for your assigned families"
@@ -506,7 +565,7 @@ export default function Messages() {
                   ) : coordinatorConversations && coordinatorConversations.length > 0 ? (
                     <div>
                       {coordinatorConversations
-                        .filter((conv: any) => {
+                        .filter((conv) => {
                           // Filter by parentId if specified in URL
                           if (filterParentId && conv.parentId !== parseInt(filterParentId)) {
                             return false;
@@ -523,7 +582,7 @@ export default function Messages() {
                             .filter(Boolean)
                             .some((value) => value!.toLowerCase().includes(globalSearch.toLowerCase()));
                         })
-                        .map((conv: any) => (
+                        .map((conv) => (
                           <button
                             key={`${conv.subscriptionId}-${conv.tutorId}`}
                             onClick={async () => {
@@ -533,17 +592,20 @@ export default function Messages() {
                                 setSelectedTutorId(conv.tutorId);
                               } else {
                                 // Create conversation if it doesn't exist
-                                try {
-                                  const result = await createConversationMutation.mutateAsync({
-                                    parentId: conv.parentId,
-                                    tutorId: conv.tutorId,
-                                    studentId: conv.subscriptionId,
-                                  });
-                                  setSelectedConversationId(result.conversationId);
-                                  setSelectedStudentId(conv.subscriptionId);
-                                  setSelectedTutorId(conv.tutorId);
-                                } catch (error) {
-                                  toast.error("Failed to create conversation");
+                                if (conv.tutorId && conv.subscriptionId) {
+                                  try {
+                                    const result = await createConversationMutation.mutateAsync({
+                                      parentId: conv.parentId,
+                                      tutorId: conv.tutorId,
+                                      studentId: conv.subscriptionId,
+                                    });
+                                    const convId = typeof result === "number" ? result : (result as unknown as { conversationId: number }).conversationId;
+                                    setSelectedConversationId(convId);
+                                    setSelectedStudentId(conv.subscriptionId);
+                                    setSelectedTutorId(conv.tutorId);
+                                  } catch (error) {
+                                    toast.error("Failed to create conversation");
+                                  }
                                 }
                               }
                             }}
@@ -610,7 +672,7 @@ export default function Messages() {
                       </div>
                     ) : filteredStudents.length > 0 ? (
                       <div>
-                        {filteredStudents.map((student) => (
+                        {filteredStudents.map((student: StudentWithTutors) => (
                           <button
                             key={student.id}
                             onClick={() => {
@@ -632,7 +694,7 @@ export default function Messages() {
                               </p>
                             </div>
                             {(() => {
-                              const total = (student.tutors as any[]).reduce((sum: number, t: any) =>
+                              const total = (student.tutors as TutorInfo[]).reduce((sum: number, t: TutorInfo) =>
                                 sum + (t.conversationId && !readConversationIds.has(t.conversationId) ? (t.unreadCount || 0) : 0), 0
                               );
                               return total > 0 ? (
@@ -683,7 +745,7 @@ export default function Messages() {
                     {selectedStudent ? (
                       filteredTutors.length > 0 ? (
                         <div>
-                          {filteredTutors.map((tutor: any) => (
+                          {filteredTutors.map((tutor: TutorInfo) => (
                             <button
                               key={`${tutor.id || 'unassigned'}-${tutor.studentId}`}
                               onClick={() => handleTutorSelect(tutor.id, tutor.studentId)}
@@ -701,9 +763,9 @@ export default function Messages() {
                                 {(tutor.courseTitles || [tutor.courseTitle]).filter(Boolean).join(", ")}
                               </p>
                             </div>
-                            {tutor.conversationId && !readConversationIds.has(tutor.conversationId) && tutor.unreadCount > 0 && (
+                            {tutor.conversationId && !readConversationIds.has(tutor.conversationId) && (tutor.unreadCount ?? 0) > 0 && (
                               <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white px-1 flex-shrink-0">
-                                {tutor.unreadCount > 9 ? "9+" : tutor.unreadCount}
+                                {(tutor.unreadCount ?? 0) > 9 ? "9+" : tutor.unreadCount}
                               </span>
                             )}
                           </div>
@@ -743,7 +805,7 @@ export default function Messages() {
                     </div>
                   ) : filteredTutorListForUI.length > 0 ? (
                     <div>
-                      {filteredTutorListForUI.map((item) => (
+                      {filteredTutorListForUI.map((item: TutorConversation) => (
                         <button
                           key={item.conversationId ?? `sub-${item.studentId}`}
                           onClick={async () => {
@@ -836,18 +898,18 @@ export default function Messages() {
                       <span className="text-sm sm:text-base">
                         Chat with{" "}
                         {isTutor
-                          ? tutorListForUI.find((t) => t.conversationId === selectedConversationId)?.parentName || "Parent"
+                          ? tutorListForUI.find((t: TutorConversation) => t.conversationId === selectedConversationId)?.parentName || "Parent"
                           : isCoordinator
-                            ? coordinatorConversations?.find((c: any) => c.conversationId === selectedConversationId)?.tutorName || "Tutor"
+                            ? coordinatorConversations?.find((c) => c.conversationId === selectedConversationId)?.tutorName || "Tutor"
                             : selectedTutor?.name || "Tutor"}
                       </span>
                     </div>
                     <p className="text-xs sm:text-sm font-normal text-muted-foreground mt-1">
                       {isTutor
-                        ? tutorListForUI.find((t) => t.conversationId === selectedConversationId)?.studentName || "Student"
+                        ? tutorListForUI.find((t: TutorConversation) => t.conversationId === selectedConversationId)?.studentName || "Student"
                         : isCoordinator
                           ? (() => {
-                              const conv = coordinatorConversations?.find((c: any) => c.conversationId === selectedConversationId);
+                              const conv = coordinatorConversations?.find((c) => c.conversationId === selectedConversationId);
                               return conv ? `${conv.courseTitle}: ${conv.studentFirstName} ${conv.studentLastName}` : "Student";
                             })()
                           : `About ${selectedStudent?.firstName} ${selectedStudent?.lastName}`}

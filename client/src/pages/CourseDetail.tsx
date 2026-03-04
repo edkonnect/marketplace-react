@@ -234,7 +234,7 @@ export default function CourseDetail() {
     setIsTrialDialogOpen(true);
   };
 
-  const handleTrialBookingComplete = (scheduledAt: number) => {
+  const handleTrialBookingComplete = (scheduledAt: number | undefined) => {
     if (!selectedTrialTutorId || !scheduledAt) {
       toast.error("Please select a time slot");
       return;
