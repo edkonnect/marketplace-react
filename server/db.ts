@@ -1913,9 +1913,13 @@ export async function createConversation(conversation: InsertConversation) {
 
   if (!insertId) {
     // Driver didn't return insertId — fetch the row we just inserted
+    if (conversation.conversationType === 'parent_coordinator' && conversation.coordinatorId) {
+      const fetched = await getConversationByParentAndCoordinator(conversation.parentId, conversation.coordinatorId);
+      return fetched ? fetched.id : null;
+    }
     const fetched = await getConversationByStudentAndTutor(
       conversation.parentId,
-      conversation.tutorId,
+      conversation.tutorId!,
       conversation.studentId!
     );
     return fetched ? fetched.id : null;
