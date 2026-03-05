@@ -1,4 +1,4 @@
-import { eq, and, or, like, desc, asc, sql, gte, lte, lt, gt, inArray, isNotNull } from "drizzle-orm";
+import { eq, and, or, like, desc, asc, sql, gte, lte, lt, gt, inArray, isNotNull, ne } from "drizzle-orm";
 import { alias } from "drizzle-orm/mysql-core";
 import { drizzle } from "drizzle-orm/mysql2";
 import crypto from "crypto";
@@ -717,19 +717,37 @@ export async function createCoordinatorAssignment(assignment: InsertCoordinatorA
   if (!db) return null;
 
   try {
-    // First, deactivate any existing active assignments for this parent
+    // Deactivate any active assignments for this parent with a different coordinator
     await db
       .update(coordinatorAssignments)
       .set({ isActive: false })
       .where(and(
         eq(coordinatorAssignments.parentId, assignment.parentId),
+        ne(coordinatorAssignments.coordinatorId, assignment.coordinatorId),
         eq(coordinatorAssignments.isActive, true)
       ));
 
-    // Then create the new assignment
-    const result = await db.insert(coordinatorAssignments).values(assignment) as any;
+    // Check if a row already exists for this (coordinatorId, parentId) pair
+    const existing = await db
+      .select()
+      .from(coordinatorAssignments)
+      .where(and(
+        eq(coordinatorAssignments.coordinatorId, assignment.coordinatorId),
+        eq(coordinatorAssignments.parentId, assignment.parentId)
+      ))
+      .limit(1);
 
-    // Handle both array and direct object response from drizzle
+    if (existing.length > 0) {
+      // Reactivate the existing row instead of inserting a duplicate
+      await db
+        .update(coordinatorAssignments)
+        .set({ isActive: true, assignedAt: new Date(), assignedBy: assignment.assignedBy ?? null })
+        .where(eq(coordinatorAssignments.id, existing[0].id));
+      return existing[0].id;
+    }
+
+    // Insert a new assignment
+    const result = await db.insert(coordinatorAssignments).values(assignment) as any;
     const resultSetHeader = Array.isArray(result) ? result[0] : result;
 
     if (!resultSetHeader || !resultSetHeader.insertId) {
