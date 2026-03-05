@@ -169,7 +169,7 @@ export const coordinatorAssignments = mysqlTable("coordinator_assignments", {
 }, (table) => ({
   coordinatorIdIdx: index("coordinator_assignments_coordinatorId_idx").on(table.coordinatorId),
   parentIdIdx: index("coordinator_assignments_parentId_idx").on(table.parentId),
-  uniqueAssignment: uniqueIndex("coordinator_assignments_unique").on(table.coordinatorId, table.parentId, table.isActive),
+  uniqueAssignment: uniqueIndex("coordinator_assignments_unique").on(table.coordinatorId, table.parentId),
 }));
 
 export type CoordinatorAssignment = typeof coordinatorAssignments.$inferSelect;

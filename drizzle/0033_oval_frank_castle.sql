@@ -130,7 +130,7 @@ CREATE INDEX `sessions_courseId_idx` ON `sessions` (`courseId`);--> statement-br
 CREATE INDEX `coordinator_profiles_userId_idx` ON `coordinator_profiles` (`userId`);--> statement-breakpoint
 CREATE INDEX `coordinator_assignments_coordinatorId_idx` ON `coordinator_assignments` (`coordinatorId`);--> statement-breakpoint
 CREATE INDEX `coordinator_assignments_parentId_idx` ON `coordinator_assignments` (`parentId`);--> statement-breakpoint
-CREATE UNIQUE INDEX `coordinator_assignments_unique` ON `coordinator_assignments` (`coordinatorId`,`parentId`,`isActive`);--> statement-breakpoint
+CREATE UNIQUE INDEX `coordinator_assignments_unique` ON `coordinator_assignments` (`coordinatorId`,`parentId`);--> statement-breakpoint
 CREATE INDEX `conversations_coordinatorId_idx` ON `conversations` (`coordinatorId`);--> statement-breakpoint
 CREATE INDEX `zoom_recordings_meetingId_idx` ON `zoom_meeting_recordings` (`meetingId`);--> statement-breakpoint
 CREATE INDEX `zoom_recordings_sessionId_idx` ON `zoom_meeting_recordings` (`sessionId`);--> statement-breakpoint
