@@ -24,7 +24,7 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
-import { AnimatePresence, motion, type Variants } from "framer-motion";
+import { AnimatePresence, motion, useScroll, useTransform, type Variants } from "framer-motion";
 import useEmblaCarousel from "embla-carousel-react";
 import { StatNumber } from "@/components/motion-primitives/StatNumber";
 import { AnimatedTestimonials } from "@/components/ui/animated-testimonials";
@@ -78,23 +78,48 @@ const features = [
 ];
 
 const scrollReveal = {
-  initial: { opacity: 0, y: 30, scale: 0.98 },
-  whileInView: { opacity: 1, y: 0, scale: 1 },
-  viewport: { once: false, amount: 0.2 },
-  transition: { duration: 0.6, delay: 0.2, ease: [0.33, 1, 0.68, 1] },
+  initial: { opacity: 0, y: 36 },
+  whileInView: { opacity: 1, y: 0 },
+  viewport: { once: true, amount: 0.15 },
+  transition: { type: "spring", stiffness: 55, damping: 18, mass: 0.8 },
 } as const;
+
+const heroContainer: Variants = {
+  hidden: {},
+  visible: { transition: { staggerChildren: 0.15, delayChildren: 0.1 } },
+};
+
+const heroChild: Variants = {
+  hidden: { opacity: 0, y: 24 },
+  visible: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 70, damping: 18 } },
+};
+
+const cardContainer: Variants = {
+  hidden: {},
+  visible: { transition: { staggerChildren: 0.1 } },
+};
+
+const cardChild: Variants = {
+  hidden: { opacity: 0, y: 24 },
+  visible: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 65, damping: 18 } },
+};
 
 const listItemReveal: Variants = {
   hidden: { opacity: 0, x: -28 },
   visible: (i: number) => ({
     opacity: 1,
     x: 0,
-    transition: { duration: 0.5, delay: i * 0.16, ease: [0.33, 1, 0.68, 1] as const },
+    transition: { type: "spring", stiffness: 70, damping: 18, delay: i * 0.1 },
   }),
 };
 
 export default function Home() {
   const { isAuthenticated, user } = useAuth();
+
+  const heroRef = React.useRef<HTMLElement>(null);
+  const { scrollYProgress } = useScroll({ target: heroRef, offset: ["start start", "end start"] });
+  const heroBgY = useTransform(scrollYProgress, [0, 1], ["0%", "20%"]);
+  const heroContentOpacity = useTransform(scrollYProgress, [0, 0.7], [1, 0]);
 
   const [emblaRef, emblaApi] = useEmblaCarousel({ loop: true, align: "start", dragFree: true });
 
@@ -176,53 +201,65 @@ export default function Home() {
       <Navigation />
 
       {/* Hero Section */}
-      <motion.section className="relative py-20 lg:py-32 overflow-hidden mt-20" {...scrollReveal}>
-        {/* Background image */}
-        <div
-    className="absolute inset-0 z-0 bg-center bg-cover bg-no-repeat"
-    style={{ backgroundImage: "url(/images/connect_img.png)", backgroundPosition: "center 65%" }}
-  />
-       
+      <motion.section
+        ref={heroRef}
+        className="relative py-20 lg:py-32 overflow-hidden mt-20"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ type: "spring", stiffness: 60, damping: 20, mass: 1 }}
+      >
+        {/* Background image with parallax */}
+        <motion.div
+          className="absolute inset-0 z-0 bg-center bg-cover bg-no-repeat"
+          style={{ backgroundImage: "url(/images/connect_img.png)", backgroundPosition: "center 65%", y: heroBgY }}
+        />
+
         {/* Contrast overlay */}
         <div className="absolute inset-0 z-10 bg-gradient-to-b from-black/70 via-black/55 to-black/35" />
         <div className="absolute inset-0 z-20 backdrop-blur-[2px] saturate-90" />
 
-        <div className="container relative z-30">
-          <div className="max-w-3xl mx-auto text-center">
-          <h1 className="text-3xl sm:text-4xl lg:text-6xl font-bold mb-6 tracking-tight text-white text-center">
-  
-  {/* Line 1 */}
-  <span className="block">
-    Connect with Expert Tutors
-  </span>
+        <motion.div className="container relative z-30" style={{ opacity: heroContentOpacity }}>
+          <motion.div
+            className="max-w-3xl mx-auto text-center"
+            variants={heroContainer}
+            initial="hidden"
+            animate="visible"
+          >
+          <motion.h1
+            variants={heroChild}
+            className="text-3xl sm:text-4xl lg:text-6xl font-bold mb-6 tracking-tight text-white text-center"
+          >
+            {/* Line 1 */}
+            <span className="block">
+              Connect with Expert Tutors
+            </span>
 
-  {/* Line 2 */}
-  <span className="block whitespace-nowrap">
-    for{" "}
-    <span className="inline-block min-w-[1ch] align-baseline">
-      <AnimatePresence mode="wait">
-        <motion.span
-          key={phrases[index]}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.6, ease: "easeInOut" }}
-          className="inline-block"
-        >
-          {phrases[index]}
-        </motion.span>
-      </AnimatePresence>
-    </span>
-  </span>
+            {/* Line 2 */}
+            <span className="block whitespace-nowrap">
+              for{" "}
+              <span className="inline-block min-w-[1ch] align-baseline">
+                <AnimatePresence mode="wait">
+                  <motion.span
+                    key={phrases[index]}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.6, ease: "easeInOut" }}
+                    className="inline-block"
+                  >
+                    {phrases[index]}
+                  </motion.span>
+                </AnimatePresence>
+              </span>
+            </span>
+          </motion.h1>
 
-</h1>
-
-            <p className="text-lg lg:text-xl text-white/80 mb-8 leading-relaxed">
+            <motion.p variants={heroChild} className="text-lg lg:text-xl text-white/80 mb-8 leading-relaxed">
               EdKonnect Academy brings together dedicated parents and qualified tutors to create meaningful one-on-one learning
               experiences. Schedule sessions, track progress, and communicate seamlessly—all in one platform.
-            </p>
+            </motion.p>
 
-            <div className="flex flex-col sm:flex-row gap-4 justify-center">
+            <motion.div variants={heroChild} className="flex flex-col sm:flex-row gap-4 justify-center">
               {isAuthenticated ? (
                 <Button asChild size="lg" className="text-lg px-8">
                   <Link href={getDashboardLink()}>Go to Dashboard</Link>
@@ -242,9 +279,9 @@ export default function Home() {
                   </Button>
                 </>
               )}
-            </div>
-          </div>
-        </div>
+            </motion.div>
+          </motion.div>
+        </motion.div>
       </motion.section>
 
       {/* Features Section */}
@@ -310,19 +347,24 @@ export default function Home() {
             </p>
           </div>
 
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-6 max-w-5xl mx-auto">
+          <motion.div
+            className="grid grid-cols-2 lg:grid-cols-4 gap-6 max-w-5xl mx-auto"
+            variants={cardContainer}
+            initial="hidden"
+            whileInView="visible"
+            viewport={{ once: true, amount: 0.15 }}
+          >
             {stats.map((stat) => (
-              <Card
-                key={stat.id}
-                className="text-center p-8 hover:shadow-elegant transition-all duration-600 border-border/50"
-              >
-                <CardContent className="p-0">
-                  <StatNumber value={stat.value} />
-                  <div className="text-sm lg:text-base text-muted-foreground font-medium">{stat.label}</div>
-                </CardContent>
-              </Card>
+              <motion.div key={stat.id} variants={cardChild}>
+                <Card className="text-center p-8 hover:shadow-elegant transition-all duration-600 border-border/50">
+                  <CardContent className="p-0">
+                    <StatNumber value={stat.value} />
+                    <div className="text-sm lg:text-base text-muted-foreground font-medium">{stat.label}</div>
+                  </CardContent>
+                </Card>
+              </motion.div>
             ))}
-          </div>
+          </motion.div>
         </div>
       </motion.section>
 
@@ -336,38 +378,43 @@ export default function Home() {
             </p>
           </div>
 
-          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+          <motion.div
+            className="grid md:grid-cols-2 lg:grid-cols-4 gap-6"
+            variants={cardContainer}
+            initial="hidden"
+            whileInView="visible"
+            viewport={{ once: true, amount: 0.1 }}
+          >
             {featuredCoursesData.map((course, index) => {
               const IconComponent = course.icon ? iconMap[course.icon] : TrendingUp;
               const isAccent = index % 2 === 1;
 
               return (
-                <Card
-                  key={course.id}
-                  className="border-border/50 hover:border-primary/50 transition-all duration-300 hover:shadow-elegant group"
-                >
-                  <CardContent className="pt-6">
-                    <div
-                      className={`w-14 h-14 rounded-xl bg-gradient-to-br ${
-                        isAccent ? "from-accent/20 to-accent/10" : "from-primary/20 to-primary/10"
-                      } flex items-center justify-center mb-4 group-hover:scale-110 transition-transform`}
-                    >
-                      <IconComponent className={`w-7 h-7 ${isAccent ? "text-accent" : "text-primary"}`} />
-                    </div>
-                    <h3 className="text-xl font-semibold mb-2">{course.title}</h3>
-                    <p className="text-sm text-muted-foreground mb-4">{course.description}</p>
-                    <div className="flex items-center justify-between pt-4 border-t border-border">
-                      <span className="text-sm text-muted-foreground">From</span>
-                      <span className="text-lg font-bold text-primary">${course.priceFrom}/hr</span>
-                    </div>
-                    <Button asChild className="w-full mt-4" variant="outline">
-                      <Link href="/courses">View Courses</Link>
-                    </Button>
-                  </CardContent>
-                </Card>
+                <motion.div key={course.id} variants={cardChild}>
+                  <Card className="border-border/50 hover:border-primary/50 transition-all duration-300 hover:shadow-elegant group h-full">
+                    <CardContent className="pt-6">
+                      <div
+                        className={`w-14 h-14 rounded-xl bg-gradient-to-br ${
+                          isAccent ? "from-accent/20 to-accent/10" : "from-primary/20 to-primary/10"
+                        } flex items-center justify-center mb-4 group-hover:scale-110 transition-transform`}
+                      >
+                        <IconComponent className={`w-7 h-7 ${isAccent ? "text-accent" : "text-primary"}`} />
+                      </div>
+                      <h3 className="text-xl font-semibold mb-2">{course.title}</h3>
+                      <p className="text-sm text-muted-foreground mb-4">{course.description}</p>
+                      <div className="flex items-center justify-between pt-4 border-t border-border">
+                        <span className="text-sm text-muted-foreground">From</span>
+                        <span className="text-lg font-bold text-primary">${course.priceFrom}/hr</span>
+                      </div>
+                      <Button asChild className="w-full mt-4" variant="outline">
+                        <Link href="/courses">View Courses</Link>
+                      </Button>
+                    </CardContent>
+                  </Card>
+                </motion.div>
               );
             })}
-          </div>
+          </motion.div>
         </div>
       </motion.section>
 

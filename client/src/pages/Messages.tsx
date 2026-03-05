@@ -86,6 +86,7 @@ export default function Messages() {
   const [readConversationIds, setReadConversationIds] = useState<Set<number>>(new Set());
   const [showCoordinatorCard, setShowCoordinatorCard] = useState(false);
   const [coordinatorConversationId, setCoordinatorConversationId] = useState<number | null>(null);
+  const [fabBubbleDismissed, setFabBubbleDismissed] = useState(false);
   const RECENCY_MS = 10 * 24 * 60 * 60 * 1000;
 
   // Get parentId from URL query params if coordinator is filtering
@@ -490,21 +491,49 @@ export default function Messages() {
 
         {/* Floating Button to message coordinator */}
         {isParent && coordinator && (
-          <button
-            onClick={handleCoordinatorChat}
-            disabled={conversationLoading}
-            className="fixed bottom-6 right-6 z-40 h-14 w-14 rounded-full bg-primary text-primary-foreground shadow-lg hover:shadow-xl transition-all hover:scale-105 flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
-            title="Message your coordinator"
-          >
-            <span className="relative">
-              <MessageSquare className="w-6 h-6" />
-              {coordinatorUnreadCount > 0 && (
-                <span className="absolute -top-2 -right-2 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white">
-                  {coordinatorUnreadCount > 9 ? "9+" : coordinatorUnreadCount}
-                </span>
-              )}
-            </span>
-          </button>
+          <div className="fixed bottom-6 right-6 z-40 flex flex-col items-end gap-3">
+            {/* Welcome popup bubble — shown above FAB until first real message is sent */}
+            {!fabBubbleDismissed && !coordinatorConversationData?.lastMessageAt && (
+              <div className="fab-welcome-popup relative max-w-[220px] rounded-2xl rounded-br-sm bg-primary text-primary-foreground px-4 py-3 shadow-xl">
+                {/* tail pointing down-right toward FAB */}
+                <span className="absolute -bottom-2 right-4 w-0 h-0"
+                  style={{
+                    borderLeft: "8px solid transparent",
+                    borderRight: "4px solid transparent",
+                    borderTop: "10px solid oklch(0.48 0.18 250)",
+                  }}
+                />
+                <button
+                  onClick={() => setFabBubbleDismissed(true)}
+                  className="absolute top-1.5 right-1.5 opacity-60 hover:opacity-100 transition-opacity"
+                  title="Dismiss"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+                <p className="text-xs font-semibold leading-snug pr-4">
+                  Hey! {coordinator.firstName} has been assigned as your coordinator.
+                </p>
+                <p className="text-xs opacity-90 mt-0.5 leading-snug">
+                  Tap to say hello whenever you're ready.
+                </p>
+              </div>
+            )}
+            <button
+              onClick={handleCoordinatorChat}
+              disabled={conversationLoading}
+              className="h-14 w-14 rounded-full bg-primary text-primary-foreground shadow-lg hover:shadow-xl transition-all hover:scale-105 flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Message your coordinator"
+            >
+              <span className="relative">
+                <MessageSquare className="w-6 h-6" />
+                {coordinatorUnreadCount > 0 && (
+                  <span className="absolute -top-2 -right-2 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white">
+                    {coordinatorUnreadCount > 9 ? "9+" : coordinatorUnreadCount}
+                  </span>
+                )}
+              </span>
+            </button>
+          </div>
         )}
 
         <div className="mb-4 sm:mb-6 space-y-3 sm:space-y-4">
