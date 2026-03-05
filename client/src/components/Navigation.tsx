@@ -101,7 +101,11 @@ export default function Navigation() {
       }`}
     >
       <div className="mx-4 mt-4">
-        <div className="container mx-auto bg-card/80 backdrop-blur-md border border-border/50 rounded-2xl shadow-lg">
+        <div
+          className="container mx-auto rounded-2xl border border-primary/25 bg-gradient-to-r from-white/92 via-primary/8 to-white/92
+                     dark:from-slate-900/90 dark:via-primary/15 dark:to-slate-900/90
+                     backdrop-blur-lg shadow-xl shadow-primary/10"
+        >
           <div className="flex items-center justify-between h-16 px-6">
           {/* Logo */}
           <Link href="/" className="flex items-center gap-2 text-xl font-semibold text-primary hover:text-primary/80 transition-colors">

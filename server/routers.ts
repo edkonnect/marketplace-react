@@ -4534,6 +4534,102 @@ export const appRouter = router({
 
         return { success: true };
       }),
+
+    /**
+     * Create session notes from AI-processed transcript
+     */
+    createFromTranscript: tutorProcedure
+      .input(z.object({
+        sessionId: z.number(),
+        transcript: z.string(),
+        processedData: z.object({
+          progressSummary: z.string(),
+          challenges: z.string().optional(),
+          nextSteps: z.string().optional(),
+          topicsCovered: z.array(z.string()),
+          homework: z.string().optional(),
+        }),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        // Verify the session belongs to this tutor
+        const session = await db.getSessionById(input.sessionId);
+        if (!session) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'Session not found' });
+        }
+        if (session.tutorId !== ctx.user.id) {
+          throw new TRPCError({ code: 'FORBIDDEN', message: 'You can only add notes to your own sessions' });
+        }
+
+        // Check if note already exists for this session
+        const existing = await db.getSessionNoteBySessionId(input.sessionId);
+
+        let note;
+        if (existing) {
+          // Update existing note
+          note = await db.updateSessionNote(existing.id, {
+            progressSummary: input.processedData.progressSummary,
+            challenges: input.processedData.challenges || null,
+            nextSteps: input.processedData.nextSteps || null,
+            homework: input.processedData.homework || null,
+            transcript: input.transcript,
+            topicsCovered: JSON.stringify(input.processedData.topicsCovered),
+          });
+        } else {
+          // Create new session note with AI-generated content
+          note = await db.createSessionNote({
+            sessionId: input.sessionId,
+            tutorId: ctx.user.id,
+            parentId: session.parentId,
+            progressSummary: input.processedData.progressSummary,
+            challenges: input.processedData.challenges || null,
+            nextSteps: input.processedData.nextSteps || null,
+            homework: input.processedData.homework || null,
+            transcript: input.transcript,
+            topicsCovered: JSON.stringify(input.processedData.topicsCovered),
+          });
+        }
+
+        if (!note) {
+          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to save session note' });
+        }
+
+        // Send email notification to parent
+        try {
+          const parent = await db.getUserById(session.parentId);
+          const tutor = await db.getUserById(ctx.user.id);
+
+          if (parent && tutor && parent.name && tutor.name) {
+            const sessionDate = new Date(session.scheduledAt);
+            const emailHtml = await sendSessionNotesEmail({
+              parentName: parent.name,
+              tutorName: tutor.name,
+              sessionDate: sessionDate.toLocaleDateString('en-US', {
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric'
+              }),
+              sessionTime: sessionDate.toLocaleTimeString('en-US', {
+                hour: 'numeric',
+                minute: '2-digit',
+                hour12: true
+              }),
+              progressSummary: input.processedData.progressSummary,
+              homework: input.processedData.homework || undefined,
+              challenges: input.processedData.challenges || undefined,
+              nextSteps: input.processedData.nextSteps || undefined,
+              notesUrl: `https://your-domain.com/session-notes`,
+              attachments: [],
+            });
+
+            console.log('[Email Service] AI-generated session notes email sent');
+          }
+        } catch (emailError) {
+          console.error("[Session Notes] Failed to send email notification:", emailError);
+          // Don't fail the mutation if email fails
+        }
+
+        return note;
+      }),
   }),
 
   // Course Management (Admin)
@@ -5146,6 +5242,252 @@ export const appRouter = router({
   /**
    * Notifications router - in-app notifications for users
    */
+  /**
+   * AI utilities router - AI-powered features
+   */
+  ai: router({
+    /**
+     * Summarize text using AI (tutor only)
+     */
+    summarizeText: tutorProcedure
+      .input(z.object({
+        text: z.string().min(1, "Text cannot be empty"),
+        maxLength: z.number().optional().default(150),
+      }))
+      .mutation(async ({ input }) => {
+        const { ENV } = await import("./_core/env");
+        const { GoogleGenerativeAI } = await import("@google/generative-ai");
+
+        if (!ENV.geminiApiKey) {
+          throw new TRPCError({
+            code: 'INTERNAL_SERVER_ERROR',
+            message: 'Gemini API key is not configured. Please add GEMINI_API_KEY to your .env file.'
+          });
+        }
+
+        try {
+          const genAI = new GoogleGenerativeAI(ENV.geminiApiKey);
+          // Using gemini-2.5-flash (latest fast model)
+          const model = genAI.getGenerativeModel({
+            model: "gemini-2.5-flash"
+          });
+
+          const prompt = `You are a helpful assistant that summarizes tutor session notes. Create concise, professional summaries that capture the key points while maintaining clarity. Focus on student progress, challenges, and next steps.
+
+Please summarize the following tutor session notes in approximately ${input.maxLength} words or less. Keep it professional and focused on the most important points:
+
+${input.text}`;
+
+          const result = await model.generateContent(prompt);
+          const response = result.response;
+          const summary = response.text();
+
+          if (!summary) {
+            throw new TRPCError({
+              code: 'INTERNAL_SERVER_ERROR',
+              message: 'Failed to generate summary'
+            });
+          }
+
+          return { summary };
+        } catch (error: any) {
+          console.error('[AI Summarize] Error:', error);
+
+          // Handle invalid API key
+          if (error?.message?.includes('API_KEY_INVALID') || error?.message?.includes('API key')) {
+            throw new TRPCError({
+              code: 'INTERNAL_SERVER_ERROR',
+              message: 'Invalid Gemini API key. Please check your GEMINI_API_KEY in .env file.'
+            });
+          }
+
+          // Handle quota/rate limit errors
+          if (error?.message?.includes('quota') || error?.message?.includes('RATE_LIMIT')) {
+            throw new TRPCError({
+              code: 'INTERNAL_SERVER_ERROR',
+              message: 'Gemini API quota exceeded. Please check your usage at aistudio.google.com'
+            });
+          }
+
+          throw new TRPCError({
+            code: 'INTERNAL_SERVER_ERROR',
+            message: error instanceof Error ? error.message : 'Failed to summarize text'
+          });
+        }
+      }),
+
+    /**
+     * Process Zoom transcript and generate structured session notes
+     */
+    processTranscript: tutorProcedure
+      .input(z.object({
+        transcript: z.string().min(50, "Transcript too short (minimum 50 characters)"),
+        sessionId: z.number(),
+        studentName: z.string().optional(),
+        courseName: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const { ENV } = await import("./_core/env");
+        const { GoogleGenerativeAI } = await import("@google/generative-ai");
+
+        if (!ENV.geminiApiKey) {
+          throw new TRPCError({
+            code: 'INTERNAL_SERVER_ERROR',
+            message: 'Gemini API key is not configured.'
+          });
+        }
+
+        try {
+          const genAI = new GoogleGenerativeAI(ENV.geminiApiKey);
+          const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+
+          // Create structured prompt for transcript analysis
+          const prompt = `You are an expert educational assistant analyzing a tutoring session transcript.
+
+STUDENT: ${input.studentName || 'Student'}
+COURSE: ${input.courseName || 'General'}
+
+TRANSCRIPT:
+${input.transcript}
+
+CRITICAL: You must respond with ONLY valid JSON. Do not include any explanatory text before or after the JSON.
+
+Analyze this transcript and provide a structured response in EXACTLY this JSON format:
+
+{
+  "progressSummary": "Brief summary of what the student learned and accomplished during this session (2-3 sentences)",
+  "challenges": "Areas where the student struggled or needed help (bullet points or brief paragraph)",
+  "nextSteps": "Specific recommendations for the next session and areas to focus on",
+  "topicsCovered": ["Topic 1", "Topic 2", "Topic 3"],
+  "homework": {
+    "assignments": [
+      {
+        "title": "Assignment title",
+        "description": "What the student should do",
+        "estimatedTime": "15-20 minutes"
+      }
+    ],
+    "summary": "Brief overview of all homework (1-2 sentences)"
+  }
+}
+
+Focus on:
+- Being specific and actionable
+- Highlighting key learning moments
+- Identifying 3-5 main topics covered
+- Creating homework that reinforces session concepts
+- Keeping tone professional but encouraging
+
+Return ONLY the JSON object, nothing else.`;
+
+          const result = await model.generateContent(prompt);
+          const response = result.response;
+          const text = response.text();
+
+          // Log token usage for monitoring
+          const usageMetadata = response.usageMetadata;
+          if (usageMetadata) {
+            console.log('[AI Token Usage]', {
+              promptTokens: usageMetadata.promptTokenCount,
+              responseTokens: usageMetadata.candidatesTokenCount,
+              totalTokens: usageMetadata.totalTokenCount,
+              transcriptSize: input.transcript.length,
+            });
+          }
+
+          // Parse JSON response (handle markdown code blocks)
+          let jsonText = text.trim();
+
+          // Remove markdown code blocks
+          if (jsonText.startsWith('```json')) {
+            jsonText = jsonText.replace(/```json\n?/g, '').replace(/```\n?/g, '');
+          } else if (jsonText.startsWith('```')) {
+            jsonText = jsonText.replace(/```\n?/g, '');
+          }
+
+          // Remove any leading/trailing non-JSON text
+          const jsonStart = jsonText.indexOf('{');
+          const jsonEnd = jsonText.lastIndexOf('}');
+          if (jsonStart !== -1 && jsonEnd !== -1) {
+            jsonText = jsonText.substring(jsonStart, jsonEnd + 1);
+          }
+
+          let parsed;
+          try {
+            parsed = JSON.parse(jsonText);
+          } catch (parseError) {
+            // Log the problematic response for debugging
+            console.error('[AI Process Transcript] Failed to parse JSON:', jsonText.substring(0, 500));
+            throw new TRPCError({
+              code: 'INTERNAL_SERVER_ERROR',
+              message: 'AI returned invalid format. Please try again or use a shorter transcript.'
+            });
+          }
+
+          // Validate required fields
+          if (!parsed.progressSummary) {
+            throw new TRPCError({
+              code: 'INTERNAL_SERVER_ERROR',
+              message: 'AI response missing required fields. Please try again.'
+            });
+          }
+
+          // Normalize challenges to string (handle array or string)
+          let challengesText = '';
+          if (parsed.challenges) {
+            if (Array.isArray(parsed.challenges)) {
+              challengesText = parsed.challenges.map((c: any, idx: number) => `${idx + 1}. ${c}`).join('\n');
+            } else {
+              challengesText = String(parsed.challenges);
+            }
+          }
+
+          // Normalize nextSteps to string (handle array or string)
+          let nextStepsText = '';
+          if (parsed.nextSteps) {
+            if (Array.isArray(parsed.nextSteps)) {
+              nextStepsText = parsed.nextSteps.map((s: any, idx: number) => `${idx + 1}. ${s}`).join('\n');
+            } else {
+              nextStepsText = String(parsed.nextSteps);
+            }
+          }
+
+          // Format homework for storage
+          const homeworkText = parsed.homework?.assignments
+            ? parsed.homework.assignments
+                .map((hw: any, idx: number) =>
+                  `${idx + 1}. ${hw.title}\n   ${hw.description}\n   Estimated time: ${hw.estimatedTime}`
+                )
+                .join('\n\n')
+            : '';
+
+          return {
+            progressSummary: String(parsed.progressSummary || ''),
+            challenges: challengesText,
+            nextSteps: nextStepsText,
+            topicsCovered: parsed.topicsCovered || [],
+            homework: homeworkText,
+            rawResponse: parsed, // Include full response for debugging
+          };
+        } catch (error: any) {
+          console.error('[AI Process Transcript] Error:', error);
+
+          // Handle parsing errors
+          if (error instanceof SyntaxError) {
+            throw new TRPCError({
+              code: 'INTERNAL_SERVER_ERROR',
+              message: 'Failed to parse AI response. Please try again.'
+            });
+          }
+
+          throw new TRPCError({
+            code: 'INTERNAL_SERVER_ERROR',
+            message: error instanceof Error ? error.message : 'Failed to process transcript'
+          });
+        }
+      }),
+  }),
+
   notifications: router({
     /**
      * Get notifications for current user

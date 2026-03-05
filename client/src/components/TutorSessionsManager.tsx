@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Calendar, Clock, ChevronDown, ChevronUp, FileText, Download } from "lucide-react";
+import { Calendar, Clock, ChevronDown, ChevronUp, FileText, Download, Sparkles } from "lucide-react";
 import { formatSessionTime } from "@/../../shared/timezone-utils";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
@@ -13,7 +13,7 @@ interface TutorSessionsManagerProps {
   upcomingSessions: any[];
   sessionNotes: Record<number, string>;
   setSessionNotes: React.Dispatch<React.SetStateAction<Record<number, string>>>;
-  handleOpenCompletionDialog: (sessionId: number, feedbackFromTutor?: string | null) => void;
+  handleOpenCompletionDialog: (sessionId: number, feedbackFromTutor?: string | null, joinUrl?: string | null) => void;
   updateSessionMutation: any;
   canComplete: (session: any) => boolean;
   statusVariant: (status?: string | null) => "default" | "secondary" | "outline" | "destructive";
@@ -32,6 +32,24 @@ export function TutorSessionsManager({
 }: TutorSessionsManagerProps) {
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
   const [fetchingTranscripts, setFetchingTranscripts] = useState<Record<number, boolean>>({});
+  const [summarizingSessionId, setSummarizingSessionId] = useState<number | null>(null);
+
+  const summarizeMutation = trpc.ai.summarizeText.useMutation({
+    onSuccess: (data) => {
+      if (summarizingSessionId !== null) {
+        setSessionNotes((prev) => ({
+          ...prev,
+          [summarizingSessionId]: data.summary,
+        }));
+      }
+      setSummarizingSessionId(null);
+      toast.success("Notes summarized successfully!");
+    },
+    onError: (error) => {
+      setSummarizingSessionId(null);
+      toast.error("Failed to summarize notes: " + error.message);
+    },
+  });
 
   // Use tutor's timezone or fallback to browser timezone
   const timezone = tutorTimezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -81,6 +99,18 @@ export function TutorSessionsManager({
       ...prev,
       [key]: !prev[key],
     }));
+  };
+
+  const handleSummarize = (sessionId: number, text: string) => {
+    if (!text || text.trim().length < 10) {
+      toast.error("Please add more content before summarizing");
+      return;
+    }
+    setSummarizingSessionId(sessionId);
+    summarizeMutation.mutate({
+      text,
+      maxLength: 150
+    });
   };
 
   // Group sessions by student
@@ -146,7 +176,6 @@ export function TutorSessionsManager({
   return (
     <div className="space-y-6">
       {Object.entries(groupedSessions).map(([key, group]) => {
-        const scheduledSessions = group.sessions.filter((s) => s.status === "scheduled");
         const isExpanded = expandedGroups[key];
         const firstSession = group.sessions[0];
         const lastSession = group.sessions[group.sessions.length - 1];
@@ -257,7 +286,7 @@ export function TutorSessionsManager({
                     {canComplete(session) && (
                       <Button
                         size="sm"
-                        onClick={() => handleOpenCompletionDialog(session.id, session.feedbackFromTutor)}
+                        onClick={() => handleOpenCompletionDialog(session.id, session.feedbackFromTutor, session.joinUrl)}
                         disabled={updateSessionMutation.isPending}
                       >
                         Complete Session
@@ -277,6 +306,7 @@ export function TutorSessionsManager({
                             }))
                           }
                           placeholder="Add notes/summary for the student"
+                          className="min-h-[100px]"
                         />
                         <div className="flex flex-wrap gap-2">
                           <Button
@@ -301,6 +331,24 @@ export function TutorSessionsManager({
                               <>
                                 <FileText className="w-4 h-4 mr-2" />
                                 Fetch Transcript
+                              </>
+                            )}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleSummarize(session.id, noteValue)}
+                            disabled={summarizingSessionId === session.id || !noteValue || noteValue.trim().length < 10}
+                          >
+                            {summarizingSessionId === session.id ? (
+                              <>
+                                <span className="animate-spin mr-2">⚡</span>
+                                Summarizing...
+                              </>
+                            ) : (
+                              <>
+                                <Sparkles className="w-4 h-4 mr-2" />
+                                Summarize with AI
                               </>
                             )}
                           </Button>
@@ -333,6 +381,24 @@ export function TutorSessionsManager({
                             }
                           >
                             Save Notes
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleSummarize(session.id, noteValue)}
+                            disabled={summarizingSessionId === session.id || !noteValue || noteValue.trim().length < 10}
+                          >
+                            {summarizingSessionId === session.id ? (
+                              <>
+                                <span className="animate-spin mr-2">⚡</span>
+                                Summarizing...
+                              </>
+                            ) : (
+                              <>
+                                <Sparkles className="w-4 h-4 mr-2" />
+                                Summarize with AI
+                              </>
+                            )}
                           </Button>
                         </div>
                       </div>

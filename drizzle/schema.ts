@@ -592,6 +592,8 @@ export const sessionNotes = mysqlTable("session_notes", {
   homework: text("homework"), // Assigned homework or practice tasks
   challenges: text("challenges"), // Areas where student struggled
   nextSteps: text("nextSteps"), // Recommendations for next session
+  transcript: mediumtext("transcript"), // Raw Zoom transcript text (for AI processing, supports up to 16MB)
+  topicsCovered: text("topicsCovered"), // JSON array of topics covered in session
   parentNotified: boolean("parentNotified").default(false).notNull(), // Whether parent was emailed
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),

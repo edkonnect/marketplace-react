@@ -14,7 +14,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Link, useLocation } from "wouter";
-import { BookOpen, Calendar, MessageSquare, DollarSign, Users, Edit, Clock, FileText, Plus, Filter, Search, X, Globe } from "lucide-react";
+import { BookOpen, Calendar, MessageSquare, DollarSign, Users, Edit, Clock, FileText, Plus, Filter, Search, X, Sparkles, Globe } from "lucide-react";
 import { AvailabilityManager } from "@/components/AvailabilityManager";
 import { TimeBlockManager } from "@/components/TimeBlockManager";
 import { VideoUploadManager } from "@/components/VideoUploadManager";
@@ -71,9 +71,11 @@ export default function TutorDashboard() {
   );
 
   const [sessionNotes, setSessionNotes] = useState<Record<number, string>>({});
+  const [summarizingSessionId, setSummarizingSessionId] = useState<number | null>(null);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [completionDialogOpen, setCompletionDialogOpen] = useState(false);
   const [selectedSessionId, setSelectedSessionId] = useState<number | null>(null);
+  const [selectedSessionJoinUrl, setSelectedSessionJoinUrl] = useState<string | null>(null);
   const [completionType, setCompletionType] = useState<"completed" | "no_show">("completed");
   const [completionNotes, setCompletionNotes] = useState("");
   const [selectedYear, setSelectedYear] = useState<string>("all");
@@ -83,6 +85,13 @@ export default function TutorDashboard() {
   const [fetchingTranscripts, setFetchingTranscripts] = useState<Record<number, boolean>>({});
   type PreferenceState = { preferred: boolean; hourlyRate: string; approvalStatus?: string };
   const [preferenceState, setPreferenceState] = useState<Record<number, PreferenceState>>({});
+
+  // Transcript processing state
+  const [transcriptText, setTranscriptText] = useState<Record<number, string>>({});
+  const [processingTranscript, setProcessingTranscript] = useState<number | null>(null);
+  const [showTranscriptInput, setShowTranscriptInput] = useState<Record<number, boolean>>({});
+  const [processedNotes, setProcessedNotes] = useState<Record<number, any>>({});
+  const [aiProcessedSessions, setAiProcessedSessions] = useState<Set<number>>(new Set());
 
   const savePreferencesMutation = trpc.tutorCoursePreferences.saveMine.useMutation({
     onSuccess: () => {
@@ -103,17 +112,149 @@ export default function TutorDashboard() {
 
   const fetchTranscriptMutation = trpc.zoom.fetchTranscript.useMutation({
     onSuccess: (data, variables) => {
-      toast.success("Transcript fetched successfully!");
-      setFetchingTranscripts((prev) => ({ ...prev, [variables.sessionId || 0]: false }));
+      const sessionId = variables.sessionId || 0;
+      setSessionNotes((prev) => ({
+        ...prev,
+        [sessionId]: data.transcript || "",
+      }));
+      setFetchingTranscripts((prev) => ({ ...prev, [sessionId]: false }));
+      toast.success("Transcript loaded into notes!");
     },
     onError: (error, variables) => {
+      const sessionId = variables.sessionId || 0;
       const message = error.message || "Failed to fetch transcript";
       if (message.includes("No transcript available") || message.includes("not found")) {
-        toast.warning("Transcript is still processing. Please try again in a few minutes.");
+        setSessionNotes((prev) => ({
+          ...prev,
+          [sessionId]: "Transcript is still processing. It will be available once the recording is ready.",
+        }));
+        toast.warning("Transcript is still processing. Please check back after a few minutes.");
       } else {
+        setSessionNotes((prev) => ({
+          ...prev,
+          [sessionId]: "",
+        }));
         toast.error(message);
       }
-      setFetchingTranscripts((prev) => ({ ...prev, [variables.sessionId || 0]: false }));
+      setFetchingTranscripts((prev) => ({ ...prev, [sessionId]: false }));
+    },
+  });
+
+  const summarizeMutation = trpc.ai.summarizeText.useMutation({
+    onSuccess: (data) => {
+      if (summarizingSessionId !== null) {
+        setSessionNotes((prev) => ({
+          ...prev,
+          [summarizingSessionId]: data.summary,
+        }));
+      }
+      setSummarizingSessionId(null);
+      toast.success("Notes summarized successfully!");
+    },
+    onError: (error) => {
+      setSummarizingSessionId(null);
+      toast.error("Failed to summarize notes: " + error.message);
+    },
+  });
+
+  const handleSummarize = (sessionId: number, text: string) => {
+    if (!text || text.trim().length < 10) {
+      toast.error("Please add more content before summarizing");
+      return;
+    }
+    setSummarizingSessionId(sessionId);
+    summarizeMutation.mutate({
+      text,
+      maxLength: 150
+    });
+  };
+
+  // Transcript processing mutations
+  const processTranscriptMutation = trpc.ai.processTranscript.useMutation({
+    onSuccess: (data, variables) => {
+      setProcessedNotes((prev) => ({
+        ...prev,
+        [variables.sessionId]: data,
+      }));
+      setProcessingTranscript(null);
+      toast.success("Transcript processed! Review and save the generated notes.");
+    },
+    onError: (error) => {
+      setProcessingTranscript(null);
+      toast.error("Failed to process transcript: " + error.message);
+    },
+  });
+
+  const handleProcessTranscript = (sessionId: number, studentName: string, courseName: string) => {
+    const transcript = transcriptText[sessionId];
+    if (!transcript || transcript.trim().length < 50) {
+      toast.error("Please enter a valid transcript (at least 50 characters)");
+      return;
+    }
+
+    setProcessingTranscript(sessionId);
+    processTranscriptMutation.mutate({
+      transcript,
+      sessionId,
+      studentName,
+      courseName,
+    });
+  };
+
+  const saveProcessedNotesMutation = trpc.sessionNotes.createFromTranscript.useMutation({
+    onSuccess: (data, variables) => {
+      toast.success("Session notes saved successfully!");
+
+      // Update the manual session notes field with a formatted version of the AI-generated content
+      const processedData = processedNotes[variables.sessionId];
+      if (processedData) {
+        const formattedNotes = [
+          `📝 Progress Summary:\n${processedData.progressSummary}`,
+          processedData.topicsCovered && processedData.topicsCovered.length > 0
+            ? `\n\n📌 Topics Covered:\n${processedData.topicsCovered.map((topic: string) => `• ${topic}`).join('\n')}`
+            : '',
+          processedData.challenges ? `\n\n⚠️ Challenges:\n${processedData.challenges}` : '',
+          processedData.homework ? `\n\n📚 Homework:\n${processedData.homework}` : '',
+          processedData.nextSteps ? `\n\n💡 Next Steps:\n${processedData.nextSteps}` : '',
+        ].filter(Boolean).join('');
+
+        // Update the feedbackFromTutor field so it appears in manual notes
+        updateSessionMutation.mutate({
+          id: variables.sessionId,
+          feedbackFromTutor: formattedNotes
+        });
+
+        // Also update the local session notes state
+        setSessionNotes((prev) => ({
+          ...prev,
+          [variables.sessionId]: formattedNotes,
+        }));
+      }
+
+      // Mark this session as AI-processed to hide Summarize button
+      setAiProcessedSessions((prev) => new Set(prev).add(variables.sessionId));
+
+      refetchHistory();
+
+      // Clear processed notes and transcript for this session
+      setProcessedNotes((prev) => {
+        const updated = { ...prev };
+        delete updated[variables.sessionId];
+        return updated;
+      });
+      setTranscriptText((prev) => {
+        const updated = { ...prev };
+        delete updated[variables.sessionId];
+        return updated;
+      });
+      setShowTranscriptInput((prev) => {
+        const updated = { ...prev };
+        delete updated[variables.sessionId];
+        return updated;
+      });
+    },
+    onError: (error) => {
+      toast.error("Failed to save notes: " + error.message);
     },
   });
 
@@ -257,8 +398,9 @@ export default function TutorDashboard() {
     }
   };
 
-  const handleOpenCompletionDialog = (sessionId: number, existingNotes?: string | null) => {
+  const handleOpenCompletionDialog = (sessionId: number, existingNotes?: string | null, joinUrl?: string | null) => {
     setSelectedSessionId(sessionId);
+    setSelectedSessionJoinUrl(joinUrl || null);
     setCompletionNotes(existingNotes || "");
     setCompletionType("completed");
     setCompletionDialogOpen(true);
@@ -267,16 +409,29 @@ export default function TutorDashboard() {
   const handleCompleteSession = () => {
     if (!selectedSessionId) return;
 
+    const sessionId = selectedSessionId;
+    const joinUrl = selectedSessionJoinUrl;
+
     updateSessionMutation.mutate({
-      id: selectedSessionId,
+      id: sessionId,
       status: completionType as "completed" | "no_show",
       feedbackFromTutor: completionNotes || undefined,
     }, {
       onSuccess: () => {
         setCompletionDialogOpen(false);
         setSelectedSessionId(null);
+        setSelectedSessionJoinUrl(null);
         setCompletionNotes("");
         setCompletionType("completed");
+
+        // Auto-fetch transcript after session is marked complete
+        if (completionType === "completed" && joinUrl) {
+          setSessionNotes((prev) => ({
+            ...prev,
+            [sessionId]: "Transcript being fetched to process...",
+          }));
+          handleFetchTranscript(sessionId, joinUrl);
+        }
       }
     });
   };
@@ -1084,7 +1239,7 @@ export default function TutorDashboard() {
                                 {canComplete(session) && (
                                   <Button
                                     size="sm"
-                                    onClick={() => handleOpenCompletionDialog(session.id, session.feedbackFromTutor)}
+                                    onClick={() => handleOpenCompletionDialog(session.id, session.feedbackFromTutor, session.joinUrl)}
                                     disabled={updateSessionMutation.isPending}
                                   >
                                     Complete Session
@@ -1092,13 +1247,15 @@ export default function TutorDashboard() {
                                 )}
 
                                 {session.status === "completed" && (
-                                  <div className="mt-4 p-3 sm:p-4 rounded-lg border-l-4 border-blue-500 bg-blue-50 dark:bg-blue-950/20">
-                                    <div className="flex items-start gap-3">
-                                      <FileText className="w-5 h-5 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
-                                      <div className="flex-1 space-y-2">
-                                        <Label className="text-sm font-semibold text-blue-900 dark:text-blue-100">
-                                          Session Notes
-                                        </Label>
+                                  <>
+                                    {/* Session Notes Section */}
+                                    <div className="mt-4 p-3 sm:p-4 rounded-lg border-l-4 border-blue-500 bg-blue-50 dark:bg-blue-950/20">
+                                      <div className="flex items-start gap-3">
+                                        <FileText className="w-5 h-5 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
+                                        <div className="flex-1 space-y-2">
+                                          <Label className="text-sm font-semibold text-blue-900 dark:text-blue-100">
+                                            Session Notes
+                                          </Label>
                                         <Textarea
                                           value={noteValue}
                                           onChange={(e) =>
@@ -1110,7 +1267,7 @@ export default function TutorDashboard() {
                                           placeholder="What did you cover today? How did the student perform? Any homework assigned?"
                                           className="bg-white dark:bg-gray-900 min-h-[100px] text-sm"
                                         />
-                                        <div className="flex gap-2">
+                                        <div className="flex flex-wrap gap-2">
                                           <Button size="sm" onClick={saveNotes} disabled={updateSessionMutation.isPending}>
                                             <FileText className="w-3 h-3 mr-1" />
                                             Save Notes
@@ -1124,10 +1281,32 @@ export default function TutorDashboard() {
                                             <FileText className="w-3 h-3 mr-1" />
                                             {fetchingTranscripts[session.id] ? "Fetching..." : "Fetch Transcript"}
                                           </Button>
+                                          {/* Only show Summarize button if session hasn't been AI-processed */}
+                                          {!aiProcessedSessions.has(session.id) && (
+                                            <Button
+                                              size="sm"
+                                              variant="outline"
+                                              onClick={() => handleSummarize(session.id, noteValue)}
+                                              disabled={summarizingSessionId === session.id || !noteValue || noteValue.trim().length < 10}
+                                            >
+                                              {summarizingSessionId === session.id ? (
+                                                <>
+                                                  <span className="animate-spin mr-2">⚡</span>
+                                                  Summarizing...
+                                                </>
+                                              ) : (
+                                                <>
+                                                  <Sparkles className="w-3 h-3 mr-1" />
+                                                  Summarize
+                                                </>
+                                              )}
+                                            </Button>
+                                          )}
                                         </div>
                                       </div>
                                     </div>
                                   </div>
+                                  </>
                                 )}
 
                                 {session.status === "no_show" && (
@@ -1152,17 +1331,37 @@ export default function TutorDashboard() {
                                           placeholder="Add notes for the student (e.g., homework, materials to review)"
                                           className="bg-white dark:bg-gray-900 min-h-[100px] text-sm"
                                         />
-                                        <Button
-                                          size="sm"
-                                          onClick={saveNotes}
-                                          disabled={
-                                            updateSessionMutation.isPending ||
-                                            noteValue === (session.feedbackFromTutor ?? "")
-                                          }
-                                        >
-                                          <FileText className="w-3 h-3 mr-1" />
-                                          Save Notes
-                                        </Button>
+                                        <div className="flex gap-2">
+                                          <Button
+                                            size="sm"
+                                            onClick={saveNotes}
+                                            disabled={
+                                              updateSessionMutation.isPending ||
+                                              noteValue === (session.feedbackFromTutor ?? "")
+                                            }
+                                          >
+                                            <FileText className="w-3 h-3 mr-1" />
+                                            Save Notes
+                                          </Button>
+                                          <Button
+                                            size="sm"
+                                            variant="outline"
+                                            onClick={() => handleSummarize(session.id, noteValue)}
+                                            disabled={summarizingSessionId === session.id || !noteValue || noteValue.trim().length < 10}
+                                          >
+                                            {summarizingSessionId === session.id ? (
+                                              <>
+                                                <span className="animate-spin mr-2">⚡</span>
+                                                Summarizing...
+                                              </>
+                                            ) : (
+                                              <>
+                                                <Sparkles className="w-3 h-3 mr-1" />
+                                                Summarize
+                                              </>
+                                            )}
+                                          </Button>
+                                        </div>
                                       </div>
                                     </div>
                                   </div>
