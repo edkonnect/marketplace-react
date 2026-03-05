@@ -13,7 +13,7 @@ import { sendSessionNotesEmail } from "./session-notes-email";
 import { storagePut } from "./storage";
 import crypto from "crypto";
 import { and, eq } from "drizzle-orm";
-import { subscriptions as subscriptionsTable } from "../drizzle/schema";
+import { subscriptions as subscriptionsTable, tutorProfiles, users } from "../drizzle/schema";
 
 // Helper to check if user is a tutor
 const tutorProcedure = protectedProcedure.use(({ ctx, next }) => {
@@ -47,8 +47,36 @@ const coordinatorProcedure = protectedProcedure.use(({ ctx, next }) => {
   return next({ ctx });
 });
 
-function generateJoinUrl(sessionId: number) {
-  // Deterministic pseudo Zoom link so parent/tutor see the same URL without storing in DB
+/**
+ * Get tutor's permanent Zoom meeting URL
+ * Returns join URL for students or host URL for tutors
+ * Falls back to fake URL if tutor doesn't have Zoom meeting yet
+ */
+async function getTutorZoomUrl(tutorId: number, isHost: boolean = false): Promise<string | null> {
+  const database = await db.getDb();
+  if (!database) return null;
+
+  const profile = await database
+    .select({
+      joinUrl: tutorProfiles.zoomJoinUrl,
+      hostUrl: tutorProfiles.zoomHostUrl,
+    })
+    .from(tutorProfiles)
+    .where(eq(tutorProfiles.userId, tutorId))
+    .limit(1);
+
+  if (profile.length === 0 || !profile[0].joinUrl) {
+    return null; // Tutor doesn't have Zoom meeting yet
+  }
+
+  return isHost ? profile[0].hostUrl : profile[0].joinUrl;
+}
+
+/**
+ * Legacy fake URL generator for backwards compatibility
+ * Only used as fallback if tutor doesn't have real Zoom meeting yet
+ */
+function generateFallbackJoinUrl(sessionId: number) {
   const padded = sessionId.toString().padStart(9, "0");
   return `https://zoom.us/j/9${padded}`;
 }
@@ -124,6 +152,66 @@ export const appRouter = router({
     
     getMy: tutorProcedure.query(async ({ ctx }) => {
       return await db.getTutorProfileByUserId(ctx.user.id);
+    }),
+
+    /**
+     * Manually create/recreate Zoom meeting for a tutor
+     * Used when tutor doesn't have a Zoom meeting yet or wants to recreate it
+     */
+    createZoomMeeting: tutorProcedure.mutation(async ({ ctx }) => {
+      const userId = ctx.user.id;
+
+      const database = await db.getDb();
+      if (!database) {
+        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Database unavailable' });
+      }
+
+      // Get tutor info
+      const tutor = await database
+        .select({
+          firstName: users.firstName,
+          lastName: users.lastName,
+          email: users.email,
+        })
+        .from(tutorProfiles)
+        .innerJoin(users, eq(tutorProfiles.userId, users.id))
+        .where(eq(tutorProfiles.userId, userId))
+        .limit(1);
+
+      if (tutor.length === 0) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Tutor profile not found' });
+      }
+
+      const { firstName, lastName, email } = tutor[0];
+      const fullName = `${firstName} ${lastName}`;
+
+      const { createPermanentZoomMeeting } = await import('./zoom-service');
+      const zoomMeeting = await createPermanentZoomMeeting(fullName, email);
+
+      // Update profile
+      const updateData: any = {
+        zoomMeetingId: zoomMeeting.meetingId,
+        zoomJoinUrl: zoomMeeting.joinUrl,
+        zoomHostUrl: zoomMeeting.hostUrl,
+        zoomCreatedAt: new Date(),
+      };
+
+      // Only set password if it exists
+      if (zoomMeeting.password) {
+        updateData.zoomMeetingPassword = zoomMeeting.password;
+      }
+
+      await database
+        .update(tutorProfiles)
+        .set(updateData)
+        .where(eq(tutorProfiles.userId, userId));
+
+      return {
+        success: true,
+        joinUrl: zoomMeeting.joinUrl,
+        hostUrl: zoomMeeting.hostUrl,
+        password: zoomMeeting.password,
+      };
     }),
 
     getById: publicProcedure
@@ -1187,14 +1275,19 @@ export const appRouter = router({
         const allSessions = await Promise.all(
           assignments.map(async (assignment) => {
             const rows = await db.getUpcomingSessions(assignment.parentId, 'parent');
-            return rows.map((row: any) => ({
-              ...(row.session || row),
-              courseTitle: row.courseTitle,
-              tutorName: row.tutorName,
-              parentName: assignment.parent?.firstName + ' ' + assignment.parent?.lastName,
-              studentFirstName: row.studentFirstName,
-              studentLastName: row.studentLastName,
-              joinUrl: generateJoinUrl((row.session || row).id),
+            return await Promise.all(rows.map(async (row: any) => {
+              const session = row.session || row;
+              const isHost = false; // Coordinators/parents see join URL
+              const zoomUrl = await getTutorZoomUrl(session.tutorId, isHost);
+              return {
+                ...session,
+                courseTitle: row.courseTitle,
+                tutorName: row.tutorName,
+                parentName: assignment.parent?.firstName + ' ' + assignment.parent?.lastName,
+                studentFirstName: row.studentFirstName,
+                studentLastName: row.studentLastName,
+                joinUrl: zoomUrl || generateFallbackJoinUrl(session.id),
+              };
             }));
           })
         );
@@ -1203,40 +1296,55 @@ export const appRouter = router({
 
       const role = ctx.user.role === 'tutor' ? 'tutor' : 'parent';
       const rows = await db.getUpcomingSessions(ctx.user.id, role);
-      return rows.map((row: any) => ({
-        ...(row.session || row),
-        courseTitle: row.courseTitle,
-        tutorName: row.tutorName,
-        parentName: row.parentName,
-        studentFirstName: row.studentFirstName,
-        studentLastName: row.studentLastName,
-        joinUrl: generateJoinUrl((row.session || row).id),
+      const isHost = ctx.user.role === 'tutor';
+      return await Promise.all(rows.map(async (row: any) => {
+        const session = row.session || row;
+        const zoomUrl = await getTutorZoomUrl(session.tutorId, isHost);
+        return {
+          ...session,
+          courseTitle: row.courseTitle,
+          tutorName: row.tutorName,
+          parentName: row.parentName,
+          studentFirstName: row.studentFirstName,
+          studentLastName: row.studentLastName,
+          joinUrl: zoomUrl || generateFallbackJoinUrl(session.id),
+        };
       }));
     }),
 
     myHistory: protectedProcedure.query(async ({ ctx }) => {
       if (ctx.user.role === 'tutor') {
         const rows = await db.getCompletedSessionsByTutorId(ctx.user.id);
-        return rows.map((row: any) => ({
-          ...(row.session || row),
-          courseTitle: row.courseTitle,
-          courseSubject: row.courseSubject,
-          tutorName: row.tutorName,
-          parentName: row.parentName,
-          studentFirstName: row.studentFirstName,
-          studentLastName: row.studentLastName,
-          joinUrl: generateJoinUrl((row.session || row).id),
+        const isHost = true;
+        return await Promise.all(rows.map(async (row: any) => {
+          const session = row.session || row;
+          const zoomUrl = await getTutorZoomUrl(session.tutorId, isHost);
+          return {
+            ...session,
+            courseTitle: row.courseTitle,
+            courseSubject: row.courseSubject,
+            tutorName: row.tutorName,
+            parentName: row.parentName,
+            studentFirstName: row.studentFirstName,
+            studentLastName: row.studentLastName,
+            joinUrl: zoomUrl || generateFallbackJoinUrl(session.id),
+          };
         }));
       } else {
         const rows = await db.getCompletedSessionsByParentId(ctx.user.id);
-        return rows.map((row: any) => ({
-          ...(row.session || row),
-          courseTitle: row.courseTitle,
-          courseSubject: row.courseSubject,
-          tutorName: row.tutorName,
-          studentFirstName: row.studentFirstName,
-          studentLastName: row.studentLastName,
-          joinUrl: generateJoinUrl((row.session || row).id),
+        const isHost = false;
+        return await Promise.all(rows.map(async (row: any) => {
+          const session = row.session || row;
+          const zoomUrl = await getTutorZoomUrl(session.tutorId, isHost);
+          return {
+            ...session,
+            courseTitle: row.courseTitle,
+            courseSubject: row.courseSubject,
+            tutorName: row.tutorName,
+            studentFirstName: row.studentFirstName,
+            studentLastName: row.studentLastName,
+            joinUrl: zoomUrl || generateFallbackJoinUrl(session.id),
+          };
         }));
       }
     }),
@@ -1254,13 +1362,18 @@ export const appRouter = router({
         }
 
         const rows = await db.getUpcomingSessions(input.parentId, 'parent');
-        return rows.map((row: any) => ({
-          ...(row.session || row),
-          courseTitle: row.courseTitle,
-          tutorName: row.tutorName,
-          studentFirstName: row.studentFirstName,
-          studentLastName: row.studentLastName,
-          joinUrl: generateJoinUrl((row.session || row).id),
+        const isHost = false; // Coordinators see join URL
+        return await Promise.all(rows.map(async (row: any) => {
+          const session = row.session || row;
+          const zoomUrl = await getTutorZoomUrl(session.tutorId, isHost);
+          return {
+            ...session,
+            courseTitle: row.courseTitle,
+            tutorName: row.tutorName,
+            studentFirstName: row.studentFirstName,
+            studentLastName: row.studentLastName,
+            joinUrl: zoomUrl || generateFallbackJoinUrl(session.id),
+          };
         }));
       }),
 
@@ -1277,14 +1390,19 @@ export const appRouter = router({
         }
 
         const rows = await db.getCompletedSessionsByParentId(input.parentId);
-        return rows.map((row: any) => ({
-          ...(row.session || row),
-          courseTitle: row.courseTitle,
-          courseSubject: row.courseSubject,
-          tutorName: row.tutorName,
-          studentFirstName: row.studentFirstName,
-          studentLastName: row.studentLastName,
-          joinUrl: generateJoinUrl((row.session || row).id),
+        const isHost = false; // Coordinators see join URL
+        return await Promise.all(rows.map(async (row: any) => {
+          const session = row.session || row;
+          const zoomUrl = await getTutorZoomUrl(session.tutorId, isHost);
+          return {
+            ...session,
+            courseTitle: row.courseTitle,
+            courseSubject: row.courseSubject,
+            tutorName: row.tutorName,
+            studentFirstName: row.studentFirstName,
+            studentLastName: row.studentLastName,
+            joinUrl: zoomUrl || generateFallbackJoinUrl(session.id),
+          };
         }));
       }),
 
@@ -1307,15 +1425,20 @@ export const appRouter = router({
     myBookings: parentProcedure.query(async ({ ctx }) => {
       // Fetch all sessions for the parent grouped by subscription
       const rows = await db.getSessionsByParentId(ctx.user.id);
-      const sessions = rows.map((row: any) => ({
-        ...(row.session || row),
-        course: row.courseTitle ? { title: row.courseTitle } : null,
-        tutor: row.tutorName ? { name: row.tutorName } : null,
-        studentFirstName: row.studentFirstName,
-        studentLastName: row.studentLastName,
-        joinUrl: generateJoinUrl((row.session || row).id),
+      const isHost = false; // Parents see join URL
+      const sessions = await Promise.all(rows.map(async (row: any) => {
+        const session = row.session || row;
+        const zoomUrl = await getTutorZoomUrl(session.tutorId, isHost);
+        return {
+          ...session,
+          course: row.courseTitle ? { title: row.courseTitle } : null,
+          tutor: row.tutorName ? { name: row.tutorName } : null,
+          studentFirstName: row.studentFirstName,
+          studentLastName: row.studentLastName,
+          joinUrl: zoomUrl || generateFallbackJoinUrl(session.id),
+        };
       }));
-      
+
       // Group sessions by subscriptionId
       const grouped = sessions.reduce((acc: any, session: any) => {
         const subId = session.subscriptionId;
@@ -1325,7 +1448,7 @@ export const appRouter = router({
         acc[subId].push(session);
         return acc;
       }, {});
-      
+
       return grouped;
     }),
 
@@ -2147,17 +2270,28 @@ export const appRouter = router({
           throw new TRPCError({ code: 'NOT_FOUND', message: 'Conversation not found' });
         }
 
-        const isParticipant = conversation.parentId === ctx.user.id || conversation.tutorId === ctx.user.id;
+        // Check authorization based on conversation type
+        let isAuthorized = false;
         const isAdmin = ctx.user.role === 'admin';
 
-        // Check if user is coordinator for this parent
-        let isCoordinator = false;
-        if (ctx.user.role === 'coordinator') {
-          const assignments = await db.getCoordinatorAssignmentsByCoordinator(ctx.user.id);
-          isCoordinator = assignments.some(a => a.parentId === conversation.parentId);
+        if (conversation.conversationType === 'parent_coordinator') {
+          // For parent-coordinator conversations, only parent and coordinator can view
+          isAuthorized = conversation.parentId === ctx.user.id || conversation.coordinatorId === ctx.user.id || isAdmin;
+        } else {
+          // For parent-tutor conversations
+          const isParticipant = conversation.parentId === ctx.user.id || conversation.tutorId === ctx.user.id;
+
+          // Check if user is coordinator for this parent (read-only access)
+          let isCoordinator = false;
+          if (ctx.user.role === 'coordinator') {
+            const assignments = await db.getCoordinatorAssignmentsByCoordinator(ctx.user.id);
+            isCoordinator = assignments.some(a => a.parentId === conversation.parentId);
+          }
+
+          isAuthorized = isParticipant || isAdmin || isCoordinator;
         }
 
-        if (!isParticipant && !isAdmin && !isCoordinator) {
+        if (!isAuthorized) {
           throw new TRPCError({ code: 'FORBIDDEN', message: 'Not authorized to view this conversation' });
         }
 
@@ -2174,22 +2308,35 @@ export const appRouter = router({
         fileSize: z.number().optional(),
       }))
       .mutation(async ({ ctx, input }) => {
-        // Verify user is part of conversation (coordinators have read-only access)
+        // Verify user is part of conversation
         const conversation = await db.getConversationById(input.conversationId);
         if (!conversation) {
           throw new TRPCError({ code: 'NOT_FOUND', message: 'Conversation not found' });
         }
 
-        // Coordinators have read-only access and cannot send messages
-        if (ctx.user.role === 'coordinator') {
-          throw new TRPCError({ code: 'FORBIDDEN', message: 'Coordinators have read-only access and cannot send messages' });
-        }
+        // Check authorization based on conversation type
+        const isParentTutorChat = conversation.conversationType === 'parent_tutor';
+        const isParentCoordinatorChat = conversation.conversationType === 'parent_coordinator';
 
-        const isParticipant = conversation.parentId === ctx.user.id || conversation.tutorId === ctx.user.id;
-        const isAdmin = ctx.user.role === 'admin';
-
-        if (!isParticipant && !isAdmin) {
-          throw new TRPCError({ code: 'FORBIDDEN', message: 'Not authorized to send messages in this conversation' });
+        if (isParentTutorChat) {
+          // For parent-tutor chats, coordinators have read-only access
+          if (ctx.user.role === 'coordinator') {
+            throw new TRPCError({ code: 'FORBIDDEN', message: 'Coordinators have read-only access to parent-tutor conversations' });
+          }
+          const isParticipant = conversation.parentId === ctx.user.id || conversation.tutorId === ctx.user.id;
+          const isAdmin = ctx.user.role === 'admin';
+          if (!isParticipant && !isAdmin) {
+            throw new TRPCError({ code: 'FORBIDDEN', message: 'Not authorized to send messages in this conversation' });
+          }
+        } else if (isParentCoordinatorChat) {
+          // For parent-coordinator chats, both can send messages
+          const isParticipant = conversation.parentId === ctx.user.id || conversation.coordinatorId === ctx.user.id;
+          const isAdmin = ctx.user.role === 'admin';
+          if (!isParticipant && !isAdmin) {
+            throw new TRPCError({ code: 'FORBIDDEN', message: 'Not authorized to send messages in this conversation' });
+          }
+        } else {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Invalid conversation type' });
         }
 
         const id = await db.createMessage({
@@ -2208,9 +2355,17 @@ export const appRouter = router({
         }
 
         // In-app notification to the other participant
-        const recipientId = conversation.parentId === ctx.user.id ? conversation.tutorId : conversation.parentId;
+        let recipientId: number | null = null;
+        if (conversation.conversationType === 'parent_coordinator') {
+          // For parent-coordinator chat, recipient is either parent or coordinator
+          recipientId = conversation.parentId === ctx.user.id ? conversation.coordinatorId : conversation.parentId;
+        } else {
+          // For parent-tutor chat
+          recipientId = conversation.parentId === ctx.user.id ? conversation.tutorId : conversation.parentId;
+        }
+
         if (recipientId) {
-          const senderName = ctx.user.name || (ctx.user.role === 'parent' ? 'Parent' : 'Tutor');
+          const senderName = ctx.user.name || (ctx.user.role === 'parent' ? 'Parent' : ctx.user.role === 'coordinator' ? 'Coordinator' : 'Tutor');
           const studentInfo = conversation.studentId
             ? await db.getSubscriptionById(conversation.studentId).catch(() => null)
             : null;
@@ -2305,6 +2460,52 @@ export const appRouter = router({
     getUnreadMessageCount: protectedProcedure.query(async ({ ctx }) => {
       const count = await db.getUnreadMessageCount(ctx.user.id);
       return { count };
+    }),
+
+    // Parent-Coordinator Messaging
+    getOrCreateCoordinatorConversation: protectedProcedure.mutation(async ({ ctx }) => {
+      // Only parents can initiate coordinator conversations
+      if (ctx.user.role !== 'parent') {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Only parents can message coordinators' });
+      }
+
+      // Get parent's assigned coordinator
+      const assignments = await db.getCoordinatorAssignmentsByParent(ctx.user.id);
+      if (!assignments || assignments.length === 0) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'No coordinator assigned to you yet' });
+      }
+
+      const coordinatorId = assignments[0].coordinatorId;
+
+      // Check if conversation already exists
+      let conversation = await db.getConversationByParentAndCoordinator(ctx.user.id, coordinatorId);
+
+      if (!conversation) {
+        // Create new parent-coordinator conversation
+        const id = await db.createConversation({
+          parentId: ctx.user.id,
+          tutorId: null,
+          coordinatorId: coordinatorId,
+          studentId: null,
+          conversationType: 'parent_coordinator',
+        });
+        if (!id) {
+          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to create conversation' });
+        }
+        conversation = await db.getConversationById(id);
+      }
+
+      return conversation;
+    }),
+
+    getCoordinatorParentConversations: coordinatorProcedure.query(async ({ ctx }) => {
+      // Get all parent-coordinator conversations for this coordinator
+      return await db.getCoordinatorParentConversations(ctx.user.id);
+    }),
+
+    getParentCoordinatorConversation: parentProcedure.query(async ({ ctx }) => {
+      // Get parent's coordinator conversation with unread count
+      return await db.getParentCoordinatorConversation(ctx.user.id);
     }),
 
     getOrCreateStudentConversation: protectedProcedure
@@ -2812,10 +3013,14 @@ export const appRouter = router({
     // Get parent's trial history
     myTrials: parentProcedure.query(async ({ ctx }) => {
       const trialSessions = await db.getTrialSessionsByParentId(ctx.user.id);
+      const isHost = false; // Parents see join URL
 
-      return trialSessions.map((session: any) => ({
-        ...session,
-        joinUrl: generateJoinUrl(session.id),
+      return await Promise.all(trialSessions.map(async (session: any) => {
+        const zoomUrl = await getTutorZoomUrl(session.tutorId, isHost);
+        return {
+          ...session,
+          joinUrl: zoomUrl || generateFallbackJoinUrl(session.id),
+        };
       }));
     }),
   }),
@@ -4997,6 +5202,170 @@ export const appRouter = router({
       .mutation(async ({ ctx }) => {
         await db.deleteAllNotifications(ctx.user.id);
         return { success: true };
+      }),
+  }),
+
+  /**
+   * Zoom integration for fetching transcripts
+   */
+  zoom: router({
+    /**
+     * List available Zoom recordings
+     */
+    listRecordings: protectedProcedure
+      .input(z.object({
+        from: z.string().optional(), // YYYY-MM-DD
+        to: z.string().optional(), // YYYY-MM-DD
+        pageSize: z.number().min(1).max(100).optional(),
+      }))
+      .query(async ({ input }) => {
+        const { listZoomRecordings } = await import('./zoom-service');
+
+        try {
+          const recordings = await listZoomRecordings({
+            from: input.from,
+            to: input.to,
+            pageSize: input.pageSize,
+          });
+
+          return recordings;
+        } catch (error) {
+          throw new TRPCError({
+            code: 'INTERNAL_SERVER_ERROR',
+            message: error instanceof Error ? error.message : 'Failed to fetch Zoom recordings',
+          });
+        }
+      }),
+
+    /**
+     * Fetch transcript for a specific meeting
+     */
+    fetchTranscript: protectedProcedure
+      .input(z.object({
+        meetingId: z.string(),
+        sessionId: z.number().optional(), // Link to session if provided
+      }))
+      .mutation(async ({ input }) => {
+        const { fetchZoomTranscript, getZoomRecording } = await import('./zoom-service');
+        const { zoomMeetingRecordings } = await import('../drizzle/schema');
+        const database = await db.getDb();
+
+        if (!database) {
+          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Database not available' });
+        }
+
+        try {
+          // Update status to processing
+          await database.insert(zoomMeetingRecordings).values({
+            id: input.meetingId,
+            meetingId: input.meetingId,
+            sessionId: input.sessionId,
+            status: 'processing',
+          } as typeof zoomMeetingRecordings.$inferInsert).onDuplicateKeyUpdate({
+            set: { status: 'processing' }
+          });
+
+          // Fetch transcript from Zoom
+          const transcriptData = await fetchZoomTranscript(input.meetingId);
+          const recording = await getZoomRecording(input.meetingId);
+
+          // Save to database
+          await database.insert(zoomMeetingRecordings).values({
+            id: recording.uuid,
+            meetingId: input.meetingId,
+            sessionId: input.sessionId,
+            topic: recording.topic,
+            hostId: recording.host_id,
+            transcriptText: transcriptData.transcript,
+            rawTranscript: transcriptData.rawTranscript,
+            durationMinutes: Math.round(recording.duration),
+            recordedAt: new Date(recording.start_time),
+            processedAt: new Date(),
+            status: 'completed',
+            shareUrl: recording.share_url,
+          } as typeof zoomMeetingRecordings.$inferInsert).onDuplicateKeyUpdate({
+            set: {
+              transcriptText: transcriptData.transcript,
+              rawTranscript: transcriptData.rawTranscript,
+              durationMinutes: Math.round(recording.duration),
+              processedAt: new Date(),
+              status: 'completed',
+            }
+          });
+
+          return {
+            success: true,
+            recordingId: recording.uuid,
+            transcript: transcriptData.transcript,
+            duration: recording.duration,
+          };
+        } catch (error) {
+          // Update status to failed
+          await database.insert(zoomMeetingRecordings).values({
+            id: input.meetingId,
+            meetingId: input.meetingId,
+            sessionId: input.sessionId,
+            status: 'failed',
+            errorMessage: error instanceof Error ? error.message : 'Unknown error',
+          } as typeof zoomMeetingRecordings.$inferInsert).onDuplicateKeyUpdate({
+            set: {
+              status: 'failed',
+              errorMessage: error instanceof Error ? error.message : 'Unknown error',
+            }
+          });
+
+          throw new TRPCError({
+            code: 'INTERNAL_SERVER_ERROR',
+            message: error instanceof Error ? error.message : 'Failed to fetch transcript',
+          });
+        }
+      }),
+
+    /**
+     * Get transcript for a specific recording
+     */
+    getTranscript: protectedProcedure
+      .input(z.object({
+        recordingId: z.string(),
+      }))
+      .query(async ({ input }) => {
+        const { zoomMeetingRecordings } = await import('../drizzle/schema');
+        const database = await db.getDb();
+
+        if (!database) {
+          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Database not available' });
+        }
+
+        const recording = await database.select().from(zoomMeetingRecordings)
+          .where(eq(zoomMeetingRecordings.id, input.recordingId))
+          .limit(1);
+
+        if (!recording || recording.length === 0) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'Recording not found' });
+        }
+
+        return recording[0];
+      }),
+
+    /**
+     * Get all recordings for a session
+     */
+    getSessionRecordings: protectedProcedure
+      .input(z.object({
+        sessionId: z.number(),
+      }))
+      .query(async ({ input }) => {
+        const { zoomMeetingRecordings } = await import('../drizzle/schema');
+        const database = await db.getDb();
+
+        if (!database) {
+          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Database not available' });
+        }
+
+        const recordings = await database.select().from(zoomMeetingRecordings)
+          .where(eq(zoomMeetingRecordings.sessionId, input.sessionId));
+
+        return recordings;
       }),
   }),
 });

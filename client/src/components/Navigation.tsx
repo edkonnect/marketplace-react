@@ -159,8 +159,8 @@ export default function Navigation() {
                       Dashboard
                     </Link>
 
-                    <Link href="/messages" className={`flex items-center gap-2 text-sm font-medium transition-colors hover:text-primary ${
-                      location === "/messages" ? "text-primary" : "text-muted-foreground"
+                    <Link href={user?.role === 'coordinator' ? '/coordinator/messages' : '/messages'} className={`flex items-center gap-2 text-sm font-medium transition-colors hover:text-primary ${
+                      (user?.role === 'coordinator' ? location === "/coordinator/messages" : location === "/messages") ? "text-primary" : "text-muted-foreground"
                     }`}>
                       <span className="relative">
                         <MessageSquare className="w-4 h-4" />
@@ -215,25 +215,23 @@ export default function Navigation() {
                       </Link>
                     </DropdownMenuItem>
                   )}
-                  {/* Hide Messages for coordinators - they access via dashboard */}
-                  {user.role !== 'coordinator' && (
-                    <DropdownMenuItem asChild>
-                      <Link href="/messages" className="flex items-center w-full cursor-pointer">
-                        <span className="relative mr-2">
-                          <MessageSquare className="w-4 h-4" />
-                          {unreadCount > 0 && (
-                            <span className="absolute -top-1.5 -right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white">
-                              {unreadCount > 9 ? "9+" : unreadCount}
-                            </span>
-                          )}
-                        </span>
-                        Messages
+                  {/* Messages link - coordinators go to coordinator messages, others to regular messages */}
+                  <DropdownMenuItem asChild>
+                    <Link href={user.role === 'coordinator' ? '/coordinator/messages' : '/messages'} className="flex items-center w-full cursor-pointer">
+                      <span className="relative mr-2">
+                        <MessageSquare className="w-4 h-4" />
                         {unreadCount > 0 && (
-                          <span className="ml-auto text-xs font-semibold text-red-500">{unreadCount} new</span>
+                          <span className="absolute -top-1.5 -right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white">
+                            {unreadCount > 9 ? "9+" : unreadCount}
+                          </span>
                         )}
-                      </Link>
-                    </DropdownMenuItem>
-                  )}
+                      </span>
+                      Messages
+                      {unreadCount > 0 && (
+                        <span className="ml-auto text-xs font-semibold text-red-500">{unreadCount} new</span>
+                      )}
+                    </Link>
+                  </DropdownMenuItem>
                   {/* Show Admin Panel for admin role */}
                   {user.role === 'admin' && (
                     <DropdownMenuItem asChild>

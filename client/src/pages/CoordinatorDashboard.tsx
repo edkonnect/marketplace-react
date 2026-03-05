@@ -4,18 +4,25 @@ import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { Users, Calendar, MessageSquare } from "lucide-react";
-import { useEffect } from "react";
+import { Badge } from "@/components/ui/badge";
+import { Users, Calendar, MessageSquare, Mail } from "lucide-react";
+import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import Navigation from "@/components/Navigation";
 
 export function CoordinatorDashboard() {
   const { user, isAuthenticated, loading } = useAuth();
   const [, setLocation] = useLocation();
+  const [selectedConversationId, setSelectedConversationId] = useState<number | null>(null);
 
   const { data: assignments, isLoading: assignmentsLoading } = trpc.coordinators.getMyAssignments.useQuery(
     undefined,
     { enabled: isAuthenticated && user?.role === "coordinator" }
+  );
+
+  const { data: parentConversations, isLoading: conversationsLoading } = trpc.messaging.getCoordinatorParentConversations.useQuery(
+    undefined,
+    { enabled: isAuthenticated && user?.role === "coordinator", refetchInterval: 10000 }
   );
 
   // Generate dynamic greeting based on time of day
@@ -67,6 +74,61 @@ export function CoordinatorDashboard() {
             {getSubtitle()}
           </p>
         </div>
+
+        {/* Parent Messages */}
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Mail className="h-5 w-5" />
+              Parent Messages
+            </CardTitle>
+            <CardDescription>
+              Direct messages from parents you support
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {conversationsLoading ? (
+              <div className="space-y-3">
+                {[...Array(2)].map((_, i) => (
+                  <Skeleton key={i} className="h-20 w-full" />
+                ))}
+              </div>
+            ) : parentConversations && parentConversations.length > 0 ? (
+              <div className="space-y-2">
+                {parentConversations.map((conv: any) => (
+                  <button
+                    key={conv.conversationId}
+                    onClick={() => setLocation('/coordinator/messages')}
+                    className="w-full p-4 text-left hover:bg-muted/50 transition-colors border rounded-lg flex items-center justify-between"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <p className="font-medium truncate">{conv.parentName}</p>
+                        {conv.unreadCount > 0 && (
+                          <Badge variant="destructive" className="text-xs">
+                            {conv.unreadCount} new
+                          </Badge>
+                        )}
+                      </div>
+                      <p className="text-sm text-muted-foreground truncate">{conv.parentEmail}</p>
+                      {conv.lastMessageAt && (
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Last message: {new Date(conv.lastMessageAt).toLocaleDateString()}
+                        </p>
+                      )}
+                    </div>
+                    <MessageSquare className="h-5 w-5 text-muted-foreground flex-shrink-0 ml-3" />
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-8">
+                <Mail className="h-10 w-10 mx-auto mb-3 text-muted-foreground" />
+                <p className="text-sm text-muted-foreground">No messages from parents yet</p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
         {/* Assigned Parents */}
         <Card>

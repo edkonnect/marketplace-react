@@ -68,6 +68,10 @@ async function startServer() {
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
+  // Zoom webhook for recording notifications
+  const { handleZoomWebhook } = await import("../zoom-webhook");
+  app.post("/api/webhooks/zoom", handleZoomWebhook);
+
   // Auth routes
   app.use("/api/auth", authLimiter, authRouter);
   app.use("/api/users", userRouter);

@@ -232,6 +232,27 @@
       "when": 1771779271796,
       "tag": "0032_polite_gamma_corps",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "5",
+      "when": 1772658326500,
+      "tag": "0033_oval_frank_castle",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "5",
+      "when": 1772670560451,
+      "tag": "0034_material_orphan",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "5",
+      "when": 1772675973500,
+      "tag": "0035_magenta_gauntlet",
+      "breakpoints": true
     }
   ]
 }

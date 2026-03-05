@@ -13,4 +13,9 @@ export const ENV = {
   corsOrigin: process.env.CORS_ORIGIN ?? "http://localhost:5173",
   cookieSecure: process.env.COOKIE_SECURE === "true",
   cookieDomain: process.env.COOKIE_DOMAIN ?? undefined,
+  // Zoom API credentials
+  zoomAccountId: process.env.ZOOM_ACCOUNT_ID ?? "",
+  zoomClientId: process.env.ZOOM_CLIENT_ID ?? "",
+  zoomClientSecret: process.env.ZOOM_CLIENT_SECRET ?? "",
+  zoomWebhookSecret: process.env.ZOOM_WEBHOOK_SECRET_TOKEN ?? "",
 };

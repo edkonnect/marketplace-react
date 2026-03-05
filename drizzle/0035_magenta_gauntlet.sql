@@ -1,0 +1,2 @@
+ALTER TABLE `conversations` MODIFY COLUMN `tutorId` int;--> statement-breakpoint
+ALTER TABLE `conversations` ADD `conversationType` enum('parent_tutor','parent_coordinator') DEFAULT 'parent_tutor' NOT NULL;

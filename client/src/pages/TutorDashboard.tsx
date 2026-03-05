@@ -80,6 +80,7 @@ export default function TutorDashboard() {
   const [courseSearchQuery, setCourseSearchQuery] = useState("");
   const [courseSubjectFilter, setCourseSubjectFilter] = useState<string>("all");
   const [showOnlySelected, setShowOnlySelected] = useState(false);
+  const [fetchingTranscripts, setFetchingTranscripts] = useState<Record<number, boolean>>({});
   type PreferenceState = { preferred: boolean; hourlyRate: string; approvalStatus?: string };
   const [preferenceState, setPreferenceState] = useState<Record<number, PreferenceState>>({});
 
@@ -98,6 +99,22 @@ export default function TutorDashboard() {
       toast.success("Session updated");
     },
     onError: (err) => toast.error(err.message || "Failed to update session"),
+  });
+
+  const fetchTranscriptMutation = trpc.zoom.fetchTranscript.useMutation({
+    onSuccess: (data, variables) => {
+      toast.success("Transcript fetched successfully!");
+      setFetchingTranscripts((prev) => ({ ...prev, [variables.sessionId || 0]: false }));
+    },
+    onError: (error, variables) => {
+      const message = error.message || "Failed to fetch transcript";
+      if (message.includes("No transcript available") || message.includes("not found")) {
+        toast.warning("Transcript is still processing. Please try again in a few minutes.");
+      } else {
+        toast.error(message);
+      }
+      setFetchingTranscripts((prev) => ({ ...prev, [variables.sessionId || 0]: false }));
+    },
   });
 
   const { data: earnings } = trpc.payment.myEarnings.useQuery(
@@ -261,6 +278,68 @@ export default function TutorDashboard() {
         setCompletionNotes("");
         setCompletionType("completed");
       }
+    });
+  };
+
+  const handleFetchTranscript = (sessionId: number, joinUrl: string | null) => {
+    if (!joinUrl) {
+      toast.error("No Zoom meeting URL found for this session");
+      return;
+    }
+
+    console.log("Attempting to extract meeting ID from:", joinUrl);
+
+    // Extract meeting ID from Zoom URL
+    // Support multiple formats:
+    // - https://zoom.us/j/85648346210
+    // - https://us05web.zoom.us/j/85648346210
+    // - https://us05web.zoom.us/s/85648346210 (start URL format)
+    // - https://zoom.us/j/85648346210?pwd=...
+    // - https://us05web.zoom.us/wc/join/85648346210
+    let meetingId: string | null = null;
+
+    // Try pattern 1: /j/NUMBER (join URL)
+    const pattern1 = joinUrl.match(/\/j\/(\d+)/);
+    if (pattern1) {
+      meetingId = pattern1[1];
+    }
+
+    // Try pattern 2: /s/NUMBER (start/host URL)
+    if (!meetingId) {
+      const pattern2 = joinUrl.match(/\/s\/(\d+)/);
+      if (pattern2) {
+        meetingId = pattern2[1];
+      }
+    }
+
+    // Try pattern 3: /join/NUMBER
+    if (!meetingId) {
+      const pattern3 = joinUrl.match(/\/join\/(\d+)/);
+      if (pattern3) {
+        meetingId = pattern3[1];
+      }
+    }
+
+    // Try pattern 4: Meeting ID in query params
+    if (!meetingId) {
+      const pattern4 = joinUrl.match(/[?&]confno=(\d+)/);
+      if (pattern4) {
+        meetingId = pattern4[1];
+      }
+    }
+
+    if (!meetingId) {
+      console.error("Failed to extract meeting ID from URL:", joinUrl);
+      toast.error(`Could not extract meeting ID from URL: ${joinUrl}`);
+      return;
+    }
+
+    console.log("Extracted meeting ID:", meetingId);
+    setFetchingTranscripts((prev) => ({ ...prev, [sessionId]: true }));
+
+    fetchTranscriptMutation.mutate({
+      meetingId,
+      sessionId,
     });
   };
 
@@ -484,7 +563,11 @@ export default function TutorDashboard() {
                 {/* Profile Tab */}
                 <TabsContent value="profile" forceMount className={tabContentClass}>
                   <h2 className="text-2xl font-bold mb-6">Profile Settings</h2>
-                  <VideoUploadManager 
+
+                  {/* Zoom Meeting Setup */}
+                  <ZoomMeetingSetup tutorProfile={tutorProfile} />
+
+                  <VideoUploadManager
                     currentVideoUrl={(tutorProfile as any)?.introVideoUrl}
                   />
                 </TabsContent>
@@ -1027,10 +1110,21 @@ export default function TutorDashboard() {
                                           placeholder="What did you cover today? How did the student perform? Any homework assigned?"
                                           className="bg-white dark:bg-gray-900 min-h-[100px] text-sm"
                                         />
-                                        <Button size="sm" onClick={saveNotes} disabled={updateSessionMutation.isPending}>
-                                          <FileText className="w-3 h-3 mr-1" />
-                                          Save Notes
-                                        </Button>
+                                        <div className="flex gap-2">
+                                          <Button size="sm" onClick={saveNotes} disabled={updateSessionMutation.isPending}>
+                                            <FileText className="w-3 h-3 mr-1" />
+                                            Save Notes
+                                          </Button>
+                                          <Button
+                                            size="sm"
+                                            variant="outline"
+                                            onClick={() => handleFetchTranscript(session.id, session.joinUrl)}
+                                            disabled={fetchingTranscripts[session.id] || false}
+                                          >
+                                            <FileText className="w-3 h-3 mr-1" />
+                                            {fetchingTranscripts[session.id] ? "Fetching..." : "Fetch Transcript"}
+                                          </Button>
+                                        </div>
                                       </div>
                                     </div>
                                   </div>
@@ -1210,5 +1304,156 @@ export default function TutorDashboard() {
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+/**
+ * Component for managing tutor's Zoom meeting link
+ */
+function ZoomMeetingSetup({ tutorProfile }: { tutorProfile: any }) {
+  const [isCreating, setIsCreating] = useState(false);
+  const [showUrls, setShowUrls] = useState(false);
+
+  const createZoomMeeting = trpc.tutorProfile.createZoomMeeting.useMutation({
+    onSuccess: (data) => {
+      toast.success("Zoom meeting created successfully!");
+      setShowUrls(true);
+      // Reload the page to refresh tutor profile data
+      window.location.reload();
+    },
+    onError: (error) => {
+      toast.error(error.message || "Failed to create Zoom meeting");
+      setIsCreating(false);
+    },
+  });
+
+  const handleCreateZoomMeeting = async () => {
+    setIsCreating(true);
+    try {
+      await createZoomMeeting.mutateAsync();
+    } catch (error) {
+      // Error handled by onError callback
+    }
+  };
+
+  const hasZoomMeeting = tutorProfile?.zoomJoinUrl;
+
+  return (
+    <Card className="mb-6">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Globe className="w-5 h-5" />
+          Zoom Meeting Setup
+        </CardTitle>
+        <CardDescription>
+          {hasZoomMeeting
+            ? "Your permanent Zoom meeting room for all tutoring sessions"
+            : "Create your permanent Zoom meeting link to use for all sessions"}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {hasZoomMeeting ? (
+          <>
+            <div className="space-y-3">
+              <div>
+                <Label className="text-sm font-medium">Student Join URL</Label>
+                <div className="flex items-center gap-2 mt-1">
+                  <Input
+                    readOnly
+                    value={tutorProfile.zoomJoinUrl}
+                    className="font-mono text-sm"
+                  />
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      navigator.clipboard.writeText(tutorProfile.zoomJoinUrl);
+                      toast.success("Join URL copied to clipboard!");
+                    }}
+                  >
+                    Copy
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Share this link with your students
+                </p>
+              </div>
+
+              <div>
+                <Label className="text-sm font-medium">Your Host URL</Label>
+                <div className="flex items-center gap-2 mt-1">
+                  <Input
+                    readOnly
+                    value={tutorProfile.zoomHostUrl}
+                    className="font-mono text-sm"
+                  />
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      navigator.clipboard.writeText(tutorProfile.zoomHostUrl);
+                      toast.success("Host URL copied to clipboard!");
+                    }}
+                  >
+                    Copy
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Use this link to start your meetings
+                </p>
+              </div>
+
+              {tutorProfile.zoomMeetingPassword && (
+                <div>
+                  <Label className="text-sm font-medium">Meeting Password</Label>
+                  <Input
+                    readOnly
+                    value={tutorProfile.zoomMeetingPassword}
+                    className="font-mono text-sm mt-1"
+                  />
+                </div>
+              )}
+
+              <div className="pt-2">
+                <Badge variant="secondary" className="text-xs">
+                  ✅ Permanent Meeting Room - Use for all sessions
+                </Badge>
+              </div>
+            </div>
+
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleCreateZoomMeeting}
+              disabled={isCreating}
+            >
+              {isCreating ? "Creating..." : "Recreate Zoom Meeting"}
+            </Button>
+          </>
+        ) : (
+          <div className="space-y-4">
+            <div className="bg-muted/50 p-4 rounded-lg space-y-2">
+              <p className="text-sm">
+                <strong>Why create a permanent Zoom link?</strong>
+              </p>
+              <ul className="text-sm text-muted-foreground space-y-1 list-disc list-inside">
+                <li>One consistent link for all your tutoring sessions</li>
+                <li>Students can easily save and reuse the same link</li>
+                <li>Automatic cloud recording for session transcripts</li>
+                <li>Students can join before you arrive</li>
+              </ul>
+            </div>
+
+            <Button
+              onClick={handleCreateZoomMeeting}
+              disabled={isCreating}
+              className="w-full"
+            >
+              {isCreating ? "Creating Zoom Meeting..." : "Create My Zoom Meeting Room"}
+            </Button>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }

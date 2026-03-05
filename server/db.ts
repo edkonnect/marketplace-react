@@ -24,7 +24,9 @@ import {
   tutorCoursePreferences, InsertTutorCoursePreference,
   tutorPayoutRequests, InsertTutorPayoutRequest,
   sessionRatings, InsertSessionRating,
-  coordinatorAssignments, InsertCoordinatorAssignment
+  coordinatorAssignments, InsertCoordinatorAssignment,
+  zoomMeetingRecordings, InsertZoomMeetingRecording,
+  sessionAIInsights, InsertSessionAIInsight
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
@@ -428,7 +430,54 @@ export async function createTutorProfile(profile: InsertTutorProfile) {
 
   try {
     const result = await db.insert(tutorProfiles).values(profile) as any;
-    return Number(result.insertId);
+    const profileId = Number(result.insertId);
+
+    // Auto-create permanent Zoom meeting for the tutor
+    try {
+      // Get tutor user details
+      const tutorUser = await db
+        .select({
+          firstName: users.firstName,
+          lastName: users.lastName,
+          email: users.email,
+        })
+        .from(users)
+        .where(eq(users.id, profile.userId))
+        .limit(1);
+
+      if (tutorUser.length > 0) {
+        const user = tutorUser[0];
+        const fullName = `${user.firstName} ${user.lastName}`;
+
+        const { createPermanentZoomMeeting } = await import('./zoom-service');
+        const zoomMeeting = await createPermanentZoomMeeting(fullName, user.email);
+
+        // Update tutor profile with Zoom details
+        const updateData: any = {
+          zoomMeetingId: zoomMeeting.meetingId,
+          zoomJoinUrl: zoomMeeting.joinUrl,
+          zoomHostUrl: zoomMeeting.hostUrl,
+          zoomCreatedAt: new Date(),
+        };
+
+        // Only set password if it exists
+        if (zoomMeeting.password) {
+          updateData.zoomMeetingPassword = zoomMeeting.password;
+        }
+
+        await db
+          .update(tutorProfiles)
+          .set(updateData)
+          .where(eq(tutorProfiles.userId, profile.userId));
+
+        console.log(`[Zoom] Created permanent meeting for tutor ${fullName}: ${zoomMeeting.joinUrl}`);
+      }
+    } catch (zoomError) {
+      console.error('[Zoom] Failed to create Zoom meeting for tutor (will be created later):', zoomError);
+      // Don't fail profile creation if Zoom fails - meeting can be created later via manual endpoint
+    }
+
+    return profileId;
   } catch (error) {
     console.error("[Database] Failed to create tutor profile:", error);
     return null;
@@ -2104,7 +2153,8 @@ export async function getUnreadMessageCount(userId: number): Promise<number> {
           sql`${messages.senderId} != ${userId}`,
           or(
             eq(conversations.parentId, userId),
-            eq(conversations.tutorId, userId)
+            eq(conversations.tutorId, userId),
+            eq(conversations.coordinatorId, userId)
           )
         )
       );
@@ -4538,5 +4588,97 @@ export async function updateTutorPayoutRequestStatus(
     .update(tutorPayoutRequests)
     .set({ status, adminNotes: adminNotes ?? null, updatedAt: new Date() })
     .where(eq(tutorPayoutRequests.id, id));
+}
+
+/**
+ * Get conversation between parent and coordinator
+ */
+export async function getConversationByParentAndCoordinator(parentId: number, coordinatorId: number) {
+  const db = await getDb();
+  if (!db) return null;
+
+  const results = await db
+    .select()
+    .from(conversations)
+    .where(
+      and(
+        eq(conversations.parentId, parentId),
+        eq(conversations.coordinatorId, coordinatorId),
+        eq(conversations.conversationType, 'parent_coordinator')
+      )
+    )
+    .limit(1);
+
+  return results[0] ?? null;
+}
+
+/**
+ * Get all parent-coordinator conversations for a coordinator
+ */
+export async function getCoordinatorParentConversations(coordinatorId: number) {
+  const db = await getDb();
+  if (!db) return [];
+
+  const results = await db
+    .select({
+      conversationId: conversations.id,
+      parentId: conversations.parentId,
+      parentName: users.name,
+      parentEmail: users.email,
+      lastMessageAt: conversations.lastMessageAt,
+      unreadCount: sql<number>`(
+        SELECT COUNT(*)
+        FROM ${messages}
+        WHERE ${messages.conversationId} = ${conversations.id}
+          AND ${messages.senderId} != ${coordinatorId}
+          AND ${messages.isRead} = 0
+      )`,
+    })
+    .from(conversations)
+    .leftJoin(users, eq(conversations.parentId, users.id))
+    .where(
+      and(
+        eq(conversations.coordinatorId, coordinatorId),
+        eq(conversations.conversationType, 'parent_coordinator')
+      )
+    )
+    .orderBy(desc(conversations.lastMessageAt));
+
+  return results;
+}
+
+/**
+ * Get parent's coordinator conversation with unread count
+ */
+export async function getParentCoordinatorConversation(parentId: number) {
+  const db = await getDb();
+  if (!db) return null;
+
+  const results = await db
+    .select({
+      conversationId: conversations.id,
+      coordinatorId: conversations.coordinatorId,
+      coordinatorName: users.name,
+      coordinatorEmail: users.email,
+      lastMessageAt: conversations.lastMessageAt,
+      unreadCount: sql<number>`(
+        SELECT COUNT(*)
+        FROM ${messages}
+        WHERE ${messages.conversationId} = ${conversations.id}
+          AND ${messages.senderId} != ${parentId}
+          AND ${messages.isRead} = 0
+      )`,
+    })
+    .from(conversations)
+    .leftJoin(users, eq(conversations.coordinatorId, users.id))
+    .where(
+      and(
+        eq(conversations.parentId, parentId),
+        eq(conversations.conversationType, 'parent_coordinator')
+      )
+    )
+    .limit(1);
+
+  return results[0] ?? null;
 }
 

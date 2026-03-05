@@ -85,6 +85,7 @@ export default function Messages() {
   const [globalSearch, setGlobalSearch] = useState("");
   const [readConversationIds, setReadConversationIds] = useState<Set<number>>(new Set());
   const [showCoordinatorCard, setShowCoordinatorCard] = useState(false);
+  const [coordinatorConversationId, setCoordinatorConversationId] = useState<number | null>(null);
   const RECENCY_MS = 10 * 24 * 60 * 60 * 1000;
 
   // Get parentId from URL query params if coordinator is filtering
@@ -102,6 +103,13 @@ export default function Messages() {
 
   const studentsWithTutors = (studentsWithTutorsData as StudentsWithTutorsData)?.students || [];
   const coordinator = (studentsWithTutorsData as StudentsWithTutorsData)?.coordinator || null;
+
+  // Get coordinator conversation with unread count for parent
+  const { data: coordinatorConversationData } = trpc.messaging.getParentCoordinatorConversation.useQuery(
+    undefined,
+    { enabled: isAuthenticated && isParent, refetchInterval: 10000 }
+  );
+  const coordinatorUnreadCount = coordinatorConversationData?.unreadCount ?? 0;
 
   const { data: tutorConversations, isLoading: tutorConversationsLoading } = trpc.messaging.getTutorConversations.useQuery(
     undefined,
@@ -134,6 +142,7 @@ export default function Messages() {
   const sendMessageMutation = trpc.messaging.sendMessage.useMutation();
   const markAsReadMutation = trpc.messaging.markAsRead.useMutation();
   const createConversationMutation = trpc.messaging.getOrCreateStudentConversation.useMutation();
+  const createCoordinatorConversationMutation = trpc.messaging.getOrCreateCoordinatorConversation.useMutation();
   const uploadFileMutation = trpc.messaging.uploadFile.useMutation();
 
   useEffect(() => {
@@ -154,6 +163,7 @@ export default function Messages() {
             utils.messaging.getStudentsWithTutors.invalidate();
             utils.messaging.getTutorConversations.invalidate();
             utils.messaging.getCoordinatorConversations.invalidate();
+            utils.messaging.getParentCoordinatorConversation.invalidate();
           },
         }
       );
@@ -168,6 +178,7 @@ export default function Messages() {
         {
           onSuccess: () => {
             utils.messaging.getUnreadMessageCount.invalidate();
+            utils.messaging.getParentCoordinatorConversation.invalidate();
           },
         }
       );
@@ -175,6 +186,30 @@ export default function Messages() {
   }, [messages]);
 
   const [conversationLoading, setConversationLoading] = useState(false);
+
+  const handleCoordinatorChat = async () => {
+    if (conversationLoading) return;
+    setConversationLoading(true);
+    setShowCoordinatorCard(false);
+
+    try {
+      const conversation = await createCoordinatorConversationMutation.mutateAsync();
+      if (conversation?.id) {
+        setCoordinatorConversationId(conversation.id);
+        setSelectedConversationId(conversation.id);
+        setSelectedStudentId(null);
+        setSelectedTutorId(null);
+        toast.success("Opening chat with your coordinator");
+      } else {
+        toast.error("Failed to open coordinator chat");
+      }
+    } catch (error: any) {
+      console.error("Failed to open coordinator chat", error);
+      toast.error(error?.message || "Failed to open coordinator chat");
+    } finally {
+      setConversationLoading(false);
+    }
+  };
 
   const handleTutorSelect = async (tutorId: number, subscriptionStudentId?: number) => {
     const studentIdToUse = subscriptionStudentId ?? selectedStudentId;
@@ -290,6 +325,7 @@ export default function Messages() {
       utils.messaging.getStudentsWithTutors.invalidate();
       utils.messaging.getTutorConversations.invalidate();
       utils.messaging.getCoordinatorConversations.invalidate();
+      utils.messaging.getParentCoordinatorConversation.invalidate();
 
       toast.success("Message sent");
     } catch (error) {
@@ -452,73 +488,22 @@ export default function Messages() {
           </Button>
         )}
 
-        {/* Floating Coordinator Card */}
-        {isParent && coordinator && showCoordinatorCard && (
-          <div className="fixed bottom-6 right-6 z-40 w-80 sm:w-96 animate-in slide-in-from-bottom-5 fade-in duration-300">
-            <Card className="border-primary/30 bg-card shadow-2xl">
-              <CardHeader className="pb-3">
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center gap-2">
-                    <User className="w-4 h-4 text-primary" />
-                    <CardTitle className="text-sm">Your Academic Coordinator</CardTitle>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-6 w-6 -mt-1 -mr-2"
-                    onClick={() => setShowCoordinatorCard(false)}
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center text-base font-semibold text-primary flex-shrink-0">
-                    {coordinator.firstName?.charAt(0)}{coordinator.lastName?.charAt(0)}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-base">
-                      {coordinator.firstName} {coordinator.lastName}
-                    </p>
-                    {coordinator.specialization && (
-                      <Badge variant="secondary" className="text-xs mt-1">
-                        {coordinator.specialization}
-                      </Badge>
-                    )}
-                  </div>
-                </div>
-                <div className="space-y-2 pt-2 border-t">
-                  <a
-                    href={`mailto:${coordinator.email}`}
-                    className="flex items-center gap-2 text-sm text-muted-foreground hover:text-primary transition-colors"
-                  >
-                    <Mail className="w-4 h-4 flex-shrink-0" />
-                    <span className="truncate">{coordinator.email}</span>
-                  </a>
-                  {coordinator.phoneNumber && (
-                    <a
-                      href={`tel:${coordinator.phoneNumber}`}
-                      className="flex items-center gap-2 text-sm text-muted-foreground hover:text-primary transition-colors"
-                    >
-                      <Phone className="w-4 h-4 flex-shrink-0" />
-                      <span>{coordinator.phoneNumber}</span>
-                    </a>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        )}
-
-        {/* Floating Button to show coordinator */}
-        {isParent && coordinator && !showCoordinatorCard && (
+        {/* Floating Button to message coordinator */}
+        {isParent && coordinator && (
           <button
-            onClick={() => setShowCoordinatorCard(true)}
-            className="fixed bottom-6 right-6 z-40 h-14 w-14 rounded-full bg-primary text-primary-foreground shadow-lg hover:shadow-xl transition-all hover:scale-105 flex items-center justify-center"
-            title="View your coordinator"
+            onClick={handleCoordinatorChat}
+            disabled={conversationLoading}
+            className="fixed bottom-6 right-6 z-40 h-14 w-14 rounded-full bg-primary text-primary-foreground shadow-lg hover:shadow-xl transition-all hover:scale-105 flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
+            title="Message your coordinator"
           >
-            <User className="w-6 h-6" />
+            <span className="relative">
+              <MessageSquare className="w-6 h-6" />
+              {coordinatorUnreadCount > 0 && (
+                <span className="absolute -top-2 -right-2 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white">
+                  {coordinatorUnreadCount > 9 ? "9+" : coordinatorUnreadCount}
+                </span>
+              )}
+            </span>
           </button>
         )}
 
@@ -879,7 +864,7 @@ export default function Messages() {
 
           {/* Messages Area */}
           <Card className={`lg:col-span-2 flex flex-col h-[calc(100vh-12rem)] sm:h-[70vh] ${!selectedConversationId ? 'hidden lg:flex' : ''}`}>
-            {selectedConversationId && (selectedTutor || isTutor || isCoordinator) ? (
+            {selectedConversationId && (selectedTutor || isTutor || isCoordinator || (isParent && selectedConversationId === coordinatorConversationId)) ? (
               <>
                 <CardHeader className="py-3 sm:py-4 flex flex-row items-start justify-between space-y-0">
                   <CardTitle className="text-base sm:text-lg flex-1">
@@ -897,7 +882,9 @@ export default function Messages() {
                       </Button>
                       <span className="text-sm sm:text-base">
                         Chat with{" "}
-                        {isTutor
+                        {selectedConversationId === coordinatorConversationId && coordinator
+                          ? `${coordinator.firstName} ${coordinator.lastName}`
+                          : isTutor
                           ? tutorListForUI.find((t: TutorConversation) => t.conversationId === selectedConversationId)?.parentName || "Parent"
                           : isCoordinator
                             ? coordinatorConversations?.find((c) => c.conversationId === selectedConversationId)?.tutorName || "Tutor"
@@ -905,7 +892,9 @@ export default function Messages() {
                       </span>
                     </div>
                     <p className="text-xs sm:text-sm font-normal text-muted-foreground mt-1">
-                      {isTutor
+                      {selectedConversationId === coordinatorConversationId && coordinator
+                        ? "Your Academic Coordinator"
+                        : isTutor
                         ? tutorListForUI.find((t: TutorConversation) => t.conversationId === selectedConversationId)?.studentName || "Student"
                         : isCoordinator
                           ? (() => {

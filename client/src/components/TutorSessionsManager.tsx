@@ -4,8 +4,10 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Calendar, Clock, ChevronDown, ChevronUp } from "lucide-react";
+import { Calendar, Clock, ChevronDown, ChevronUp, FileText, Download } from "lucide-react";
 import { formatSessionTime } from "@/../../shared/timezone-utils";
+import { trpc } from "@/lib/trpc";
+import { toast } from "sonner";
 
 interface TutorSessionsManagerProps {
   upcomingSessions: any[];
@@ -29,9 +31,50 @@ export function TutorSessionsManager({
   tutorTimezone,
 }: TutorSessionsManagerProps) {
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
+  const [fetchingTranscripts, setFetchingTranscripts] = useState<Record<number, boolean>>({});
 
   // Use tutor's timezone or fallback to browser timezone
   const timezone = tutorTimezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+  // Fetch transcript mutation
+  const fetchTranscriptMutation = trpc.zoom.fetchTranscript.useMutation({
+    onSuccess: (data, variables) => {
+      toast.success("Transcript fetched successfully!");
+      setFetchingTranscripts((prev) => ({ ...prev, [variables.sessionId || 0]: false }));
+    },
+    onError: (error, variables) => {
+      const message = error.message || "Failed to fetch transcript";
+      if (message.includes("No transcript available") || message.includes("not found")) {
+        toast.warning("Transcript is still processing. Please try again in a few minutes.");
+      } else {
+        toast.error(message);
+      }
+      setFetchingTranscripts((prev) => ({ ...prev, [variables.sessionId || 0]: false }));
+    },
+  });
+
+  const handleFetchTranscript = async (session: any) => {
+    if (!session.joinUrl) {
+      toast.error("No meeting URL found for this session");
+      return;
+    }
+
+    // Extract meeting ID from joinUrl
+    // Format: https://us05web.zoom.us/j/85648346210?pwd=...
+    const urlMatch = session.joinUrl.match(/\/j\/(\d+)/);
+    if (!urlMatch) {
+      toast.error("Could not extract meeting ID from URL");
+      return;
+    }
+
+    const meetingId = urlMatch[1];
+    setFetchingTranscripts((prev) => ({ ...prev, [session.id]: true }));
+
+    fetchTranscriptMutation.mutate({
+      meetingId,
+      sessionId: session.id,
+    });
+  };
 
   const toggleGroup = (key: string) => {
     setExpandedGroups((prev) => ({
@@ -235,13 +278,31 @@ export function TutorSessionsManager({
                           }
                           placeholder="Add notes/summary for the student"
                         />
-                        <div className="flex gap-2">
+                        <div className="flex flex-wrap gap-2">
                           <Button
                             size="sm"
                             onClick={saveNotes}
                             disabled={updateSessionMutation.isPending}
                           >
                             Save notes
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleFetchTranscript(session)}
+                            disabled={fetchingTranscripts[session.id] || fetchTranscriptMutation.isPending}
+                          >
+                            {fetchingTranscripts[session.id] ? (
+                              <>
+                                <Download className="w-4 h-4 mr-2 animate-spin" />
+                                Fetching...
+                              </>
+                            ) : (
+                              <>
+                                <FileText className="w-4 h-4 mr-2" />
+                                Fetch Transcript
+                              </>
+                            )}
                           </Button>
                         </div>
                       </div>

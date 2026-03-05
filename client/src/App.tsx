@@ -15,6 +15,7 @@ import { AdminDashboard } from "./pages/AdminDashboard";
 import { CoordinatorDashboard } from "./pages/CoordinatorDashboard";
 import { CoordinatorParentMessages } from "./pages/CoordinatorParentMessages";
 import { CoordinatorParentSchedule } from "./pages/CoordinatorParentSchedule";
+import CoordinatorMessages from "./pages/CoordinatorMessages";
 import Messages from "./pages/Messages";
 // RoleSelection removed - users get role assigned during registration
 import SignUp from "./pages/SignUp";
@@ -53,6 +54,7 @@ function Router() {
       <Route path={"/parent/payments"} component={ParentPayments} />
       <Route path={"/parent/notifications"} component={ParentNotifications} />
       <Route path={"/coordinator/dashboard"} component={CoordinatorDashboard} />
+      <Route path={"/coordinator/messages"} component={CoordinatorMessages} />
       <Route path={"/coordinator/parent/:parentId/messages"} component={CoordinatorParentMessages} />
       <Route path={"/coordinator/parent/:parentId/schedule"} component={CoordinatorParentSchedule} />
       <Route path={"/admin/dashboard"} component={AdminDashboard} />
