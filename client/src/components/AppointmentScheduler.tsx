@@ -86,16 +86,14 @@ export function AppointmentScheduler({ subscriptions, onScheduleComplete }: Appo
   const tutorTimezone = tutorProfile?.timezone || detectUserTimezone();
   const parentTimezone = parentProfile?.timezone || detectUserTimezone();
 
-  // Get timezone abbreviation for parent
+  // Get timezone abbreviation for parent e.g. "EST", "IST"
   const parentTimezoneAbbr = useMemo(() => {
-    try {
-      return new Date().toLocaleTimeString('en-US', {
-        timeZone: parentTimezone,
-        timeZoneName: 'short'
-      }).split(' ').pop() || '';
-    } catch {
-      return '';
+    const tz = COMMON_TIMEZONES.find(t => t.value === parentTimezone);
+    if (tz) {
+      const match = tz.label.match(/\(([^)]+)\)$/);
+      return match ? match[1] : tz.label;
     }
+    return '';
   }, [parentTimezone]);
 
   // Get friendly timezone label
@@ -486,7 +484,7 @@ export function AppointmentScheduler({ subscriptions, onScheduleComplete }: Appo
                               : "bg-background hover:bg-muted border-border"
                           }`}
                         >
-                          {time}
+                          {time}{parentTimezoneAbbr && <span className="ml-1 text-xs opacity-70">{parentTimezoneAbbr}</span>}
                         </button>
                       ))
                     )}

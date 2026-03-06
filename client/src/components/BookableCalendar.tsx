@@ -108,16 +108,14 @@ export function BookableCalendar({
     return found ? found.label : tutorTimezone;
   }, [tutorTimezone]);
 
-  // Get timezone abbreviation for parent
+  // Get timezone abbreviation for parent e.g. "EST", "IST"
   const parentTimezoneAbbr = useMemo(() => {
-    try {
-      return new Date().toLocaleTimeString('en-US', {
-        timeZone: parentTimezone,
-        timeZoneName: 'short'
-      }).split(' ').pop() || '';
-    } catch {
-      return '';
+    const tz = COMMON_TIMEZONES.find(t => t.value === parentTimezone);
+    if (tz) {
+      const match = tz.label.match(/\(([^)]+)\)$/);
+      return match ? match[1] : tz.label;
     }
+    return '';
   }, [parentTimezone]);
 
   // Generate time slots from 8 AM to 8 PM based on actual availability
@@ -494,6 +492,7 @@ export function BookableCalendar({
                 >
                   <Clock className="w-3 h-3 mb-1" />
                   <span className="text-xs sm:text-sm font-medium">{slot.displayTime}</span>
+                  {parentTimezoneAbbr && <span className="text-[10px] opacity-60">{parentTimezoneAbbr}</span>}
                 </Button>
               ))}
             </div>

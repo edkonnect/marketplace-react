@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/select";
 import { Plus, Trash2, Clock } from "lucide-react";
 import { toast } from "sonner";
+import { COMMON_TIMEZONES } from "@/../../shared/timezone-utils";
 
 const DAYS_OF_WEEK = [
   { value: 0, label: "Sunday" },
@@ -41,6 +42,18 @@ export function AvailabilityManager() {
   const [endTime, setEndTime] = useState("17:00");
 
   const { data: availability, isLoading, refetch } = trpc.tutorAvailability.getAvailability.useQuery();
+  const { data: tutorProfile } = trpc.tutorProfile.getMy.useQuery();
+
+  const tutorTimezone = tutorProfile?.timezone || 'America/New_York';
+  const timezoneAbbr = useMemo(() => {
+    // Extract abbreviation from label e.g. "India Standard Time (IST)" → "IST"
+    const tz = COMMON_TIMEZONES.find(t => t.value === tutorTimezone);
+    if (tz) {
+      const match = tz.label.match(/\(([^)]+)\)$/);
+      return match ? match[1] : tz.label;
+    }
+    return tutorTimezone;
+  }, [tutorTimezone]);
 
   const createSlotMutation = trpc.tutorAvailability.createSlot.useMutation({
     onSuccess: () => {
@@ -207,6 +220,11 @@ export function AvailabilityManager() {
                         <span className="text-sm">
                           {slot.startTime} - {slot.endTime}
                         </span>
+                        {timezoneAbbr && (
+                          <span className="text-xs text-muted-foreground bg-muted-foreground/10 px-1.5 py-0.5 rounded">
+                            {timezoneAbbr}
+                          </span>
+                        )}
                       </div>
                       <Button
                         variant="ghost"
