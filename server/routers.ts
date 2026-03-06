@@ -4313,19 +4313,12 @@ export const appRouter = router({
               const attachments = await db.getSessionNoteAttachments(note.id);
 
               const sessionDate = new Date(session.scheduledAt);
+              const parentProfile = await db.getParentProfileByUserId(parent.id);
               const emailHtml = await sendSessionNotesEmail({
                 parentName: parent.name,
                 tutorName: tutor.name,
-                sessionDate: sessionDate.toLocaleDateString('en-US', { 
-                  year: 'numeric', 
-                  month: 'long', 
-                  day: 'numeric' 
-                }),
-                sessionTime: sessionDate.toLocaleTimeString('en-US', { 
-                  hour: 'numeric', 
-                  minute: '2-digit',
-                  hour12: true 
-                }),
+                sessionDate: formatEmailDate(sessionDate, parentProfile?.timezone || undefined),
+                sessionTime: formatEmailTime(sessionDate, parentProfile?.timezone || undefined),
                 progressSummary: input.progressSummary,
                 homework: input.homework || undefined,
                 challenges: input.challenges || undefined,
@@ -4600,19 +4593,12 @@ export const appRouter = router({
 
           if (parent && tutor && parent.name && tutor.name) {
             const sessionDate = new Date(session.scheduledAt);
+            const parentProfile = await db.getParentProfileByUserId(parent.id);
             const emailHtml = await sendSessionNotesEmail({
               parentName: parent.name,
               tutorName: tutor.name,
-              sessionDate: sessionDate.toLocaleDateString('en-US', {
-                year: 'numeric',
-                month: 'long',
-                day: 'numeric'
-              }),
-              sessionTime: sessionDate.toLocaleTimeString('en-US', {
-                hour: 'numeric',
-                minute: '2-digit',
-                hour12: true
-              }),
+              sessionDate: formatEmailDate(sessionDate, parentProfile?.timezone || undefined),
+              sessionTime: formatEmailTime(sessionDate, parentProfile?.timezone || undefined),
               progressSummary: input.processedData.progressSummary,
               homework: input.processedData.homework || undefined,
               challenges: input.processedData.challenges || undefined,

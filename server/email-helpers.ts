@@ -4,6 +4,8 @@
  */
 
 import { emailService } from './email-service';
+import { formatInTimeZone } from 'date-fns-tz';
+import { COMMON_TIMEZONES } from '../shared/timezone-utils';
 import {
   getWelcomeEmail,
   getBookingConfirmationEmail,
@@ -233,18 +235,13 @@ export function formatEmailDate(date: Date, timezone?: string): string {
  * @param timezone - Optional timezone (e.g., 'America/New_York'). If not provided, uses local system time.
  */
 export function formatEmailTime(date: Date, timezone?: string): string {
-  const options: Intl.DateTimeFormatOptions = {
-    hour: 'numeric',
-    minute: '2-digit',
-    hour12: true,
-  };
-
-  // Only add timeZone if provided, otherwise use local time
   if (timezone) {
-    options.timeZone = timezone;
+    const time = formatInTimeZone(date, timezone, 'h:mm a');
+    const tz = COMMON_TIMEZONES.find(t => t.value === timezone);
+    const abbr = tz ? (tz.label.match(/\(([^)]+)\)$/)?.[1] ?? '') : '';
+    return abbr ? `${time} ${abbr}` : formatInTimeZone(date, timezone, 'h:mm a zzz');
   }
-
-  return date.toLocaleTimeString('en-US', options);
+  return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
 }
 
 /**
