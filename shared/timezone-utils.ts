@@ -19,6 +19,7 @@ export const COMMON_TIMEZONES = [
   { value: 'America/Los_Angeles', label: 'Pacific Time (PT)' },
   { value: 'America/Anchorage', label: 'Alaska Time (AKT)' },
   { value: 'Pacific/Honolulu', label: 'Hawaii Time (HST)' },
+  { value: 'Asia/Kolkata', label: 'India Standard Time (IST)' },
 ] as const;
 
 /**
@@ -162,8 +163,11 @@ export function createTimestamp(
   timezone: string
 ): number {
   try {
-    const localDate = new Date(year, month, day, hour, minute, 0, 0);
-    return convertToUTC(localDate, timezone);
+    // Build an ISO-like string so fromZonedTime interprets it in the given timezone,
+    // not the system's local timezone.
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const localStr = `${year}-${pad(month + 1)}-${pad(day)}T${pad(hour)}:${pad(minute)}:00`;
+    return fromZonedTime(localStr, timezone).getTime();
   } catch (error) {
     console.error('Error creating timestamp:', error);
     return new Date(year, month, day, hour, minute).getTime();

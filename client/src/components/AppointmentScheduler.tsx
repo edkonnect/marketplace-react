@@ -27,7 +27,8 @@ import {
   COMMON_TIMEZONES,
   detectUserTimezone,
   convertToUTC,
-  convertFromUTC
+  convertFromUTC,
+  createTimestamp,
 } from "@/../../shared/timezone-utils";
 
 interface AppointmentSchedulerProps {
@@ -162,12 +163,15 @@ export function AppointmentScheduler({ subscriptions, onScheduleComplete }: Appo
           const tutorHour = Math.floor(cursor / 60);
           const tutorMinute = cursor % 60;
 
-          // Create date in tutor's timezone
-          const tutorSlotDate = new Date(checkDateInTutorTZ);
-          tutorSlotDate.setHours(tutorHour, tutorMinute, 0, 0);
-
-          // Convert to UTC
-          const slotTimestampUTC = convertToUTC(tutorSlotDate, tutorTimezone);
+          // Convert slot time to UTC using tutor's timezone directly
+          const slotTimestampUTC = createTimestamp(
+            checkDateInTutorTZ.getFullYear(),
+            checkDateInTutorTZ.getMonth(),
+            checkDateInTutorTZ.getDate(),
+            tutorHour,
+            tutorMinute,
+            tutorTimezone
+          );
 
           // Convert to parent's timezone for display
           const slotInParentTZ = convertFromUTC(slotTimestampUTC, parentTimezone);

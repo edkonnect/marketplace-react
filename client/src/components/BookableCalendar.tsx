@@ -124,9 +124,6 @@ export function BookableCalendar({
   const generateTimeSlots = (): TimeSlot[] => {
     if (!selectedDate) return [];
 
-    console.log('[BookableCalendar] Generating slots for:', selectedDate);
-    console.log('[BookableCalendar] Parent timezone:', parentTimezone);
-    console.log('[BookableCalendar] Tutor timezone:', tutorTimezone);
 
     // Set to midnight in parent's local time for the selected date
     const selectedDayStart = new Date(selectedDate);
@@ -134,8 +131,6 @@ export function BookableCalendar({
 
     const selectedDayEnd = new Date(selectedDate);
     selectedDayEnd.setHours(23, 59, 59, 999);
-
-    console.log('[BookableCalendar] Day boundaries:', selectedDayStart, 'to', selectedDayEnd);
 
     const slotsMap = new Map<string, TimeSlot>();
 
@@ -156,8 +151,6 @@ export function BookableCalendar({
       const dayAvailability = tutorAvailability.filter(
         (slot: any) => slot.dayOfWeek === tutorDayOfWeek && slot.isActive
       );
-
-      console.log(`[BookableCalendar] Day offset ${dayOffset}: tutorDayOfWeek=${tutorDayOfWeek}, availability slots:`, dayAvailability);
 
       if (dayAvailability.length === 0) {
         continue;
@@ -186,12 +179,15 @@ export function BookableCalendar({
             continue;
           }
 
-          // Create the exact datetime in tutor's timezone
-          const tutorSlotDate = new Date(checkDateInTutorTZ);
-          tutorSlotDate.setHours(tutorHour, tutorMinute, 0, 0);
-
-          // Convert to UTC timestamp
-          const slotTimestampUTC = convertToUTC(tutorSlotDate, tutorTimezone);
+          // Convert slot time to UTC using tutor's timezone directly
+          const slotTimestampUTC = createTimestamp(
+            checkDateInTutorTZ.getFullYear(),
+            checkDateInTutorTZ.getMonth(),
+            checkDateInTutorTZ.getDate(),
+            tutorHour,
+            tutorMinute,
+            tutorTimezone
+          );
 
           // Convert to parent's timezone to see when this slot appears for the parent
           const slotInParentTZ = convertFromUTC(slotTimestampUTC, parentTimezone);
@@ -204,16 +200,6 @@ export function BookableCalendar({
           const parentHour = slotInParentTZ.getHours();
           const parentMinute = slotInParentTZ.getMinutes();
           const displayTime = `${parentHour.toString().padStart(2, "0")}:${parentMinute.toString().padStart(2, "0")}`;
-          const tutorTime = `${tutorHour.toString().padStart(2, "0")}:${tutorMinute.toString().padStart(2, "0")}`;
-
-          if (tutorHour === 9 && tutorMinute === 0) {
-            console.log(`[BookableCalendar] Slot conversion: tutor ${tutorTime} → parent ${displayTime}`, {
-              tutorSlotDate: tutorSlotDate.toISOString(),
-              slotTimestampUTC,
-              slotInParentTZ: slotInParentTZ.toISOString(),
-            });
-          }
-
           // Check if this time is blocked by a time block (using UTC timestamp)
           let isBlocked = false;
           for (const block of tutorTimeBlocks) {
