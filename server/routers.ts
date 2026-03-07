@@ -146,7 +146,6 @@ export const appRouter = router({
       .input(z.object({ userId: z.number() }))
       .query(async ({ input }) => {
         const profile = await db.getTutorProfileByUserId(input.userId);
-        console.log('[DEBUG tutorProfile.get] userId:', input.userId, 'timezone:', profile?.timezone);
         return profile;
       }),
     
@@ -503,7 +502,6 @@ export const appRouter = router({
       .input(z.object({ userId: z.number() }))
       .query(async ({ input }) => {
         const profile = await db.getParentProfileByUserId(input.userId);
-        console.log('[DEBUG parentProfile.get] userId:', input.userId, 'timezone:', profile?.timezone);
         return profile;
       }),
 
@@ -1323,6 +1321,12 @@ export const appRouter = router({
             ...session,
             courseTitle: row.courseTitle,
             courseSubject: row.courseSubject,
+            courseQuizEnabled: row.courseQuizEnabled ?? false,
+            hasQuiz: !!row.hasQuiz,
+            quizStatus: row.quizStatus ?? null,
+            quizScore: row.quizScore ?? null,
+            quizCorrectCount: row.quizCorrectCount ?? null,
+            quizTotalCount: row.quizTotalCount ?? null,
             tutorName: row.tutorName,
             parentName: row.parentName,
             studentFirstName: row.studentFirstName,
@@ -4029,7 +4033,6 @@ export const appRouter = router({
       .input(z.object({ tutorId: z.number() }))
       .query(async ({ input }) => {
         const availability = await db.getTutorAvailability(input.tutorId);
-        console.log('[DEBUG tutorAvailability.getByTutorId] tutorId:', input.tutorId, 'slots:', availability.length);
         return availability;
       }),
 
@@ -4746,17 +4749,12 @@ export const appRouter = router({
         bio: z.string().optional(),
       }))
       .mutation(async ({ input, ctx }) => {
-        console.log("[Coordinator Create] Starting creation with input:", input);
-
         // Check if email already exists
         const existingUser = await db.getUserByEmail(input.email);
         if (existingUser) {
-          console.log("[Coordinator Create] Email already in use:", input.email);
           throw new TRPCError({ code: 'BAD_REQUEST', message: 'Email already in use' });
         }
 
-        // Create user with coordinator role
-        console.log("[Coordinator Create] Creating user account...");
         const user = await db.createAuthUser({
           email: input.email,
           firstName: input.firstName,
@@ -4771,36 +4769,22 @@ export const appRouter = router({
           throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to create coordinator' });
         }
 
-        console.log("[Coordinator Create] User created with ID:", user.id);
-
-        // Create coordinator profile
-        console.log("[Coordinator Create] Creating coordinator profile...");
-        const profileData = {
+        const profileId = await db.createCoordinatorProfile({
           userId: user.id,
           specialization: input.specialization,
           phoneNumber: input.phoneNumber,
           bio: input.bio,
           isActive: true,
-        };
-        console.log("[Coordinator Create] Profile data:", profileData);
-
-        const profileId = await db.createCoordinatorProfile(profileData);
+        });
 
         if (!profileId) {
           console.error("[Coordinator Create] Failed to create coordinator profile for user:", user.id);
           throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to create coordinator profile' });
         }
 
-        console.log("[Coordinator Create] Profile created with ID:", profileId);
-
-        // Create password setup token and send email
-        console.log("[Coordinator Create] Creating password setup token...");
         try {
           const setupToken = await db.createPasswordSetupToken(user.id);
-          console.log("[Coordinator Create] Password setup token created:", setupToken ? "success" : "failed");
-
           if (setupToken) {
-            console.log("[Coordinator Create] Sending password setup email to:", user.email);
             const setupUrl = `${process.env.VITE_FRONTEND_FORGE_API_URL || 'http://localhost:3000'}/setup-password?token=${setupToken}`;
             const expiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000); // 48 hours from now
 
@@ -4811,9 +4795,6 @@ export const appRouter = router({
               setupUrl,
               expiresAt,
             });
-            console.log("[Coordinator Create] Password setup email sent:", emailSent ? "success" : "failed");
-          } else {
-            console.error("[Coordinator Create] No password setup token generated");
           }
         } catch (emailError) {
           console.error('[Coordinator Creation] Failed to send password setup email:', emailError);
@@ -4942,9 +4923,7 @@ export const appRouter = router({
      */
     getMyAssignments: coordinatorProcedure
       .query(async ({ ctx }) => {
-        console.log('[Coordinator] Fetching assignments for coordinator ID:', ctx.user.id);
         const assignments = await db.getCoordinatorAssignmentsByCoordinator(ctx.user.id);
-        console.log('[Coordinator] Found assignments:', assignments.length);
         return assignments;
       }),
 
@@ -5472,6 +5451,88 @@ Return ONLY the JSON object, nothing else.`;
           });
         }
       }),
+
+    generateQuiz: tutorProcedure
+      .input(z.object({
+        transcript: z.string().min(50, "Transcript too short"),
+        sessionId: z.number(),
+        courseName: z.string().optional(),
+        studentName: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const { ENV } = await import("./_core/env");
+        const { GoogleGenerativeAI } = await import("@google/generative-ai");
+
+        if (!ENV.geminiApiKey) {
+          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Gemini API key not configured.' });
+        }
+
+        const genAI = new GoogleGenerativeAI(ENV.geminiApiKey);
+        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+
+        const prompt = `You are an expert educational assistant. Based on the following tutoring session transcript, generate 5 to 8 multiple-choice questions to test the student's understanding.
+
+STUDENT: ${input.studentName || 'Student'}
+COURSE: ${input.courseName || 'General'}
+
+TRANSCRIPT:
+${input.transcript}
+
+CRITICAL: Respond with ONLY valid JSON. No markdown, no explanations.
+
+Generate questions in EXACTLY this JSON format:
+{
+  "questions": [
+    {
+      "id": "1",
+      "question": "Question text?",
+      "options": ["Option A", "Option B", "Option C", "Option D"],
+      "correctAnswer": 0
+    }
+  ]
+}
+
+Rules:
+- Exactly 4 options per question
+- correctAnswer is the 0-based index of the correct option
+- Only ask about topics actually covered in the transcript
+- Keep questions clear and age-appropriate
+
+Return ONLY the JSON object.`;
+
+        try {
+          const result = await model.generateContent(prompt);
+          let jsonText = result.response.text().trim();
+
+          if (jsonText.startsWith('```json')) {
+            jsonText = jsonText.replace(/```json\n?/g, '').replace(/```\n?/g, '');
+          } else if (jsonText.startsWith('```')) {
+            jsonText = jsonText.replace(/```\n?/g, '');
+          }
+          const start = jsonText.indexOf('{');
+          const end = jsonText.lastIndexOf('}');
+          if (start !== -1 && end !== -1) jsonText = jsonText.substring(start, end + 1);
+
+          let parsed: { questions: Array<{ id: string; question: string; options: string[]; correctAnswer: number }> };
+          try {
+            parsed = JSON.parse(jsonText);
+          } catch {
+            throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'AI returned invalid format. Please try again.' });
+          }
+
+          if (!Array.isArray(parsed.questions) || parsed.questions.length === 0) {
+            throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'No questions generated. Try again.' });
+          }
+
+          return { questions: parsed.questions };
+        } catch (error: any) {
+          if (error instanceof TRPCError) throw error;
+          throw new TRPCError({
+            code: 'INTERNAL_SERVER_ERROR',
+            message: error instanceof Error ? error.message : 'Failed to generate quiz',
+          });
+        }
+      }),
   }),
 
   notifications: router({
@@ -5694,6 +5755,134 @@ Return ONLY the JSON object, nothing else.`;
           .where(eq(zoomMeetingRecordings.sessionId, input.sessionId));
 
         return recordings;
+      }),
+  }),
+
+  quiz: router({
+    /**
+     * Save an approved quiz (tutor action)
+     */
+    create: tutorProcedure
+      .input(z.object({
+        sessionId: z.number(),
+        courseId: z.number().optional(),
+        parentId: z.number(),
+        questions: z.array(z.object({
+          id: z.string(),
+          question: z.string().min(1),
+          options: z.array(z.string().min(1)).length(4),
+          correctAnswer: z.number().min(0).max(3),
+        })).min(1),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const quizId = await db.upsertSessionQuiz({
+          sessionId: input.sessionId,
+          courseId: input.courseId,
+          tutorId: ctx.user.id,
+          parentId: input.parentId,
+          questions: JSON.stringify(input.questions),
+          status: "draft",
+        });
+
+        if (!quizId) {
+          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to save quiz' });
+        }
+
+        await db.approveAndAssignQuiz(quizId, JSON.stringify(input.questions));
+
+        await db.createInAppNotification({
+          userId: input.parentId,
+          title: "New Quiz Available",
+          message: "Your tutor has assigned a quiz for your recent session. Go to History to take it!",
+          type: "quiz_assigned",
+          relatedId: quizId,
+        });
+
+        return { success: true, quizId };
+      }),
+
+    /**
+     * Get quiz for a specific session
+     */
+    getBySession: protectedProcedure
+      .input(z.object({ sessionId: z.number() }))
+      .query(async ({ input }) => {
+        const quiz = await db.getQuizBySessionId(input.sessionId);
+        if (!quiz) return null;
+        return {
+          ...quiz,
+          questions: JSON.parse(quiz.questions) as Array<{
+            id: string; question: string; options: string[]; correctAnswer: number;
+          }>,
+        };
+      }),
+
+    /**
+     * Get all quizzes assigned to the current parent
+     */
+    getByParent: parentProcedure
+      .query(async ({ ctx }) => {
+        const quizzes = await db.getQuizzesByParentId(ctx.user.id);
+        return quizzes
+          .filter(q => q.status === "approved" || q.status === "completed")
+          .map(q => ({
+            ...q,
+            questions: JSON.parse(q.questions) as Array<{
+              id: string; question: string; options: string[]; correctAnswer: number;
+            }>,
+          }));
+      }),
+
+    /**
+     * Submit quiz answers and mark as completed
+     */
+    complete: parentProcedure
+      .input(z.object({
+        quizId: z.number(),
+        answers: z.array(z.number()),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const quiz = await db.getQuizById(input.quizId);
+
+        if (!quiz) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'Quiz not found' });
+        }
+        if (quiz.parentId !== ctx.user.id) {
+          throw new TRPCError({ code: 'FORBIDDEN', message: 'Not authorized to complete this quiz' });
+        }
+        if (quiz.status === "completed") {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Quiz already completed' });
+        }
+
+        const questions = JSON.parse(quiz.questions) as Array<{
+          id: string; question: string; options: string[]; correctAnswer: number;
+        }>;
+
+        let correct = 0;
+        questions.forEach((q, idx) => {
+          if (input.answers[idx] === q.correctAnswer) correct++;
+        });
+        const score = Math.round((correct / questions.length) * 100);
+
+        await db.completeQuiz(input.quizId, score, correct, questions.length, JSON.stringify(input.answers));
+
+        return { success: true, score, correct, total: questions.length };
+      }),
+
+    /**
+     * Enable/disable quiz generation for a course (tutor who teaches that course)
+     */
+    toggleCourseQuiz: tutorProcedure
+      .input(z.object({
+        courseId: z.number(),
+        enabled: z.boolean(),
+      }))
+      .mutation(async ({ input }) => {
+        const success = await db.updateCourseQuizEnabled(input.courseId, input.enabled);
+        if (!success) {
+          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to update course' });
+        }
+        return { success: true };
       }),
   }),
 });

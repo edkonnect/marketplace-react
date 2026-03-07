@@ -253,6 +253,20 @@
       "when": 1772675973500,
       "tag": "0035_magenta_gauntlet",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "5",
+      "when": 1772826904965,
+      "tag": "0036_grey_leo",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "5",
+      "when": 1772900000000,
+      "tag": "0038_quiz_performance",
+      "breakpoints": true
     }
   ]
 }

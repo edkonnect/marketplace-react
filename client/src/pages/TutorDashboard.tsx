@@ -14,12 +14,12 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Link, useLocation } from "wouter";
-import { BookOpen, Calendar, MessageSquare, DollarSign, Users, Edit, Clock, FileText, Plus, Filter, Search, X, Sparkles, Globe } from "lucide-react";
+import { BookOpen, Calendar, MessageSquare, DollarSign, Users, Edit, Clock, FileText, Plus, Filter, Search, X, Sparkles, Globe, ClipboardPaste, CheckCircle, HelpCircle } from "lucide-react";
 import { AvailabilityManager } from "@/components/AvailabilityManager";
 import { TimeBlockManager } from "@/components/TimeBlockManager";
 import { VideoUploadManager } from "@/components/VideoUploadManager";
 import { TutorSessionsManager } from "@/components/TutorSessionsManager";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { LOGIN_PATH } from "@/const";
 import { toast } from "sonner";
 import { formatSessionTime, COMMON_TIMEZONES } from "@/../../shared/timezone-utils";
@@ -40,7 +40,7 @@ export default function TutorDashboard() {
     { enabled: isAuthenticated && user?.role === "tutor" }
   );
 
-  const { data: courses, isLoading: coursesLoading } = trpc.course.myCoursesAsTutor.useQuery(
+  const { data: courses, isLoading: coursesLoading, refetch: refetchCourses } = trpc.course.myCoursesAsTutor.useQuery(
     undefined,
     { enabled: isAuthenticated && user?.role === "tutor" }
   );
@@ -93,6 +93,26 @@ export default function TutorDashboard() {
   const [processedNotes, setProcessedNotes] = useState<Record<number, any>>({});
   const [aiProcessedSessions, setAiProcessedSessions] = useState<Set<number>>(new Set());
 
+
+  // Transcript modal state
+  type TranscriptModalState = {
+    sessionId: number;
+    transcript: string;
+    summary?: string;
+    quizQuestions?: Array<{ id: string; question: string; options: string[]; correctAnswer: number }>;
+    activeTab: "transcript" | "quiz";
+    courseTitle: string;
+    studentName: string;
+    courseId?: number;
+    parentId?: number;
+    quizEnabled?: boolean;
+    editable?: boolean;
+  };
+  const [transcriptModal, setTranscriptModal] = useState<TranscriptModalState | null>(null);
+  const [summarizingInModal, setSummarizingInModal] = useState(false);
+  const summarizingInModalRef = useRef(false);
+  const [generatingQuiz, setGeneratingQuiz] = useState(false);
+
   const savePreferencesMutation = trpc.tutorCoursePreferences.saveMine.useMutation({
     onSuccess: () => {
       toast.success("Preferences saved");
@@ -113,27 +133,32 @@ export default function TutorDashboard() {
   const fetchTranscriptMutation = trpc.zoom.fetchTranscript.useMutation({
     onSuccess: (data, variables) => {
       const sessionId = variables.sessionId || 0;
-      setSessionNotes((prev) => ({
-        ...prev,
-        [sessionId]: data.transcript || "",
-      }));
       setFetchingTranscripts((prev) => ({ ...prev, [sessionId]: false }));
-      toast.success("Transcript loaded into notes!");
+      if (!data.transcript || data.transcript.trim().length === 0) {
+        toast.warning("No transcript text found for this session. Audio transcript may not be enabled on Zoom.");
+        return;
+      }
+      const session = historySessions?.find((s) => s.id === sessionId);
+      const studentName = [session?.studentFirstName, session?.studentLastName]
+        .filter(Boolean).join(" ") || "Student";
+      setTranscriptModal({
+        sessionId,
+        transcript: data.transcript,
+        activeTab: "transcript",
+        courseTitle: (session as any)?.courseTitle || (session as any)?.courseSubject || "Course",
+        studentName,
+        courseId: session?.courseId ?? undefined,
+        parentId: session?.parentId ?? undefined,
+        quizEnabled: ((session as any)?.courseQuizEnabled ?? false) && !((session as any)?.hasQuiz),
+      });
+      toast.success("Transcript loaded. Review it in the popup.");
     },
     onError: (error, variables) => {
       const sessionId = variables.sessionId || 0;
       const message = error.message || "Failed to fetch transcript";
-      if (message.includes("No transcript available") || message.includes("not found")) {
-        setSessionNotes((prev) => ({
-          ...prev,
-          [sessionId]: "Transcript is still processing. It will be available once the recording is ready.",
-        }));
-        toast.warning("Transcript is still processing. Please check back after a few minutes.");
+      if (message.includes("No transcript found") || message.includes("No transcript available") || message.includes("not found")) {
+        toast.warning("No transcript available for this session. Make sure cloud recording and audio transcript are enabled in Zoom.");
       } else {
-        setSessionNotes((prev) => ({
-          ...prev,
-          [sessionId]: "",
-        }));
         toast.error(message);
       }
       setFetchingTranscripts((prev) => ({ ...prev, [sessionId]: false }));
@@ -143,17 +168,59 @@ export default function TutorDashboard() {
   const summarizeMutation = trpc.ai.summarizeText.useMutation({
     onSuccess: (data) => {
       if (summarizingSessionId !== null) {
+        // Regular in-page summarize (not from modal)
         setSessionNotes((prev) => ({
           ...prev,
           [summarizingSessionId]: data.summary,
         }));
+        setSummarizingSessionId(null);
+        toast.success("Notes summarized successfully!");
+      } else if (summarizingInModalRef.current) {
+        // Modal summarize — store in modal state only
+        summarizingInModalRef.current = false;
+        setSummarizingInModal(false);
+        setTranscriptModal((prev) => prev ? { ...prev, summary: data.summary } : prev);
+        toast.success("Summary generated!");
       }
-      setSummarizingSessionId(null);
-      toast.success("Notes summarized successfully!");
     },
     onError: (error) => {
       setSummarizingSessionId(null);
-      toast.error("Failed to summarize notes: " + error.message);
+      summarizingInModalRef.current = false;
+      setSummarizingInModal(false);
+      toast.error("Failed to summarize: " + error.message);
+    },
+  });
+
+  const generateQuizMutation = trpc.ai.generateQuiz.useMutation({
+    onSuccess: (data) => {
+      setTranscriptModal((prev) => prev ? { ...prev, quizQuestions: data.questions } : prev);
+      setGeneratingQuiz(false);
+      toast.success("Quiz generated! Review the questions below.");
+    },
+    onError: (error) => {
+      setGeneratingQuiz(false);
+      toast.error("Failed to generate quiz: " + error.message);
+    },
+  });
+
+  const approveQuizMutation = trpc.quiz.create.useMutation({
+    onSuccess: () => {
+      setTranscriptModal(null);
+      toast.success("Quiz approved and sent to parent!");
+      refetchHistory();
+    },
+    onError: (error) => {
+      toast.error("Failed to save quiz: " + error.message);
+    },
+  });
+
+  const toggleCourseQuizMutation = trpc.quiz.toggleCourseQuiz.useMutation({
+    onSuccess: (_, variables) => {
+      toast.success(`Quiz generation ${variables.enabled ? "enabled" : "disabled"} for this course.`);
+      refetchCourses();
+    },
+    onError: (error) => {
+      toast.error("Failed to update course: " + error.message);
     },
   });
 
@@ -498,6 +565,40 @@ export default function TutorDashboard() {
     });
   };
 
+  const handlePasteTranscript = (sessionId: number) => {
+    const session = historySessions?.find((s) => s.id === sessionId);
+    const studentName = [session?.studentFirstName, session?.studentLastName]
+      .filter(Boolean).join(" ") || "Student";
+    setTranscriptModal({
+      sessionId,
+      transcript: "",
+      activeTab: "transcript",
+      courseTitle: (session as any)?.courseTitle || (session as any)?.courseSubject || "Course",
+      studentName,
+      courseId: session?.courseId ?? undefined,
+      parentId: session?.parentId ?? undefined,
+      quizEnabled: !!(session as any)?.courseQuizEnabled && !(session as any)?.hasQuiz,
+      editable: true,
+    });
+  };
+
+  const handleModalSummarize = () => {
+    if (!transcriptModal?.transcript) return;
+    summarizingInModalRef.current = true;
+    setSummarizingInModal(true);
+    summarizeMutation.mutate({ text: transcriptModal.transcript, maxLength: 200 });
+  };
+
+  const handleUseThisSummary = () => {
+    if (!transcriptModal?.summary) return;
+    const { sessionId, summary } = transcriptModal;
+    setSessionNotes((prev) => ({
+      ...prev,
+      [sessionId]: summary,
+    }));
+    toast.success("Summary saved to session notes. Don't forget to save!");
+  };
+
   const hiddenStorageKey = user ? `tutor_hidden_sessions_${user.id}` : "tutor_hidden_sessions";
   const [hiddenHistory, setHiddenHistory] = useState<Set<number>>(() => {
     try {
@@ -769,6 +870,20 @@ export default function TutorDashboard() {
                                   <p className="font-medium">{course.duration} min</p>
                                 </div>
                               )}
+                            </div>
+
+                            <div className="flex items-center justify-between p-2 rounded-md border bg-muted/30">
+                              <div>
+                                <p className="text-sm font-medium">Quiz Generation</p>
+                                <p className="text-xs text-muted-foreground">Allow quiz creation from transcripts</p>
+                              </div>
+                              <Checkbox
+                                checked={course.quizEnabled ?? false}
+                                onCheckedChange={(checked) =>
+                                  toggleCourseQuizMutation.mutate({ courseId: course.id, enabled: !!checked })
+                                }
+                                disabled={toggleCourseQuizMutation.isPending}
+                              />
                             </div>
 
                             <Button asChild variant="outline" size="sm" className="w-full">
@@ -1281,6 +1396,14 @@ export default function TutorDashboard() {
                                             <FileText className="w-3 h-3 mr-1" />
                                             {fetchingTranscripts[session.id] ? "Fetching..." : "Fetch Transcript"}
                                           </Button>
+                                          <Button
+                                            size="sm"
+                                            variant="outline"
+                                            onClick={() => handlePasteTranscript(session.id)}
+                                          >
+                                            <ClipboardPaste className="w-3 h-3 mr-1" />
+                                            Paste Transcript
+                                          </Button>
                                           {/* Only show Summarize button if session hasn't been AI-processed */}
                                           {!aiProcessedSessions.has(session.id) && (
                                             <Button
@@ -1367,6 +1490,27 @@ export default function TutorDashboard() {
                                   </div>
                                 )}
 
+                                {(session as any).hasQuiz && (
+                                  <div className="mt-2">
+                                    {(session as any).quizStatus === "completed" ? (
+                                      <div className={`flex items-center gap-1.5 text-sm ${(session as any).quizScore == null || (session as any).quizScore >= 70 ? "text-green-600 dark:text-green-400" : (session as any).quizScore >= 40 ? "text-orange-500 dark:text-orange-400" : "text-red-500 dark:text-red-400"}`}>
+                                        <CheckCircle className="w-4 h-4" />
+                                        <span>Quiz completed</span>
+                                        {(session as any).quizScore != null && (
+                                          <span className="font-semibold">
+                                            · {(session as any).quizScore}% ({(session as any).quizCorrectCount}/{(session as any).quizTotalCount})
+                                          </span>
+                                        )}
+                                      </div>
+                                    ) : (
+                                      <div className="flex items-center gap-1.5 text-sm text-amber-600 dark:text-amber-400">
+                                        <HelpCircle className="w-4 h-4" />
+                                        <span>Quiz assigned — pending</span>
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+
                                 {(session.status === "cancelled" || session.status === "completed" || session.status === "no_show") && (
                                   <div className="flex gap-2">
                                     <Button
@@ -1409,14 +1553,26 @@ export default function TutorDashboard() {
 
                 {/* Availability Tab */}
                 <TabsContent value="availability" forceMount className={tabContentClass}>
-                  <div className="flex items-center gap-2 mb-6">
+                  <div className="flex items-center gap-2 mb-4">
                     <Clock className="h-6 w-6" />
                     <h2 className="text-2xl font-bold">Manage Availability</h2>
                   </div>
-                  <p className="text-muted-foreground mb-6">
+                  <p className="text-muted-foreground mb-4">
                     Set your regular weekly schedule and block out time for vacations or appointments.
                     Parents will only be able to book sessions during your available hours.
                   </p>
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 text-sm bg-blue-50/50 dark:bg-blue-950/20 rounded-md p-3 sm:p-4 border border-blue-200 dark:border-blue-800 mb-6">
+                    <div className="flex items-center gap-2">
+                      <Globe className="w-5 h-5 text-blue-600 dark:text-blue-400 flex-shrink-0" />
+                      <span className="font-semibold text-blue-900 dark:text-blue-100">Your Time Zone:</span>
+                    </div>
+                    <span className="text-blue-800 dark:text-blue-200 font-medium ml-7 sm:ml-0">
+                      {timezoneFriendlyName} ({timezoneAbbr})
+                    </span>
+                    <span className="text-xs text-blue-700/70 dark:text-blue-300/70 ml-7 sm:ml-auto">
+                      Availability slots are saved in your local timezone
+                    </span>
+                  </div>
                   <div className="space-y-6">
                     <AvailabilityManager />
                     <TimeBlockManager />
@@ -1502,6 +1658,204 @@ export default function TutorDashboard() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Transcript + Quiz Modal */}
+      {transcriptModal && (
+        <Dialog open={true} onOpenChange={() => setTranscriptModal(null)}>
+          <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col overflow-hidden p-0">
+            <div className="flex flex-col min-h-0 flex-1 overflow-hidden p-6 pb-0">
+            <DialogHeader>
+              <DialogTitle>Session Transcript</DialogTitle>
+              <DialogDescription>
+                {transcriptModal.courseTitle} &bull; {transcriptModal.studentName}
+              </DialogDescription>
+            </DialogHeader>
+
+            <Tabs
+              value={transcriptModal.activeTab}
+              onValueChange={(v) =>
+                setTranscriptModal((prev) => prev ? { ...prev, activeTab: v as "transcript" | "quiz" } : prev)
+              }
+              className="flex-1 flex flex-col min-h-0 mt-4"
+            >
+              <TabsList className="w-full shrink-0">
+                <TabsTrigger value="transcript" className="flex-1">Transcript / Summary</TabsTrigger>
+                {transcriptModal.quizEnabled && (
+                  <TabsTrigger value="quiz" className="flex-1">Quiz</TabsTrigger>
+                )}
+              </TabsList>
+
+              {/* Transcript Tab */}
+              <TabsContent value="transcript" className="flex-1 flex flex-col gap-4 min-h-0 mt-4 overflow-y-auto pr-1">
+                {transcriptModal.editable ? (
+                  <Textarea
+                    value={transcriptModal.transcript}
+                    onChange={(e) => setTranscriptModal((prev) => prev ? { ...prev, transcript: e.target.value } : prev)}
+                    placeholder="Paste your transcript here..."
+                    className="flex-1 min-h-[200px] text-sm font-mono resize-none"
+                  />
+                ) : (
+                  <div className="overflow-y-auto rounded-md border bg-muted/30 p-3 text-sm whitespace-pre-wrap max-h-48">
+                    {transcriptModal.transcript || "No transcript content."}
+                  </div>
+                )}
+
+                {!transcriptModal.summary ? (
+                  <Button
+                    onClick={handleModalSummarize}
+                    disabled={summarizingInModal}
+                    variant="outline"
+                    className="self-start shrink-0"
+                  >
+                    <Sparkles className="w-4 h-4 mr-2" />
+                    {summarizingInModal ? "Summarizing..." : "Summarize"}
+                  </Button>
+                ) : (
+                  <div className="space-y-3 shrink-0">
+                    <div>
+                      <Label className="text-xs font-medium text-muted-foreground mb-1 block">Summary</Label>
+                      <div className="overflow-y-auto rounded-md border bg-primary/5 p-3 text-sm max-h-48">
+                        {transcriptModal.summary}
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button onClick={handleUseThisSummary} size="sm">
+                        Save to Notes
+                      </Button>
+                      <Button
+                        onClick={handleModalSummarize}
+                        disabled={summarizingInModal}
+                        variant="outline"
+                        size="sm"
+                      >
+                        {summarizingInModal ? "Regenerating..." : "Regenerate"}
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </TabsContent>
+
+              {/* Quiz Tab */}
+              {transcriptModal.quizEnabled && (
+                <TabsContent value="quiz" className="flex-1 flex flex-col gap-4 min-h-0 mt-4 overflow-y-auto">
+                  {!transcriptModal.quizQuestions ? (
+                    <div className="flex flex-col items-center justify-center py-8 gap-3">
+                      <p className="text-sm text-muted-foreground text-center">
+                        Generate an MCQ quiz based on this session's transcript.
+                      </p>
+                      <Button
+                        onClick={() => {
+                          setGeneratingQuiz(true);
+                          generateQuizMutation.mutate({
+                            transcript: transcriptModal.transcript,
+                            sessionId: transcriptModal.sessionId,
+                            courseName: transcriptModal.courseTitle,
+                            studentName: transcriptModal.studentName,
+                          });
+                        }}
+                        disabled={generatingQuiz}
+                      >
+                        <Sparkles className="w-4 h-4 mr-2" />
+                        {generatingQuiz ? "Generating..." : "Generate Quiz"}
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="space-y-5">
+                      {transcriptModal.quizQuestions.map((q, idx) => (
+                        <div key={q.id} className="border rounded-lg p-4 space-y-3">
+                          <div className="flex items-start gap-2">
+                            <span className="text-xs font-bold text-muted-foreground mt-1">{idx + 1}.</span>
+                            <Input
+                              value={q.question}
+                              onChange={(e) => {
+                                const updated = [...transcriptModal.quizQuestions!];
+                                updated[idx] = { ...updated[idx], question: e.target.value };
+                                setTranscriptModal((prev) => prev ? { ...prev, quizQuestions: updated } : prev);
+                              }}
+                              className="text-sm font-medium"
+                            />
+                          </div>
+                          <div className="space-y-2 pl-5">
+                            {q.options.map((opt, optIdx) => (
+                              <div key={optIdx} className="flex items-center gap-2">
+                                <RadioGroup
+                                  value={q.correctAnswer.toString()}
+                                  onValueChange={(val) => {
+                                    const updated = [...transcriptModal.quizQuestions!];
+                                    updated[idx] = { ...updated[idx], correctAnswer: parseInt(val) as 0|1|2|3 };
+                                    setTranscriptModal((prev) => prev ? { ...prev, quizQuestions: updated } : prev);
+                                  }}
+                                >
+                                  <div className="flex items-center gap-2">
+                                    <RadioGroupItem value={optIdx.toString()} id={`q${idx}-opt${optIdx}`} />
+                                  </div>
+                                </RadioGroup>
+                                <Input
+                                  value={opt}
+                                  onChange={(e) => {
+                                    const updated = [...transcriptModal.quizQuestions!];
+                                    const newOptions = [...updated[idx].options] as [string,string,string,string];
+                                    newOptions[optIdx] = e.target.value;
+                                    updated[idx] = { ...updated[idx], options: newOptions };
+                                    setTranscriptModal((prev) => prev ? { ...prev, quizQuestions: updated } : prev);
+                                  }}
+                                  className={`text-sm flex-1 ${q.correctAnswer === optIdx ? "border-green-500 bg-green-50 dark:bg-green-950/20" : ""}`}
+                                />
+                                {q.correctAnswer === optIdx && (
+                                  <span className="text-xs text-green-600 font-medium whitespace-nowrap">Correct</span>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+
+                      <div className="flex gap-2 pt-2">
+                        <Button
+                          onClick={() => {
+                            if (!transcriptModal.quizQuestions || !transcriptModal.parentId) return;
+                            approveQuizMutation.mutate({
+                              sessionId: transcriptModal.sessionId,
+                              courseId: transcriptModal.courseId,
+                              parentId: transcriptModal.parentId,
+                              questions: transcriptModal.quizQuestions,
+                            });
+                          }}
+                          disabled={approveQuizMutation.isPending || !transcriptModal.parentId}
+                        >
+                          {approveQuizMutation.isPending ? "Saving..." : "Approve & Assign to Parent"}
+                        </Button>
+                        <Button
+                          variant="outline"
+                          onClick={() => {
+                            setGeneratingQuiz(true);
+                            generateQuizMutation.mutate({
+                              transcript: transcriptModal.transcript,
+                              sessionId: transcriptModal.sessionId,
+                              courseName: transcriptModal.courseTitle,
+                              studentName: transcriptModal.studentName,
+                            });
+                          }}
+                          disabled={generatingQuiz}
+                        >
+                          {generatingQuiz ? "Regenerating..." : "Regenerate"}
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </TabsContent>
+              )}
+            </Tabs>
+            </div>
+
+            <DialogFooter className="shrink-0 px-6 py-4 border-t">
+              <Button variant="outline" onClick={() => setTranscriptModal(null)}>
+                Close
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 }

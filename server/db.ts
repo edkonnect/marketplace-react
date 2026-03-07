@@ -26,7 +26,8 @@ import {
   sessionRatings, InsertSessionRating,
   coordinatorAssignments, InsertCoordinatorAssignment,
   zoomMeetingRecordings, InsertZoomMeetingRecording,
-  sessionAIInsights, InsertSessionAIInsight
+  sessionAIInsights, InsertSessionAIInsight,
+  sessionQuizzes, InsertSessionQuiz
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
@@ -641,9 +642,7 @@ export async function createCoordinatorProfile(profile: InsertCoordinatorProfile
   }
 
   try {
-    console.log("[Database] Creating coordinator profile with data:", profile);
     const result = await db.insert(coordinatorProfiles).values(profile) as any;
-    console.log("[Database] Insert result:", result);
 
     // Handle both array and direct object response from drizzle
     const resultSetHeader = Array.isArray(result) ? result[0] : result;
@@ -653,7 +652,6 @@ export async function createCoordinatorProfile(profile: InsertCoordinatorProfile
       return null;
     }
 
-    console.log("[Database] Successfully created coordinator profile with ID:", resultSetHeader.insertId);
     return Number(resultSetHeader.insertId);
   } catch (error) {
     console.error("[Database] Failed to create coordinator profile:", error);
@@ -808,7 +806,6 @@ export async function getCoordinatorAssignmentsByCoordinator(coordinatorId: numb
   }
 
   try {
-    console.log(`[Database] Querying coordinator_assignments for coordinatorId: ${coordinatorId}`);
     const parent = alias(users, "parent");
     const result = await db
       .select({
@@ -847,7 +844,6 @@ export async function getCoordinatorAssignmentsByCoordinator(coordinatorId: numb
       ))
       .orderBy(desc(coordinatorAssignments.assignedAt));
 
-    console.log(`[Database] Query returned ${result.length} assignments`);
     return result;
   } catch (error) {
     console.error("[Database] Failed to get coordinator assignments by coordinator:", error);
@@ -1829,10 +1825,16 @@ export async function getCompletedSessionsByTutorId(tutorId: number) {
       session: sessions,
       courseTitle: sql<string | null>`COALESCE(${subscriptionCourses.title}, ${sessionCourses.title})`.as('courseTitle'),
       courseSubject: sql<string | null>`COALESCE(${subscriptionCourses.subject}, ${sessionCourses.subject})`.as('courseSubject'),
+      courseQuizEnabled: sql<boolean | null>`COALESCE(${subscriptionCourses.quizEnabled}, ${sessionCourses.quizEnabled})`.as('courseQuizEnabled'),
       tutorName: tutorUsers.name,
       parentName: parentUsers.name,
       studentFirstName: sql<string | null>`COALESCE(${sessions.studentFirstName}, ${subscriptions.studentFirstName})`.as('studentFirstName'),
       studentLastName: sql<string | null>`COALESCE(${sessions.studentLastName}, ${subscriptions.studentLastName})`.as('studentLastName'),
+      hasQuiz: sql<boolean>`${sessionQuizzes.id} IS NOT NULL`.as('hasQuiz'),
+      quizStatus: sessionQuizzes.status,
+      quizScore: sessionQuizzes.score,
+      quizCorrectCount: sessionQuizzes.correctCount,
+      quizTotalCount: sessionQuizzes.totalCount,
     })
     .from(sessions)
     .leftJoin(subscriptions, eq(sessions.subscriptionId, subscriptions.id))
@@ -1840,6 +1842,7 @@ export async function getCompletedSessionsByTutorId(tutorId: number) {
     .leftJoin(sessionCourses, eq(sessions.courseId, sessionCourses.id))
     .leftJoin(tutorUsers, eq(sessions.tutorId, tutorUsers.id))
     .leftJoin(parentUsers, eq(sessions.parentId, parentUsers.id))
+    .leftJoin(sessionQuizzes, eq(sessionQuizzes.sessionId, sessions.id))
     .where(and(
       eq(sessions.tutorId, tutorId),
       or(
@@ -4702,5 +4705,110 @@ export async function getParentCoordinatorConversation(parentId: number) {
     .limit(1);
 
   return results[0] ?? null;
+}
+
+// ============ Session Quizzes ============
+
+export async function getQuizBySessionId(sessionId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const results = await db
+    .select()
+    .from(sessionQuizzes)
+    .where(eq(sessionQuizzes.sessionId, sessionId))
+    .limit(1);
+  return results[0] ?? null;
+}
+
+export async function getQuizById(quizId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const results = await db
+    .select()
+    .from(sessionQuizzes)
+    .where(eq(sessionQuizzes.id, quizId))
+    .limit(1);
+  return results[0] ?? null;
+}
+
+export async function getQuizzesByParentId(parentId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return await db
+    .select()
+    .from(sessionQuizzes)
+    .where(eq(sessionQuizzes.parentId, parentId))
+    .orderBy(desc(sessionQuizzes.createdAt));
+}
+
+export async function upsertSessionQuiz(quiz: InsertSessionQuiz) {
+  const db = await getDb();
+  if (!db) return null;
+  try {
+    const existing = await getQuizBySessionId(quiz.sessionId as number);
+    if (existing && existing.status === "draft") {
+      await db
+        .update(sessionQuizzes)
+        .set({ questions: quiz.questions, updatedAt: new Date() })
+        .where(eq(sessionQuizzes.id, existing.id));
+      return existing.id;
+    }
+    const result = await db.insert(sessionQuizzes).values(quiz) as any;
+    return Number(result[0].insertId);
+  } catch (error) {
+    console.error("[Database] Failed to upsert session quiz:", error);
+    return null;
+  }
+}
+
+export async function approveAndAssignQuiz(quizId: number, questions: string) {
+  const db = await getDb();
+  if (!db) return false;
+  try {
+    await db
+      .update(sessionQuizzes)
+      .set({
+        questions,
+        status: "approved",
+        assignedAt: new Date(),
+        parentNotified: true,
+        updatedAt: new Date(),
+      })
+      .where(eq(sessionQuizzes.id, quizId));
+    return true;
+  } catch (error) {
+    console.error("[Database] Failed to approve quiz:", error);
+    return false;
+  }
+}
+
+export async function completeQuiz(quizId: number, score: number, correctCount: number, totalCount: number, studentAnswers: string) {
+  const db = await getDb();
+  if (!db) return false;
+  try {
+    await db
+      .update(sessionQuizzes)
+      .set({ status: "completed", completedAt: new Date(), updatedAt: new Date(), score, correctCount, totalCount, studentAnswers })
+      .where(eq(sessionQuizzes.id, quizId));
+    return true;
+  } catch (error) {
+    console.error("[Database] Failed to complete quiz:", error);
+    return false;
+  }
+}
+
+export async function updateCourseQuizEnabled(courseId: number, quizEnabled: boolean) {
+  const db = await getDb();
+  if (!db) return false;
+  try {
+    await db
+      .update(courses)
+      .set({ quizEnabled })
+      .where(eq(courses.id, courseId));
+    return true;
+  } catch (error) {
+    console.error("[Database] Failed to update course quizEnabled:", error);
+    return false;
+  }
 }
 

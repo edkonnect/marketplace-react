@@ -7,8 +7,10 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Link, useLocation } from "wouter";
-import { BookOpen, Calendar, MessageSquare, CreditCard, Clock, Users, Video, FileText } from "lucide-react";
+import { BookOpen, Calendar, MessageSquare, CreditCard, Clock, Users, Video, FileText, HelpCircle, CheckCircle } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { LOGIN_PATH } from "@/const";
 import { SessionNotesFeed } from "@/components/SessionNotesFeed";
@@ -45,6 +47,32 @@ export default function ParentDashboard() {
     { enabled: isAuthenticated && user?.role === "parent" }
   );
 
+  const { data: parentQuizzes, refetch: refetchQuizzes } = trpc.quiz.getByParent.useQuery(
+    undefined,
+    { enabled: isAuthenticated && user?.role === "parent" }
+  );
+
+  type QuizModalState = {
+    quiz: NonNullable<typeof parentQuizzes>[number];
+    answers: Record<number, number>;
+    submitted: boolean;
+    score?: number;
+    correct?: number;
+    total?: number;
+  };
+  const [quizModal, setQuizModal] = useState<QuizModalState | null>(null);
+
+  const completeQuizMutation = trpc.quiz.complete.useMutation({
+    onSuccess: (data) => {
+      setQuizModal((prev) =>
+        prev ? { ...prev, submitted: true, score: data.score, correct: data.correct, total: data.total } : prev
+      );
+      refetchQuizzes();
+    },
+    onError: (error) => {
+      toast.error("Failed to submit quiz: " + error.message);
+    },
+  });
 
   // Track note updates per session to show a small indicator (one-time until next update)
   const lastFeedbackRef = useRef<Map<number, string | null>>(new Map());
@@ -315,6 +343,13 @@ export default function ParentDashboard() {
       return name === selectedSubscriptionStudent;
     });
   }, [activeSubscriptions, selectedSubscriptionStudent]);
+
+  // Map sessionId -> quiz for quick lookup in history
+  const quizBySessionId = useMemo(() => {
+    const map = new Map<number, NonNullable<typeof parentQuizzes>[number]>();
+    (parentQuizzes || []).forEach((q) => map.set(q.sessionId, q));
+    return map;
+  }, [parentQuizzes]);
 
   // Filter subscriptions by selected student for the Schedule tab
   const filteredSubscriptions =
@@ -842,6 +877,53 @@ export default function ParentDashboard() {
                               </div>
                             </div>
                           )}
+
+                          {quizBySessionId.has(session.id) && (
+                            <div className="mt-3">
+                              {quizBySessionId.get(session.id)!.status === "completed" ? (
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  {(() => {
+                                    const s = quizBySessionId.get(session.id)!.score;
+                                    const c = s == null || s >= 70 ? "text-green-600 dark:text-green-400" : s >= 40 ? "text-orange-500 dark:text-orange-400" : "text-red-600 dark:text-red-400";
+                                    return (
+                                      <div className={`flex items-center gap-1.5 text-sm ${c}`}>
+                                        <CheckCircle className="w-4 h-4" />
+                                        <span>Quiz completed</span>
+                                        {s != null && <span className="font-semibold">· {s}%</span>}
+                                      </div>
+                                    );
+                                  })()}
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-6 px-2 text-xs text-muted-foreground hover:text-foreground"
+                                    onClick={() => {
+                                      const q = quizBySessionId.get(session.id)!;
+                                      const storedAnswers: Record<number, number> = q.studentAnswers
+                                        ? (JSON.parse(q.studentAnswers) as number[]).reduce((acc, ans, idx) => ({ ...acc, [idx]: ans }), {})
+                                        : {};
+                                      setQuizModal({ quiz: q, answers: storedAnswers, submitted: true, score: q.score ?? undefined, correct: q.correctCount ?? undefined, total: q.totalCount ?? undefined });
+                                    }}
+                                  >
+                                    View Results
+                                  </Button>
+                                </div>
+                              ) : (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="border-violet-500 text-violet-700 hover:bg-violet-50 dark:text-violet-300 dark:border-violet-700"
+                                  onClick={() => {
+                                    const q = quizBySessionId.get(session.id)!;
+                                    setQuizModal({ quiz: q, answers: {}, submitted: false });
+                                  }}
+                                >
+                                  <HelpCircle className="w-3 h-3 mr-1" />
+                                  Take Quiz
+                                </Button>
+                              )}
+                            </div>
+                          )}
                           </div>
                         </div>
                       </CardContent>
@@ -930,6 +1012,115 @@ export default function ParentDashboard() {
           </Tabs>
         </div>
       </div>
+
+      {/* Quiz Taking Modal */}
+      {quizModal && (
+        <Dialog open={true} onOpenChange={() => setQuizModal(null)}>
+          <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col gap-0 p-0">
+            <div className="px-6 pt-6 pb-4 border-b shrink-0">
+              <DialogTitle>Session Quiz</DialogTitle>
+              <DialogDescription className="mt-1">
+                {quizModal.submitted
+                  ? "Quiz completed! Here are your results."
+                  : `Answer all ${quizModal.quiz.questions.length} questions then submit.`}
+              </DialogDescription>
+            </div>
+
+            <div className="flex-1 min-h-0 overflow-y-auto space-y-6 px-6 py-4">
+              {quizModal.submitted ? (
+                <div className="space-y-4">
+                  <div className="text-center space-y-2 py-4">
+                    <div className={`text-5xl font-bold ${quizModal.score == null || quizModal.score >= 70 ? "text-green-600 dark:text-green-400" : quizModal.score >= 40 ? "text-orange-500 dark:text-orange-400" : "text-red-600 dark:text-red-400"}`}>{quizModal.score}%</div>
+                    <p className="text-lg text-muted-foreground">
+                      {quizModal.correct} out of {quizModal.total} correct
+                    </p>
+                  </div>
+                  {quizModal.quiz.questions.map((q, idx) => {
+                    const isCorrect = quizModal.answers[idx] === q.correctAnswer;
+                    return (
+                      <div
+                        key={q.id}
+                        className={`p-3 rounded-lg border-l-4 ${
+                          isCorrect
+                            ? "border-green-500 bg-green-50 dark:bg-green-950/20"
+                            : "border-red-500 bg-red-50 dark:bg-red-950/20"
+                        }`}
+                      >
+                        <p className="text-sm font-medium mb-1">{idx + 1}. {q.question}</p>
+                        <p className="text-xs text-muted-foreground">
+                          Your answer:{" "}
+                          <span className={isCorrect ? "text-green-700 dark:text-green-400" : "text-red-700 dark:text-red-400"}>
+                            {q.options[quizModal.answers[idx]] ?? "Not answered"}
+                          </span>
+                          {!isCorrect && (
+                            <span className="text-green-600 dark:text-green-400 ml-2">
+                              Correct: {q.options[q.correctAnswer]}
+                            </span>
+                          )}
+                        </p>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                quizModal.quiz.questions.map((q, idx) => (
+                  <div key={q.id} className="space-y-3">
+                    <p className="text-sm font-semibold">{idx + 1}. {q.question}</p>
+                    <RadioGroup
+                      value={quizModal.answers[idx]?.toString() ?? ""}
+                      onValueChange={(val) => {
+                        setQuizModal((prev) =>
+                          prev ? { ...prev, answers: { ...prev.answers, [idx]: parseInt(val) } } : prev
+                        );
+                      }}
+                      className="space-y-2"
+                    >
+                      {q.options.map((opt, optIdx) => (
+                        <div
+                          key={optIdx}
+                          className="flex items-center gap-3 p-3 rounded-lg border hover:bg-muted/50 cursor-pointer"
+                        >
+                          <RadioGroupItem value={optIdx.toString()} id={`q${idx}-opt${optIdx}`} />
+                          <Label htmlFor={`q${idx}-opt${optIdx}`} className="cursor-pointer text-sm flex-1">
+                            {opt}
+                          </Label>
+                        </div>
+                      ))}
+                    </RadioGroup>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <DialogFooter className="px-6 py-4 border-t shrink-0">
+              {quizModal.submitted ? (
+                <Button onClick={() => setQuizModal(null)}>Close</Button>
+              ) : (
+                <>
+                  <Button variant="outline" onClick={() => setQuizModal(null)}>Cancel</Button>
+                  <Button
+                    onClick={() => {
+                      const answersArray = quizModal.quiz.questions.map((_, idx) =>
+                        quizModal.answers[idx] ?? -1
+                      );
+                      completeQuizMutation.mutate({
+                        quizId: quizModal.quiz.id,
+                        answers: answersArray,
+                      });
+                    }}
+                    disabled={
+                      completeQuizMutation.isPending ||
+                      Object.keys(quizModal.answers).length < quizModal.quiz.questions.length
+                    }
+                  >
+                    {completeQuizMutation.isPending ? "Submitting..." : "Submit Quiz"}
+                  </Button>
+                </>
+              )}
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 }

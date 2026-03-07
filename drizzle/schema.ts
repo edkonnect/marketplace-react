@@ -191,6 +191,7 @@ export const courses = mysqlTable("courses", {
   isActive: boolean("isActive").default(true).notNull(),
   imageUrl: text("imageUrl"),
   curriculum: text("curriculum"),
+  quizEnabled: boolean("quizEnabled").default(false).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 }, (table) => ({
@@ -914,3 +915,40 @@ export const sessionAIInsightsRelations = relations(sessionAIInsights, ({ one })
     references: [sessions.id],
   }),
 }));
+
+// ============ Session Quizzes ============
+
+export type QuizQuestion = {
+  id: string;
+  question: string;
+  options: [string, string, string, string];
+  correctAnswer: 0 | 1 | 2 | 3;
+};
+
+export const sessionQuizzes = mysqlTable("session_quizzes", {
+  id: int("id").autoincrement().primaryKey(),
+  sessionId: int("sessionId").notNull().references(() => sessions.id, { onDelete: "cascade" }),
+  courseId: int("courseId").references(() => courses.id, { onDelete: "set null" }),
+  tutorId: int("tutorId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  parentId: int("parentId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  questions: text("questions").notNull(), // JSON: QuizQuestion[]
+  status: mysqlEnum("session_quiz_status", ["draft", "approved", "completed"]).default("draft").notNull(),
+  assignedAt: timestamp("assignedAt"),
+  completedAt: timestamp("completedAt"),
+  parentNotified: boolean("parentNotified").default(false).notNull(),
+  score: int("score"),          // 0-100 percentage, null until completed
+  correctCount: int("correctCount"),
+  totalCount: int("totalCount"),
+  studentAnswers: text("studentAnswers"), // JSON: number[] — selected option index per question
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => ({
+  sessionIdIdx: index("session_quizzes_sessionId_idx").on(table.sessionId),
+  tutorIdIdx: index("session_quizzes_tutorId_idx").on(table.tutorId),
+  parentIdIdx: index("session_quizzes_parentId_idx").on(table.parentId),
+  courseIdIdx: index("session_quizzes_courseId_idx").on(table.courseId),
+  sessionUniqueIdx: uniqueIndex("session_quizzes_session_unique").on(table.sessionId),
+}));
+
+export type SessionQuiz = typeof sessionQuizzes.$inferSelect;
+export type InsertSessionQuiz = typeof sessionQuizzes.$inferInsert;
