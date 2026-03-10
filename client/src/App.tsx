@@ -30,6 +30,7 @@ import ParentPayments from "./pages/ParentPayments";
 import ParentNotifications from "./pages/ParentNotifications";
 import TutorNotifications from "./pages/TutorNotifications";
 import TutorPayments from "./pages/TutorPayments";
+import { ChatbotWidget } from "./components/ChatbotWidget";
 
 function Router() {
   return (
@@ -74,6 +75,7 @@ function App() {
         <TooltipProvider>
           <Toaster position="bottom-right" />
           <Router />
+          <ChatbotWidget />
         </TooltipProvider>
       </ThemeProvider>
     </ErrorBoundary>

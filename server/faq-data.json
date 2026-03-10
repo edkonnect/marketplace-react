@@ -1,0 +1,1119 @@
+[
+  {
+    "id": 1,
+    "category": "homepage",
+    "intent": "find_tutor",
+    "question": "How do I find a tutor?",
+    "keywords": [
+      "find tutor",
+      "search tutor",
+      "browse tutors",
+      "look for tutor",
+      "where to find tutor"
+    ],
+    "answer": "You can find tutors two ways: click 'Find Tutors' in the navigation or 'Browse Tutors' on the homepage. You can filter by subject, grade level, hourly rate, and minimum rating, then click 'View Profile' to see a tutor's full details including availability and courses."
+  },
+  {
+    "id": 2,
+    "category": "homepage",
+    "intent": "browse_subjects",
+    "question": "What subjects are available for tutoring?",
+    "keywords": [
+      "subjects",
+      "what subjects",
+      "available subjects",
+      "topics",
+      "what can I learn",
+      "subject list",
+      "what topics",
+      "topics can i get tutored",
+      "tutored in",
+      "tutoring for college"
+    ],
+    "answer": "EdKonnect Academy offers tutoring in Mathematics, Physics, Chemistry, Biology, English, History, Computer Science, Spanish, French, Art, and Music. You can browse subjects on the Find Tutors or Browse Courses page."
+  },
+  {
+    "id": 3,
+    "category": "homepage",
+    "intent": "browse_courses",
+    "question": "How do I browse courses?",
+    "keywords": [
+      "browse courses",
+      "view courses",
+      "course listing",
+      "all courses",
+      "see courses",
+      "look for courses",
+      "find courses",
+      "search courses",
+      "how to find course",
+      "where are courses",
+      "explore the course catalog",
+      "explore course catalog"
+    ],
+    "answer": "Click 'Browse Courses' in the navigation or on the homepage. You can search by course name, filter by subject and grade level, and sort by price. Each course card shows the price, duration, sessions per week, and total sessions."
+  },
+  {
+    "id": 4,
+    "category": "homepage",
+    "intent": "browse_subjects",
+    "question": "What grade levels are supported?",
+    "keywords": [
+      "grade levels",
+      "age groups",
+      "what grade",
+      "elementary",
+      "high school",
+      "college",
+      "middle school",
+      "grade levels do you support",
+      "what grade levels do you",
+      "grade levels you support"
+    ],
+    "answer": "The platform supports Elementary School, Middle School, High School, College, and Adult Education students. You can filter tutors and courses by grade level on the Find Tutors and Browse Courses pages."
+  },
+  {
+    "id": 5,
+    "category": "homepage",
+    "intent": "contact_support",
+    "question": "How do I contact support?",
+    "keywords": [
+      "contact support",
+      "help",
+      "support",
+      "customer service",
+      "need help",
+      "support email",
+      "get help"
+    ],
+    "answer": "Click 'Contact Support' on the homepage FAQ section, or email us at support@edkonnect.com. You can also reach your assigned coordinator through the Messages section in your dashboard."
+  },
+  {
+    "id": 6,
+    "category": "account",
+    "intent": "create_account",
+    "question": "How do I create an account?",
+    "keywords": [
+      "create account",
+      "sign up",
+      "register",
+      "new account",
+      "join",
+      "get started",
+      "how do i sign up",
+      "how to sign up",
+      "how should i sign up",
+      "create a new account",
+      "make a new account",
+      "steps to make",
+      "register on"
+    ],
+    "answer": "Click 'Sign Up' in the navigation or on the homepage. Fill in your First Name, Last Name, Email Address, and Password. You can also add a Phone Number and Educational Needs note. Select your timezone and submit. You'll receive a setup email to complete your account."
+  },
+  {
+    "id": 7,
+    "category": "account",
+    "intent": "create_account",
+    "question": "Can I sign up as a parent or tutor?",
+    "keywords": [
+      "sign up parent",
+      "sign up tutor",
+      "register as parent",
+      "register as tutor",
+      "parent or tutor",
+      "which role"
+    ],
+    "answer": "Yes. When signing up, you create a general account. To become a tutor, visit the Tutor Registration page (/tutor-registration) and submit your application. Parents can start booking sessions right after account setup."
+  },
+  {
+    "id": 8,
+    "category": "account",
+    "intent": "account_setup_link",
+    "question": "I haven't received my account setup link. What should I do?",
+    "keywords": [
+      "setup link",
+      "no email",
+      "setup email",
+      "resend link",
+      "account setup",
+      "didn't receive email"
+    ],
+    "answer": "On the Login page, click 'Haven't received your account setup link?' at the bottom. Enter your email and click 'Send Setup Link'. Check your spam folder if it doesn't arrive within a few minutes."
+  },
+  {
+    "id": 9,
+    "category": "account",
+    "intent": "login",
+    "question": "How do I log in?",
+    "keywords": [
+      "log in",
+      "sign in",
+      "login",
+      "access account",
+      "how to login",
+      "how should I login",
+      "login as parent",
+      "sign in as parent",
+      "parent login",
+      "parent sign in",
+      "how to sign in"
+    ],
+    "answer": "Click 'Sign In' in the navigation or visit /login. Enter your email and password. Check 'Remember me' to stay logged in. After login you'll be redirected to your role-specific dashboard."
+  },
+  {
+    "id": 10,
+    "category": "account",
+    "intent": "reset_password",
+    "question": "I forgot my password. How do I reset it?",
+    "keywords": [
+      "forgot password",
+      "reset password",
+      "lost password",
+      "change password",
+      "password recovery",
+      "can't login",
+      "how do i reset",
+      "reset my password",
+      "how to reset password",
+      "how to reset my password"
+    ],
+    "answer": "On the login page, you can request a new setup link by clicking 'Haven't received your account setup link?' and entering your email. A password reset link will be sent to you. Follow the link to set a new password."
+  },
+  {
+    "id": 11,
+    "category": "account",
+    "intent": "update_profile",
+    "question": "How do I update my profile information?",
+    "keywords": [
+      "update profile",
+      "edit profile",
+      "change name",
+      "update email",
+      "change details",
+      "profile settings",
+      "update my email address",
+      "edit personal details",
+      "edit my personal details",
+      "update my email",
+      "my email address on my account"
+    ],
+    "answer": "Log in and go to your Dashboard. Navigate to the Profile or Account tab where you can update your personal details, contact information, and preferences."
+  },
+  {
+    "id": 12,
+    "category": "account",
+    "intent": "update_profile",
+    "question": "How do I change my timezone?",
+    "keywords": [
+      "change timezone",
+      "update timezone",
+      "timezone setting",
+      "timezone wrong",
+      "time zone",
+      "fix my timezone",
+      "timezone is wrong",
+      "my timezone wrong"
+    ],
+    "answer": "Your timezone is set during sign-up and can be updated in your account settings. The platform auto-detects your timezone when you sign up — you can override it with the timezone selector dropdown."
+  },
+  {
+    "id": 13,
+    "category": "booking",
+    "intent": "book_tutor",
+    "question": "How do I book a tutor?",
+    "keywords": [
+      "book tutor",
+      "hire tutor",
+      "how to book",
+      "start tutoring",
+      "get a tutor"
+    ],
+    "answer": "Go to Browse Courses, select a course, and click 'View Details'. On the course detail page, click 'Enroll Now'. Fill in your student's name and grade level, choose a payment method (Full, Installments, or Pay Later), and confirm. After enrolling, you can book your first session."
+  },
+  {
+    "id": 14,
+    "category": "booking",
+    "intent": "enroll_course",
+    "question": "How do I enroll in a course?",
+    "keywords": [
+      "enroll",
+      "enrollment",
+      "join course",
+      "sign up for course",
+      "course enrollment",
+      "how to enroll",
+      "how should I enroll",
+      "enroll for course",
+      "register for course",
+      "join a course",
+      "enrol",
+      "join a math course",
+      "enrol my child",
+      "enrol a child"
+    ],
+    "answer": "On any course detail page, click 'Enroll Now'. An enrollment dialog opens where you enter your student's First Name, Last Name, and Grade Level. You can also select an existing student from previous enrollments. Choose your payment method and confirm."
+  },
+  {
+    "id": 15,
+    "category": "booking",
+    "intent": "trial_lesson",
+    "question": "Can I book a trial lesson?",
+    "keywords": [
+      "trial lesson",
+      "free trial",
+      "try tutor",
+      "trial class",
+      "book trial",
+      "test session",
+      "update my email address",
+      "edit personal details",
+      "edit my personal",
+      "fix my timezone",
+      "fix timezone"
+    ],
+    "answer": "Yes! On a course detail page, each assigned tutor has a 'Book Trial Lesson' button. You can book up to 2 trial lessons per account. A bookable calendar appears to pick your preferred time slot."
+  },
+  {
+    "id": 16,
+    "category": "booking",
+    "intent": "recurring_session",
+    "question": "Can I book a recurring session?",
+    "keywords": [
+      "recurring",
+      "weekly",
+      "repeat session",
+      "regular class",
+      "ongoing",
+      "recurring booking"
+    ],
+    "answer": "Yes, recurring session booking is supported. During the session scheduling flow in your Parent Dashboard, you can set up recurring sessions at a regular cadence based on the tutor's availability."
+  },
+  {
+    "id": 17,
+    "category": "booking",
+    "intent": "choose_tutor",
+    "question": "How do I choose which tutor teaches my course?",
+    "keywords": [
+      "choose tutor",
+      "select tutor",
+      "pick tutor",
+      "which tutor",
+      "preferred tutor"
+    ],
+    "answer": "On the Course Detail page, you'll see all assigned tutors with their availability. During enrollment, you can optionally select a preferred tutor from the dropdown. Each tutor card also shows their availability and a 'Book Trial Lesson' button so you can try before committing."
+  },
+  {
+    "id": 18,
+    "category": "booking",
+    "intent": "browse_courses",
+    "question": "What courses are available?",
+    "keywords": [
+      "available courses",
+      "courses list",
+      "what courses",
+      "subjects offered",
+      "course catalog",
+      "how can i see available courses",
+      "see available courses",
+      "view available courses"
+    ],
+    "answer": "Browse all available courses at /courses. You can filter by subject (Mathematics, Physics, Chemistry, Biology, English, History, Computer Science, Spanish, French, Art, Music) and grade level, and sort by price."
+  },
+  {
+    "id": 19,
+    "category": "sessions",
+    "intent": "join_session",
+    "question": "How do I join a session?",
+    "keywords": [
+      "join session",
+      "join class",
+      "enter class",
+      "start class",
+      "zoom link",
+      "class link",
+      "how to join",
+      "join zoom",
+      "start the class",
+      "click to start",
+      "start my session"
+    ],
+    "answer": "Before your session, you'll receive a confirmation email with a Zoom join link. You can also find it in your Parent Dashboard under 'Upcoming Sessions' — click 'Join Session' at your scheduled time."
+  },
+  {
+    "id": 20,
+    "category": "sessions",
+    "intent": "join_session",
+    "question": "Where do I find my session link?",
+    "keywords": [
+      "session link",
+      "zoom link",
+      "class link",
+      "meeting link",
+      "find link",
+      "where is link",
+      "join link",
+      "where is my zoom link",
+      "where is zoom link",
+      "find zoom link",
+      "what is the meeting link",
+      "where is meeting link",
+      "get meeting link",
+      "zoom link for my class",
+      "get the zoom link",
+      "link to join",
+      "find the link to join"
+    ],
+    "answer": "Your Zoom session link is in two places: the booking confirmation email sent after enrollment, and your Parent Dashboard under 'Upcoming Sessions'. Click 'Join Session' when it's time to start."
+  },
+  {
+    "id": 21,
+    "category": "sessions",
+    "intent": "view_sessions",
+    "question": "Where can I see my upcoming sessions?",
+    "keywords": [
+      "upcoming sessions",
+      "scheduled sessions",
+      "next class",
+      "future sessions",
+      "my sessions",
+      "see sessions"
+    ],
+    "answer": "Log in and go to your Parent Dashboard. Click the 'Sessions' or 'Upcoming Sessions' tab to see all scheduled sessions, including date, time, tutor name, course, and the join link."
+  },
+  {
+    "id": 22,
+    "category": "sessions",
+    "intent": "view_sessions",
+    "question": "How do I view past sessions?",
+    "keywords": [
+      "past sessions",
+      "session history",
+      "completed sessions",
+      "old sessions",
+      "previous sessions",
+      "future classes",
+      "all my future classes",
+      "see all my classes"
+    ],
+    "answer": "In your Parent Dashboard, go to the 'Sessions' tab. Past and completed sessions appear alongside upcoming ones. You can also visit /session-notes to see notes and summaries from previous sessions."
+  },
+  {
+    "id": 23,
+    "category": "sessions",
+    "intent": "session_notes",
+    "question": "Can I see session notes or progress summaries?",
+    "keywords": [
+      "session notes",
+      "progress summary",
+      "class notes",
+      "tutor notes",
+      "session summary",
+      "session report",
+      "where is my progress summary",
+      "find progress summary",
+      "view progress summary",
+      "access progress notes",
+      "what was covered in class",
+      "summary of what was covered"
+    ],
+    "answer": "Yes! Visit /session-notes or click 'Session Notes' in your dashboard. Notes are grouped by month and show the course, student name, date, and the tutor's progress summary for each session."
+  },
+  {
+    "id": 24,
+    "category": "sessions",
+    "intent": "tutor_no_show",
+    "question": "What happens if a tutor doesn't show up?",
+    "keywords": [
+      "tutor no show",
+      "missed session",
+      "tutor absent",
+      "tutor didn't show",
+      "no show",
+      "missed class"
+    ],
+    "answer": "If a tutor misses a session, report it immediately through your dashboard or email support@edkonnect.com. You'll receive a full refund for that session and we'll help you rebook with the same or another tutor."
+  },
+  {
+    "id": 25,
+    "category": "rescheduling",
+    "intent": "reschedule_session",
+    "question": "How do I reschedule a session?",
+    "keywords": [
+      "reschedule",
+      "rescheduling",
+      "change time",
+      "move session",
+      "change date",
+      "postpone",
+      "shift session",
+      "change schedule",
+      "reschedule class",
+      "reschedule booking",
+      "move class",
+      "change the date",
+      "change the time",
+      "change date of my class",
+      "postpone my session",
+      "postpone a session",
+      "want to reschedule",
+      "change the date of my class",
+      "change the date of my session",
+      "move my session",
+      "move session to",
+      "shift my class",
+      "to a different day",
+      "to next week"
+    ],
+    "answer": "In your Parent Dashboard, go to 'Upcoming Sessions', find the session you want to change, and click 'Reschedule'. You can also use the management link in your booking confirmation email. Rescheduling depends on the tutor's available slots."
+  },
+  {
+    "id": 26,
+    "category": "rescheduling",
+    "intent": "reschedule_session",
+    "question": "What is the rescheduling deadline?",
+    "keywords": [
+      "reschedule deadline",
+      "how late reschedule",
+      "last minute reschedule",
+      "reschedule policy",
+      "reschedule time limit",
+      "deadline for rescheduling",
+      "rescheduling deadline for a class",
+      "is there a deadline"
+    ],
+    "answer": "You can reschedule a session up to 24 hours before the scheduled start time. For last-minute changes, contact your tutor directly via Messages or email support@edkonnect.com."
+  },
+  {
+    "id": 27,
+    "category": "rescheduling",
+    "intent": "manage_booking",
+    "question": "How do I manage my booking from an email link?",
+    "keywords": [
+      "manage booking",
+      "email link",
+      "booking link",
+      "manage from email",
+      "session management link"
+    ],
+    "answer": "Your confirmation email contains a 'Manage Booking' link. Clicking it takes you to a page showing full session details — course, tutor, date and time, and duration. From there you can cancel the session if needed."
+  },
+  {
+    "id": 28,
+    "category": "cancellation",
+    "intent": "cancel_session",
+    "question": "How do I cancel a session?",
+    "keywords": [
+      "cancel session",
+      "cancel class",
+      "cancel booking",
+      "stop session",
+      "remove booking",
+      "delete session"
+    ],
+    "answer": "In your Parent Dashboard, find the session under 'Upcoming Sessions' and click 'Cancel Session'. A confirmation dialog will appear — click 'Yes, Cancel Session' to confirm. You can also cancel via the 'Manage Booking' link in your confirmation email."
+  },
+  {
+    "id": 29,
+    "category": "cancellation",
+    "intent": "refund_policy",
+    "question": "What is the refund policy for cancelled sessions?",
+    "keywords": [
+      "refund",
+      "cancellation refund",
+      "money back",
+      "get refund",
+      "refund policy",
+      "cancelled refund"
+    ],
+    "answer": "If you cancel more than 24 hours before a session, you'll receive a full refund. Cancellations within 24 hours may not be eligible for a refund. Contact support@edkonnect.com for special circumstances."
+  },
+  {
+    "id": 30,
+    "category": "payments",
+    "intent": "payment_methods",
+    "question": "How do I pay for a course?",
+    "keywords": [
+      "pay",
+      "payment",
+      "credit card",
+      "how to pay",
+      "billing",
+      "charge",
+      "payment method"
+    ],
+    "answer": "Payments are made securely during enrollment on the Course Detail page. You'll see three options: 'Pay in Full', 'Pay in 2 Installments' (for courses over $500), or 'Pay Later'. All card payments are processed through Stripe."
+  },
+  {
+    "id": 31,
+    "category": "payments",
+    "intent": "installment_payment",
+    "question": "Can I pay in installments?",
+    "keywords": [
+      "installment",
+      "split payment",
+      "payment plan",
+      "two payments",
+      "partial payment",
+      "pay in two"
+    ],
+    "answer": "Yes! If a course costs more than $500, you'll see a 'Pay in 2 Installments' option during enrollment. This splits your payment into two equal charges."
+  },
+  {
+    "id": 32,
+    "category": "payments",
+    "intent": "pay_later",
+    "question": "What is the Pay Later option?",
+    "keywords": [
+      "pay later",
+      "defer payment",
+      "pay after",
+      "pay later option"
+    ],
+    "answer": "The 'Pay Later' option lets you enroll in a course without paying upfront. You'll be invoiced separately. This option appears during the enrollment checkout flow on the Course Detail page."
+  },
+  {
+    "id": 33,
+    "category": "payments",
+    "intent": "payment_history",
+    "question": "Where can I see my payment history?",
+    "keywords": [
+      "payment history",
+      "receipts",
+      "invoices",
+      "past payments",
+      "billing history",
+      "transaction history"
+    ],
+    "answer": "Go to your Parent Dashboard and click 'Payments' in the sidebar, or visit /parent/payments. You'll see your full Billing History table with all transactions."
+  },
+  {
+    "id": 34,
+    "category": "payments",
+    "intent": "payment_security",
+    "question": "Is my payment information secure?",
+    "keywords": [
+      "payment security",
+      "secure payment",
+      "card safety",
+      "safe to pay",
+      "stripe",
+      "data security"
+    ],
+    "answer": "Yes. All payments are processed through Stripe, a PCI-compliant payment provider. Your card details are never stored on our servers."
+  },
+  {
+    "id": 35,
+    "category": "tutor",
+    "intent": "become_tutor",
+    "question": "How do I apply to become a tutor?",
+    "keywords": [
+      "become tutor",
+      "become a tutor",
+      "register tutor",
+      "register as tutor",
+      "tutor registration",
+      "apply tutor",
+      "apply to become tutor",
+      "sign up tutor",
+      "join as tutor",
+      "how to apply",
+      "how do i become a tutor",
+      "how should i register as tutor",
+      "want to register as a tutor",
+      "i want to register",
+      "apply to join as a tutor",
+      "apply to teach",
+      "apply to be a tutor",
+      "need to apply to be a tutor"
+    ],
+    "answer": "Visit the Tutor Registration page at /tutor-registration or click 'Become a Tutor' in the navigation footer. Fill in your Full Name, Email, About You, Qualifications & Education, Years of Experience, Hourly Rate Range, the subjects and grade levels you teach, and your timezone. Click 'Submit Application' and our team will review it."
+  },
+  {
+    "id": 36,
+    "category": "tutor",
+    "intent": "become_tutor",
+    "question": "What information do I need to register as a tutor?",
+    "keywords": [
+      "tutor registration form",
+      "tutor application fields",
+      "what to fill",
+      "tutor requirements",
+      "tutor info needed",
+      "what do i need to apply",
+      "information needed to apply",
+      "what information to register"
+    ],
+    "answer": "You'll need: Full Name, Email Address, About You (bio), Qualifications & Education, Years of Experience, Hourly Rate Range (e.g. '50-80'), the subjects you teach (checkboxes), grade levels you cover, and your timezone. Phone number is optional."
+  },
+  {
+    "id": 37,
+    "category": "tutor",
+    "intent": "tutor_approval",
+    "question": "How long does tutor application review take?",
+    "keywords": [
+      "application review",
+      "tutor approval",
+      "how long review",
+      "tutor approval time",
+      "when approved",
+      "application status"
+    ],
+    "answer": "After submitting your application, our admin team reviews it. You'll be notified by email once your application is approved. Once approved, you can set up your profile, availability, and start accepting bookings."
+  },
+  {
+    "id": 38,
+    "category": "tutor",
+    "intent": "set_availability",
+    "question": "How do I set my availability as a tutor?",
+    "keywords": [
+      "set availability",
+      "tutor availability",
+      "schedule availability",
+      "available times",
+      "open slots",
+      "add availability",
+      "add my available hours",
+      "available hours as a tutor",
+      "block some time off",
+      "mark myself as unavailable",
+      "mark as unavailable on certain days"
+    ],
+    "answer": "Log in and go to your Tutor Dashboard. Click the 'Availability' tab. Use the Availability Manager to set your weekly available hours by day and time. Students can only book sessions within those time slots."
+  },
+  {
+    "id": 39,
+    "category": "tutor",
+    "intent": "set_availability",
+    "question": "How do I block time off as a tutor?",
+    "keywords": [
+      "block time",
+      "time off",
+      "block schedule",
+      "unavailable",
+      "vacation",
+      "time block",
+      "block some time off",
+      "block time off on my tutor schedule",
+      "time off on my schedule"
+    ],
+    "answer": "In your Tutor Dashboard, go to the 'Availability' tab and use the Time Block Manager to mark specific dates or time ranges as unavailable. These blocks override your regular availability."
+  },
+  {
+    "id": 40,
+    "category": "tutor",
+    "intent": "manage_tutor_sessions",
+    "question": "How do I manage my sessions as a tutor?",
+    "keywords": [
+      "manage sessions",
+      "tutor sessions",
+      "see my sessions",
+      "upcoming bookings",
+      "tutor bookings"
+    ],
+    "answer": "In your Tutor Dashboard, go to the 'Sessions' tab. The Sessions Manager shows all your upcoming and past sessions, including student names, course, date, and time."
+  },
+  {
+    "id": 41,
+    "category": "tutor",
+    "intent": "tutor_payout",
+    "question": "How do tutors get paid?",
+    "keywords": [
+      "tutor payment",
+      "how tutors get paid",
+      "tutor salary",
+      "earnings",
+      "payout",
+      "tutor payout",
+      "request payout",
+      "how do i request payout",
+      "get paid as tutor",
+      "how to get paid",
+      "check my tutor earnings",
+      "request a payout for my sessions",
+      "payout for my sessions",
+      "payout was rejected",
+      "when can i request a payout"
+    ],
+    "answer": "After completing sessions, go to your Tutor Dashboard and click the 'Payments' tab or visit /tutor/payments. You'll see completed enrollments listed under 'Ready to Request'. Click 'Request Payout' for each enrollment. An admin reviews and approves your payout request."
+  },
+  {
+    "id": 42,
+    "category": "tutor",
+    "intent": "tutor_payout",
+    "question": "How do I check my payout status?",
+    "keywords": [
+      "payout status",
+      "payment status",
+      "payout request",
+      "approved payment",
+      "pending payout",
+      "rejected payout",
+      "payout was rejected",
+      "my payout was rejected",
+      "why payout rejected",
+      "where do i see payout"
+    ],
+    "answer": "Go to /tutor/payments or the Payments tab in your Tutor Dashboard. The 'Payout Requests History' section shows all your payout requests with their status: Pending, Approved, or Rejected. If rejected, you'll see admin notes explaining why."
+  },
+  {
+    "id": 43,
+    "category": "tutor",
+    "intent": "tutor_profile",
+    "question": "How do I upload an introduction video?",
+    "keywords": [
+      "intro video",
+      "introduction video",
+      "upload video",
+      "tutor video",
+      "profile video",
+      "add video",
+      "how do i upload my intro video",
+      "upload my intro video",
+      "upload introduction video",
+      "add an intro video",
+      "intro video to my tutor page"
+    ],
+    "answer": "In your Tutor Dashboard, go to the Profile section and use the Video Upload Manager to upload your introduction video. This video appears on your tutor profile and course detail pages to help students get to know you."
+  },
+  {
+    "id": 44,
+    "category": "tutor",
+    "intent": "session_notes",
+    "question": "How do I write session notes?",
+    "keywords": [
+      "session notes",
+      "write notes",
+      "add notes",
+      "class notes",
+      "progress notes",
+      "tutor notes"
+    ],
+    "answer": "After a session, go to your Tutor Dashboard and find the session in the Sessions tab. You can add a progress summary for that session which parents can view in their Session Notes History."
+  },
+  {
+    "id": 45,
+    "category": "tutor",
+    "intent": "tutor_profile",
+    "question": "What is my hourly rate and how do I set it?",
+    "keywords": [
+      "hourly rate",
+      "set rate",
+      "tutor rate",
+      "price",
+      "how much to charge",
+      "rate range",
+      "how do i set my hourly rate",
+      "set my hourly rate",
+      "set my rate"
+    ],
+    "answer": "You set your hourly rate range during tutor registration (e.g. '50-80'). This is displayed on your profile to help parents make a decision. You can update it from your Tutor Dashboard profile settings."
+  },
+  {
+    "id": 46,
+    "category": "parent",
+    "intent": "parent_dashboard",
+    "question": "What can I see in my Parent Dashboard?",
+    "keywords": [
+      "parent dashboard",
+      "what is in dashboard",
+      "dashboard features",
+      "parent account",
+      "my dashboard"
+    ],
+    "answer": "Your Parent Dashboard has multiple tabs: Subscriptions (active enrollments), Bookings, Sessions (upcoming and past), Account settings, and Notifications. You can manage all your children's tutoring from one place."
+  },
+  {
+    "id": 47,
+    "category": "parent",
+    "intent": "manage_students",
+    "question": "How do I manage multiple students or children?",
+    "keywords": [
+      "multiple students",
+      "multiple children",
+      "add student",
+      "second child",
+      "manage students",
+      "two children"
+    ],
+    "answer": "When enrolling in a course, you can select an existing student from previous enrollments or enter a new student's details. Your Parent Dashboard tracks all students and their respective courses and sessions."
+  },
+  {
+    "id": 48,
+    "category": "parent",
+    "intent": "leave_review",
+    "question": "How do I leave feedback or a review for a tutor?",
+    "keywords": [
+      "leave review",
+      "rate tutor",
+      "feedback",
+      "review tutor",
+      "rating",
+      "write review"
+    ],
+    "answer": "After completing sessions, you can leave feedback for your tutor through your Parent Dashboard in the Sessions section. Ratings and reviews appear publicly on the tutor's profile to help other parents."
+  },
+  {
+    "id": 49,
+    "category": "parent",
+    "intent": "view_subscriptions",
+    "question": "How do I view my subscriptions?",
+    "keywords": [
+      "subscriptions",
+      "active enrollments",
+      "my courses",
+      "enrolled courses",
+      "ongoing classes",
+      "subscription",
+      "show me my enrollments",
+      "current enrollments",
+      "active course subscriptions",
+      "courses i am enrolled in"
+    ],
+    "answer": "In your Parent Dashboard, click the 'Subscriptions' tab. You'll see all active course enrollments, the tutor assigned, and the current status."
+  },
+  {
+    "id": 50,
+    "category": "parent",
+    "intent": "notifications",
+    "question": "How do I manage my notification preferences?",
+    "keywords": [
+      "notifications",
+      "notification settings",
+      "email notifications",
+      "alert settings",
+      "notification preferences"
+    ],
+    "answer": "Visit /parent/notifications or click 'Notifications' in your dashboard sidebar. The Notification Settings panel lets you choose what alerts you receive (session reminders, new messages, etc.)."
+  },
+  {
+    "id": 51,
+    "category": "messaging",
+    "intent": "send_message",
+    "question": "How do I send a message to my tutor?",
+    "keywords": [
+      "message tutor",
+      "contact tutor",
+      "chat tutor",
+      "send message",
+      "talk to tutor",
+      "message",
+      "how do i message my tutor",
+      "message my tutor",
+      "how to message tutor",
+      "reach out to my tutor",
+      "reach out via message",
+      "via message"
+    ],
+    "answer": "Go to the Messages page (/messages) from your dashboard. Select the conversation with your tutor and type your message in the input box at the bottom. Press Enter or click the Send button to send."
+  },
+  {
+    "id": 52,
+    "category": "messaging",
+    "intent": "file_attachment",
+    "question": "Can I send files in messages?",
+    "keywords": [
+      "send file",
+      "attach file",
+      "file attachment",
+      "share document",
+      "upload file",
+      "send document"
+    ],
+    "answer": "Yes. In the Messages page, click the paperclip icon next to the message box. You can attach PDF, DOCX, or XLSX files up to 10MB. The recipient can download the file directly from the conversation."
+  },
+  {
+    "id": 53,
+    "category": "messaging",
+    "intent": "send_message",
+    "question": "How do I send a message to my coordinator?",
+    "keywords": [
+      "message coordinator",
+      "contact coordinator",
+      "coordinator chat",
+      "talk to coordinator",
+      "coordinator message"
+    ],
+    "answer": "Go to the Messages page (/messages) from your Parent Dashboard. Your assigned coordinator will appear in your conversations list. Type your message and send — coordinators typically reply within a few hours."
+  },
+  {
+    "id": 54,
+    "category": "messaging",
+    "intent": "search_messages",
+    "question": "How do I search my conversations?",
+    "keywords": [
+      "search messages",
+      "find conversation",
+      "search chat",
+      "find message",
+      "search contacts"
+    ],
+    "answer": "On the Messages page, there's a search bar at the top of the conversations list. Type a name or keyword to filter your conversations."
+  },
+  {
+    "id": 55,
+    "category": "admin",
+    "intent": "admin_tutor_approval",
+    "question": "How do admins approve tutors?",
+    "keywords": [
+      "admin approve tutor",
+      "tutor approval",
+      "approve application",
+      "tutor review",
+      "admin review"
+    ],
+    "answer": "In the Admin Dashboard (/admin/dashboard), go to the 'Tutors' tab. The Registered Tutors Manager lists all tutor applications. Admins can review each application and approve or reject it from there."
+  },
+  {
+    "id": 56,
+    "category": "admin",
+    "intent": "admin_users",
+    "question": "How do admins manage users?",
+    "keywords": [
+      "admin users",
+      "manage users",
+      "user management",
+      "admin panel",
+      "view users"
+    ],
+    "answer": "Admins access the Admin Dashboard at /admin/dashboard. The 'Users' tab shows all registered users. Admins can view user details, roles, and manage accounts."
+  },
+  {
+    "id": 57,
+    "category": "admin",
+    "intent": "admin_courses",
+    "question": "How do admins manage courses?",
+    "keywords": [
+      "admin courses",
+      "create course",
+      "manage courses",
+      "add course",
+      "course management"
+    ],
+    "answer": "In the Admin Dashboard, go to the 'Courses' tab. Admins can use the Course Creation Form to create new courses and manage existing ones, including assigning tutors to courses."
+  },
+  {
+    "id": 58,
+    "category": "admin",
+    "intent": "admin_analytics",
+    "question": "How do admins view platform analytics?",
+    "keywords": [
+      "analytics",
+      "admin stats",
+      "platform statistics",
+      "revenue",
+      "user growth",
+      "reports"
+    ],
+    "answer": "The Admin Dashboard 'Statistics' tab shows User Growth, Enrollment Patterns, Revenue Trends, and User Distribution charts. Admins can also use the Date Range Selector to filter analytics and export data as CSV."
+  },
+  {
+    "id": 59,
+    "category": "admin",
+    "intent": "admin_payouts",
+    "question": "How do admins approve payout requests?",
+    "keywords": [
+      "admin payout",
+      "approve payout",
+      "tutor payment approval",
+      "payout approval",
+      "admin payments"
+    ],
+    "answer": "In the Admin Dashboard, go to the 'Payments' tab. All tutor payout requests appear here with their status. Admins can approve or reject each request and add notes for rejected requests."
+  },
+  {
+    "id": 60,
+    "category": "admin",
+    "intent": "coordinator_role",
+    "question": "How do coordinators work on the platform?",
+    "keywords": [
+      "coordinator",
+      "what is coordinator",
+      "coordinator role",
+      "family coordinator",
+      "assigned coordinator"
+    ],
+    "answer": "Coordinators are assigned to specific parent families. They can view assigned families, monitor their sessions via the Schedule view, and communicate directly with parents through the Messages system. Coordinators log in at /coordinator/dashboard."
+  },
+  {
+    "id": 61,
+    "category": "sessions",
+    "intent": "join_session",
+    "question": "What is the format of sessions?",
+    "keywords": [
+      "session format",
+      "how sessions work",
+      "online session",
+      "class format",
+      "how class works"
+    ],
+    "answer": "All sessions are conducted online via Zoom. Each session's duration is set at the course level (shown in the course details as minutes). You receive a Zoom link in your confirmation email and in your dashboard before each session."
+  },
+  {
+    "id": 62,
+    "category": "sessions",
+    "intent": "session_notes",
+    "question": "How do I download session notes or curriculum?",
+    "keywords": [
+      "download notes",
+      "download curriculum",
+      "curriculum pdf",
+      "session pdf",
+      "export notes",
+      "notes from my last class",
+      "find the tutor notes",
+      "access session notes"
+    ],
+    "answer": "On a Course Detail page, click the 'Download PDF' button in the Curriculum Details card to download the full curriculum. Session notes are viewable at /session-notes and are summarized by the tutor after each class."
+  },
+  {
+    "id": 63,
+    "category": "booking",
+    "intent": "enroll_course",
+    "question": "What happens after I enroll in a course?",
+    "keywords": [
+      "after enrollment",
+      "next steps",
+      "after enroll",
+      "what happens next",
+      "post enrollment"
+    ],
+    "answer": "After enrolling, you'll receive a confirmation email. You'll then be prompted to schedule your first session using the tutor's available time slots. You can also book trial lessons with assigned tutors from the Course Detail page."
+  },
+  {
+    "id": 64,
+    "category": "tutor",
+    "intent": "tutor_profile",
+    "question": "How do I view my tutor profile as others see it?",
+    "keywords": [
+      "view profile",
+      "tutor profile",
+      "public profile",
+      "how profile looks",
+      "see my profile",
+      "update my tutor profile",
+      "update my tutor public profile"
+    ],
+    "answer": "Your public tutor profile is at /tutor-profile/{your-id}. It shows your name, experience, hourly rate, rating, About Me, Qualifications, subjects, grade levels, and contact email. This is what parents see when browsing tutors."
+  },
+  {
+    "id": 65,
+    "category": "parent",
+    "intent": "schedule_session",
+    "question": "How do I schedule a session?",
+    "keywords": [
+      "schedule session",
+      "schedule a session",
+      "book session",
+      "book a session",
+      "book first session",
+      "schedule class",
+      "book class",
+      "pick time slot",
+      "how to schedule",
+      "book appointment",
+      "set up session",
+      "arrange session"
+    ],
+    "answer": "Go to your Parent Dashboard and use the Appointment Scheduler. Select a course, student, and tutor, then choose a time slot from the tutor's available calendar and confirm. You can also book sessions directly from the Course Detail page after enrolling."
+  }
+]

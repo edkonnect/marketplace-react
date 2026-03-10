@@ -5,6 +5,8 @@ import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
 import { z } from "zod";
 import * as db from "./db";
 import { TRPCError } from "@trpc/server";
+import { searchFaq, logUnansweredQuestion, logQuery } from "./faq-search";
+import { checkChatbotRateLimit } from "./chatbot-rate-limiter";
 import { sendWelcomeEmail, sendBookingConfirmation, sendEnrollmentConfirmation, sendTutorEnrollmentNotification, sendNoShowNotification, formatEmailDate, formatEmailTime, formatEmailPrice } from "./email-helpers";
 import { generateBookingToken, isValidBookingToken } from "./booking-management";
 import { sendCancellationConfirmationEmail } from "./cancellation-email";
@@ -5883,6 +5885,57 @@ Return ONLY the JSON object.`;
           throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to update course' });
         }
         return { success: true };
+      }),
+  }),
+
+  // Chatbot FAQ
+  chatbot: router({
+    ask: publicProcedure
+      .input(
+        z.object({
+          // Trim whitespace, enforce length bounds, reject blank-after-trim
+          question: z
+            .string()
+            .min(1, "Question cannot be empty")
+            .max(500, "Question is too long (max 500 characters)")
+            .transform((s) => s.trim())
+            .refine((s) => s.length > 0, "Question cannot be blank")
+            // Strip null bytes and control characters (except common whitespace)
+            .transform((s) => s.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "")),
+          // Only accept relative paths or short absolute URLs — reject arbitrary data
+          pageUrl: z
+            .string()
+            .max(200)
+            .optional()
+            .transform((s) => s?.slice(0, 200)),
+        })
+      )
+      .mutation(async ({ input, ctx }) => {
+        // Rate limiting — 20 requests per IP per 60 seconds
+        const ip =
+          (ctx.req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0].trim() ??
+          ctx.req.socket?.remoteAddress ??
+          "unknown";
+
+        if (!checkChatbotRateLimit(ip)) {
+          throw new TRPCError({
+            code: "TOO_MANY_REQUESTS",
+            message: "Too many requests. Please wait a moment before asking again.",
+          });
+        }
+
+        const result = searchFaq(input.question);
+        const { answer, matched, category, intent, suggestions } = result;
+
+        // Log every query with structured data (matched FAQ id, score, intent)
+        logQuery(input.question, result, input.pageUrl);
+
+        // Also log to unanswered file when no match — for quick review
+        if (!matched) {
+          logUnansweredQuestion(input.question, input.pageUrl);
+        }
+
+        return { answer, matched, category, intent, suggestions: suggestions ?? [] };
       }),
   }),
 });
