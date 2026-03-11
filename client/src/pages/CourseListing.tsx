@@ -28,7 +28,14 @@ export default function CourseListing() {
         course.subject.toLowerCase().includes(searchQuery.toLowerCase());
 
       const matchesSubject = subjectFilter === "all" || course.subject === subjectFilter;
-      const matchesGradeLevel = gradeLevelFilter === "all" || course.gradeLevel === gradeLevelFilter;
+      const normalizeGradeLevel = (g: string | null | undefined) => {
+        if (!g) return "";
+        if (g.startsWith("Elementary")) return "Elementary (K-5)";
+        if (g.startsWith("Middle School")) return "Middle School (6-8)";
+        if (g.startsWith("High School")) return "High School (9-12)";
+        return g;
+      };
+      const matchesGradeLevel = gradeLevelFilter === "all" || normalizeGradeLevel(course.gradeLevel) === gradeLevelFilter;
 
       return matchesSearch && matchesSubject && matchesGradeLevel;
     })
@@ -43,7 +50,13 @@ export default function CourseListing() {
 
   // Get unique subjects and grade levels for filters
   const subjects = Array.from(new Set(courses?.map((c) => c.subject).filter((s): s is string => !!s) || []));
-  const gradeLevels = Array.from(new Set(courses?.map((c) => c.gradeLevel).filter((g): g is string => !!g) || []));
+  const gradeLevels = [
+    "Elementary (K-5)",
+    "Middle School (6-8)",
+    "High School (9-12)",
+    "College",
+    "Adult",
+  ];
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
