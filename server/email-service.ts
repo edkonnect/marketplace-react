@@ -21,26 +21,28 @@ class EmailService {
     this.initialize();
   }
 
-  private initialize() {
+  private async initialize() {
     // Check if email credentials are configured
     const emailUser = process.env.EMAIL_USER;
     const emailPassword = process.env.EMAIL_PASSWORD;
-    const emailHost = process.env.EMAIL_HOST || 'smtp.gmail.com';
-    const emailPort = parseInt(process.env.EMAIL_PORT || '587');
+    const emailHost = process.env.EMAIL_HOST || 'email-smtp.us-east-1.amazonaws.com';
+    const emailPort = Number(process.env.EMAIL_PORT) || 587;
 
     if (emailUser && emailPassword) {
       try {
         this.transporter = nodemailer.createTransport({
           host: emailHost,
           port: emailPort,
-          secure: emailPort === 465, // true for 465, false for other ports
+          secure: false,
           auth: {
             user: emailUser,
             pass: emailPassword,
           },
         });
+
+        await this.transporter.verify();
         this.isConfigured = true;
-        console.log('[Email Service] Initialized successfully');
+        console.log('[Email Service] Email service connected to SMTP server');
       } catch (error) {
         console.error('[Email Service] Failed to initialize:', error);
         this.isConfigured = false;
@@ -72,8 +74,12 @@ class EmailService {
     }
 
     try {
+      const from = process.env.EMAIL_FROM
+        ? `"EdKonnect Academy" <${process.env.EMAIL_FROM}>`
+        : `"EdKonnect Academy" <${process.env.EMAIL_USER}>`;
+
       const info = await this.transporter.sendMail({
-        from: `"EdKonnect Academy" <${process.env.EMAIL_USER}>`,
+        from,
         to,
         subject,
         text: text || this.stripHtml(html),
@@ -83,7 +89,7 @@ class EmailService {
       console.log('[Email Service] Email sent successfully:', info.messageId);
       return true;
     } catch (error) {
-      console.error('[Email Service] Failed to send email:', error);
+      console.error('[Email Service] Email send failed:', error);
       return false;
     }
   }
