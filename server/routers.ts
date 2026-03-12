@@ -1,4 +1,5 @@
 import { clearAuthCookies } from "./_core/services/authService";
+import { ENV } from "./_core/env";
 import { systemRouter } from "./_core/systemRouter";
 import { notifyOwner } from "./_core/notification";
 import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
@@ -829,6 +830,12 @@ export const appRouter = router({
             throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to create enrollment" });
           }
 
+          // STRIPE_BYPASS=true — skip payment, mark as paid immediately
+          if (ENV.stripeBypass) {
+            await db.updateSubscription(subscriptionId, { paymentStatus: 'paid' });
+            return { success: true, subscriptionId, checkoutUrl: null };
+          }
+
           // Create Stripe Checkout session (one-time payment)
           const session = await stripeCheckout({
             priceAmount: parseFloat(course.price),
@@ -915,6 +922,12 @@ export const appRouter = router({
 
         if (!subscriptionId) {
           throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to create enrollment' });
+        }
+
+        // STRIPE_BYPASS=true — skip payment collection, mark as paid immediately
+        if (ENV.stripeBypass) {
+          await db.updateSubscription(subscriptionId, { paymentStatus: 'paid' });
+          return { success: true, subscriptionId, setupUrl: null };
         }
 
         // Create Stripe Customer + Setup Checkout to collect card.
