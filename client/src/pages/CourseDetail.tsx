@@ -52,7 +52,6 @@ export default function CourseDetail() {
   );
   const createCheckoutMutation = trpc.course.createCheckoutSession.useMutation();
   const enrollWithoutPaymentMutation = trpc.course.enrollWithoutPayment.useMutation();
-  const enrollWithInstallmentMutation = trpc.course.enrollWithInstallment.useMutation();
 
   // Trial lesson state
   const [isTrialDialogOpen, setIsTrialDialogOpen] = React.useState(false);
@@ -140,12 +139,18 @@ export default function CourseDetail() {
         studentFirstName,
         studentLastName,
         studentGrade: studentGrade || "Not specified",
+        origin: window.location.origin,
       });
 
       if (result?.success) {
         setIsEnrollDialogOpen(false);
-        toast.success("Enrollment completed and payment marked as paid.");
-        setLocation("/parent/dashboard");
+        if (result.checkoutUrl) {
+          toast.success("Redirecting to payment...");
+          window.location.href = result.checkoutUrl;
+        } else {
+          toast.success("Enrollment created. Complete payment from your dashboard.");
+          setLocation("/parent/dashboard");
+        }
       } else {
         toast.error("Enrollment failed. Please try again.");
       }
@@ -161,55 +166,26 @@ export default function CourseDetail() {
     }
 
     try {
-      await enrollWithoutPaymentMutation.mutateAsync({
+      const result = await enrollWithoutPaymentMutation.mutateAsync({
         courseId,
         studentFirstName,
         studentLastName,
         studentGrade: studentGrade || "Not specified",
         preferredTutorId: selectedTutorId || undefined,
+        origin: window.location.origin,
       });
 
       setIsEnrollDialogOpen(false);
-      
-      // If tutor is selected, offer to book first session
-      if (selectedTutorId) {
-        toast.success("Enrolled successfully! Would you like to book your first session?", {
-          action: {
-            label: "Book Now",
-            onClick: () => setIsBookingDialogOpen(true),
-          },
-        });
+
+      if (result?.setupUrl) {
+        toast.success("Enrolled! Redirecting to set up your monthly billing...");
+        window.location.href = result.setupUrl;
       } else {
-        toast.success("Enrolled successfully! You can pay later from your dashboard.");
+        toast.success("Enrolled successfully! Add your payment method from the dashboard.");
+        setLocation("/parent/dashboard");
       }
-      setLocation("/parent/dashboard");
     } catch (error) {
       toast.error("Failed to enroll");
-    }
-  };
-
-  const handleInstallmentPayment = async () => {
-    if (!studentFirstName || !studentLastName) {
-      toast.error("Please provide student's first and last name");
-      return;
-    }
-
-    try {
-      const { checkoutUrl } = await enrollWithInstallmentMutation.mutateAsync({
-        courseId,
-        preferredTutorId: selectedTutorId || undefined,
-        studentFirstName,
-        studentLastName,
-        studentGrade: studentGrade || "Not specified",
-      });
-
-      if (checkoutUrl) {
-        setIsEnrollDialogOpen(false);
-        toast.success("Redirecting to payment for first installment...");
-        window.open(checkoutUrl, "_blank");
-      }
-    } catch (error: any) {
-      toast.error(error.message || "Failed to process installment enrollment");
     }
   };
 
@@ -532,22 +508,6 @@ export default function CourseDetail() {
                             </div>
                           </div>
                           <div className="space-y-3">
-                            {price > 500 && (
-                              <div className="bg-accent/10 border border-accent/20 rounded-lg p-4">
-                                <p className="text-sm font-medium mb-2">💳 Installment Plan Available</p>
-                                <p className="text-xs text-muted-foreground mb-3">
-                                  Pay in 2 installments: ${(price / 2).toFixed(2)} now, ${(price / 2).toFixed(2)} later
-                                </p>
-                                <Button
-                                  variant="default"
-                                  className="w-full"
-                                  onClick={handleInstallmentPayment}
-                                  disabled={enrollWithInstallmentMutation.isPending || !studentFirstName || !studentLastName}
-                                >
-                                  {enrollWithInstallmentMutation.isPending ? "Processing..." : "Pay in 2 Installments"}
-                                </Button>
-                              </div>
-                            )}
                             <div className="flex gap-2">
                               <Button
                                 variant="outline"
@@ -564,14 +524,16 @@ export default function CourseDetail() {
                                 {createCheckoutMutation.isPending ? "Processing..." : "Pay in Full"}
                               </Button>
                             </div>
-                            <Button
-                              variant="secondary"
-                              className="w-full"
-                              onClick={handlePayLater}
-                              disabled={enrollWithoutPaymentMutation.isPending || !studentFirstName || !studentLastName}
-                            >
-                              {enrollWithoutPaymentMutation.isPending ? "Enrolling..." : "Pay Later"}
-                            </Button>
+                            {price >= 150 && (
+                              <Button
+                                variant="secondary"
+                                className="w-full"
+                                onClick={handlePayLater}
+                                disabled={enrollWithoutPaymentMutation.isPending || !studentFirstName || !studentLastName}
+                              >
+                                {enrollWithoutPaymentMutation.isPending ? "Enrolling..." : "Enroll & Pay Monthly"}
+                              </Button>
+                            )}
                           </div>
                         </DialogContent>
                       </Dialog>

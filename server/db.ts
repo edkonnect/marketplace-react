@@ -1523,6 +1523,60 @@ export async function updateSubscription(id: number, updates: Partial<InsertSubs
   }
 }
 
+export async function updateUserStripeCustomerId(userId: number, stripeCustomerId: string) {
+  const db = await getDb();
+  if (!db) return false;
+  try {
+    await db.update(users).set({ stripeCustomerId }).where(eq(users.id, userId));
+    return true;
+  } catch (error) {
+    console.error("[Database] Failed to update stripeCustomerId:", error);
+    return false;
+  }
+}
+
+export async function getSubscriptionByStripeId(stripeSubscriptionId: string) {
+  const db = await getDb();
+  if (!db) return null;
+  const result = await db
+    .select()
+    .from(subscriptions)
+    .where(eq(subscriptions.stripeSubscriptionId, stripeSubscriptionId))
+    .limit(1);
+  return result[0] ?? null;
+}
+
+export async function getSubscriptionsByStripeSubId(stripeSubscriptionId: string) {
+  const db = await getDb();
+  if (!db) return [];
+  return await db
+    .select()
+    .from(subscriptions)
+    .where(eq(subscriptions.stripeSubscriptionId, stripeSubscriptionId));
+}
+
+export async function getSubscriptionByStripeItemId(stripeItemId: string) {
+  const db = await getDb();
+  if (!db) return null;
+  const result = await db
+    .select()
+    .from(subscriptions)
+    .where(eq(subscriptions.stripeItemId, stripeItemId))
+    .limit(1);
+  return result[0] ?? null;
+}
+
+export async function getPaymentByStripeInvoiceId(stripeInvoiceId: string) {
+  const db = await getDb();
+  if (!db) return null;
+  const result = await db
+    .select()
+    .from(payments)
+    .where(eq(payments.stripeInvoiceId, stripeInvoiceId))
+    .limit(1);
+  return result[0] ?? null;
+}
+
 export async function getSessionStatsBySubscription(subscriptionId: number) {
   const db = await getDb();
   if (!db) return null;
@@ -2256,6 +2310,12 @@ export async function getPaymentsByParentId(parentId: number) {
   if (!db) return [];
 
   return await db.select().from(payments).where(eq(payments.parentId, parentId)).orderBy(desc(payments.createdAt));
+}
+
+export async function getPaymentsBySubscriptionId(subscriptionId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return await db.select().from(payments).where(eq(payments.subscriptionId, subscriptionId));
 }
 
 export async function getPaymentsByTutorId(tutorId: number) {
@@ -3923,6 +3983,7 @@ export async function getParentPayments(parentId: number) {
         currency: payments.currency,
         status: payments.status,
         stripePaymentIntentId: payments.stripePaymentIntentId,
+        stripeInvoiceId: payments.stripeInvoiceId,
         createdAt: payments.createdAt,
         sessionId: payments.sessionId,
         tutorName: users.name,

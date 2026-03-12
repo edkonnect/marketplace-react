@@ -1,3 +1,9 @@
+# Chatbot runtime logs (append-only, not source-controlled)
+server/chatbot-query-log.ndjson
+server/unanswered-questions.ndjson
+server/chatbot-query-log.json
+server/unanswered-questions.json
+
 # Dependencies
 **/node_modules
 .pnpm-store/

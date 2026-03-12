@@ -47,6 +47,11 @@ async function startServer() {
       next();
     });
   }
+  // Stripe webhook MUST be registered before CORS and express.json() middleware
+  // Stripe sends from its own servers so CORS must not apply here
+  const { handleStripeWebhook } = await import("../stripeWebhook");
+  app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), handleStripeWebhook);
+
   app.use(
     cors({
       origin: ENV.corsOrigin,
@@ -59,10 +64,6 @@ async function startServer() {
     windowMs: 15 * 60 * 1000,
     limit: 100,
   });
-  
-  // Stripe webhook MUST be registered before express.json() for signature verification
-  const { handleStripeWebhook } = await import("../stripeWebhook");
-  app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), handleStripeWebhook);
 
   // Configure body parser with larger size limit for file uploads
   app.use(express.json({ limit: "50mb" }));

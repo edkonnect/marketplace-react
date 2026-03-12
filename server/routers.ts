@@ -765,19 +765,21 @@ export const appRouter = router({
         studentFirstName: z.string(),
         studentLastName: z.string(),
         studentGrade: z.string(),
+        origin: z.string(),
       }))
       .mutation(async ({ ctx, input }) => {
         let subscriptionId: number | null = null;
 
         try {
+          const { createCheckoutSession: stripeCheckout } = await import("./stripe");
+
           // Get course details
           const course = await db.getCourseById(input.courseId);
           if (!course) {
             throw new TRPCError({ code: 'NOT_FOUND', message: 'Course not found' });
           }
 
-          // Prevent duplicate enrollment for the same student + subject
-          // Prevent duplicate enrollment for the same student + same course (not just subject)
+          // Prevent duplicate enrollment for the same student + same course
           const normalize = (v: string | null | undefined) => (v || "").trim().toLowerCase();
           const targetFirst = normalize(input.studentFirstName);
           const targetLast = normalize(input.studentLastName);
@@ -806,86 +808,47 @@ export const appRouter = router({
             throw new TRPCError({ code: 'NOT_FOUND', message: 'No tutor found for this course' });
           }
 
-          // Fast-path: mark as fully paid without external checkout
-          const now = new Date();
-          const endDate = new Date();
-          endDate.setMonth(endDate.getMonth() + 3); // retain original 3-month window
+          const selectedTutorId = input.preferredTutorId || primaryTutor.tutorId;
 
-          // Always create a new subscription so multiple students can enroll in the same course
-          // without overwriting an existing subscription.
+          // Create local subscription row (pending payment)
+          const now = new Date();
           subscriptionId = await db.createSubscription({
             parentId: ctx.user.id,
             courseId: input.courseId,
-            preferredTutorId: input.preferredTutorId,
+            preferredTutorId: selectedTutorId,
             studentFirstName: input.studentFirstName,
             studentLastName: input.studentLastName,
             studentGrade: input.studentGrade,
             status: "active",
             startDate: now,
-            endDate,
-            paymentStatus: "paid",
+            paymentStatus: "pending",
             paymentPlan: "full",
-            firstInstallmentPaid: true,
-            secondInstallmentPaid: true,
           });
 
           if (!subscriptionId) {
             throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to create enrollment" });
           }
 
-          // Record payment as completed (errors are logged but won't block enrollment)
-          await db.createPayment({
-            parentId: ctx.user.id,
-            tutorId: primaryTutor.tutorId,
+          // Create Stripe Checkout session (one-time payment)
+          const session = await stripeCheckout({
+            priceAmount: parseFloat(course.price),
+            courseName: course.title,
+            courseId: course.id,
+            userId: ctx.user.id,
+            userEmail: ctx.user.email,
+            userName: ctx.user.name,
+            origin: input.origin,
             subscriptionId,
-            sessionId: null,
-            amount: course.price,
-            currency: "usd",
-            status: "completed",
-            stripePaymentIntentId: null,
-            paymentType: "subscription",
+            tutorId: selectedTutorId,
           });
 
-          // Send confirmation email (non-blocking)
-          if (ctx.user.email && ctx.user.name) {
-            const preferredTutor = input.preferredTutorId
-              ? tutors.find(t => t.tutorId === input.preferredTutorId)
-              : primaryTutor;
-            const tutorName = preferredTutor?.user.name || primaryTutor?.user.name || "Your tutor";
-            const studentName = [input.studentFirstName, input.studentLastName].filter(Boolean).join(" ");
-
-            sendEnrollmentConfirmation({
-              userEmail: ctx.user.email,
-              userName: ctx.user.name,
-              courseName: course.title,
-              tutorName,
-              studentName,
-              coursePrice: formatEmailPrice(Math.round(parseFloat(course.price) * 100)),
-              courseId: course.id,
-            }).catch(err => console.error('[Email] Failed to send enrollment confirmation:', err));
-
-            // Notify preferred tutor
-            if (preferredTutor?.user.email) {
-              sendTutorEnrollmentNotification({
-                tutorEmail: preferredTutor.user.email,
-                tutorName,
-                studentName,
-                parentName: ctx.user.name,
-                courseName: course.title,
-                coursePrice: formatEmailPrice(Math.round(parseFloat(course.price) * 100)),
-              }).catch(err => console.error('[Email] Failed to send tutor enrollment notification:', err));
-            }
-          }
-
-          return { success: true, subscriptionId };
+          return { success: true, subscriptionId, checkoutUrl: session.url };
         } catch (err) {
           console.error('[createCheckoutSession] Enrollment flow failed:', err);
-          // If subscription was created, still return success so the UI doesn't show a hard error.
           if (subscriptionId) {
-            return { success: true, subscriptionId, warning: 'post-create step failed' };
+            return { success: true, subscriptionId, checkoutUrl: null, warning: 'post-create step failed' };
           }
-          // Avoid throwing to prevent 500 in UI; instead return a soft failure the client can handle.
-          return { success: false, message: 'Failed to process enrollment' };
+          return { success: false, message: 'Failed to process enrollment', checkoutUrl: null };
         }
       }),
 
@@ -896,6 +859,7 @@ export const appRouter = router({
         studentFirstName: z.string(),
         studentLastName: z.string(),
         studentGrade: z.string(),
+        origin: z.string(),
       }))
       .mutation(async ({ ctx, input }) => {
         // Get course details
@@ -926,89 +890,17 @@ export const appRouter = router({
           });
         }
 
-        // Create subscription with pending payment status
-        const subscription = await db.createSubscription({
-          parentId: ctx.user.id,
-          courseId: input.courseId,
-          preferredTutorId: input.preferredTutorId,
-          studentFirstName: input.studentFirstName,
-          studentLastName: input.studentLastName,
-          studentGrade: input.studentGrade,
-          status: 'active',
-          startDate: new Date(),
-          paymentStatus: 'pending',
-        });
-
-        if (!subscription) {
-          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to create enrollment' });
-        }
-
-        return { success: true, subscriptionId: subscription };
-      }),
-
-    enrollWithInstallment: parentProcedure
-      .input(z.object({
-        courseId: z.number(),
-        preferredTutorId: z.number().optional(),
-        studentFirstName: z.string(),
-        studentLastName: z.string(),
-        studentGrade: z.string(),
-      }))
-      .mutation(async ({ ctx, input }) => {
-        const { default: Stripe } = await import('stripe');
-        const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: '2025-12-15.clover' });
-
-        // Get course details
-        const course = await db.getCourseById(input.courseId);
-        if (!course) {
-          throw new TRPCError({ code: 'NOT_FOUND', message: 'Course not found' });
-        }
-
-        // Prevent duplicate enrollment for the same student + subject
-        const normalize = (v: string | null | undefined) => (v || "").trim().toLowerCase();
-        const targetFirst = normalize(input.studentFirstName);
-        const targetLast = normalize(input.studentLastName);
-        const existingSubscriptions = await db.getSubscriptionsByParentId(ctx.user.id);
-        const duplicate = existingSubscriptions.some((s: any) => {
-          const sub = s.subscription;
-          const c = s.course;
-          if (!sub || !c) return false;
-          if (sub.status === "cancelled") return false;
-          return (
-            normalize(sub.studentFirstName) === targetFirst &&
-            normalize(sub.studentLastName) === targetLast &&
-            normalize(c.subject) === normalize(course.subject)
-          );
-        });
-        if (duplicate) {
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message: "This student is already enrolled in this subject.",
-          });
-        }
-
-        // Verify course price is over $500
-        const coursePrice = parseFloat(course.price);
-        if (coursePrice <= 500) {
-          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Installment payment is only available for courses over $500' });
-        }
-
-        // Calculate installment amounts (50% each)
-        const firstInstallment = coursePrice / 2;
-        const secondInstallment = coursePrice / 2;
-
-        // Get tutors for the course
+        // Get primary tutor for the course
         const tutors = await db.getTutorsForCourse(input.courseId);
-        const primaryTutor = tutors.find(t => t.isPrimary) || tutors[0];
+        const primaryTutor = tutors.find((t: any) => t.isPrimary) || tutors[0];
         if (!primaryTutor) {
           throw new TRPCError({ code: 'NOT_FOUND', message: 'No tutor found for this course' });
         }
-
-        // Use preferred tutor if provided, otherwise use primary tutor
         const selectedTutorId = input.preferredTutorId || primaryTutor.tutorId;
 
-        // Create subscription with installment payment plan
-        const subscription = await db.createSubscription({
+        // Create local subscription row (billing anchored to today)
+        const now = new Date();
+        const subscriptionId = await db.createSubscription({
           parentId: ctx.user.id,
           courseId: input.courseId,
           preferredTutorId: selectedTutorId,
@@ -1016,49 +908,89 @@ export const appRouter = router({
           studentLastName: input.studentLastName,
           studentGrade: input.studentGrade,
           status: 'active',
-          startDate: new Date(),
+          startDate: now,
           paymentStatus: 'pending',
-          paymentPlan: 'installment',
-          firstInstallmentPaid: false,
-          secondInstallmentPaid: false,
-          firstInstallmentAmount: firstInstallment.toFixed(2),
-          secondInstallmentAmount: secondInstallment.toFixed(2),
+          paymentPlan: 'monthly',
         });
 
-        if (!subscription) {
+        if (!subscriptionId) {
           throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to create enrollment' });
         }
 
-        // Create Stripe checkout session for first installment
-        const session = await stripe.checkout.sessions.create({
-          payment_method_types: ['card'],
-          line_items: [
-            {
-              price_data: {
-                currency: 'usd',
-                product_data: {
-                  name: `${course.title} - First Installment (1 of 2)`,
-                  description: `Student: ${input.studentFirstName} ${input.studentLastName} | Tutor: ${primaryTutor.user.name || 'TBD'}`,
-                },
-                unit_amount: Math.round(firstInstallment * 100),
-              },
-              quantity: 1,
-            },
-          ],
-          mode: 'payment',
-          success_url: `${ctx.req.protocol}://${ctx.req.get('host')}/dashboard?payment=success`,
-          cancel_url: `${ctx.req.protocol}://${ctx.req.get('host')}/course/${input.courseId}?payment=cancelled`,
-          metadata: {
-            subscriptionId: subscription.toString(),
-            courseId: input.courseId.toString(),
-            parentId: ctx.user.id.toString(),
-            installmentNumber: '1',
-            paymentType: 'installment',
-          },
+        // Create Stripe Customer + Setup Checkout to collect card.
+        // The Stripe Subscription is created in the webhook after the card is saved.
+        let setupUrl: string | null = null;
+        if (ctx.user.email) {
+          try {
+            const { getOrCreateStripeCustomer, createSetupCheckoutSession } = await import("./stripe");
+            const parentUser = await db.getUserById(ctx.user.id);
+            const stripeCustomerId = await getOrCreateStripeCustomer({
+              userId: ctx.user.id,
+              email: ctx.user.email,
+              name: ctx.user.name,
+              existingStripeCustomerId: parentUser?.stripeCustomerId,
+            });
+
+            if (!parentUser?.stripeCustomerId) {
+              await db.updateUserStripeCustomerId(ctx.user.id, stripeCustomerId);
+            }
+
+            // Create setup checkout so parent can save their card
+            const setupSession = await createSetupCheckoutSession({
+              stripeCustomerId,
+              origin: input.origin,
+              courseId: input.courseId,
+              subscriptionId,
+            });
+            setupUrl = setupSession.url;
+          } catch (err) {
+            // Non-fatal — local enrollment still created
+            console.error('[enrollWithoutPayment] Failed to create Stripe setup:', err);
+          }
+        }
+
+        return { success: true, subscriptionId, setupUrl };
+      }),
+
+    getSetupUrl: parentProcedure
+      .input(z.object({
+        subscriptionId: z.number(),
+        origin: z.string(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const { getOrCreateStripeCustomer, createSetupCheckoutSession } = await import("./stripe");
+
+        const localSub = await db.getSubscriptionById(input.subscriptionId);
+        if (!localSub || localSub.parentId !== ctx.user.id) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Subscription not found" });
+        }
+
+        if (!ctx.user.email) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Parent account must have an email address" });
+        }
+
+        const parentUser = await db.getUserById(ctx.user.id);
+        const stripeCustomerId = await getOrCreateStripeCustomer({
+          userId: ctx.user.id,
+          email: ctx.user.email,
+          name: ctx.user.name,
+          existingStripeCustomerId: parentUser?.stripeCustomerId,
         });
 
-        return { checkoutUrl: session.url, subscriptionId: subscription };
+        if (!parentUser?.stripeCustomerId) {
+          await db.updateUserStripeCustomerId(ctx.user.id, stripeCustomerId);
+        }
+
+        const setupSession = await createSetupCheckoutSession({
+          stripeCustomerId,
+          origin: input.origin,
+          courseId: localSub.courseId,
+          subscriptionId: input.subscriptionId,
+        });
+
+        return { setupUrl: setupSession.url };
       }),
+
   }),
 
   tutorCoursePreferences: router({
@@ -2566,75 +2498,219 @@ export const appRouter = router({
   payment: router({
     getPaymentHistory: parentProcedure
       .query(async ({ ctx }) => {
-        // Get all payments for this parent
-        const payments = await db.getPaymentsByParentId(ctx.user.id);
-        
-        // Enrich payment data with course, tutor, and student information
-        const enrichedPayments = await Promise.all(
-          payments.map(async (payment) => {
-            let courseName = null;
-            let tutorName = null;
-            let studentName = null;
-            let installmentInfo = null;
-            
-            // Get subscription details if available
-            if (payment.subscriptionId) {
-              const subscription = await db.getSubscriptionById(payment.subscriptionId);
-              if (subscription) {
-                // Get course name
-                const course = await db.getCourseById(subscription.courseId);
-                if (course) {
-                  courseName = course.title;
-                }
-                
-                // Get student name
-                if (subscription.studentFirstName && subscription.studentLastName) {
-                  studentName = `${subscription.studentFirstName} ${subscription.studentLastName}`;
-                }
-                
-                // Get installment info if applicable
-                if (subscription.paymentPlan === 'installment') {
-                  const firstAmount = parseFloat(subscription.firstInstallmentAmount || '0');
-                  const secondAmount = parseFloat(subscription.secondInstallmentAmount || '0');
-                  const paidAmount = parseFloat(payment.amount);
-                  
-                  // Determine which installment this is
-                  let installmentNumber = 1;
-                  if (subscription.firstInstallmentPaid && Math.abs(paidAmount - secondAmount) < 0.01) {
-                    installmentNumber = 2;
-                  }
-                  
-                  installmentInfo = {
-                    installmentNumber,
-                    totalInstallments: 2,
-                  };
-                }
+        const { listStripeInvoicesForCustomer } = await import("./stripe");
+
+        // Fetch enriched payments from local DB (single query with joins)
+        const localPayments = await db.getParentPayments(ctx.user.id);
+
+        // Optionally enrich with Stripe invoice PDF URLs
+        const parentUser = await db.getUserById(ctx.user.id);
+        const stripeInvoiceMap: Record<string, string> = {};
+
+        if (parentUser?.stripeCustomerId) {
+          try {
+            const invoices = await listStripeInvoicesForCustomer(parentUser.stripeCustomerId);
+            for (const inv of invoices) {
+              if (inv.id && inv.invoice_pdf) {
+                stripeInvoiceMap[inv.id] = inv.invoice_pdf;
               }
             }
-            
-            // Get tutor name
-            const tutor = await db.getUserById(payment.tutorId);
-            if (tutor) {
-              tutorName = tutor.name;
-            }
-            
-            return {
-              id: payment.id,
-              amount: payment.amount,
-              currency: payment.currency,
-              status: payment.status,
-              paymentType: payment.paymentType,
-              stripePaymentIntentId: payment.stripePaymentIntentId,
-              createdAt: payment.createdAt,
-              courseName,
-              tutorName,
-              studentName,
-              installmentInfo,
+          } catch (err) {
+            console.error("[getPaymentHistory] Stripe invoice fetch failed (non-fatal):", err);
+          }
+        }
+
+        return localPayments.map(p => ({
+          ...p,
+          invoicePdfUrl: p.stripeInvoiceId ? (stripeInvoiceMap[p.stripeInvoiceId] ?? null) : null,
+        }));
+      }),
+
+    getStripeInvoices: parentProcedure
+      .query(async ({ ctx }) => {
+        const parentUser = await db.getUserById(ctx.user.id);
+        const results: Array<{
+          id: string;
+          number: string | null;
+          status: string;
+          amountPaid: number;
+          amountDue: number;
+          currency: string;
+          periodStart: number;
+          periodEnd: number;
+          created: number;
+          hostedInvoiceUrl: string | null;
+          invoicePdf: string | null;
+          source: "stripe" | "local";
+          studentName: string | null;
+          courseTitle: string | null;
+          paymentNumber: number | null;
+          totalPayments: number | null;
+          lines: Array<{
+            id: string;
+            description: string | null;
+            amount: number;
+            currency: string;
+            studentName?: string | null;
+            courseTitle?: string | null;
+            paymentNumber?: number | null;
+            totalPayments?: number | null;
+          }>;
+        }> = [];
+
+        // Fetch Stripe invoices if customer exists
+        if (parentUser?.stripeCustomerId) {
+          try {
+            const { listStripeInvoicesForCustomer } = await import("./stripe");
+            const invoices = await listStripeInvoicesForCustomer(parentUser.stripeCustomerId);
+
+            // Helper to extract subscription ID from new Invoice parent structure
+            const getInvSubId = (inv: any): string | null => {
+              const sub = (inv.parent as any)?.subscription_details?.subscription;
+              return typeof sub === "string" ? sub : sub?.id ?? null;
             };
-          })
-        );
-        
-        return enrichedPayments;
+
+            // Group invoice created timestamps per Stripe subscription for payment number
+            const subInvoiceMap: Record<string, number[]> = {};
+            for (const inv of invoices) {
+              const subId = getInvSubId(inv);
+              if (subId) {
+                if (!subInvoiceMap[subId]) subInvoiceMap[subId] = [];
+                subInvoiceMap[subId].push(inv.created);
+              }
+            }
+            for (const subId of Object.keys(subInvoiceMap)) {
+              subInvoiceMap[subId].sort((a, b) => a - b);
+            }
+
+            for (const inv of invoices) {
+              const stripeSubId = getInvSubId(inv);
+              const lineItems = inv.lines?.data ?? [];
+
+              // Build enriched line items by matching each to a local subscription via stripeItemId
+              const enrichedLines: Array<{
+                id: string;
+                description: string | null;
+                amount: number;
+                currency: string;
+                studentName: string | null;
+                courseTitle: string | null;
+                paymentNumber: number | null;
+                totalPayments: number | null;
+              }> = [];
+
+              for (const line of lineItems) {
+                const stripeItemId = (line.parent as any)?.subscription_item_details?.subscription_item as string | null;
+                let lineStudentName: string | null = null;
+                let lineCourseTitle: string | null = null;
+                let linePaymentNumber: number | null = null;
+                let lineTotalPayments: number | null = null;
+
+                if (stripeItemId) {
+                  const localSub = await db.getSubscriptionByStripeItemId(stripeItemId);
+                  if (localSub) {
+                    lineStudentName = [localSub.studentFirstName, localSub.studentLastName].filter(Boolean).join(" ") || null;
+                    const course = await db.getCourseById(localSub.courseId);
+                    if (course) {
+                      lineCourseTitle = course.title;
+                      const totalSessions = course.totalSessions || 1;
+                      const sessionsPerWeek = course.sessionsPerWeek || 1;
+                      const sessionsPerMonth = sessionsPerWeek * 4;
+                      lineTotalPayments = Math.max(1, Math.ceil(totalSessions / sessionsPerMonth));
+                    }
+                  }
+                }
+
+                if (stripeSubId) {
+                  const sortedCreated = subInvoiceMap[stripeSubId] ?? [];
+                  const idx = sortedCreated.indexOf(inv.created);
+                  linePaymentNumber = idx >= 0 ? idx + 1 : null;
+                }
+
+                enrichedLines.push({
+                  id: line.id,
+                  description: line.description ?? null,
+                  amount: line.amount,
+                  currency: line.currency,
+                  studentName: lineStudentName,
+                  courseTitle: lineCourseTitle,
+                  paymentNumber: linePaymentNumber,
+                  totalPayments: lineTotalPayments,
+                });
+              }
+
+              // For the invoice header, use data from first line item (or aggregate)
+              const firstLine = enrichedLines[0] ?? null;
+              const multiCourse = enrichedLines.length > 1;
+
+              results.push({
+                id: inv.id,
+                number: inv.number ?? null,
+                status: inv.status ?? "unknown",
+                amountPaid: inv.amount_paid,
+                amountDue: inv.amount_due,
+                currency: inv.currency,
+                periodStart: inv.period_start,
+                periodEnd: inv.period_end,
+                created: inv.created,
+                hostedInvoiceUrl: inv.hosted_invoice_url ?? null,
+                invoicePdf: inv.invoice_pdf ?? null,
+                source: "stripe",
+                studentName: multiCourse ? null : (firstLine?.studentName ?? null),
+                courseTitle: multiCourse ? null : (firstLine?.courseTitle ?? null),
+                paymentNumber: multiCourse ? null : (firstLine?.paymentNumber ?? null),
+                totalPayments: multiCourse ? null : (firstLine?.totalPayments ?? null),
+                lines: enrichedLines,
+              });
+            }
+          } catch (err) {
+            console.error("[getStripeInvoices] Failed to fetch Stripe invoices:", err);
+          }
+        }
+
+        // Also include local payment records that have no Stripe invoice
+        // (pay-in-full via Stripe Checkout, or legacy payments)
+        const localPayments = await db.getParentPayments(ctx.user.id);
+        const stripeInvoiceIds = new Set(results.map(r => r.id));
+
+        for (const p of localPayments) {
+          // Skip if already covered by a Stripe invoice
+          if (p.stripeInvoiceId && stripeInvoiceIds.has(p.stripeInvoiceId)) continue;
+          if (p.status !== "completed") continue;
+
+          const createdTs = Math.floor(new Date(p.createdAt).getTime() / 1000);
+          const studentName = [p.studentFirstName, p.studentLastName].filter(Boolean).join(" ");
+          const description = [studentName, p.courseTitle].filter(Boolean).join(" — ") || "Course payment";
+
+          results.push({
+            id: `local_${p.id}`,
+            number: null,
+            status: "paid",
+            amountPaid: Math.round(parseFloat(p.amount) * 100),
+            amountDue: 0,
+            currency: p.currency || "usd",
+            periodStart: createdTs,
+            periodEnd: createdTs,
+            created: createdTs,
+            hostedInvoiceUrl: null,
+            invoicePdf: null,
+            source: "local",
+            studentName: studentName || null,
+            courseTitle: p.courseTitle || null,
+            paymentNumber: null,
+            totalPayments: null,
+            lines: [{
+              id: `local_line_${p.id}`,
+              description,
+              amount: Math.round(parseFloat(p.amount) * 100),
+              currency: p.currency || "usd",
+            }],
+          });
+        }
+
+        // Sort by created date descending
+        results.sort((a, b) => b.created - a.created);
+        return results;
       }),
 
     createCheckout: protectedProcedure
@@ -2658,72 +2734,6 @@ export const appRouter = router({
           userName: ctx.user.name,
           origin: `${ctx.req.protocol}://${ctx.req.get("host")}`,
           subscriptionId: input.subscriptionId,
-        });
-
-        return { checkoutUrl: session.url };
-      }),
-
-    processSecondInstallment: parentProcedure
-      .input(z.object({
-        subscriptionId: z.number(),
-      }))
-      .mutation(async ({ ctx, input }) => {
-        const { default: Stripe } = await import('stripe');
-        const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: '2025-12-15.clover' });
-
-        // Get subscription details
-        const subscriptionData = await db.getSubscriptionsByParentId(ctx.user.id);
-        const subscriptionRecord = subscriptionData.find(s => s.subscription.id === input.subscriptionId);
-        
-        if (!subscriptionRecord) {
-          throw new TRPCError({ code: 'NOT_FOUND', message: 'Subscription not found' });
-        }
-
-        const subscription = subscriptionRecord.subscription;
-        const course = subscriptionRecord.course;
-        const tutor = subscriptionRecord.tutor;
-
-        // Verify it's an installment plan
-        if (subscription.paymentPlan !== 'installment') {
-          throw new TRPCError({ code: 'BAD_REQUEST', message: 'This subscription is not on an installment plan' });
-        }
-
-        // Verify first installment is paid
-        if (!subscription.firstInstallmentPaid) {
-          throw new TRPCError({ code: 'BAD_REQUEST', message: 'First installment must be paid before processing second installment' });
-        }
-
-        // Verify second installment is not already paid
-        if (subscription.secondInstallmentPaid) {
-          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Second installment has already been paid' });
-        }
-
-        // Create Stripe checkout session for second installment
-        const session = await stripe.checkout.sessions.create({
-          payment_method_types: ['card'],
-          line_items: [
-            {
-              price_data: {
-                currency: 'usd',
-                product_data: {
-                  name: `${course.title} - Second Installment (2 of 2)`,
-                  description: `Student: ${subscription.studentFirstName} ${subscription.studentLastName} | Tutor: ${tutor?.name || 'TBD'}`,
-                },
-                unit_amount: Math.round(parseFloat(subscription.secondInstallmentAmount || '0') * 100),
-              },
-              quantity: 1,
-            },
-          ],
-          mode: 'payment',
-          success_url: `${ctx.req.protocol}://${ctx.req.get('host')}/dashboard?payment=success`,
-          cancel_url: `${ctx.req.protocol}://${ctx.req.get('host')}/dashboard?payment=cancelled`,
-          metadata: {
-            subscriptionId: subscription.id.toString(),
-            courseId: subscription.courseId.toString(),
-            parentId: ctx.user.id.toString(),
-            installmentNumber: '2',
-            paymentType: 'installment',
-          },
         });
 
         return { checkoutUrl: session.url };
@@ -3250,6 +3260,7 @@ export const appRouter = router({
           status: subscription.paymentStatus as "pending" | "completed" | "failed" | "refunded",
           paymentType: "subscription" as const,
           stripePaymentIntentId: null,
+          stripeInvoiceId: null,
           createdAt: subscription.createdAt,
           updatedAt: subscription.updatedAt,
         }));
@@ -3462,6 +3473,7 @@ export const appRouter = router({
           status: subscription.paymentStatus as "pending" | "completed" | "failed" | "refunded",
           paymentType: "subscription" as const,
           stripePaymentIntentId: null,
+          stripeInvoiceId: null,
           createdAt: subscription.createdAt,
           updatedAt: subscription.updatedAt,
         }));

@@ -62,6 +62,9 @@ export default function ParentDashboard() {
   };
   const [quizModal, setQuizModal] = useState<QuizModalState | null>(null);
 
+  const setupBillingMutation = trpc.course.getSetupUrl.useMutation();
+  const [setupLoadingId, setSetupLoadingId] = useState<number | null>(null);
+
   const completeQuizMutation = trpc.quiz.complete.useMutation({
     onSuccess: (data) => {
       setQuizModal((prev) =>
@@ -158,6 +161,28 @@ export default function ParentDashboard() {
       setLocation("/role-selection");
     }
   }, [loading, isAuthenticated, user, setLocation]);
+
+  // After Stripe Setup Checkout redirect, poll until all pending monthly subs become paid
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("setup") !== "success") return;
+    window.history.replaceState({}, "", window.location.pathname);
+
+    let attempts = 0;
+    const maxAttempts = 10;
+    const interval = setInterval(async () => {
+      attempts++;
+      const result = await refetchSubscriptions();
+      const allResolved = result.data?.every(
+        s => s.subscription.paymentPlan !== "monthly" || s.subscription.paymentStatus !== "pending"
+      );
+      if (allResolved || attempts >= maxAttempts) {
+        clearInterval(interval);
+      }
+    }, 2000); // poll every 2s, up to 20s total
+
+    return () => clearInterval(interval);
+  }, []);
 
   const activeSubscriptions = subscriptions?.filter(s => s.subscription.status === "active") || [];
   const completedSessions = sessionHistory?.filter(s => s.status === "completed") || [];
@@ -550,24 +575,19 @@ export default function ParentDashboard() {
                             <Badge variant={subscription.status === "active" ? "default" : "secondary"}>
                               {subscription.status}
                             </Badge>
-                            {subscription.paymentStatus === "pending" && subscription.paymentPlan === "full" && (
+                            {subscription.paymentStatus === "pending" && (subscription.paymentPlan === "full" || subscription.paymentPlan === "installment") && (
                               <Badge variant="destructive" className="text-xs">
                                 Billing Pending
                               </Badge>
                             )}
-                            {subscription.paymentPlan === "installment" && (
-                              <Badge variant="outline" className="text-xs">
-                                Installment Plan
-                              </Badge>
-                            )}
-                            {subscription.paymentPlan === "installment" && subscription.firstInstallmentPaid && !subscription.secondInstallmentPaid && (
+                            {subscription.paymentPlan === "monthly" && subscription.paymentStatus === "pending" && (
                               <Badge variant="secondary" className="text-xs bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200">
-                                2nd Installment Due
+                                Payment Pending
                               </Badge>
                             )}
-                            {subscription.paymentPlan === "installment" && subscription.firstInstallmentPaid && subscription.secondInstallmentPaid && (
+                            {subscription.paymentPlan === "monthly" && subscription.paymentStatus === "paid" && (
                               <Badge variant="secondary" className="text-xs bg-green-100 text-green-900 dark:bg-green-950 dark:text-green-200">
-                                Fully Paid
+                                Monthly Billing Active
                               </Badge>
                             )}
                           </div>
@@ -590,81 +610,40 @@ export default function ParentDashboard() {
                           </div>
                         </div>
 
-                        {subscription.paymentStatus === "pending" && subscription.paymentPlan === "full" && (
+                        {subscription.paymentStatus === "pending" && subscription.paymentPlan === "monthly" && (
                           <div className="p-3 bg-amber-50 dark:bg-amber-950/20 rounded-lg border border-amber-200 dark:border-amber-900">
                             <p className="text-sm text-amber-900 dark:text-amber-200 mb-2">
-                              Complete your billing to access all course features
+                              Add your payment method to activate monthly billing
                             </p>
                             <Button
                               size="sm"
                               className="w-full"
+                              disabled={setupLoadingId === subscription.id}
                               onClick={async () => {
                                 try {
-                                  const result = await trpc.course.createCheckoutSession.useMutation().mutateAsync({
-                                    courseId: course.id,
-                                    studentFirstName: subscription.studentFirstName || "",
-                                    studentLastName: subscription.studentLastName || "",
-                                    studentGrade: subscription.studentGrade || "",
+                                  setSetupLoadingId(subscription.id);
+                                  const result = await setupBillingMutation.mutateAsync({
+                                    subscriptionId: subscription.id,
+                                    origin: window.location.origin,
                                   });
-                                  if (result?.success) {
-                                    toast.success("Payment recorded as paid.");
-                                    window.location.reload();
-                                  } else if ((result as any)?.checkoutUrl) {
-                                    window.open((result as any).checkoutUrl, "_blank");
+                                  if (result?.setupUrl) {
+                                    window.location.href = result.setupUrl;
+                                  } else {
+                                    toast.error("Could not create billing setup. Please contact support.");
                                   }
                                 } catch (error) {
-                                  toast.error("Failed to create payment session");
+                                  toast.error("Failed to set up billing");
+                                } finally {
+                                  setSetupLoadingId(null);
                                 }
                               }}
                             >
                               <CreditCard className="w-4 h-4 mr-2" />
-                              Pay Now
+                              {setupLoadingId === subscription.id ? "Setting up..." : "Set Up Monthly Billing"}
                             </Button>
                           </div>
                         )}
 
-                        {subscription.paymentPlan === "installment" && (
-                          <div className="p-3 bg-blue-50 dark:bg-blue-950/20 rounded-lg border border-blue-200 dark:border-blue-900 space-y-2">
-                            <p className="text-sm font-medium text-blue-900 dark:text-blue-200">
-                              💳 Installment Billing Plan
-                            </p>
-                            <div className="space-y-1 text-xs text-blue-800 dark:text-blue-300">
-                              <div className="flex justify-between">
-                                <span>First Installment ({subscription.firstInstallmentAmount ? `$${subscription.firstInstallmentAmount}` : 'N/A'}):</span>
-                                <span className={subscription.firstInstallmentPaid ? "text-green-600 dark:text-green-400 font-medium" : "text-amber-600 dark:text-amber-400"}>
-                                  {subscription.firstInstallmentPaid ? "✓ Paid" : "Pending"}
-                                </span>
-                              </div>
-                              <div className="flex justify-between">
-                                <span>Second Installment ({subscription.secondInstallmentAmount ? `$${subscription.secondInstallmentAmount}` : 'N/A'}):</span>
-                                <span className={subscription.secondInstallmentPaid ? "text-green-600 dark:text-green-400 font-medium" : "text-amber-600 dark:text-amber-400"}>
-                                  {subscription.secondInstallmentPaid ? "✓ Paid" : "Pending"}
-                                </span>
-                              </div>
-                            </div>
-                            {subscription.firstInstallmentPaid && !subscription.secondInstallmentPaid && (
-                              <Button
-                                size="sm"
-                                className="w-full mt-2"
-                                onClick={async () => {
-                                  try {
-                                    const { checkoutUrl } = await trpc.payment.processSecondInstallment.useMutation().mutateAsync({
-                                      subscriptionId: subscription.id,
-                                    });
-                                    if (checkoutUrl) {
-                                      window.open(checkoutUrl, "_blank");
-                                    }
-                                  } catch (error) {
-                                    toast.error("Failed to create payment session");
-                                  }
-                                }}
-                              >
-                                <CreditCard className="w-4 h-4 mr-2" />
-                                Pay Second Installment
-                              </Button>
-                            )}
-                          </div>
-                        )}
 
                         <div className="space-y-2">
                           {subscription.status === "active" && subscription.paymentStatus === "paid" && (
