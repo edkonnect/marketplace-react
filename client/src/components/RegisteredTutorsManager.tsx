@@ -132,6 +132,17 @@ export function RegisteredTutorsManager() {
   const approvedTutors = tutors.filter((t: any) => t.approvalStatus === 'approved');
   const rejectedTutors = tutors.filter((t: any) => t.approvalStatus === 'rejected');
 
+  // Find pending tutors whose name matches another pending tutor (possible duplicates)
+  const pendingNameCounts: Record<string, number> = {};
+  pendingTutors.forEach((t: any) => {
+    const name = (t.userName || '').toLowerCase().trim();
+    if (name) pendingNameCounts[name] = (pendingNameCounts[name] || 0) + 1;
+  });
+  const isDuplicateName = (tutor: any) => {
+    const name = (tutor.userName || '').toLowerCase().trim();
+    return name && pendingNameCounts[name] > 1;
+  };
+
   return (
     <>
       <div className="space-y-6">
@@ -184,8 +195,13 @@ export function RegisteredTutorsManager() {
                   const gradeLevels = parseJSON(tutor.gradeLevels);
                   
                   return (
-                    <Card key={tutor.id} className="border-2 border-yellow-200 bg-yellow-50/50">
+                    <Card key={tutor.id} className={`border-2 ${isDuplicateName(tutor) ? 'border-orange-400 bg-orange-50/50' : 'border-yellow-200 bg-yellow-50/50'}`}>
                       <CardContent className="pt-6">
+                        {isDuplicateName(tutor) && (
+                          <div className="flex items-center gap-2 mb-3 px-3 py-2 bg-orange-100 border border-orange-300 rounded-md text-orange-800 text-sm font-medium">
+                            ⚠️ Possible duplicate — another pending application exists with the same name
+                          </div>
+                        )}
                         <div className="flex gap-4">
                           <div className="flex items-start pt-1">
                             <input

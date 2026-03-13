@@ -119,10 +119,14 @@ export default function TutorDetail() {
       <div className="flex-1">
         {/* Profile Header */}
         <div className="bg-gradient-to-br from-primary/5 via-accent/5 to-background border-b border-border">
-          <div className="container py-12">
+          <div className="container pt-24 pb-12">
             <div className="flex flex-col md:flex-row gap-8 items-start">
-              <div className="w-32 h-32 rounded-full bg-primary/10 flex items-center justify-center text-4xl font-bold text-primary flex-shrink-0">
-                {tutorProfile.userId}
+              <div className="w-32 h-32 rounded-full bg-primary/10 flex items-center justify-center text-4xl font-bold text-primary flex-shrink-0 overflow-hidden">
+                {tutorProfile.profileImageUrl ? (
+                  <img src={tutorProfile.profileImageUrl} alt={tutorProfile.name || "Tutor"} className="w-full h-full object-cover" />
+                ) : (
+                  <span>{(tutorProfile.name || "T").charAt(0).toUpperCase()}</span>
+                )}
               </div>
 
               <div className="flex-1">

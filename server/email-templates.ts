@@ -314,36 +314,60 @@ interface BookingConfirmationEmailProps {
   sessionPrice: string;
   dashboardUrl: string;
   messagesUrl: string;
+  // For recurring bookings — all session dates/times after the first
+  additionalSessions?: { date: string; time: string }[];
 }
 
 /**
  * Booking confirmation email template
  */
 export function getBookingConfirmationEmail(props: BookingConfirmationEmailProps): string {
-  const { 
-    userName, 
-    userRole, 
-    courseName, 
+  const {
+    userName,
+    userRole,
+    courseName,
     tutorName,
     studentName,
-    sessionDate, 
-    sessionTime, 
+    sessionDate,
+    sessionTime,
     sessionDuration,
     sessionPrice,
     dashboardUrl,
-    messagesUrl
+    messagesUrl,
+    additionalSessions,
   } = props;
-  
+
   const isParent = userRole === 'parent';
   const otherPartyName = isParent ? tutorName : studentName;
-  
+  const isRecurring = additionalSessions && additionalSessions.length > 0;
+  const totalSessions = isRecurring ? 1 + additionalSessions!.length : 1;
+
+  const allSessionsHtml = isRecurring ? `
+    <tr>
+      <td style="padding: 8px 0; font-weight: 600; color: #111827; vertical-align: top; width: 140px;">All Sessions (${totalSessions}):</td>
+      <td style="padding: 8px 0; color: #374151;">
+        <div style="margin-bottom: 4px;">1. ${sessionDate} at ${sessionTime}</div>
+        ${additionalSessions!.map((s, i) => `<div style="margin-bottom: 4px;">${i + 2}. ${s.date} at ${s.time}</div>`).join('')}
+      </td>
+    </tr>
+  ` : `
+    <tr>
+      <td style="padding: 8px 0; font-weight: 600; color: #111827; width: 140px;">Date:</td>
+      <td style="padding: 8px 0; color: #374151;">${sessionDate}</td>
+    </tr>
+    <tr>
+      <td style="padding: 8px 0; font-weight: 600; color: #111827;">Time:</td>
+      <td style="padding: 8px 0; color: #374151;">${sessionTime}</td>
+    </tr>
+  `;
+
   const content = `
-    <h1>Session Confirmed! ✅</h1>
-    
+    <h1>${isRecurring ? `${totalSessions} Sessions Confirmed! ✅` : 'Session Confirmed! ✅'}</h1>
+
     <p>Hi ${userName},</p>
-    
-    <p>Great news! Your tutoring session has been confirmed. Here are the details:</p>
-    
+
+    <p>Great news! Your tutoring session${isRecurring ? 's have' : ' has'} been confirmed. Here are the details:</p>
+
     <div class="highlight-box">
       <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin: 0;">
         <tr>
@@ -354,14 +378,7 @@ export function getBookingConfirmationEmail(props: BookingConfirmationEmailProps
           <td style="padding: 8px 0; font-weight: 600; color: #111827;">${isParent ? 'Tutor:' : 'Student:'}</td>
           <td style="padding: 8px 0; color: #374151;">${otherPartyName}</td>
         </tr>
-        <tr>
-          <td style="padding: 8px 0; font-weight: 600; color: #111827;">Date:</td>
-          <td style="padding: 8px 0; color: #374151;">${sessionDate}</td>
-        </tr>
-        <tr>
-          <td style="padding: 8px 0; font-weight: 600; color: #111827;">Time:</td>
-          <td style="padding: 8px 0; color: #374151;">${sessionTime}</td>
-        </tr>
+        ${allSessionsHtml}
         <tr>
           <td style="padding: 8px 0; font-weight: 600; color: #111827;">Duration:</td>
           <td style="padding: 8px 0; color: #374151;">${sessionDuration}</td>
@@ -852,5 +869,56 @@ export function getNoShowNotificationEmail(props: NoShowNotificationEmailProps):
 
   return getEmailBase(content, {
     preheaderText: `Session no-show notification for ${studentName} - ${courseName}`
+  });
+}
+
+interface TutorApplicationReceivedEmailProps {
+  tutorName: string;
+  tutorEmail: string;
+  subjects: string[];
+}
+
+export function getTutorApplicationReceivedEmail(props: TutorApplicationReceivedEmailProps): string {
+  const { tutorName, tutorEmail, subjects } = props;
+
+  const content = `
+    <h1>Application Received!</h1>
+
+    <p>Hi ${tutorName},</p>
+
+    <p>Thank you for applying to join EdKonnect Academy as a tutor. We've received your application and our team will review it shortly.</p>
+
+    <div class="highlight-box">
+      <p style="margin: 0; font-weight: 600; color: #1e40af;">
+        Application submitted for: ${tutorEmail}
+      </p>
+    </div>
+
+    <h2>Your Application Details:</h2>
+    <ul style="margin: 16px 0; padding-left: 24px;">
+      <li style="margin-bottom: 8px;"><strong>Name:</strong> ${tutorName}</li>
+      <li style="margin-bottom: 8px;"><strong>Email:</strong> ${tutorEmail}</li>
+      <li style="margin-bottom: 8px;"><strong>Subjects:</strong> ${subjects.join(', ')}</li>
+    </ul>
+
+    <h2>What Happens Next?</h2>
+    <ul style="margin: 16px 0; padding-left: 24px;">
+      <li style="margin-bottom: 8px;">Our admin team will review your qualifications and experience</li>
+      <li style="margin-bottom: 8px;">You'll receive an email with the decision within 2-3 business days</li>
+      <li style="margin-bottom: 8px;">If approved, you'll get a link to set up your account and start tutoring</li>
+    </ul>
+
+    <p style="margin-top: 16px; color: #6b7280; font-size: 14px;">
+      If you did not submit this application or believe this was sent in error, please ignore this email.
+    </p>
+
+    <p style="margin-top: 16px;">
+      Best regards,<br>
+      <strong>The EdKonnect Academy Team</strong>
+    </p>
+  `;
+
+  return getEmailBase(content, {
+    preheaderText: 'We received your tutor application — we\'ll be in touch soon!'
   });
 }

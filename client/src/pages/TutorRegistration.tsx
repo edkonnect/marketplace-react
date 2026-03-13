@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Navigation from "@/components/Navigation";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
@@ -48,7 +48,10 @@ const GRADE_LEVELS = [
 export default function TutorRegistration() {
   const { user, isAuthenticated } = useAuth();
   const [, navigate] = useLocation();
-  const [submitted, setSubmitted] = useState(false);
+  // For unauthenticated users, persist submitted state across page reloads in the same session
+  // For logged-in users, the backend controls this — don't use sessionStorage
+  const [submitted, setSubmitted] = useState(() => !isAuthenticated && sessionStorage.getItem("tutorAppSubmitted") === "true");
+  const [submittedEmail, setSubmittedEmail] = useState<string>(() => sessionStorage.getItem("tutorAppSubmittedEmail") || "");
   const [timezone, setTimezone] = useState(detectUserTimezone());
 
   const form = useValidatedForm(
@@ -85,22 +88,33 @@ export default function TutorRegistration() {
 
   const { values, register, setValue, validateForm } = form;
 
-  // Pre-fill form with user data
+  // Pre-fill form with user data — only once when user first loads
+  const hasPrefilledRef = useRef(false);
   useEffect(() => {
-    if (user) {
+    if (user && !hasPrefilledRef.current) {
+      hasPrefilledRef.current = true;
       setValue("name", user.name || "", { validate: false });
       setValue("email", user.email || "", { validate: false });
     }
-  }, [user, setValue]);
+  }, [user]);
+
+  const markSubmitted = (email: string) => {
+    if (!isAuthenticated) {
+      sessionStorage.setItem("tutorAppSubmitted", "true");
+      sessionStorage.setItem("tutorAppSubmittedEmail", email);
+    }
+    setSubmittedEmail(email);
+    setSubmitted(true);
+  };
 
   const registerMutation = trpc.tutorProfile.register.useMutation({
     onSuccess: () => {
-      setSubmitted(true);
+      markSubmitted(values.email.trim());
       toast.success("Registration submitted successfully!");
     },
     onError: (error: any) => {
       if (error.message === "You already have a tutor profile") {
-        setSubmitted(true);
+        markSubmitted(user?.email || values.email.trim());
       } else {
         toast.error(error.message || "Failed to submit registration");
       }
@@ -189,10 +203,15 @@ export default function TutorRegistration() {
                 <CheckCircle2 className="w-10 h-10 text-green-600" />
               </div>
               <h2 className="text-2xl font-bold mb-2">Application Submitted!</h2>
+              {submittedEmail && (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-2 mb-4 text-sm text-blue-800 font-medium">
+                  Application submitted for: <span className="font-bold">{submittedEmail}</span>
+                </div>
+              )}
               <p className="text-muted-foreground mb-6">
                 {isAuthenticated
                   ? "Thank you for your interest in joining our tutoring platform. Your application is under review."
-                  : "Thank you for applying! Once approved, you'll receive an email with instructions to set up your account and create your password."
+                  : "Thank you for applying! A confirmation email has been sent to the address above. Once approved, you'll receive instructions to set up your account."
                 }
               </p>
               <div className="bg-muted p-4 rounded-lg space-y-2 text-sm text-left mb-6">
@@ -253,6 +272,8 @@ export default function TutorRegistration() {
                       label="Full Name"
                       required
                       placeholder="John Doe"
+                      readOnly={isAuthenticated}
+                      className={isAuthenticated ? "opacity-60 cursor-not-allowed" : ""}
                     />
 
                     <div className="grid md:grid-cols-2 gap-4">
@@ -262,6 +283,8 @@ export default function TutorRegistration() {
                         required
                         type="email"
                         placeholder="john@example.com"
+                        readOnly={isAuthenticated}
+                        className={isAuthenticated ? "opacity-60 cursor-not-allowed" : ""}
                       />
 
                       <FormInput

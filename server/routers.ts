@@ -8,7 +8,7 @@ import * as db from "./db";
 import { TRPCError } from "@trpc/server";
 import { searchFaq, logUnansweredQuestion, logQuery } from "./faq-search";
 import { checkChatbotRateLimit } from "./chatbot-rate-limiter";
-import { sendWelcomeEmail, sendBookingConfirmation, sendEnrollmentConfirmation, sendTutorEnrollmentNotification, sendNoShowNotification, formatEmailDate, formatEmailTime, formatEmailPrice } from "./email-helpers";
+import { sendWelcomeEmail, sendBookingConfirmation, sendEnrollmentConfirmation, sendTutorEnrollmentNotification, sendNoShowNotification, formatEmailDate, formatEmailTime, formatEmailPrice, sendTutorApplicationReceivedEmail } from "./email-helpers";
 import { generateBookingToken, isValidBookingToken } from "./booking-management";
 import { sendCancellationConfirmationEmail } from "./cancellation-email";
 import { generateCurriculumPDF } from "./pdf-generator";
@@ -257,6 +257,9 @@ export const appRouter = router({
           if (existingProfile && existingProfile.approvalStatus !== 'rejected') {
             throw new TRPCError({ code: 'BAD_REQUEST', message: 'You already have a tutor profile' });
           }
+
+          // Name and email are read-only for logged-in users on this form.
+          // Account details must be changed via Account Settings.
         } else {
           // NEW FLOW: User is NOT logged in
           // Check if email already exists
@@ -271,6 +274,17 @@ export const appRouter = router({
                 code: 'BAD_REQUEST',
                 message: 'A tutor application already exists for this email. Please sign in or use a different email.'
               });
+            }
+
+            // Update name on the existing user account in case it changed
+            const nameParts = input.name.trim().split(' ');
+            const firstName = nameParts[0];
+            const lastName = nameParts.slice(1).join(' ') || nameParts[0];
+            const dbConn = await db.getDb();
+            if (dbConn) {
+              await dbConn.update(users)
+                .set({ name: input.name, firstName, lastName })
+                .where(eq(users.id, existingUser.id));
             }
 
             userId = existingUser.id;
@@ -332,8 +346,19 @@ export const appRouter = router({
             content: `A new tutor has registered and is pending approval:\n\nName: ${input.name}\nEmail: ${input.email}\nSubjects: ${input.subjects.join(', ')}\nExperience: ${input.yearsOfExperience} years\nHourly Rate: $${input.hourlyRate}\n\nPlease review and approve/reject this application in the admin dashboard.`
           });
         } catch (error) {
-          console.error('[TutorRegistration] Failed to send notification:', error);
-          // Don't fail the registration if notification fails
+          console.error('[TutorRegistration] Failed to send admin notification:', error);
+        }
+
+        // Send confirmation email to applicant
+        try {
+          await sendTutorApplicationReceivedEmail({
+            tutorName: input.name,
+            tutorEmail: input.email,
+            subjects: input.subjects,
+          });
+        } catch (error) {
+          console.error('[TutorRegistration] Failed to send confirmation email to applicant:', error);
+          // Don't fail the registration if email fails
         }
 
         return { success: true, userId, profileId };
@@ -1734,6 +1759,24 @@ export const appRouter = router({
               : undefined;
 
             if (course && tutor && parent && tutor.name && parent.name && tutor.email && parent.email) {
+              // Build additional sessions list (all sessions after the first)
+              const additionalSessionsForParent = sessionIds.slice(1).map(id => {
+                const ts = input.sessions[sessionIds.indexOf(id)]?.scheduledAt ?? 0;
+                const d = new Date(ts);
+                return {
+                  date: formatEmailDate(d, parentProfile?.timezone || undefined),
+                  time: formatEmailTime(d, parentProfile?.timezone || undefined),
+                };
+              });
+              const additionalSessionsForTutor = sessionIds.slice(1).map(id => {
+                const ts = input.sessions[sessionIds.indexOf(id)]?.scheduledAt ?? 0;
+                const d = new Date(ts);
+                return {
+                  date: formatEmailDate(d, tutorProfile?.timezone || undefined),
+                  time: formatEmailTime(d, tutorProfile?.timezone || undefined),
+                };
+              });
+
               // Send email to parent
               sendBookingConfirmation({
                 userEmail: parent.email,
@@ -1746,6 +1789,7 @@ export const appRouter = router({
                 sessionTime: formatEmailTime(sessionDate, parentProfile?.timezone || undefined),
                 sessionDuration: `${firstSession.duration} minutes`,
                 sessionPrice: formatEmailPrice(parseInt(course.price) * 100),
+                additionalSessions: additionalSessionsForParent.length > 0 ? additionalSessionsForParent : undefined,
               }).catch(err => console.error('[Email] Failed to send booking confirmation to parent:', err));
 
               // Send email to tutor
@@ -1759,6 +1803,7 @@ export const appRouter = router({
                 sessionTime: formatEmailTime(sessionDate, tutorProfile?.timezone || undefined),
                 sessionDuration: `${firstSession.duration} minutes`,
                 sessionPrice: formatEmailPrice(parseInt(course.price) * 100),
+                additionalSessions: additionalSessionsForTutor.length > 0 ? additionalSessionsForTutor : undefined,
               }).catch(err => console.error('[Email] Failed to send booking confirmation to tutor:', err));
 
               // Create in-app notification for tutor

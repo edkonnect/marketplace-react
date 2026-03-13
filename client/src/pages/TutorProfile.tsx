@@ -62,7 +62,7 @@ export default function TutorProfile() {
 
               {/* Name and Quick Info */}
               <div className="flex-1">
-                <h1 className="text-4xl font-bold mb-2">{tutor.name}</h1>
+                <h1 className="text-4xl font-bold mb-2">{tutor.name || "Tutor Profile"}</h1>
                 <div className="flex flex-wrap gap-4 text-white/90">
                   <div className="flex items-center gap-2">
                     <Calendar className="w-4 h-4" />
@@ -195,7 +195,7 @@ export default function TutorProfile() {
               Contact {tutor.name?.split(' ')[0] || 'this tutor'} today to schedule your first session and begin your learning journey.
             </p>
             <div className="flex flex-wrap justify-center gap-4">
-              <Button size="lg" className="bg-blue-600 hover:bg-blue-700">
+              <Button size="lg" className="bg-blue-600 hover:bg-blue-700" onClick={() => navigate("/messages")}>
                 <Mail className="w-4 h-4 mr-2" />
                 Send Message
               </Button>

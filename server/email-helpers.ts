@@ -15,7 +15,8 @@ import {
   getPasswordSetupEmail,
   getCoordinatorPasswordSetupEmail,
   getEmailVerificationEmail,
-  getNoShowNotificationEmail
+  getNoShowNotificationEmail,
+  getTutorApplicationReceivedEmail
 } from './email-templates';
 
 const BASE_URL = process.env.VITE_FRONTEND_FORGE_API_URL || 'http://localhost:3000';
@@ -88,6 +89,7 @@ interface SendBookingConfirmationParams {
   sessionTime: string;
   sessionDuration: string;
   sessionPrice: string;
+  additionalSessions?: { date: string; time: string }[];
 }
 
 /**
@@ -105,11 +107,12 @@ export async function sendBookingConfirmation(params: SendBookingConfirmationPar
     sessionTime,
     sessionDuration,
     sessionPrice,
+    additionalSessions,
   } = params;
-  
+
   const dashboardUrl = emailRedirect("/dashboard");
   const messagesUrl = emailRedirect("/messages");
-  
+
   const html = getBookingConfirmationEmail({
     userName,
     userRole,
@@ -122,11 +125,17 @@ export async function sendBookingConfirmation(params: SendBookingConfirmationPar
     sessionPrice,
     dashboardUrl,
     messagesUrl,
+    additionalSessions,
   });
-  
+
+  const totalSessions = additionalSessions && additionalSessions.length > 0 ? 1 + additionalSessions.length : 1;
+  const subject = totalSessions > 1
+    ? `${totalSessions} Sessions Confirmed: ${courseName} starting ${sessionDate}`
+    : `Session Confirmed: ${courseName} on ${sessionDate}`;
+
   return await emailService.sendEmail({
     to: userEmail,
-    subject: `Session Confirmed: ${courseName} on ${sessionDate}`,
+    subject,
     html,
   });
 }
@@ -361,6 +370,19 @@ export async function sendNoShowNotification(params: SendNoShowNotificationParam
   return await emailService.sendEmail({
     to: parentEmail,
     subject: `⚠️ Session No-Show Notification - ${courseName}`,
+    html,
+  });
+}
+
+export async function sendTutorApplicationReceivedEmail(params: {
+  tutorName: string;
+  tutorEmail: string;
+  subjects: string[];
+}): Promise<boolean> {
+  const html = getTutorApplicationReceivedEmail(params);
+  return await emailService.sendEmail({
+    to: params.tutorEmail,
+    subject: '✅ We received your tutor application - EdKonnect Academy',
     html,
   });
 }
