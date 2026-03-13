@@ -359,6 +359,14 @@ export async function getAllUsers() {
   return await db.select().from(users).orderBy(desc(users.createdAt));
 }
 
+export async function deleteUser(userId: number) {
+  const db = await getDb();
+  if (!db) return false;
+
+  await db.delete(users).where(eq(users.id, userId));
+  return true;
+}
+
 export async function updateUserRole(userId: number, role: "parent" | "tutor" | "admin") {
   const db = await getDb();
   if (!db) return false;

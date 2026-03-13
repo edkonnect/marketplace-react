@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Users, BookOpen, TrendingUp, UserCheck, GraduationCap, Download, X, BarChart3 } from "lucide-react";
+import { Users, BookOpen, TrendingUp, UserCheck, GraduationCap, Download, X, BarChart3, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -103,6 +103,20 @@ export function AdminDashboard() {
     { limit: ITEMS_PER_PAGE, offset: (sessionsPage - 1) * ITEMS_PER_PAGE, ...sessionFilters },
     { enabled: isAuthenticated && user?.role === "admin" }
   );
+
+  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
+  const utils = trpc.useUtils();
+  const deleteUserMutation = trpc.admin.deleteUser.useMutation({
+    onSuccess: () => {
+      toast.success("User deleted successfully");
+      setConfirmDeleteId(null);
+      utils.admin.getAllUsers.invalidate();
+    },
+    onError: (err) => {
+      toast.error(err.message || "Failed to delete user");
+      setConfirmDeleteId(null);
+    },
+  });
 
   // CSV export queries
   const { data: usersCSVData, refetch: refetchUsersCSV } = trpc.admin.exportUsersCSV.useQuery(
@@ -569,6 +583,37 @@ export function AdminDashboard() {
                             </p>
                           )}
                         </div>
+                        {user.role !== 'admin' && (
+                          confirmDeleteId === user.id ? (
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm text-muted-foreground">Delete?</span>
+                              <Button
+                                size="sm"
+                                variant="destructive"
+                                onClick={() => deleteUserMutation.mutate({ userId: user.id })}
+                                disabled={deleteUserMutation.isPending}
+                              >
+                                Yes
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => setConfirmDeleteId(null)}
+                              >
+                                No
+                              </Button>
+                            </div>
+                          ) : (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => setConfirmDeleteId(user.id)}
+                              className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          )
+                        )}
                       </div>
                     ))}
                   </div>

@@ -3226,6 +3226,23 @@ export const appRouter = router({
         };
       }),
 
+    deleteUser: adminProcedure
+      .input(z.object({ userId: z.number() }))
+      .mutation(async ({ input, ctx }) => {
+        if (input.userId === ctx.user.id) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "You cannot delete your own account." });
+        }
+        const target = await db.getUserById(input.userId);
+        if (!target) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "User not found." });
+        }
+        if (target.role === "admin") {
+          throw new TRPCError({ code: "FORBIDDEN", message: "Admin accounts cannot be deleted." });
+        }
+        await db.deleteUser(input.userId);
+        return { success: true };
+      }),
+
     getAllEnrollments: adminProcedure
       .input(z.object({
         limit: z.number().optional().default(50),
