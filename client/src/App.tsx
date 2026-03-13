@@ -31,6 +31,7 @@ import ParentPayments from "./pages/ParentPayments";
 import ParentNotifications from "./pages/ParentNotifications";
 import TutorNotifications from "./pages/TutorNotifications";
 import TutorPayments from "./pages/TutorPayments";
+import Settings from "./pages/Settings";
 import { ChatbotWidget } from "./components/ChatbotWidget";
 
 function Router() {
@@ -65,6 +66,7 @@ function Router() {
       <Route path={"/manage-booking/:token"} component={ManageBooking} />
       <Route path={"/session-notes"} component={SessionNotesHistory} />
       <Route path={"/messages"} component={Messages} />
+      <Route path={"/settings"} component={Settings} />
       <Route path={"/404"} component={NotFound} />
       <Route component={NotFound} />
     </Switch>

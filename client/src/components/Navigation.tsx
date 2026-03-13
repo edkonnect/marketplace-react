@@ -3,7 +3,7 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { LOGIN_PATH } from "@/const";
 import { Button } from "@/components/ui/button";
 import { Link, useLocation } from "wouter";
-import { GraduationCap, MessageSquare, LayoutDashboard, LogOut, Play, Bell, CreditCard } from "lucide-react";
+import { GraduationCap, MessageSquare, LayoutDashboard, LogOut, Play, Bell, CreditCard, Settings } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import VideoModal from "@/components/VideoModal";
 import {
@@ -242,6 +242,14 @@ export default function Navigation() {
                       <Link href="/admin/dashboard" className="flex items-center w-full cursor-pointer">
                         <LayoutDashboard className="w-4 h-4 mr-2" />
                         Admin Panel
+                      </Link>
+                    </DropdownMenuItem>
+                  )}
+                  {user.role !== 'admin' && (
+                    <DropdownMenuItem asChild>
+                      <Link href="/settings" className="flex items-center w-full cursor-pointer">
+                        <Settings className="w-4 h-4 mr-2" />
+                        Settings
                       </Link>
                     </DropdownMenuItem>
                   )}

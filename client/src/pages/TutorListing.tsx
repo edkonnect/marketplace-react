@@ -39,15 +39,16 @@ export default function TutorListing() {
 
       <div className="flex-1 mt-20">
         {/* Header */}
-        <div className="bg-gradient-to-br from-primary/5 via-accent/5 to-background border-b border-border">
-          <div className="container py-12">
-            <h1 className="text-4xl font-bold mb-4">Find Your Perfect Tutor</h1>
-            <p className="text-lg text-muted-foreground mb-8 max-w-2xl">
+        <section className="bg-gradient-to-br from-primary/5 via-primary/10 to-background py-16 border-b border-border">
+          <div className="container">
+            <div className="max-w-3xl mx-auto text-center">
+            <h1 className="text-4xl md:text-5xl font-bold mb-4 bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent">Find Your Perfect Tutor</h1>
+            <p className="text-lg text-muted-foreground mb-8">
               Browse through our qualified tutors and find the perfect match for your learning needs.
             </p>
 
             {/* Search Bar */}
-            <div className="relative max-w-2xl">
+            <div className="relative max-w-2xl mx-auto">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
               <Input
                 type="text"
@@ -57,8 +58,9 @@ export default function TutorListing() {
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
             </div>
+            </div>
           </div>
-        </div>
+        </section>
 
         {/* Tutor Grid */}
         <div className="container py-12">

@@ -1,4 +1,4 @@
-import { clearAuthCookies } from "./_core/services/authService";
+import { clearAuthCookies, verifyPassword, hashPassword } from "./_core/services/authService";
 import { ENV } from "./_core/env";
 import { systemRouter } from "./_core/systemRouter";
 import { notifyOwner } from "./_core/notification";
@@ -115,6 +115,41 @@ export const appRouter = router({
           }).catch(err => console.error('[Email] Failed to send welcome email:', err));
         }
 
+        return { success: true };
+      }),
+
+    updateProfile: protectedProcedure
+      .input(z.object({
+        firstName: z.string().min(1).optional(),
+        lastName: z.string().min(1).optional(),
+        email: z.string().email().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const success = await db.updateUserProfile(ctx.user.id, input);
+        if (!success) {
+          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to update profile' });
+        }
+        return { success: true };
+      }),
+
+    changePassword: protectedProcedure
+      .input(z.object({
+        currentPassword: z.string().min(1),
+        newPassword: z.string().min(8),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const user = await db.getUserById(ctx.user.id);
+        if (!user || !user.passwordHash) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'User not found' });
+        }
+        const valid = await verifyPassword(input.currentPassword, user.passwordHash);
+        if (!valid) {
+          throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Current password is incorrect' });
+        }
+        const newHash = await hashPassword(input.newPassword);
+        const database = await db.getDb();
+        if (!database) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Database unavailable' });
+        await database.update(users).set({ passwordHash: newHash }).where(eq(users.id, ctx.user.id));
         return { success: true };
       }),
   }),

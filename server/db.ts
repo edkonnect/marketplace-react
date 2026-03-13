@@ -380,6 +380,27 @@ export async function updateUserRole(userId: number, role: "parent" | "tutor" | 
   }
 }
 
+export async function updateUserProfile(userId: number, updates: { firstName?: string; lastName?: string; email?: string }) {
+  const db = await getDb();
+  if (!db) return false;
+
+  try {
+    const updateData: any = { ...updates };
+    if (updates.firstName !== undefined || updates.lastName !== undefined) {
+      // Re-fetch current values to build the full name
+      const current = await db.select({ firstName: users.firstName, lastName: users.lastName }).from(users).where(eq(users.id, userId)).limit(1);
+      const first = updates.firstName ?? current[0]?.firstName ?? '';
+      const last = updates.lastName ?? current[0]?.lastName ?? '';
+      updateData.name = `${first} ${last}`.trim();
+    }
+    await db.update(users).set(updateData).where(eq(users.id, userId));
+    return true;
+  } catch (error) {
+    console.error("[Database] Failed to update user profile:", error);
+    return false;
+  }
+}
+
 // ============ User Creation ============
 
 export async function createUser(user: { name: string; email: string; role: string }) {
