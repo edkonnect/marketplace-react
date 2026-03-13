@@ -14,6 +14,62 @@ import { LOGIN_PATH } from "@/const";
 import AvailabilityCalendar from "@/components/AvailabilityCalendar";
 import TutorAvailabilityDisplay from "@/components/TutorAvailabilityDisplay";
 
+// Convert a HH:MM time string from tutorTz to the viewer's local timezone.
+// Returns { time: "HH:MM", dayOffset: -1|0|1 } — dayOffset indicates if the
+// converted time falls on the previous (-1) or next (+1) day.
+function convertSlotToViewerTz(
+  timeStr: string,
+  dayOfWeek: number,
+  tutorTz: string
+): { time: string; dayOfWeek: number } {
+  try {
+    const [hour, minute] = timeStr.split(":").map(Number);
+    // Use an arbitrary reference week starting on Sunday 2024-01-07
+    const refSunday = new Date("2024-01-07T00:00:00");
+    const refDate = new Date(refSunday);
+    refDate.setDate(refSunday.getDate() + dayOfWeek);
+
+    // Build an ISO string representing this time in the tutor's timezone
+    // by formatting the date in tutor tz and replacing the time portion
+    const isoDatePart = refDate.toISOString().substring(0, 10);
+    const paddedHour = String(hour).padStart(2, "0");
+    const paddedMin = String(minute).padStart(2, "0");
+
+    // Create a Date that represents the wall-clock time in tutorTz
+    const localStr = `${isoDatePart}T${paddedHour}:${paddedMin}:00`;
+    const tutorDate = new Date(
+      new Intl.DateTimeFormat("en-CA", {
+        timeZone: tutorTz,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      })
+        .format(new Date(localStr))
+        .replace(/\//g, "-") + `T${paddedHour}:${paddedMin}:00`
+    );
+
+    // Convert to viewer's local timezone using Intl
+    const viewerTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const formatter = new Intl.DateTimeFormat("en-US", {
+      timeZone: viewerTz,
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+      weekday: "long",
+    });
+    const parts = formatter.formatToParts(tutorDate);
+    const timePart = parts.find(p => p.type === "hour")!.value + ":" + parts.find(p => p.type === "minute")!.value;
+    const weekdayPart = parts.find(p => p.type === "weekday")!.value;
+    const weekdayMap: Record<string, number> = {
+      Sunday: 0, Monday: 1, Tuesday: 2, Wednesday: 3,
+      Thursday: 4, Friday: 5, Saturday: 6,
+    };
+    return { time: timePart, dayOfWeek: weekdayMap[weekdayPart] ?? dayOfWeek };
+  } catch {
+    return { time: timeStr, dayOfWeek };
+  }
+}
+
 const DAYS_OF_WEEK = [
   { value: 0, label: "Sunday" },
   { value: 1, label: "Monday" },
@@ -116,6 +172,24 @@ export default function TutorDetail() {
   const gradeLevels = parseGradeLevels(tutorProfile.gradeLevels);
   const rating = tutorProfile.rating ? parseFloat(tutorProfile.rating) : 0;
   const hourlyRate = tutorProfile.hourlyRate ? parseFloat(tutorProfile.hourlyRate) : 0;
+
+  const tutorTz = (tutorProfile as any).businessTimezone || (tutorProfile as any).timezone || null;
+  const viewerTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const viewerTzAbbr = new Intl.DateTimeFormat("en-US", { timeZone: viewerTz, timeZoneName: "short" })
+    .formatToParts(new Date())
+    .find(p => p.type === "timeZoneName")?.value ?? viewerTz;
+  const tzConversionAvailable = !!tutorTz && tutorTz !== viewerTz;
+
+  // Re-map availability slots to viewer's timezone when conversion is possible
+  const convertedAvailability = availability && tzConversionAvailable
+    ? availability
+        .filter(slot => slot.isActive)
+        .map(slot => {
+          const start = convertSlotToViewerTz(slot.startTime, slot.dayOfWeek, tutorTz);
+          const end = convertSlotToViewerTz(slot.endTime, slot.dayOfWeek, tutorTz);
+          return { ...slot, startTime: start.time, endTime: end.time, dayOfWeek: start.dayOfWeek };
+        })
+    : availability?.filter(slot => slot.isActive) ?? [];
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
@@ -339,13 +413,17 @@ export default function TutorDetail() {
                       General Availability
                     </CardTitle>
                     <CardDescription>
-                      {tutorProfile.name ? `${tutorProfile.name}'s usual weekly schedule` : "Usual weekly schedule"}
+                      {tzConversionAvailable
+                        ? `Times shown in your timezone (${viewerTzAbbr})`
+                        : tutorTz
+                          ? `Times in tutor's timezone (${tutorTz})`
+                          : tutorProfile.name ? `${tutorProfile.name}'s usual weekly schedule` : "Usual weekly schedule"}
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-3">
                       {DAYS_OF_WEEK.map(day => {
-                        const daySlots = availability.filter(slot => slot.dayOfWeek === day.value && slot.isActive);
+                        const daySlots = convertedAvailability.filter(slot => slot.dayOfWeek === day.value);
                         return (
                           <div
                             key={day.value}
