@@ -160,7 +160,7 @@ export default function TutorListing() {
                             </div>
                           )}
                           <Button asChild size="sm" className="ml-auto">
-                            <Link href={`/tutor-profile/${tutor.id}`}>
+                            <Link href={`/tutor/${tutor.userId}`}>
                               View Profile
                             </Link>
                           </Button>

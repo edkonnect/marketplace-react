@@ -25,7 +25,6 @@ import { ManageBooking } from "./pages/ManageBooking";
 import SessionNotesHistory from "./pages/SessionNotesHistory";
 import { FindTutors } from "./pages/FindTutors";
 import TutorRegistration from "./pages/TutorRegistration";
-import TutorProfile from "./pages/TutorProfile";
 import ParentPayments from "./pages/ParentPayments";
 import ParentNotifications from "./pages/ParentNotifications";
 import TutorNotifications from "./pages/TutorNotifications";
@@ -47,7 +46,7 @@ function Router() {
       <Route path={"/tutor/dashboard"} component={TutorDashboard} />
       <Route path={"/tutor/notifications"} component={TutorNotifications} />
       <Route path={"/tutor/payments"} component={TutorPayments} />
-      <Route path={"/tutor-profile/:id"} component={TutorProfile} />
+      <Route path={"/tutor-profile/:id"} component={TutorDetail} />
       <Route path={"/tutor/:id"} component={TutorDetail} />
       <Route path={"/courses"} component={CourseListing} />
       <Route path={"/course/:id"} component={CourseDetail} />

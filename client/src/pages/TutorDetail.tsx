@@ -4,8 +4,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useParams, Link } from "wouter";
-import { Star, BookOpen, Clock, DollarSign, MessageSquare, Calendar as CalendarIcon } from "lucide-react";
+import { useState } from "react";
+import { useParams, Link, useLocation } from "wouter";
+import { ChevronDown, ChevronUp } from "lucide-react";
+import { Star, BookOpen, Clock, DollarSign, MessageSquare, Calendar as CalendarIcon, Mail } from "lucide-react";
 import { VideoPlayerWithRecommendations } from "@/components/VideoPlayerWithRecommendations";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { LOGIN_PATH } from "@/const";
@@ -27,6 +29,9 @@ export default function TutorDetail() {
   const tutorId = Number(id);
   const hasValidId = Number.isFinite(tutorId) && tutorId > 0;
   const { user, isAuthenticated } = useAuth();
+  const [, navigate] = useLocation();
+  const [showAllCourses, setShowAllCourses] = useState(false);
+  const COURSES_PREVIEW = 3;
 
   const { data: tutorProfile, isLoading: profileLoading } = trpc.tutorProfile.get.useQuery(
     { userId: tutorId },
@@ -118,10 +123,11 @@ export default function TutorDetail() {
 
       <div className="flex-1">
         {/* Profile Header */}
-        <div className="bg-gradient-to-br from-primary/5 via-accent/5 to-background border-b border-border">
-          <div className="container pt-24 pb-12">
-            <div className="flex flex-col md:flex-row gap-8 items-start">
-              <div className="w-32 h-32 rounded-full bg-primary/10 flex items-center justify-center text-4xl font-bold text-primary flex-shrink-0 overflow-hidden">
+        <div className="bg-background border-b border-border pt-24 pb-16">
+          <div className="container">
+            <div className="flex flex-col md:flex-row items-start md:items-center gap-6">
+              {/* Profile Image */}
+              <div className="w-32 h-32 rounded-full bg-primary/10 flex items-center justify-center text-5xl font-bold text-primary flex-shrink-0 overflow-hidden">
                 {tutorProfile.profileImageUrl ? (
                   <img src={tutorProfile.profileImageUrl} alt={tutorProfile.name || "Tutor"} className="w-full h-full object-cover" />
                 ) : (
@@ -129,66 +135,55 @@ export default function TutorDetail() {
                 )}
               </div>
 
+              {/* Name and Quick Info */}
               <div className="flex-1">
-                <div className="flex items-start justify-between mb-4">
-                  <div>
-                    <h1 className="text-4xl font-bold mb-2">{tutorProfile.name || "Tutor Profile"}</h1>
-                    {tutorProfile.yearsOfExperience && (
-                      <div className="flex items-center gap-2 text-muted-foreground">
-                        <Clock className="w-4 h-4" />
-                        <span>{tutorProfile.yearsOfExperience} years of experience</span>
-                      </div>
+                <h1 className="text-4xl font-bold mb-2">{tutorProfile.name || "Tutor Profile"}</h1>
+                <div className="flex flex-wrap gap-4 text-muted-foreground">
+                  {tutorProfile.yearsOfExperience && (
+                    <div className="flex items-center gap-2">
+                      <CalendarIcon className="w-4 h-4" />
+                      <span>{tutorProfile.yearsOfExperience} years experience</span>
+                    </div>
+                  )}
+                  {hourlyRate > 0 && (
+                    <div className="flex items-center gap-2">
+                      <DollarSign className="w-4 h-4" />
+                      <span>${hourlyRate}/hour</span>
+                    </div>
+                  )}
+                  <div className="flex items-center gap-2">
+                    <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
+                    {rating > 0 ? (
+                      <span>{rating.toFixed(1)} ({tutorProfile.totalReviews || 0} reviews)</span>
+                    ) : (
+                      <span className="text-muted-foreground/60">No reviews yet</span>
                     )}
                   </div>
-                  {rating > 0 && (
-                    <div className="flex items-center gap-2 bg-card px-4 py-2 rounded-lg border border-border">
-                      <Star className="w-5 h-5 fill-yellow-400 text-yellow-400" />
-                      <span className="text-xl font-semibold">{rating.toFixed(1)}</span>
-                      <span className="text-sm text-muted-foreground">({tutorProfile.totalReviews} reviews)</span>
-                    </div>
-                  )}
                 </div>
 
-                {hourlyRate > 0 && (
-                  <div className="flex items-center gap-2 text-2xl font-semibold text-primary mb-4">
-                    <DollarSign className="w-6 h-6" />
-                    <span>{hourlyRate}</span>
-                    <span className="text-base text-muted-foreground font-normal">/hour</span>
+                {/* Subjects & Grade Levels */}
+                {(subjects.length > 0 || gradeLevels.length > 0) && (
+                  <div className="flex flex-wrap gap-2 mt-4">
+                    {subjects.map((subject: string, idx: number) => (
+                      <Badge key={idx} variant="secondary">{subject}</Badge>
+                    ))}
+                    {gradeLevels.map((level: string, idx: number) => (
+                      <Badge key={idx} variant="outline">{level}</Badge>
+                    ))}
                   </div>
                 )}
+              </div>
 
-                <div className="flex flex-wrap gap-4 mb-6">
-                  {subjects.length > 0 && (
-                    <div>
-                      <p className="text-sm font-medium text-muted-foreground mb-2">Subjects</p>
-                      <div className="flex flex-wrap gap-2">
-                        {subjects.map((subject: string, idx: number) => (
-                          <Badge key={idx} variant="secondary">{subject}</Badge>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {gradeLevels.length > 0 && (
-                    <div>
-                      <p className="text-sm font-medium text-muted-foreground mb-2">Grade Levels</p>
-                      <div className="flex flex-wrap gap-2">
-                        {gradeLevels.map((level: string, idx: number) => (
-                          <Badge key={idx} variant="outline">{level}</Badge>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-
+              {/* Contact Button */}
+              <div className="flex-shrink-0">
                 {isAuthenticated && user?.role === "parent" && (
-                  <Button size="lg" className="gap-2">
-                    <MessageSquare className="w-4 h-4" />
+                  <Button size="lg" className="gap-2" onClick={() => navigate("/messages")}>
+                    <Mail className="w-4 h-4" />
                     Contact Tutor
                   </Button>
                 )}
                 {!isAuthenticated && (
-                  <Button asChild size="lg">
+                  <Button size="lg" asChild>
                     <a href={LOGIN_PATH}>Sign In to Contact</a>
                   </Button>
                 )}
@@ -232,6 +227,23 @@ export default function TutorDetail() {
                 </Card>
               )}
 
+              {/* Qualifications */}
+              {tutorProfile.qualifications && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <BookOpen className="w-5 h-5" />
+                      Qualifications & Education
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-muted-foreground leading-relaxed whitespace-pre-wrap">
+                      {tutorProfile.qualifications}
+                    </p>
+                  </CardContent>
+                </Card>
+              )}
+
               {/* Courses */}
               <Card>
                 <CardHeader>
@@ -247,7 +259,7 @@ export default function TutorDetail() {
                     </div>
                   ) : displayCourses && displayCourses.length > 0 ? (
                     <div className="space-y-4">
-                      {displayCourses.map(course => (
+                      {(showAllCourses ? displayCourses : displayCourses.slice(0, COURSES_PREVIEW)).map(course => (
                         <Card key={course.id} className="hover:border-primary/50 transition-colors">
                           <CardHeader>
                             <div className="flex items-start justify-between">
@@ -288,6 +300,19 @@ export default function TutorDetail() {
                           </CardContent>
                         </Card>
                       ))}
+                      {displayCourses.length > COURSES_PREVIEW && (
+                        <Button
+                          variant="outline"
+                          className="w-full gap-2"
+                          onClick={() => setShowAllCourses(prev => !prev)}
+                        >
+                          {showAllCourses ? (
+                            <><ChevronUp className="w-4 h-4" /> Show less</>
+                          ) : (
+                            <><ChevronDown className="w-4 h-4" /> Show {displayCourses.length - COURSES_PREVIEW} more course{displayCourses.length - COURSES_PREVIEW !== 1 ? "s" : ""}</>
+                          )}
+                        </Button>
+                      )}
                     </div>
                   ) : (
                     <p className="text-muted-foreground text-center py-8">
@@ -357,22 +382,6 @@ export default function TutorDetail() {
                 </Card>
               )}
 
-              {/* Qualifications */}
-              {tutorProfile.qualifications && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <BookOpen className="w-5 h-5" />
-                      Qualifications
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-sm text-muted-foreground whitespace-pre-wrap">
-                      {tutorProfile.qualifications}
-                    </p>
-                  </CardContent>
-                </Card>
-              )}
             </div>
           </div>
         </div>
