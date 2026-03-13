@@ -383,14 +383,6 @@ export function BookableCalendar({
         </div>
       )}
 
-      {/* Debug info - remove this later */}
-      <div className="text-xs bg-gray-100 p-2 rounded">
-        <div>Tutor TZ: {tutorTimezone} | Parent TZ: {parentTimezone}</div>
-        <div>Available slots: {timeSlots.length}</div>
-        {timeSlots.length > 0 && (
-          <div>First slot: {timeSlots[0].displayTime} (tutor time: {timeSlots[0].time})</div>
-        )}
-      </div>
 
       {/* Recurring Options - Hide for trial lessons */}
       {!isTrial && (
