@@ -567,12 +567,10 @@ export default function CourseDetail() {
                     ) : (
                       <div className="text-center py-4">
                         <p className="text-sm text-muted-foreground mb-3">
-                          Only parent accounts can enroll in courses
+                          Only parent accounts can enroll in courses.
                         </p>
                         <Button asChild variant="outline" className="w-full">
-                          <Link href="/role-selection">
-                            Switch to Parent Account
-                          </Link>
+                          <a href={LOGIN_PATH}>Switch to Parent Account</a>
                         </Button>
                       </div>
                     )
