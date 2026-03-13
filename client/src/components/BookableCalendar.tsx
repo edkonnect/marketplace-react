@@ -233,6 +233,7 @@ export function BookableCalendar({
           }
 
           // Only add available slots that aren't already in the map
+          const tutorTime = `${tutorHour.toString().padStart(2, "0")}:${tutorMinute.toString().padStart(2, "0")}`;
           if (!hasConflict && !slotsMap.has(displayTime)) {
             slotsMap.set(displayTime, {
               time: tutorTime, // Store tutor's time for reference
