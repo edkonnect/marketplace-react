@@ -75,6 +75,22 @@ export const passwordSetupTokens = mysqlTable("password_setup_tokens", {
 
 export type PasswordSetupToken = typeof passwordSetupTokens.$inferSelect;
 
+// ============ Password Reset Tokens ============
+
+export const passwordResetTokens = mysqlTable("password_reset_tokens", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  tokenHash: varchar("tokenHash", { length: 255 }).notNull(),
+  expiresAt: timestamp("expiresAt").notNull(),
+  consumedAt: timestamp("consumedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => ({
+  tokenHashIdx: index("password_reset_tokens_tokenHash_idx").on(table.tokenHash),
+  userIdIdx: index("password_reset_tokens_userId_idx").on(table.userId),
+}));
+
+export type PasswordResetToken = typeof passwordResetTokens.$inferSelect;
+
 /**
  * Tutor profiles with professional information
  */

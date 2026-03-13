@@ -14,6 +14,7 @@ import {
   emailSettings, InsertEmailSettings,
   emailVerifications, EmailVerification,
   passwordSetupTokens, PasswordSetupToken,
+  passwordResetTokens, PasswordResetToken,
   sessionNotes, InsertSessionNote,
   sessionNoteAttachments, InsertSessionNoteAttachment,
   tutorReviews, InsertTutorReview,
@@ -286,6 +287,69 @@ export async function consumePasswordSetupToken(token: string, newPasswordHash: 
   });
 
   return await getUserById(setupToken.userId);
+}
+
+// ============ Password Reset Tokens ============
+
+export async function createPasswordResetToken(userId: number, ttlMs = 60 * 60 * 1000) {
+  const db = await getDb();
+  if (!db) return null;
+
+  const token = crypto.randomBytes(32).toString("hex");
+  const tokenHash = hashToken(token);
+  const expiresAt = new Date(Date.now() + ttlMs);
+
+  // Invalidate previous tokens for this user
+  await db
+    .update(passwordResetTokens)
+    .set({ consumedAt: new Date() })
+    .where(and(eq(passwordResetTokens.userId, userId), sql`${passwordResetTokens.consumedAt} IS NULL`));
+
+  await db.insert(passwordResetTokens).values({ userId, tokenHash, expiresAt });
+
+  return token;
+}
+
+export async function validatePasswordResetToken(token: string): Promise<PasswordResetToken | null> {
+  const db = await getDb();
+  if (!db) return null;
+
+  const tokenHash = hashToken(token);
+  const result = await db
+    .select()
+    .from(passwordResetTokens)
+    .where(
+      and(
+        eq(passwordResetTokens.tokenHash, tokenHash),
+        gt(passwordResetTokens.expiresAt, new Date()),
+        sql`${passwordResetTokens.consumedAt} IS NULL`
+      )
+    )
+    .limit(1);
+
+  return result.length > 0 ? result[0] : null;
+}
+
+export async function consumePasswordResetToken(token: string, newPasswordHash: string) {
+  const db = await getDb();
+  if (!db) return null;
+
+  const resetToken = await validatePasswordResetToken(token);
+  if (!resetToken) return null;
+
+  await db.transaction(async tx => {
+    await tx
+      .update(passwordResetTokens)
+      .set({ consumedAt: new Date() })
+      .where(eq(passwordResetTokens.id, resetToken.id));
+
+    await tx
+      .update(users)
+      .set({ passwordHash: newPasswordHash })
+      .where(eq(users.id, resetToken.userId));
+  });
+
+  return await getUserById(resetToken.userId);
 }
 
 export async function getAllUsers() {

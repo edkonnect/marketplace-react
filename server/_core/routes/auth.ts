@@ -262,6 +262,80 @@ authRouter.post("/setup-password", async (req, res) => {
 /**
  * Resend password setup link for approved tutors who haven't completed setup
  */
+/**
+ * Request a password reset email
+ */
+authRouter.post("/forgot-password", async (req, res) => {
+  const schema = z.object({ email: z.string().email() });
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Valid email is required" });
+  }
+
+  const { email } = parsed.data;
+
+  // Always return success to avoid leaking whether email exists
+  const user = await db.getUserByEmail(email);
+  if (!user || !user.emailVerified) {
+    return res.json({ success: true, message: "If an account exists for this email, a reset link has been sent." });
+  }
+
+  const token = await db.createPasswordResetToken(user.id);
+  if (!token) {
+    return res.status(500).json({ error: "Failed to generate reset link. Please try again." });
+  }
+
+  const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
+  const resetUrl = `${process.env.VITE_FRONTEND_FORGE_API_URL || "http://localhost:3000"}/reset-password?token=${token}`;
+
+  try {
+    const { sendPasswordResetEmail } = await import("../../email-helpers");
+    await sendPasswordResetEmail({
+      userEmail: user.email,
+      userName: user.name || user.firstName || "there",
+      resetUrl,
+      expiresAt,
+    });
+  } catch (err) {
+    console.error("[ForgotPassword] Failed to send email:", err);
+    return res.status(500).json({ error: "Failed to send reset email. Please try again." });
+  }
+
+  res.json({ success: true, message: "If an account exists for this email, a reset link has been sent." });
+});
+
+/**
+ * Reset password using token from email
+ */
+authRouter.post("/reset-password", async (req, res) => {
+  const schema = z.object({
+    token: z.string(),
+    password: z.string().min(8, "Password must be at least 8 characters"),
+  });
+
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: parsed.error.issues[0]?.message || "Invalid input" });
+  }
+
+  const { token, password } = parsed.data;
+
+  const tokenRecord = await db.validatePasswordResetToken(token);
+  if (!tokenRecord) {
+    return res.status(400).json({ error: "Invalid or expired reset link. Please request a new one." });
+  }
+
+  const authService = await import("../services/authService");
+  const passwordHash = await authService.hashPassword(password);
+
+  const user = await db.consumePasswordResetToken(token, passwordHash);
+  if (!user) {
+    return res.status(500).json({ error: "Failed to reset password. Please try again." });
+  }
+
+  res.json({ success: true, message: "Password reset successfully. You can now sign in." });
+});
+
 authRouter.post("/resend-setup-link", async (req, res) => {
   const schema = z.object({
     email: z.string().email(),

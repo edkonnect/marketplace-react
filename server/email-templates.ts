@@ -922,3 +922,51 @@ export function getTutorApplicationReceivedEmail(props: TutorApplicationReceived
     preheaderText: 'We received your tutor application — we\'ll be in touch soon!'
   });
 }
+
+interface PasswordResetEmailProps {
+  userName: string;
+  resetUrl: string;
+  expiresAt: Date;
+}
+
+export function getPasswordResetEmail(props: PasswordResetEmailProps): string {
+  const { userName, resetUrl, expiresAt } = props;
+  const expiresIn = Math.round((expiresAt.getTime() - Date.now()) / (1000 * 60));
+
+  const content = `
+    <h1>Reset Your Password</h1>
+
+    <p>Hi ${userName},</p>
+
+    <p>We received a request to reset the password for your EdKonnect Academy account. Click the button below to choose a new password:</p>
+
+    <div style="text-align: center; margin: 32px 0;">
+      <a href="${resetUrl}" class="button">
+        Reset Password
+      </a>
+    </div>
+
+    <div style="background-color: #fef3c7; border-left: 4px solid #f59e0b; padding: 16px; margin: 24px 0; border-radius: 4px;">
+      <p style="margin: 0; color: #92400e; font-size: 14px;">
+        <strong>⏰ This link expires in ${expiresIn} minutes</strong><br>
+        If you didn't request a password reset, you can safely ignore this email.
+      </p>
+    </div>
+
+    <div style="background-color: #eff6ff; border-left: 4px solid #3b82f6; padding: 16px; margin: 24px 0; border-radius: 4px;">
+      <p style="margin: 0; color: #1e40af; font-size: 14px;">
+        <strong>🔒 Security Note:</strong><br>
+        This link is unique to you and can only be used once. Do not share it with anyone.
+      </p>
+    </div>
+
+    <p style="margin-top: 24px;">
+      Best regards,<br>
+      <strong>The EdKonnect Academy Team</strong>
+    </p>
+  `;
+
+  return getEmailBase(content, {
+    preheaderText: 'Reset your EdKonnect Academy password'
+  });
+}

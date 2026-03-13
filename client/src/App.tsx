@@ -21,6 +21,8 @@ import Messages from "./pages/Messages";
 import SignUp from "./pages/SignUp";
 import Login from "./pages/Login";
 import SetupPassword from "./pages/SetupPassword";
+import ForgotPassword from "./pages/ForgotPassword";
+import ResetPassword from "./pages/ResetPassword";
 import { ManageBooking } from "./pages/ManageBooking";
 import SessionNotesHistory from "./pages/SessionNotesHistory";
 import { FindTutors } from "./pages/FindTutors";
@@ -38,6 +40,8 @@ function Router() {
       <Route path={"/signup"} component={SignUp} />
       <Route path={"/login"} component={Login} />
       <Route path={"/setup-password"} component={SetupPassword} />
+      <Route path={"/forgot-password"} component={ForgotPassword} />
+      <Route path={"/reset-password"} component={ResetPassword} />
       {/* RoleSelection removed - users get role assigned during registration */}
       <Route path={"/tutors"} component={TutorListing} />
       <Route path={"/find-tutors"} component={FindTutors} />

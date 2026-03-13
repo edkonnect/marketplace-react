@@ -16,7 +16,8 @@ import {
   getCoordinatorPasswordSetupEmail,
   getEmailVerificationEmail,
   getNoShowNotificationEmail,
-  getTutorApplicationReceivedEmail
+  getTutorApplicationReceivedEmail,
+  getPasswordResetEmail,
 } from './email-templates';
 
 const BASE_URL = process.env.VITE_FRONTEND_FORGE_API_URL || 'http://localhost:3000';
@@ -383,6 +384,24 @@ export async function sendTutorApplicationReceivedEmail(params: {
   return await emailService.sendEmail({
     to: params.tutorEmail,
     subject: '✅ We received your tutor application - EdKonnect Academy',
+    html,
+  });
+}
+
+export async function sendPasswordResetEmail(params: {
+  userEmail: string;
+  userName: string;
+  resetUrl: string;
+  expiresAt: Date;
+}): Promise<boolean> {
+  const html = getPasswordResetEmail({
+    userName: params.userName,
+    resetUrl: params.resetUrl,
+    expiresAt: params.expiresAt,
+  });
+  return await emailService.sendEmail({
+    to: params.userEmail,
+    subject: 'Reset your EdKonnect Academy password',
     html,
   });
 }

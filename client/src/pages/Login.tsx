@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { FormInput } from "@/components/forms/FormInput";
 import { useValidatedForm } from "@/hooks/useValidatedForm";
 import { email as emailValidator, required } from "@/lib/validation";
+import { Eye, EyeOff } from "lucide-react";
 
 const REMEMBER_ME_KEY = "rememberMe";
 const SAVED_EMAIL_KEY = "savedEmail";
@@ -18,6 +19,7 @@ export default function Login() {
   const [, setLocation] = useLocation();
   const [loading, setLoading] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const [showResendSetup, setShowResendSetup] = useState(false);
   const [resendEmail, setResendEmail] = useState("");
   const [resendLoading, setResendLoading] = useState(false);
@@ -125,13 +127,24 @@ export default function Login() {
                 type="email"
                 placeholder="you@example.com"
               />
-              <FormInput
-                field={register("password")}
-                label="Password"
-                required
-                type="password"
-                placeholder="••••••••"
-              />
+              <div className="relative">
+                <FormInput
+                  field={register("password")}
+                  label="Password"
+                  required
+                  type={showPassword ? "text" : "password"}
+                  placeholder="••••••••"
+                  className="pr-10"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((v) => !v)}
+                  className="absolute right-3 top-[34px] text-muted-foreground hover:text-foreground"
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                >
+                  {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </div>
               <div className="flex items-center gap-2">
                 <Checkbox
                   id="rememberMe"
@@ -141,6 +154,11 @@ export default function Login() {
                 <label htmlFor="rememberMe" className="text-sm text-muted-foreground cursor-pointer select-none">
                   Remember me
                 </label>
+              </div>
+              <div className="flex justify-end">
+                <Link href="/forgot-password" className="text-sm text-primary hover:underline">
+                  Forgot password?
+                </Link>
               </div>
               <Button type="submit" className="w-full" disabled={loading}>
                 {loading ? "Signing in..." : "Sign In"}
