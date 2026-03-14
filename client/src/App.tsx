@@ -32,6 +32,8 @@ import ParentNotifications from "./pages/ParentNotifications";
 import TutorNotifications from "./pages/TutorNotifications";
 import TutorPayments from "./pages/TutorPayments";
 import Settings from "./pages/Settings";
+import TutorProfile from "./pages/TutorProfile";
+import TutorAvailability from "./pages/TutorAvailability";
 import { ChatbotWidget } from "./components/ChatbotWidget";
 
 function Router() {
@@ -49,6 +51,8 @@ function Router() {
       <Route path={"/tutor-registration"} component={TutorRegistration} />
       {/* Put specific tutor routes before the dynamic :id route to avoid collisions (e.g., /tutor/dashboard) */}
       <Route path={"/tutor/dashboard"} component={TutorDashboard} />
+      <Route path={"/tutor/profile"} component={TutorProfile} />
+      <Route path={"/tutor/availability"} component={TutorAvailability} />
       <Route path={"/tutor/notifications"} component={TutorNotifications} />
       <Route path={"/tutor/payments"} component={TutorPayments} />
       <Route path={"/tutor-profile/:id"} component={TutorDetail} />

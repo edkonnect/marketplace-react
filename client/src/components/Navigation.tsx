@@ -278,13 +278,13 @@ export default function Navigation() {
                   {user.role === 'tutor' && (
                     <>
                       <DropdownMenuItem asChild>
-                        <Link href="/tutor/dashboard?tab=profile" className="flex items-center w-full cursor-pointer">
+                        <Link href="/tutor/profile" className="flex items-center w-full cursor-pointer">
                           <User className="w-4 h-4 mr-2" />
                           Profile
                         </Link>
                       </DropdownMenuItem>
                       <DropdownMenuItem asChild>
-                        <Link href="/tutor/dashboard?tab=availability" className="flex items-center w-full cursor-pointer">
+                        <Link href="/tutor/availability" className="flex items-center w-full cursor-pointer">
                           <Calendar className="w-4 h-4 mr-2" />
                           Availability
                         </Link>

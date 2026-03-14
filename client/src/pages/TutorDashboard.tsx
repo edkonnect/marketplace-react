@@ -1538,43 +1538,6 @@ export default function TutorDashboard() {
                   )}
                 </TabsContent>
 
-                {/* Profile Tab - accessible via navbar avatar menu only */}
-                <TabsContent value="profile" forceMount className={tabContentClass}>
-                  <h2 className="text-2xl font-bold mb-6">Profile Settings</h2>
-                  <ZoomMeetingSetup tutorProfile={tutorProfile} />
-                  <VideoUploadManager
-                    currentVideoUrl={(tutorProfile as any)?.introVideoUrl}
-                  />
-                </TabsContent>
-
-                {/* Availability Tab - accessible via navbar avatar menu only */}
-                <TabsContent value="availability" forceMount className={tabContentClass}>
-                  <div className="flex items-center gap-2 mb-4">
-                    <Clock className="h-6 w-6" />
-                    <h2 className="text-2xl font-bold">Manage Availability</h2>
-                  </div>
-                  <p className="text-muted-foreground mb-4">
-                    Set your regular weekly schedule and block out time for vacations or appointments.
-                    Parents will only be able to book sessions during your available hours.
-                  </p>
-                  <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 text-sm bg-blue-50/50 dark:bg-blue-950/20 rounded-md p-3 sm:p-4 border border-blue-200 dark:border-blue-800 mb-6">
-                    <div className="flex items-center gap-2">
-                      <Globe className="w-5 h-5 text-blue-600 dark:text-blue-400 flex-shrink-0" />
-                      <span className="font-semibold text-blue-900 dark:text-blue-100">Your Time Zone:</span>
-                    </div>
-                    <span className="text-blue-800 dark:text-blue-200 font-medium ml-7 sm:ml-0">
-                      {timezoneFriendlyName} ({timezoneAbbr})
-                    </span>
-                    <span className="text-xs text-blue-700/70 dark:text-blue-300/70 ml-7 sm:ml-auto">
-                      Availability slots are saved in your local timezone
-                    </span>
-                  </div>
-                  <div className="space-y-6">
-                    <AvailabilityManager />
-                    <TimeBlockManager />
-                  </div>
-                </TabsContent>
-
                 </div>
               </Tabs>
             </>
