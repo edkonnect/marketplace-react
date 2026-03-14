@@ -63,7 +63,9 @@ export default function ParentDashboard() {
   const [quizModal, setQuizModal] = useState<QuizModalState | null>(null);
 
   const setupBillingMutation = trpc.course.getSetupUrl.useMutation();
+  const retryCheckoutMutation = trpc.course.retryCheckout.useMutation();
   const [setupLoadingId, setSetupLoadingId] = useState<number | null>(null);
+  const [retryLoadingId, setRetryLoadingId] = useState<number | null>(null);
 
   const completeQuizMutation = trpc.quiz.complete.useMutation({
     onSuccess: (data) => {
@@ -627,7 +629,7 @@ export default function ParentDashboard() {
                                     origin: window.location.origin,
                                   });
                                   if (result?.setupUrl) {
-                                    window.location.href = result.setupUrl;
+                                    window.open(result.setupUrl, "_blank");
                                   } else {
                                     toast.error("Could not create billing setup. Please contact support.");
                                   }
@@ -640,6 +642,40 @@ export default function ParentDashboard() {
                             >
                               <CreditCard className="w-4 h-4 mr-2" />
                               {setupLoadingId === subscription.id ? "Setting up..." : "Set Up Monthly Billing"}
+                            </Button>
+                          </div>
+                        )}
+
+                        {subscription.paymentStatus === "pending" && (subscription.paymentPlan === "full" || subscription.paymentPlan === "installment") && (
+                          <div className="p-3 bg-red-50 dark:bg-red-950/20 rounded-lg border border-red-200 dark:border-red-900">
+                            <p className="text-sm text-red-900 dark:text-red-200 mb-2">
+                              Payment is required to activate this enrollment.
+                            </p>
+                            <Button
+                              size="sm"
+                              className="w-full"
+                              disabled={retryLoadingId === subscription.id}
+                              onClick={async () => {
+                                try {
+                                  setRetryLoadingId(subscription.id);
+                                  const result = await retryCheckoutMutation.mutateAsync({
+                                    subscriptionId: subscription.id,
+                                    origin: window.location.origin,
+                                  });
+                                  if (result?.checkoutUrl) {
+                                    window.open(result.checkoutUrl, "_blank");
+                                  } else {
+                                    toast.error("Could not create payment session. Please contact support.");
+                                  }
+                                } catch (error: any) {
+                                  toast.error(error?.message || "Failed to initiate payment");
+                                } finally {
+                                  setRetryLoadingId(null);
+                                }
+                              }}
+                            >
+                              <CreditCard className="w-4 h-4 mr-2" />
+                              {retryLoadingId === subscription.id ? "Redirecting..." : "Complete Payment"}
                             </Button>
                           </div>
                         )}

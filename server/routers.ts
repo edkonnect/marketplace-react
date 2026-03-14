@@ -913,6 +913,7 @@ export const appRouter = router({
           return { success: true, subscriptionId, checkoutUrl: session.url };
         } catch (err) {
           console.error('[createCheckoutSession] Enrollment flow failed:', err);
+          if (err instanceof TRPCError) throw err;
           if (subscriptionId) {
             return { success: true, subscriptionId, checkoutUrl: null, warning: 'post-create step failed' };
           }
@@ -1024,6 +1025,42 @@ export const appRouter = router({
         }
 
         return { success: true, subscriptionId, setupUrl };
+      }),
+
+    retryCheckout: parentProcedure
+      .input(z.object({
+        subscriptionId: z.number(),
+        origin: z.string(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const { createCheckoutSession: stripeCheckout } = await import("./stripe");
+
+        const localSub = await db.getSubscriptionById(input.subscriptionId);
+        if (!localSub || localSub.parentId !== ctx.user.id) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Subscription not found" });
+        }
+        if (localSub.paymentStatus !== "pending") {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Subscription is not pending payment" });
+        }
+
+        const course = await db.getCourseById(localSub.courseId);
+        if (!course) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Course not found" });
+        }
+
+        const session = await stripeCheckout({
+          priceAmount: parseFloat(course.price),
+          courseName: course.title,
+          courseId: course.id,
+          userId: ctx.user.id,
+          userEmail: ctx.user.email,
+          userName: ctx.user.name,
+          origin: input.origin,
+          subscriptionId: input.subscriptionId,
+          tutorId: localSub.preferredTutorId ?? undefined,
+        });
+
+        return { checkoutUrl: session.url };
       }),
 
     getSetupUrl: parentProcedure

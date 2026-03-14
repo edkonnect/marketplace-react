@@ -145,8 +145,8 @@ export default function CourseDetail() {
       if (result?.success) {
         setIsEnrollDialogOpen(false);
         if (result.checkoutUrl) {
-          toast.success("Redirecting to payment...");
-          window.location.href = result.checkoutUrl;
+          toast.success("Opening payment in a new tab...");
+          window.open(result.checkoutUrl, "_blank");
         } else {
           toast.success("Enrollment created. Complete payment from your dashboard.");
           setLocation("/parent/dashboard");
@@ -154,8 +154,9 @@ export default function CourseDetail() {
       } else {
         toast.error("Enrollment failed. Please try again.");
       }
-    } catch (error) {
-      toast.error("Failed to process enrollment");
+    } catch (error: any) {
+      const message = error?.data?.message || error?.message || "Failed to process enrollment";
+      toast.error(message);
     }
   };
 
@@ -178,14 +179,15 @@ export default function CourseDetail() {
       setIsEnrollDialogOpen(false);
 
       if (result?.setupUrl) {
-        toast.success("Enrolled! Redirecting to set up your monthly billing...");
-        window.location.href = result.setupUrl;
+        toast.success("Enrolled! Opening monthly billing setup in a new tab...");
+        window.open(result.setupUrl, "_blank");
       } else {
         toast.success("Enrolled successfully! Add your payment method from the dashboard.");
         setLocation("/parent/dashboard");
       }
-    } catch (error) {
-      toast.error("Failed to enroll");
+    } catch (error: any) {
+      const message = error?.data?.message || error?.message || "Failed to enroll";
+      toast.error(message);
     }
   };
 
