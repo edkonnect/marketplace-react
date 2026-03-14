@@ -2,7 +2,9 @@ import { getEmailSettings } from "./db";
 
 interface SessionNotesEmailData {
   parentName: string;
+  studentName: string;
   tutorName: string;
+  courseName: string;
   sessionDate: string;
   sessionTime: string;
   progressSummary: string;
@@ -64,8 +66,33 @@ export async function sendSessionNotesEmail(data: SessionNotesEmailData): Promis
                 Hi ${data.parentName},
               </p>
               <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6; color: #333333;">
-                ${data.tutorName} has added notes from your recent tutoring session on <strong>${data.sessionDate}</strong> at <strong>${data.sessionTime}</strong>.
+                ${data.tutorName} has submitted session notes for your child. Here's a summary of the session:
               </p>
+              <!-- Session Details Card -->
+              <div style="background-color: #f0f4ff; border-radius: 8px; padding: 20px; margin-bottom: 10px;">
+                <table role="presentation" style="width: 100%; border-collapse: collapse;">
+                  <tr>
+                    <td style="padding: 6px 0; font-size: 14px; color: #666666; width: 40%;">Student</td>
+                    <td style="padding: 6px 0; font-size: 14px; color: #111111; font-weight: 600;">${data.studentName}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 6px 0; font-size: 14px; color: #666666;">Course</td>
+                    <td style="padding: 6px 0; font-size: 14px; color: #111111; font-weight: 600;">${data.courseName}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 6px 0; font-size: 14px; color: #666666;">Tutor</td>
+                    <td style="padding: 6px 0; font-size: 14px; color: #111111; font-weight: 600;">${data.tutorName}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 6px 0; font-size: 14px; color: #666666;">Date</td>
+                    <td style="padding: 6px 0; font-size: 14px; color: #111111; font-weight: 600;">${data.sessionDate}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 6px 0; font-size: 14px; color: #666666;">Time</td>
+                    <td style="padding: 6px 0; font-size: 14px; color: #111111; font-weight: 600;">${data.sessionTime}</td>
+                  </tr>
+                </table>
+              </div>
             </td>
           </tr>
 

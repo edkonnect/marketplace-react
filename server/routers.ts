@@ -13,6 +13,7 @@ import { generateBookingToken, isValidBookingToken } from "./booking-management"
 import { sendCancellationConfirmationEmail } from "./cancellation-email";
 import { generateCurriculumPDF } from "./pdf-generator";
 import { sendSessionNotesEmail } from "./session-notes-email";
+import { emailService } from "./email-service";
 import { storagePut } from "./storage";
 import crypto from "crypto";
 import { and, eq } from "drizzle-orm";
@@ -2150,6 +2151,59 @@ export const appRouter = router({
         const success = await db.updateSession(id, updates);
         if (!success) {
           throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to update session' });
+        }
+
+        // Send session notes email when tutor saves notes on a completed session (only once - first time notes are saved)
+        const isFirstTimeNotes = input.feedbackFromTutor && !session.feedbackFromTutor;
+        if (
+          isFirstTimeNotes &&
+          ctx.user.role === 'tutor' &&
+          (input.status === 'completed' || (!input.status && session.status === 'completed'))
+        ) {
+          try {
+            const parent = await db.getUserById(session.parentId);
+            const tutor = await db.getUserById(session.tutorId);
+
+            if (parent?.email && tutor) {
+              const subscription = session.subscriptionId ? await db.getSubscriptionById(session.subscriptionId) : null;
+              const parentProfile = await db.getParentProfileByUserId(parent.id);
+              const sessionDate = new Date(session.scheduledAt);
+
+              const studentName = subscription
+                ? [subscription.studentFirstName, subscription.studentLastName].filter(Boolean).join(' ').trim() || 'your child'
+                : 'your child';
+
+              let courseName = 'the course';
+              if (session.courseId) {
+                const course = await db.getCourseById(session.courseId);
+                if (course?.title) courseName = course.title;
+              } else if (subscription) {
+                const course = await db.getCourseById(subscription.courseId);
+                if (course?.title) courseName = course.title;
+              }
+
+              const emailHtml = await sendSessionNotesEmail({
+                parentName: parent.name || parent.email,
+                studentName,
+                tutorName: tutor.name || `${(tutor as any).firstName || ''} ${(tutor as any).lastName || ''}`.trim() || 'Your tutor',
+                courseName,
+                sessionDate: formatEmailDate(sessionDate, parentProfile?.timezone || undefined),
+                sessionTime: formatEmailTime(sessionDate, parentProfile?.timezone || undefined),
+                progressSummary: input.feedbackFromTutor,
+                notesUrl: `${process.env.VITE_FRONTEND_FORGE_API_URL || ''}/session-notes`,
+              });
+
+              await emailService.sendEmail({
+                to: parent.email,
+                subject: `Session Notes for ${studentName} — ${courseName}`,
+                html: emailHtml,
+              });
+
+              console.log('[Session Notes Email] Sent to parent:', parent.email);
+            }
+          } catch (emailError) {
+            console.error('[Session Notes Email] Failed to send:', emailError);
+          }
         }
 
         // Send email notification to parent if session is marked as no-show
@@ -4430,36 +4484,50 @@ export const appRouter = router({
 
         // Send email notification to parent
         try {
-          const session = await db.getSessionById(input.sessionId);
-          if (session) {
-            const parent = await db.getUserById(input.parentId);
-            const tutor = await db.getUserById(ctx.user.id);
+          const parent = await db.getUserById(input.parentId);
+          const tutor = await db.getUserById(ctx.user.id);
 
-            if (parent && tutor && parent.name && tutor.name) {
-              // Get attachments for this note
-              const attachments = await db.getSessionNoteAttachments(note.id);
+          if (parent?.email && tutor) {
+            const parentProfile = await db.getParentProfileByUserId(parent.id);
+            const sessionDate = new Date(session.scheduledAt);
 
-              const sessionDate = new Date(session.scheduledAt);
-              const parentProfile = await db.getParentProfileByUserId(parent.id);
-              const emailHtml = await sendSessionNotesEmail({
-                parentName: parent.name,
-                tutorName: tutor.name,
-                sessionDate: formatEmailDate(sessionDate, parentProfile?.timezone || undefined),
-                sessionTime: formatEmailTime(sessionDate, parentProfile?.timezone || undefined),
-                progressSummary: input.progressSummary,
-                homework: input.homework || undefined,
-                challenges: input.challenges || undefined,
-                nextSteps: input.nextSteps || undefined,
-                notesUrl: `https://your-domain.com/session-notes`,
-                attachments: attachments.map(att => ({
-                  fileName: att.fileName,
-                  fileUrl: att.fileUrl,
-                  fileSize: att.fileSize,
-                })),
-              });
-
-              console.log('[Email Service] Session notes email generated:', emailHtml.substring(0, 200));
+            // Get student name and course name from subscription
+            let studentName = "your child";
+            let courseName = "the course";
+            if (session.subscriptionId) {
+              const subscription = await db.getSubscriptionById(session.subscriptionId);
+              if (subscription) {
+                const firstName = (subscription as any).studentFirstName || "";
+                const lastName = (subscription as any).studentLastName || "";
+                if (firstName || lastName) studentName = `${firstName} ${lastName}`.trim();
+              }
             }
+            if (session.courseId) {
+              const course = await db.getCourseById(session.courseId);
+              if (course?.title) courseName = course.title;
+            }
+
+            const emailHtml = await sendSessionNotesEmail({
+              parentName: parent.name || parent.email,
+              studentName,
+              tutorName: tutor.name || `${(tutor as any).firstName || ""} ${(tutor as any).lastName || ""}`.trim() || "Your tutor",
+              courseName,
+              sessionDate: formatEmailDate(sessionDate, parentProfile?.timezone || undefined),
+              sessionTime: formatEmailTime(sessionDate, parentProfile?.timezone || undefined),
+              progressSummary: input.progressSummary,
+              homework: input.homework || undefined,
+              challenges: input.challenges || undefined,
+              nextSteps: input.nextSteps || undefined,
+              notesUrl: `${process.env.VITE_FRONTEND_FORGE_API_URL || ""}/session-notes`,
+            });
+
+            await emailService.sendEmail({
+              to: parent.email,
+              subject: `Session Notes for ${studentName} — ${courseName}`,
+              html: emailHtml,
+            });
+
+            await db.markSessionNoteAsNotified(note.id);
           }
         } catch (emailError) {
           console.error("[Session Notes] Failed to send email notification:", emailError);
@@ -4718,23 +4786,46 @@ export const appRouter = router({
           const parent = await db.getUserById(session.parentId);
           const tutor = await db.getUserById(ctx.user.id);
 
-          if (parent && tutor && parent.name && tutor.name) {
+          if (parent?.email && tutor) {
             const sessionDate = new Date(session.scheduledAt);
             const parentProfile = await db.getParentProfileByUserId(parent.id);
+
+            let studentName = "your child";
+            let courseName = "the course";
+            if (session.subscriptionId) {
+              const subscription = await db.getSubscriptionById(session.subscriptionId);
+              if (subscription) {
+                const firstName = (subscription as any).studentFirstName || "";
+                const lastName = (subscription as any).studentLastName || "";
+                if (firstName || lastName) studentName = `${firstName} ${lastName}`.trim();
+              }
+            }
+            if (session.courseId) {
+              const course = await db.getCourseById(session.courseId);
+              if (course?.title) courseName = course.title;
+            }
+
             const emailHtml = await sendSessionNotesEmail({
-              parentName: parent.name,
-              tutorName: tutor.name,
+              parentName: parent.name || parent.email,
+              studentName,
+              tutorName: tutor.name || `${(tutor as any).firstName || ""} ${(tutor as any).lastName || ""}`.trim() || "Your tutor",
+              courseName,
               sessionDate: formatEmailDate(sessionDate, parentProfile?.timezone || undefined),
               sessionTime: formatEmailTime(sessionDate, parentProfile?.timezone || undefined),
               progressSummary: input.processedData.progressSummary,
               homework: input.processedData.homework || undefined,
               challenges: input.processedData.challenges || undefined,
               nextSteps: input.processedData.nextSteps || undefined,
-              notesUrl: `https://your-domain.com/session-notes`,
-              attachments: [],
+              notesUrl: `${process.env.VITE_FRONTEND_FORGE_API_URL || ""}/session-notes`,
             });
 
-            console.log('[Email Service] AI-generated session notes email sent');
+            await emailService.sendEmail({
+              to: parent.email,
+              subject: `Session Notes for ${studentName} — ${courseName}`,
+              html: emailHtml,
+            });
+
+            await db.markSessionNoteAsNotified(note.id);
           }
         } catch (emailError) {
           console.error("[Session Notes] Failed to send email notification:", emailError);
