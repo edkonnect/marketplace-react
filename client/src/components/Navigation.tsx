@@ -3,7 +3,7 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { LOGIN_PATH } from "@/const";
 import { Button } from "@/components/ui/button";
 import { Link, useLocation } from "wouter";
-import { GraduationCap, MessageSquare, LayoutDashboard, LogOut, Play, Bell, CreditCard, Settings } from "lucide-react";
+import { GraduationCap, MessageSquare, LayoutDashboard, LogOut, Play, Bell, CreditCard, Settings, User, Calendar } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import VideoModal from "@/components/VideoModal";
 import {
@@ -18,6 +18,7 @@ import { NotificationBell } from "@/components/NotificationBell";
 
 export default function Navigation() {
   const { user, isAuthenticated, loading } = useAuth();
+  const role: "parent" | "tutor" | "admin" | "coordinator" | null = user?.role ?? null;
   const [location] = useLocation();
   const [isVideoModalOpen, setIsVideoModalOpen] = React.useState(false);
   const [isVisible, setIsVisible] = React.useState(true);
@@ -51,7 +52,7 @@ export default function Navigation() {
   const { data: unreadData } = trpc.messaging.getUnreadMessageCount.useQuery(
     undefined,
     {
-      enabled: isAuthenticated && (user?.role === "parent" || user?.role === "tutor" || user?.role === "coordinator"),
+      enabled: isAuthenticated && (role === "parent" || role === "tutor" || role === "coordinator"),
       // Avoid constant polling; refresh on tab focus and every 60s instead of ~5–10s
       refetchOnWindowFocus: true,
       refetchInterval: 60_000,
@@ -65,10 +66,10 @@ export default function Navigation() {
   };
 
   const getDashboardLink = () => {
-    if (user?.role === "admin") return "/admin/dashboard";
-    if (user?.role === "tutor") return "/tutor/dashboard";
-    if (user?.role === "parent") return "/parent/dashboard";
-    if (user?.role === "coordinator") return "/coordinator/dashboard";
+    if (role === "admin") return "/admin/dashboard";
+    if (role === "tutor") return "/tutor/dashboard";
+    if (role === "parent") return "/parent/dashboard";
+    if (role === "coordinator") return "/coordinator/dashboard";
     return "/"; // Default to home if no role assigned
   };
 
@@ -116,7 +117,7 @@ export default function Navigation() {
           {/* Navigation Links */}
           <div className="hidden md:flex items-center gap-6">
             {/* For coordinators, only show Dashboard */}
-            {user?.role === "coordinator" ? (
+            {role === "coordinator" ? (
               <Link href={getDashboardLink()} className={`flex items-center gap-2 text-sm font-medium transition-colors hover:text-primary ${
                 location.includes("/dashboard") ? "text-primary" : "text-muted-foreground"
               }`}>
@@ -138,7 +139,7 @@ export default function Navigation() {
                   Browse Courses
                 </Link>
 
-                {user?.role !== "tutor" && (
+                {role !== "tutor" && (
                   <Link href="/tutor-registration" className={`text-sm font-medium transition-colors hover:text-primary ${
                     location === "/tutor-registration" ? "text-primary" : "text-muted-foreground"
                   }`}>
@@ -163,8 +164,8 @@ export default function Navigation() {
                       Dashboard
                     </Link>
 
-                    <Link href={user?.role === 'coordinator' ? '/coordinator/messages' : '/messages'} className={`flex items-center gap-2 text-sm font-medium transition-colors hover:text-primary ${
-                      (user?.role === 'coordinator' ? location === "/coordinator/messages" : location === "/messages") ? "text-primary" : "text-muted-foreground"
+                    <Link href={role === 'coordinator' ? '/coordinator/messages' : '/messages'} className={`flex items-center gap-2 text-sm font-medium transition-colors hover:text-primary ${
+                      (role === 'coordinator' ? location === "/coordinator/messages" : location === "/messages") ? "text-primary" : "text-muted-foreground"
                     }`}>
                       <span className="relative">
                         <MessageSquare className="w-4 h-4" />
@@ -276,6 +277,18 @@ export default function Navigation() {
                   )}
                   {user.role === 'tutor' && (
                     <>
+                      <DropdownMenuItem asChild>
+                        <Link href="/tutor/dashboard?tab=profile" className="flex items-center w-full cursor-pointer">
+                          <User className="w-4 h-4 mr-2" />
+                          Profile
+                        </Link>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem asChild>
+                        <Link href="/tutor/dashboard?tab=availability" className="flex items-center w-full cursor-pointer">
+                          <Calendar className="w-4 h-4 mr-2" />
+                          Availability
+                        </Link>
+                      </DropdownMenuItem>
                       <DropdownMenuItem asChild>
                         <Link href="/tutor/payments" className="flex items-center w-full cursor-pointer">
                           <CreditCard className="w-4 h-4 mr-2" />

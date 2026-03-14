@@ -138,7 +138,7 @@ export default function CourseDetail() {
         preferredTutorId: selectedTutorId || undefined,
         studentFirstName,
         studentLastName,
-        studentGrade: studentGrade || "Not specified",
+        studentGrade: studentGrade || "Grade Not Specified",
         origin: window.location.origin,
       });
 

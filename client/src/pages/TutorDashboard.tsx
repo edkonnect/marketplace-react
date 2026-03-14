@@ -18,6 +18,7 @@ import { BookOpen, Calendar, MessageSquare, DollarSign, Users, Edit, Clock, File
 import { AvailabilityManager } from "@/components/AvailabilityManager";
 import { TimeBlockManager } from "@/components/TimeBlockManager";
 import { VideoUploadManager } from "@/components/VideoUploadManager";
+import { ZoomMeetingSetup } from "@/components/ZoomMeetingSetup";
 import { TutorSessionsManager } from "@/components/TutorSessionsManager";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { LOGIN_PATH } from "@/const";
@@ -805,29 +806,15 @@ export default function TutorDashboard() {
               <Tabs defaultValue={tabFromUrl} className="space-y-6">
                 <div className="overflow-x-auto">
               <TabsList className="inline-flex min-w-max gap-2 sm:w-full sm:flex-wrap sm:justify-start">
-                <TabsTrigger className="whitespace-nowrap" value="profile">Profile</TabsTrigger>
                 <TabsTrigger className="whitespace-nowrap" value="courses">Courses</TabsTrigger>
                 <TabsTrigger className="whitespace-nowrap" value="course-preferences">Course Preferences</TabsTrigger>
                 <TabsTrigger className="whitespace-nowrap" value="students">Students</TabsTrigger>
                 <TabsTrigger className="whitespace-nowrap" value="sessions">Sessions</TabsTrigger>
                 <TabsTrigger className="whitespace-nowrap" value="history">History</TabsTrigger>
-                <TabsTrigger className="whitespace-nowrap" value="availability">Availability</TabsTrigger>
               </TabsList>
                 </div>
 
                 <div className="relative min-h-[540px] pt-6">
-                {/* Profile Tab */}
-                <TabsContent value="profile" forceMount className={tabContentClass}>
-                  <h2 className="text-2xl font-bold mb-6">Profile Settings</h2>
-
-                  {/* Zoom Meeting Setup */}
-                  <ZoomMeetingSetup tutorProfile={tutorProfile} />
-
-                  <VideoUploadManager
-                    currentVideoUrl={(tutorProfile as any)?.introVideoUrl}
-                  />
-                </TabsContent>
-
                 {/* Courses Tab */}
                 <TabsContent value="courses" forceMount className={tabContentClass}>
                   <div className="flex items-center justify-between">
@@ -1551,7 +1538,16 @@ export default function TutorDashboard() {
                   )}
                 </TabsContent>
 
-                {/* Availability Tab */}
+                {/* Profile Tab - accessible via navbar avatar menu only */}
+                <TabsContent value="profile" forceMount className={tabContentClass}>
+                  <h2 className="text-2xl font-bold mb-6">Profile Settings</h2>
+                  <ZoomMeetingSetup tutorProfile={tutorProfile} />
+                  <VideoUploadManager
+                    currentVideoUrl={(tutorProfile as any)?.introVideoUrl}
+                  />
+                </TabsContent>
+
+                {/* Availability Tab - accessible via navbar avatar menu only */}
                 <TabsContent value="availability" forceMount className={tabContentClass}>
                   <div className="flex items-center gap-2 mb-4">
                     <Clock className="h-6 w-6" />
@@ -1578,6 +1574,7 @@ export default function TutorDashboard() {
                     <TimeBlockManager />
                   </div>
                 </TabsContent>
+
                 </div>
               </Tabs>
             </>
@@ -1860,153 +1857,3 @@ export default function TutorDashboard() {
   );
 }
 
-/**
- * Component for managing tutor's Zoom meeting link
- */
-function ZoomMeetingSetup({ tutorProfile }: { tutorProfile: any }) {
-  const [isCreating, setIsCreating] = useState(false);
-  const [showUrls, setShowUrls] = useState(false);
-
-  const createZoomMeeting = trpc.tutorProfile.createZoomMeeting.useMutation({
-    onSuccess: (data) => {
-      toast.success("Zoom meeting created successfully!");
-      setShowUrls(true);
-      // Reload the page to refresh tutor profile data
-      window.location.reload();
-    },
-    onError: (error) => {
-      toast.error(error.message || "Failed to create Zoom meeting");
-      setIsCreating(false);
-    },
-  });
-
-  const handleCreateZoomMeeting = async () => {
-    setIsCreating(true);
-    try {
-      await createZoomMeeting.mutateAsync();
-    } catch (error) {
-      // Error handled by onError callback
-    }
-  };
-
-  const hasZoomMeeting = tutorProfile?.zoomJoinUrl;
-
-  return (
-    <Card className="mb-6">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Globe className="w-5 h-5" />
-          Zoom Meeting Setup
-        </CardTitle>
-        <CardDescription>
-          {hasZoomMeeting
-            ? "Your permanent Zoom meeting room for all tutoring sessions"
-            : "Create your permanent Zoom meeting link to use for all sessions"}
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {hasZoomMeeting ? (
-          <>
-            <div className="space-y-3">
-              <div>
-                <Label className="text-sm font-medium">Student Join URL</Label>
-                <div className="flex items-center gap-2 mt-1">
-                  <Input
-                    readOnly
-                    value={tutorProfile.zoomJoinUrl}
-                    className="font-mono text-sm"
-                  />
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => {
-                      navigator.clipboard.writeText(tutorProfile.zoomJoinUrl);
-                      toast.success("Join URL copied to clipboard!");
-                    }}
-                  >
-                    Copy
-                  </Button>
-                </div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Share this link with your students
-                </p>
-              </div>
-
-              <div>
-                <Label className="text-sm font-medium">Your Host URL</Label>
-                <div className="flex items-center gap-2 mt-1">
-                  <Input
-                    readOnly
-                    value={tutorProfile.zoomHostUrl}
-                    className="font-mono text-sm"
-                  />
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => {
-                      navigator.clipboard.writeText(tutorProfile.zoomHostUrl);
-                      toast.success("Host URL copied to clipboard!");
-                    }}
-                  >
-                    Copy
-                  </Button>
-                </div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Use this link to start your meetings
-                </p>
-              </div>
-
-              {tutorProfile.zoomMeetingPassword && (
-                <div>
-                  <Label className="text-sm font-medium">Meeting Password</Label>
-                  <Input
-                    readOnly
-                    value={tutorProfile.zoomMeetingPassword}
-                    className="font-mono text-sm mt-1"
-                  />
-                </div>
-              )}
-
-              <div className="pt-2">
-                <Badge variant="secondary" className="text-xs">
-                  ✅ Permanent Meeting Room - Use for all sessions
-                </Badge>
-              </div>
-            </div>
-
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleCreateZoomMeeting}
-              disabled={isCreating}
-            >
-              {isCreating ? "Creating..." : "Recreate Zoom Meeting"}
-            </Button>
-          </>
-        ) : (
-          <div className="space-y-4">
-            <div className="bg-muted/50 p-4 rounded-lg space-y-2">
-              <p className="text-sm">
-                <strong>Why create a permanent Zoom link?</strong>
-              </p>
-              <ul className="text-sm text-muted-foreground space-y-1 list-disc list-inside">
-                <li>One consistent link for all your tutoring sessions</li>
-                <li>Students can easily save and reuse the same link</li>
-                <li>Automatic cloud recording for session transcripts</li>
-                <li>Students can join before you arrive</li>
-              </ul>
-            </div>
-
-            <Button
-              onClick={handleCreateZoomMeeting}
-              disabled={isCreating}
-              className="w-full"
-            >
-              {isCreating ? "Creating Zoom Meeting..." : "Create My Zoom Meeting Room"}
-            </Button>
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
