@@ -50,6 +50,13 @@ export default function CourseDetail() {
     undefined,
     { enabled: isAuthenticated && user?.role === "parent" }
   );
+  const { data: siblingDiscountData } = trpc.subscription.checkSiblingDiscount.useQuery(
+    { studentFirstName, studentLastName },
+    { enabled: isAuthenticated && user?.role === "parent" && !!studentFirstName && !!studentLastName }
+  );
+  const siblingDiscount = siblingDiscountData?.eligible ?? false;
+  const discountPercent = siblingDiscountData?.discountPercent ?? 0;
+
   const createCheckoutMutation = trpc.course.createCheckoutSession.useMutation();
   const enrollWithoutPaymentMutation = trpc.course.enrollWithoutPayment.useMutation();
 
@@ -509,6 +516,16 @@ export default function CourseDetail() {
                               </Select>
                             </div>
                           </div>
+                          {siblingDiscount && (
+                            <div className="flex items-center gap-2 p-3 bg-green-50 dark:bg-green-950/20 rounded-lg border border-green-200 dark:border-green-900">
+                              <Badge className="bg-green-600 text-white text-xs shrink-0">
+                                {discountPercent}% Sibling Discount
+                              </Badge>
+                              <p className="text-sm text-green-800 dark:text-green-200">
+                                First enrollment for this child — ${(price * discountPercent / 100).toFixed(2)} off applied automatically.
+                              </p>
+                            </div>
+                          )}
                           <div className="space-y-3">
                             <div className="flex gap-2">
                               <Button
@@ -523,7 +540,7 @@ export default function CourseDetail() {
                                 onClick={handleEnroll}
                                 disabled={createCheckoutMutation.isPending || !studentFirstName || !studentLastName}
                               >
-                                {createCheckoutMutation.isPending ? "Processing..." : "Pay in Full"}
+                                {createCheckoutMutation.isPending ? "Processing..." : siblingDiscount ? `Pay $${(price * (1 - discountPercent / 100)).toFixed(2)}` : "Pay in Full"}
                               </Button>
                             </div>
                             {price >= 150 && (

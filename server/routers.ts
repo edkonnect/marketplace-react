@@ -51,6 +51,41 @@ const coordinatorProcedure = protectedProcedure.use(({ ctx, next }) => {
   return next({ ctx });
 });
 
+const SIBLING_DISCOUNT_PERCENT = 5;
+
+/**
+ * Returns true if the given student (by first+last name) qualifies for a sibling discount.
+ * Conditions:
+ *  1. The parent has at least one non-cancelled enrollment for ANY student.
+ *  2. This specific student (first+last name) has ZERO previous non-cancelled enrollments.
+ */
+async function checkSiblingDiscount(
+  parentId: number,
+  studentFirstName: string,
+  studentLastName: string
+): Promise<boolean> {
+  const normalize = (v: string | null | undefined) => (v || "").trim().toLowerCase();
+  const targetFirst = normalize(studentFirstName);
+  const targetLast = normalize(studentLastName);
+
+  const existing = await db.getSubscriptionsByParentId(parentId);
+  const active = existing.filter((s: any) => s.subscription?.status !== "cancelled");
+
+  // Must have at least one existing enrollment (for any child)
+  if (active.length === 0) return false;
+
+  // This student must have zero previous enrollments
+  const studentHasEnrollment = active.some((s: any) => {
+    const sub = s.subscription;
+    return (
+      normalize(sub?.studentFirstName) === targetFirst &&
+      normalize(sub?.studentLastName) === targetLast
+    );
+  });
+
+  return !studentHasEnrollment;
+}
+
 /**
  * Get tutor's permanent Zoom meeting URL
  * Returns join URL for students or host URL for tutors
@@ -872,6 +907,17 @@ export const appRouter = router({
 
           const selectedTutorId = input.preferredTutorId || primaryTutor.tutorId;
 
+          // Check sibling discount before creating subscription
+          const hasSiblingDiscount = await checkSiblingDiscount(
+            ctx.user.id,
+            input.studentFirstName,
+            input.studentLastName
+          );
+          const coursePrice = parseFloat(course.price);
+          const discountAmount = hasSiblingDiscount
+            ? Math.round(coursePrice * SIBLING_DISCOUNT_PERCENT) / 100
+            : 0;
+
           // Create local subscription row (pending payment)
           const now = new Date();
           subscriptionId = await db.createSubscription({
@@ -885,6 +931,8 @@ export const appRouter = router({
             startDate: now,
             paymentStatus: "pending",
             paymentPlan: "full",
+            siblingDiscountApplied: hasSiblingDiscount,
+            discountAmount: hasSiblingDiscount ? discountAmount.toFixed(2) : null,
           });
 
           if (!subscriptionId) {
@@ -899,7 +947,7 @@ export const appRouter = router({
 
           // Create Stripe Checkout session (one-time payment)
           const session = await stripeCheckout({
-            priceAmount: parseFloat(course.price),
+            priceAmount: coursePrice,
             courseName: course.title,
             courseId: course.id,
             userId: ctx.user.id,
@@ -908,9 +956,10 @@ export const appRouter = router({
             origin: input.origin,
             subscriptionId,
             tutorId: selectedTutorId,
+            discountPercent: hasSiblingDiscount ? SIBLING_DISCOUNT_PERCENT : undefined,
           });
 
-          return { success: true, subscriptionId, checkoutUrl: session.url };
+          return { success: true, subscriptionId, checkoutUrl: session.url, siblingDiscount: hasSiblingDiscount };
         } catch (err) {
           console.error('[createCheckoutSession] Enrollment flow failed:', err);
           if (err instanceof TRPCError) throw err;
@@ -967,6 +1016,17 @@ export const appRouter = router({
         }
         const selectedTutorId = input.preferredTutorId || primaryTutor.tutorId;
 
+        // Check sibling discount
+        const hasSiblingDiscount = await checkSiblingDiscount(
+          ctx.user.id,
+          input.studentFirstName,
+          input.studentLastName
+        );
+        const coursePrice = parseFloat(course.price);
+        const discountAmount = hasSiblingDiscount
+          ? Math.round(coursePrice * SIBLING_DISCOUNT_PERCENT) / 100
+          : 0;
+
         // Create local subscription row (billing anchored to today)
         const now = new Date();
         const subscriptionId = await db.createSubscription({
@@ -980,6 +1040,8 @@ export const appRouter = router({
           startDate: now,
           paymentStatus: 'pending',
           paymentPlan: 'monthly',
+          siblingDiscountApplied: hasSiblingDiscount,
+          discountAmount: hasSiblingDiscount ? discountAmount.toFixed(2) : null,
         });
 
         if (!subscriptionId) {
@@ -1024,7 +1086,7 @@ export const appRouter = router({
           }
         }
 
-        return { success: true, subscriptionId, setupUrl };
+        return { success: true, subscriptionId, setupUrl, siblingDiscount: hasSiblingDiscount };
       }),
 
     retryCheckout: parentProcedure
@@ -1058,6 +1120,7 @@ export const appRouter = router({
           origin: input.origin,
           subscriptionId: input.subscriptionId,
           tutorId: localSub.preferredTutorId ?? undefined,
+          discountPercent: localSub.siblingDiscountApplied ? SIBLING_DISCOUNT_PERCENT : undefined,
         });
 
         return { checkoutUrl: session.url };
@@ -1139,6 +1202,19 @@ export const appRouter = router({
 
   // Subscription Management
   subscription: router({
+    checkSiblingDiscount: parentProcedure
+      .input(z.object({
+        studentFirstName: z.string(),
+        studentLastName: z.string(),
+      }))
+      .query(async ({ ctx, input }) => {
+        if (!input.studentFirstName || !input.studentLastName) {
+          return { eligible: false, discountPercent: 0 };
+        }
+        const eligible = await checkSiblingDiscount(ctx.user.id, input.studentFirstName, input.studentLastName);
+        return { eligible, discountPercent: eligible ? SIBLING_DISCOUNT_PERCENT : 0 };
+      }),
+
     mySubscriptions: parentProcedure.query(async ({ ctx }) => {
       const subs = await db.getSubscriptionsByParentId(ctx.user.id);
 

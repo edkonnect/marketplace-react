@@ -276,6 +276,8 @@ export const subscriptions = mysqlTable("subscriptions", {
   secondInstallmentPaid: boolean("secondInstallmentPaid").default(false).notNull(),
   firstInstallmentAmount: decimal("firstInstallmentAmount", { precision: 10, scale: 2 }),
   secondInstallmentAmount: decimal("secondInstallmentAmount", { precision: 10, scale: 2 }),
+  siblingDiscountApplied: boolean("siblingDiscountApplied").default(false).notNull(),
+  discountAmount: decimal("discountAmount", { precision: 10, scale: 2 }),
   smsOptIn: boolean("smsOptIn").default(false).notNull(),
   smsConsentTimestamp: timestamp("smsConsentTimestamp"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
