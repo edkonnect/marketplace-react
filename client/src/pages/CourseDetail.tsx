@@ -178,7 +178,7 @@ export default function CourseDetail() {
         courseId,
         studentFirstName,
         studentLastName,
-        studentGrade: studentGrade || "Not specified",
+        studentGrade: studentGrade || "Grade Not specified",
         preferredTutorId: selectedTutorId || undefined,
         origin: window.location.origin,
       });

@@ -550,7 +550,7 @@ export default function ParentDashboard() {
                     </Card>
                   ) : (
                     <div className="grid md:grid-cols-2 gap-6">
-                      {filteredSubscriptionsForTab.map(({ subscription, course, tutor, sessionStats }) => {
+                      {filteredSubscriptionsForTab.map(({ subscription, course, tutor, sessionStats, nextBillingDate, nextBillingAmount }: any) => {
                         // Calculate session progress
                         const totalSessions = course.totalSessions || 0;
                         const completedCount = sessionStats?.completedCount || 0;
@@ -611,6 +611,20 @@ export default function ParentDashboard() {
                             </p>
                           </div>
                         </div>
+
+                        {subscription.paymentPlan === "monthly" && subscription.paymentStatus === "paid" && nextBillingDate && (
+                          <div className="p-3 bg-blue-50 dark:bg-blue-950/20 rounded-lg border border-blue-200 dark:border-blue-900 text-sm">
+                            <div className="flex justify-between items-center">
+                              <span className="text-blue-800 dark:text-blue-200">Next billing</span>
+                              <span className="font-medium text-blue-900 dark:text-blue-100">
+                                {new Date(nextBillingDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                                {nextBillingAmount != null && (
+                                  <span className="ml-2">${(nextBillingAmount as number).toFixed(2)}</span>
+                                )}
+                              </span>
+                            </div>
+                          </div>
+                        )}
 
                         {subscription.paymentStatus === "pending" && subscription.paymentPlan === "monthly" && (
                           <div className="p-3 bg-amber-50 dark:bg-amber-950/20 rounded-lg border border-amber-200 dark:border-amber-900">

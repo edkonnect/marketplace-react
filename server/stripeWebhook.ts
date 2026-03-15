@@ -41,7 +41,13 @@ export async function handleStripeWebhook(req: Request, res: Response) {
     return res.json({ verified: true });
   }
 
-  console.log(`[Webhook] Received event: ${event.type} (${event.id})`);
+  // Only log actionable events — suppress noise
+  const silentEvents = ["setup_intent.created","setup_intent.succeeded","payment_method.attached","customer.updated","product.created","plan.created","price.created","invoice.paid","invoice_payment.paid","charge.succeeded","payment_intent.created","test_helpers.test_clock.advancing","invoice.updated","invoice.created","invoice.finalized","customer.subscription.created","payment_intent.succeeded","payment_intent.failed","customer.created"];
+  if (silentEvents.includes(event.type)) return res.json({ received: true });
+  if (event.type === "test_helpers.test_clock.ready") {
+    console.log(`[Webhook] ✅ Clock ready — safe to advance to next month`);
+    return res.json({ received: true });
+  }
 
   try {
     switch (event.type) {
@@ -50,11 +56,7 @@ export async function handleStripeWebhook(req: Request, res: Response) {
       // -----------------------------------------------------------------------
       case "checkout.session.completed": {
         const session = event.data.object as Stripe.Checkout.Session;
-        console.log("[Webhook] Checkout session completed:", session.id);
-
         const type = session.metadata?.type || "";
-
-        console.log(`[Webhook] checkout.session.completed type="${type}" mode="${session.mode}" customer="${session.customer}"`);
 
         if (type === "payment_method_setup") {
           // Setup checkout completed — save card as default then create the Stripe Subscription
@@ -62,7 +64,6 @@ export async function handleStripeWebhook(req: Request, res: Response) {
           const setupIntentId = session.setup_intent as string | null;
           const subscriptionId = parseInt(session.metadata?.subscription_id || "0");
           const courseId = parseInt(session.metadata?.course_id || "0");
-          console.log(`[Webhook] payment_method_setup: customerId=${stripeCustomerId} setupIntentId=${setupIntentId} subscriptionId=${subscriptionId} courseId=${courseId}`);
 
           if (stripeCustomerId && setupIntentId) {
             const stripe = getStripe();
@@ -74,7 +75,6 @@ export async function handleStripeWebhook(req: Request, res: Response) {
               await stripe.customers.update(stripeCustomerId, {
                 invoice_settings: { default_payment_method: paymentMethodId },
               });
-              console.log(`[Webhook] Default payment method set for customer ${stripeCustomerId}`);
             }
           }
 
@@ -88,7 +88,6 @@ export async function handleStripeWebhook(req: Request, res: Response) {
               const parentUser = await db.getUserById(localSub.parentId);
               if (!parentUser?.stripeCustomerId) {
                 await db.updateUserStripeCustomerId(localSub.parentId, stripeCustomerId);
-                console.log(`[Webhook] Saved stripeCustomerId ${stripeCustomerId} for user ${localSub.parentId}`);
               }
             }
 
@@ -107,11 +106,13 @@ export async function handleStripeWebhook(req: Request, res: Response) {
                 const sessionsPerWeek = course.sessionsPerWeek || 1;
                 const sessionsPerMonth = sessionsPerWeek * 4;
                 const numberOfMonths = Math.max(1, Math.ceil(totalSessions / sessionsPerMonth));
-                const totalPriceCents = Math.round(parseFloat(course.price) * 100);
+                const rawPriceCents = Math.round(parseFloat(course.price) * 100);
+                const totalPriceCents = localSub.siblingDiscountApplied
+                  ? Math.round(rawPriceCents * 0.95)
+                  : rawPriceCents;
                 const monthlyAmountCents = Math.round(totalPriceCents / numberOfMonths);
-                const studentName = [localSub.studentFirstName, localSub.studentLastName].filter(Boolean).join(" ");
+                  const studentName = [localSub.studentFirstName, localSub.studentLastName].filter(Boolean).join(" ");
 
-                console.log(`[Webhook] Monthly billing: ${totalSessions} sessions, ${sessionsPerWeek}/week → ${numberOfMonths} months @ ${monthlyAmountCents} cents/month`);
 
                 // Create a recurring price for this course
                 const price = await createStripePrice({
@@ -121,11 +122,11 @@ export async function handleStripeWebhook(req: Request, res: Response) {
                   localSubscriptionId: subscriptionId,
                   monthlyAmountCents,
                 });
-                console.log(`[Webhook] Created Stripe price: ${price.id}`);
 
                 // Check if parent already has a Stripe subscription created TODAY
                 // Same-day enrollments share one subscription (combined invoice)
                 // Different-day enrollments get a separate subscription (separate invoice)
+                const { computeTrialEndTs } = await import("./stripe");
                 const existingStripeSub = await getParentStripeSubscriptionForToday(stripeCustomerId);
 
                 let stripeSubId: string;
@@ -133,7 +134,6 @@ export async function handleStripeWebhook(req: Request, res: Response) {
 
                 if (existingStripeSub) {
                   // Add this course as a new item to the existing subscription
-                  console.log(`[Webhook] Parent already has Stripe sub ${existingStripeSub.id} — adding new item`);
                   const item = await addCourseToStripeSubscription({
                     stripeSubscriptionId: existingStripeSub.id,
                     priceId: price.id,
@@ -141,7 +141,6 @@ export async function handleStripeWebhook(req: Request, res: Response) {
                   });
                   stripeSubId = existingStripeSub.id;
                   stripeItemId = item.id;
-                  console.log(`[Webhook] Added course item ${item.id} to subscription ${stripeSubId}`);
                 } else {
                   // Create a brand-new subscription for this parent
                   const stripeSub = await createStripeSubscription({
@@ -152,7 +151,6 @@ export async function handleStripeWebhook(req: Request, res: Response) {
                   });
                   stripeSubId = stripeSub.id;
                   stripeItemId = stripeSub.items.data[0].id;
-                  console.log(`[Webhook] Created new Stripe subscription ${stripeSubId} with item ${stripeItemId}`);
                 }
 
                 // Save IDs — first charge happens on next billing cycle via Stripe
@@ -162,7 +160,7 @@ export async function handleStripeWebhook(req: Request, res: Response) {
                   stripeItemId,
                   paymentStatus: "paid",
                 });
-                console.log(`[Webhook] Subscription ${subscriptionId} linked to Stripe sub ${stripeSubId}, item ${stripeItemId}`);
+                console.log(`[Webhook] ✓ Enrollment setup: sub=${subscriptionId} → Stripe ${stripeSubId} (${existingStripeSub ? "combined" : "new"})`);
               } catch (err: any) {
                 console.error("[Webhook] Failed to create/update subscription after card setup:", err?.message || err);
                 if (err?.raw) console.error("[Webhook] Stripe error detail:", err.raw);
@@ -170,7 +168,6 @@ export async function handleStripeWebhook(req: Request, res: Response) {
             }
           }
         } else if (type === "course_enrollment") {
-          console.log("[Webhook] Processing course enrollment payment");
 
           const userId = parseInt(session.metadata?.user_id || "0");
           const subscriptionId = parseInt(session.metadata?.subscription_id || "0");
@@ -180,26 +177,10 @@ export async function handleStripeWebhook(req: Request, res: Response) {
             // Mark subscription as paid
             await db.updateSubscription(subscriptionId, { paymentStatus: "paid" });
 
-            // Create payment record
-            if (tutorId) {
-              await db.createPayment({
-                parentId: userId,
-                tutorId,
-                subscriptionId,
-                sessionId: null,
-                amount: ((session.amount_total || 0) / 100).toString(),
-                currency: session.currency || "usd",
-                status: "completed",
-                stripePaymentIntentId: (session as any).payment_intent as string || null,
-                stripeInvoiceId: null,
-                paymentType: "subscription",
-              });
-            }
-
-            console.log("[Webhook] Course enrollment payment record created for subscription", subscriptionId);
+            // Do NOT create a payment record here — this is just a card setup (no charge taken).
+            // The real payment record will be created when the first invoice.payment_succeeded fires.
           }
         } else if (type === "trial_lesson") {
-          console.log("[Webhook] Processing trial lesson payment");
 
           const userId = parseInt(session.metadata?.userId || session.metadata?.parentId || "0");
           const courseId = parseInt(session.metadata?.courseId || "0");
@@ -230,7 +211,6 @@ export async function handleStripeWebhook(req: Request, res: Response) {
           });
 
           if (sessionId) {
-            console.log("[Webhook] Trial session created:", sessionId);
 
             // Create payment record
             await db.createPayment({
@@ -245,7 +225,6 @@ export async function handleStripeWebhook(req: Request, res: Response) {
               paymentType: "session",
             });
 
-            console.log("[Webhook] Trial lesson payment record created");
 
             // Send confirmation emails
             const course = await db.getCourseById(courseId);
@@ -290,7 +269,6 @@ export async function handleStripeWebhook(req: Request, res: Response) {
                 relatedId: sessionId,
               }).catch(err => console.error('[Webhook] Failed to create notification:', err));
 
-              console.log("[Webhook] Trial lesson emails and notifications sent");
             }
           }
         }
@@ -310,9 +288,7 @@ export async function handleStripeWebhook(req: Request, res: Response) {
           await db.updateSubscription(subscriptionId, {
             stripeSubscriptionId: stripeSub.id,
           });
-          console.log(`[Webhook] Linked stripeSubscriptionId ${stripeSub.id} to local #${subscriptionId}`);
         } else {
-          console.warn("[Webhook] customer.subscription.created: no subscription_id in metadata", stripeSub.id);
         }
         break;
       }
@@ -320,34 +296,27 @@ export async function handleStripeWebhook(req: Request, res: Response) {
       // -----------------------------------------------------------------------
       // Invoice created (draft) — log only
       // -----------------------------------------------------------------------
-      case "invoice.created": {
-        const invoice = event.data.object as Stripe.Invoice;
-        console.log(`[Webhook] Invoice created: ${invoice.id} for customer ${invoice.customer}, amount: ${invoice.amount_due}`);
+      case "invoice.created":
+      case "invoice.finalized":
         break;
-      }
-
-      // -----------------------------------------------------------------------
-      // Invoice finalized — log only
-      // -----------------------------------------------------------------------
-      case "invoice.finalized": {
-        const invoice = event.data.object as Stripe.Invoice;
-        console.log(`[Webhook] Invoice finalized: ${invoice.id}, amount_due: ${invoice.amount_due}`);
-        break;
-      }
 
       // -----------------------------------------------------------------------
       // Invoice payment succeeded — create local payment records per line item
       // -----------------------------------------------------------------------
       case "invoice.payment_succeeded": {
         const invoice = event.data.object as Stripe.Invoice;
-        console.log(`[Webhook] Invoice payment succeeded: ${invoice.id}`);
+
+        // Skip $0 invoices — these are trial period confirmations, not real charges
+        if (invoice.amount_paid === 0) {
+            break;
+        }
 
         // Idempotency check — skip if any payment was already recorded for this invoice
         const existing = await db.getPaymentByStripeInvoiceId(invoice.id);
         if (existing) {
-          console.log(`[Webhook] Payment already recorded for invoice ${invoice.id}, skipping`);
-          break;
+            break;
         }
+
 
         const stripeSubscriptionId = (
           typeof (invoice.parent as any)?.subscription_details?.subscription === "string"
@@ -375,20 +344,18 @@ export async function handleStripeWebhook(req: Request, res: Response) {
           }
         }
 
-        console.log(`[Webhook] Invoice ${invoice.id} has ${lineItems.length} line item(s)`);
 
         // Process each line item — find the matching local subscription via stripeItemId
         let anyProcessed = false;
+        let anySkippedAsCompleted = false;
         for (const line of lineItems) {
           // Try new parent.subscription_item_details path first, fall back to legacy top-level field
           const stripeItemId = ((line.parent as any)?.subscription_item_details?.subscription_item
             ?? (line as any).subscription_item) as string | null;
-          console.log(`[Webhook] Invoice line ${line.id}: stripeItemId=${stripeItemId}, parent type=${(line.parent as any)?.type}`);
           if (!stripeItemId) continue;
 
           // Try to look up local sub by stripeItemId first (most accurate)
           let localSub = await db.getSubscriptionByStripeItemId(stripeItemId);
-          console.log(`[Webhook] stripeItemId=${stripeItemId} → localSub=${localSub?.id ?? "not found"}`);
 
           if (!localSub) {
             // Fallback: read local_subscription_id from subscription item metadata in Stripe
@@ -396,13 +363,11 @@ export async function handleStripeWebhook(req: Request, res: Response) {
               const stripe = getStripe();
               const item = await stripe.subscriptionItems.retrieve(stripeItemId);
               const metaSubId = parseInt(item.metadata?.local_subscription_id || "0");
-              console.log(`[Webhook] subscription item ${stripeItemId} metadata local_subscription_id=${metaSubId}`);
               if (metaSubId) {
                 localSub = await db.getSubscriptionById(metaSubId);
                 if (localSub) {
                   // Save stripeItemId so future lookups are fast
                   await db.updateSubscription(localSub.id, { stripeItemId });
-                  console.log(`[Webhook] Recovered local sub ${localSub.id} via subscription item metadata`);
                 }
               }
             } catch (err) {
@@ -415,8 +380,39 @@ export async function handleStripeWebhook(req: Request, res: Response) {
             continue;
           }
 
-          // Mark this subscription as paid
-          await db.updateSubscription(localSub.id, { paymentStatus: "paid" });
+          // Skip if this subscription is already fully paid — prevents over-charging
+          // if Stripe fires an invoice after we've already removed the item
+          if (localSub.paymentStatus === "completed") {
+              anySkippedAsCompleted = true;
+            continue;
+          }
+
+          // Compute how many instalments this course requires
+          const course = await db.getCourseById(localSub.courseId);
+          const numberOfMonths = course
+            ? Math.max(1, Math.ceil((course.totalSessions || 1) / ((course.sessionsPerWeek || 1) * 4)))
+            : null;
+
+          // Count real payments already recorded for this subscription (BEFORE creating this one)
+          const existingPayments = await db.getPaymentsBySubscriptionId(localSub.id);
+          const paidCount = existingPayments.filter(
+            (p: any) => p.status === "completed" && p.paymentType === "subscription" && parseFloat(p.amount) > 0
+          ).length;
+
+          // If already at the instalment limit, skip — handles race conditions where multiple
+          // invoices arrive simultaneously (e.g. when test clock is advanced rapidly)
+          if (numberOfMonths !== null && paidCount >= numberOfMonths) {
+            console.log(`[Webhook] ⚠ Sub ${localSub.id} at limit (${paidCount}/${numberOfMonths}) — blocked extra charge`);
+            anySkippedAsCompleted = true;
+            // Still try to remove Stripe item in case previous attempt failed
+            if (localSub.stripeItemId) {
+              try {
+                await getStripe().subscriptionItems.del(localSub.stripeItemId, { proration_behavior: "none" });
+                await db.updateSubscription(localSub.id, { paymentStatus: "completed" });
+              } catch (_) { /* already deleted */ }
+            }
+            continue;
+          }
 
           // Get tutor for this subscription
           const tutors = await db.getTutorsForCourse(localSub.courseId);
@@ -443,12 +439,59 @@ export async function handleStripeWebhook(req: Request, res: Response) {
             paymentType: "subscription",
           });
 
-          console.log(`[Webhook] Payment record created for invoice ${invoice.id}, line item ${stripeItemId}, local sub ${localSub.id}`);
+          const newPaidCount = paidCount + 1;
+          console.log(`[Webhook] Payment ${newPaidCount}/${numberOfMonths ?? "?"} recorded for sub ${localSub.id}, invoice ${invoice.id}`);
           anyProcessed = true;
+
+          // Mark as paid (or completed if this was the last instalment)
+          if (numberOfMonths !== null && newPaidCount >= numberOfMonths) {
+            // Mark completed in DB immediately — any concurrent webhook will see this and skip
+            await db.updateSubscription(localSub.id, { paymentStatus: "completed" });
+  
+            // Stop future billing for this course item
+            if (localSub.stripeItemId && localSub.stripeSubscriptionId) {
+              const stripe = getStripe();
+              try {
+                // Try to delete the item immediately
+                await stripe.subscriptionItems.del(localSub.stripeItemId, { proration_behavior: "none" });
+                console.log(`[Webhook] Removed Stripe item ${localSub.stripeItemId}`);
+              } catch (delErr: any) {
+                console.warn(`[Webhook] Could not delete item (${delErr?.message}) — will cancel subscription at period end instead`);
+                // Fallback: cancel the subscription at period end so no further invoices are generated
+                // This is safe even during test clock advancement
+                try {
+                  // Check if all courses on this subscription are completed before cancelling
+                  const allSubsOnStripe = await db.getSubscriptionsByStripeSubId(localSub.stripeSubscriptionId);
+                  const allCompleted = allSubsOnStripe.every((s: any) => s.paymentStatus === "completed");
+                  if (allCompleted) {
+                    await stripe.subscriptions.cancel(localSub.stripeSubscriptionId);
+                    console.log(`[Webhook] Cancelled Stripe subscription ${localSub.stripeSubscriptionId} immediately`);
+                  } else {
+                    // Other items still running — just update subscription to remove this item at next renewal
+                    // Since we can't delete the item now, rely on the DB completed guard to block future payments
+                  }
+                } catch (cancelErr: any) {
+                  console.error(`[Webhook] Failed to cancel subscription:`, cancelErr?.message);
+                }
+              }
+
+              // If item was deleted successfully, check if subscription should be cancelled too
+              try {
+                const allSubsOnStripe = await db.getSubscriptionsByStripeSubId(localSub.stripeSubscriptionId);
+                const allCompleted = allSubsOnStripe.every((s: any) => s.paymentStatus === "completed");
+                if (allCompleted) {
+                  await stripe.subscriptions.cancel(localSub.stripeSubscriptionId);
+                  console.log(`[Webhook] Cancelled Stripe subscription ${localSub.stripeSubscriptionId} — all courses completed`);
+                }
+              } catch (_) { /* already cancelled or still has active items */ }
+            }
+          } else {
+            await db.updateSubscription(localSub.id, { paymentStatus: "paid" });
+          }
         }
 
-        if (!anyProcessed) {
-          // No line items matched — fall back to single-subscription lookup (legacy path)
+        if (!anyProcessed && !anySkippedAsCompleted) {
+          // No line items matched at all (not because they're completed) — legacy fallback path
           console.warn(`[Webhook] No line items matched for invoice ${invoice.id}, trying single-subscription fallback`);
           const localSub = await db.getSubscriptionByStripeId(stripeSubscriptionId);
           if (localSub) {
@@ -469,10 +512,32 @@ export async function handleStripeWebhook(req: Request, res: Response) {
                 stripeInvoiceId: invoice.id,
                 paymentType: "subscription",
               });
-              console.log(`[Webhook] Fallback payment record created for invoice ${invoice.id}, sub ${localSub.id}`);
+
+              // Check completion for fallback path too
+              try {
+                const course = await db.getCourseById(localSub.courseId);
+                if (course && localSub.stripeItemId) {
+                  const totalSessions = course.totalSessions || 1;
+                  const sessionsPerWeek = course.sessionsPerWeek || 1;
+                  const numberOfMonths = Math.max(1, Math.ceil(totalSessions / (sessionsPerWeek * 4)));
+                  const allPayments = await db.getPaymentsBySubscriptionId(localSub.id);
+                  const completedPayments = allPayments.filter(
+                    (p: any) => p.status === "completed" && p.paymentType === "subscription" && parseFloat(p.amount) > 0
+                  ).length;
+                  if (completedPayments >= numberOfMonths) {
+                    const stripe = getStripe();
+                    await stripe.subscriptionItems.del(localSub.stripeItemId, { proration_behavior: "none" });
+                    await db.updateSubscription(localSub.id, { paymentStatus: "completed" });
+                    const stripeSub = await stripe.subscriptions.retrieve(localSub.stripeSubscriptionId!);
+                    if (stripeSub.items.data.length === 0) {
+                      await stripe.subscriptions.cancel(localSub.stripeSubscriptionId!);
+                    }
+                  }
+                }
+              } catch (err: any) {
+                console.error(`[Webhook] Fallback: Failed to check/cancel completed subscription ${localSub.id}:`, err?.message);
+              }
             }
-          } else {
-            console.warn(`[Webhook] Could not find local subscription for Stripe sub: ${stripeSubscriptionId}`);
           }
         }
         break;
@@ -483,7 +548,6 @@ export async function handleStripeWebhook(req: Request, res: Response) {
       // -----------------------------------------------------------------------
       case "invoice.payment_failed": {
         const invoice = event.data.object as Stripe.Invoice;
-        console.log(`[Webhook] Invoice payment failed: ${invoice.id}`);
 
         const stripeSubscriptionId = (
           typeof (invoice.parent as any)?.subscription_details?.subscription === "string"
@@ -494,7 +558,6 @@ export async function handleStripeWebhook(req: Request, res: Response) {
           const localSubs = await db.getSubscriptionsByStripeSubId(stripeSubscriptionId);
           for (const localSub of localSubs) {
             await db.updateSubscription(localSub.id, { paymentStatus: "failed" });
-            console.log(`[Webhook] Marked subscription ${localSub.id} as payment failed`);
           }
         }
         break;
@@ -502,24 +565,20 @@ export async function handleStripeWebhook(req: Request, res: Response) {
 
       case "payment_intent.succeeded": {
         const paymentIntent = event.data.object as Stripe.PaymentIntent;
-        console.log("[Webhook] Payment intent succeeded:", paymentIntent.id);
         break;
       }
 
       case "payment_intent.payment_failed": {
         const paymentIntent = event.data.object as Stripe.PaymentIntent;
-        console.log("[Webhook] Payment intent failed:", paymentIntent.id);
         break;
       }
 
       case "customer.created": {
         const customer = event.data.object as Stripe.Customer;
-        console.log("[Webhook] Customer created:", customer.id);
         break;
       }
 
       default:
-        console.log(`[Webhook] Unhandled event type: ${event.type}`);
     }
 
     res.json({ received: true });

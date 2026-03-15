@@ -1068,7 +1068,8 @@ export const appRouter = router({
               existingStripeCustomerId: parentUser?.stripeCustomerId,
             });
 
-            if (!parentUser?.stripeCustomerId) {
+            // Always persist — handles case where old customer ID was stale/deleted
+            if (stripeCustomerId !== parentUser?.stripeCustomerId) {
               await db.updateUserStripeCustomerId(ctx.user.id, stripeCustomerId);
             }
 
@@ -1151,7 +1152,7 @@ export const appRouter = router({
           existingStripeCustomerId: parentUser?.stripeCustomerId,
         });
 
-        if (!parentUser?.stripeCustomerId) {
+        if (stripeCustomerId !== parentUser?.stripeCustomerId) {
           await db.updateUserStripeCustomerId(ctx.user.id, stripeCustomerId);
         }
 
@@ -1218,10 +1219,40 @@ export const appRouter = router({
     mySubscriptions: parentProcedure.query(async ({ ctx }) => {
       const subs = await db.getSubscriptionsByParentId(ctx.user.id);
 
-      // Enhance each subscription with session statistics
+      // Enhance each subscription with session statistics and next billing info
       const enhancedSubs = await Promise.all(
         subs.map(async (sub) => {
           const sessionStats = await db.getSessionStatsBySubscription(sub.subscription.id);
+
+          let nextBillingDate: number | null = null;
+          let nextBillingAmount: number | null = null;
+
+          // For monthly subs with a linked Stripe subscription, fetch next billing cycle
+          if (
+            sub.subscription.paymentPlan === "monthly" &&
+            sub.subscription.paymentStatus === "paid" &&
+            sub.subscription.stripeSubscriptionId
+          ) {
+            try {
+              const { getStripe } = await import("./stripe");
+              const stripe = getStripe();
+              const stripeSub = await stripe.subscriptions.retrieve(
+                sub.subscription.stripeSubscriptionId
+              );
+              // current_period_end is the next billing date (Unix timestamp in seconds)
+              nextBillingDate = stripeSub.current_period_end * 1000; // convert to ms
+              // Find the matching item's price amount
+              const item = stripeSub.items.data.find(
+                (i) => i.id === sub.subscription.stripeItemId
+              ) || stripeSub.items.data[0];
+              if (item?.price?.unit_amount) {
+                nextBillingAmount = item.price.unit_amount / 100; // cents → dollars
+              }
+            } catch (err) {
+              // Non-fatal — just won't show next billing info
+            }
+          }
+
           return {
             ...sub,
             sessionStats: sessionStats || {
@@ -1230,7 +1261,9 @@ export const appRouter = router({
               completedCount: 0,
               scheduledCount: 0,
               totalSessions: 0
-            }
+            },
+            nextBillingDate,
+            nextBillingAmount,
           };
         })
       );
@@ -2818,6 +2851,9 @@ export const appRouter = router({
           }>;
         }> = [];
 
+        // Track which Stripe subscription IDs have at least one real paid invoice (amount > 0)
+        const paidStripeSubIds = new Set<string>();
+
         // Fetch Stripe invoices if customer exists
         if (parentUser?.stripeCustomerId) {
           try {
@@ -2844,7 +2880,16 @@ export const appRouter = router({
             }
 
             for (const inv of invoices) {
+              // Skip $0 trial invoices — they're noise (card setup confirmation)
+              if (inv.status === "paid" && inv.amount_paid === 0) continue;
+
               const stripeSubId = getInvSubId(inv);
+
+              // Track subscriptions that have real paid invoices
+              if (stripeSubId && inv.status === "paid" && inv.amount_paid > 0) {
+                paidStripeSubIds.add(stripeSubId);
+              }
+
               const lineItems = inv.lines?.data ?? [];
 
               // Build enriched line items by matching each to a local subscription via stripeItemId
@@ -2928,6 +2973,99 @@ export const appRouter = router({
           }
         }
 
+        // Add upcoming invoice entries for active monthly subscriptions
+        // so parents can see what's coming before real invoices are generated
+        if (parentUser?.stripeCustomerId) {
+          try {
+            const { getStripe } = await import("./stripe");
+            const stripe = getStripe();
+            const activeSubs = await db.getSubscriptionsByParentId(ctx.user.id);
+            const monthlyActive = activeSubs.filter((s: any) =>
+              s.subscription.paymentPlan === "monthly" &&
+              s.subscription.paymentStatus === "paid" &&
+              s.subscription.stripeSubscriptionId
+            );
+
+            const seenStripeSubIds = new Set<string>();
+            for (const sub of monthlyActive) {
+              const stripeSubId = sub.subscription.stripeSubscriptionId!;
+              if (seenStripeSubIds.has(stripeSubId)) continue;
+              seenStripeSubIds.add(stripeSubId);
+
+              try {
+                const stripeSub = await stripe.subscriptions.retrieve(stripeSubId);
+                // For trialing subs the first charge is at trial_end; for active subs use current_period_end
+                const nextBillingTs = stripeSub.status === "trialing"
+                  ? (stripeSub.trial_end ?? stripeSub.current_period_end)
+                  : stripeSub.current_period_end;
+                if (!nextBillingTs) continue;
+
+                // Skip if the subscription is cancelled/incomplete
+                if (["canceled", "incomplete", "incomplete_expired", "past_due", "unpaid"].includes(stripeSub.status)) continue;
+
+                // Only show upcoming entry while no real charges have been taken yet
+                if (paidStripeSubIds.has(stripeSubId)) continue;
+
+                // Gather all local subscriptions sharing this stripe sub
+                const sharedSubs = monthlyActive.filter(
+                  (s: any) => s.subscription.stripeSubscriptionId === stripeSubId
+                );
+
+                const lines = sharedSubs.map((s: any) => {
+                  const item = stripeSub.items.data.find(
+                    (i) => i.id === s.subscription.stripeItemId
+                  );
+                  const amount = item?.price?.unit_amount ?? 0;
+                  const studentName = [s.subscription.studentFirstName, s.subscription.studentLastName]
+                    .filter(Boolean).join(" ") || null;
+                  return {
+                    id: `upcoming_line_${s.subscription.id}`,
+                    description: s.course?.title ?? null,
+                    amount,
+                    currency: item?.price?.currency ?? "usd",
+                    studentName,
+                    courseTitle: s.course?.title ?? null,
+                    paymentNumber: 1,
+                    totalPayments: (() => {
+                      const totalSessions = s.course?.totalSessions || 1;
+                      const sessionsPerWeek = s.course?.sessionsPerWeek || 1;
+                      return Math.max(1, Math.ceil(totalSessions / (sessionsPerWeek * 4)));
+                    })(),
+                  };
+                });
+
+                const totalAmountCents = lines.reduce((sum: number, l: any) => sum + l.amount, 0);
+                const currency = lines[0]?.currency ?? "usd";
+                const multiCourse = lines.length > 1;
+
+                results.push({
+                  id: `upcoming_${stripeSubId}`,
+                  number: null,
+                  status: "upcoming",
+                  amountPaid: 0,
+                  amountDue: totalAmountCents,
+                  currency,
+                  periodStart: nextBillingTs,
+                  periodEnd: nextBillingTs,
+                  created: nextBillingTs,
+                  hostedInvoiceUrl: null,
+                  invoicePdf: null,
+                  source: "stripe",
+                  studentName: multiCourse ? null : (lines[0]?.studentName ?? null),
+                  courseTitle: multiCourse ? null : (lines[0]?.courseTitle ?? null),
+                  paymentNumber: multiCourse ? null : 1,
+                  totalPayments: multiCourse ? null : lines[0]?.totalPayments ?? null,
+                  lines,
+                });
+              } catch (err) {
+                console.error(`[getStripeInvoices] Failed to build upcoming entry for sub ${stripeSubId}:`, err);
+              }
+            }
+          } catch (err) {
+            console.error("[getStripeInvoices] Failed to build upcoming invoices:", err);
+          }
+        }
+
         // Also include local payment records that have no Stripe invoice
         // (pay-in-full via Stripe Checkout, or legacy payments)
         const localPayments = await db.getParentPayments(ctx.user.id);
@@ -2937,8 +3075,11 @@ export const appRouter = router({
           // Skip if already covered by a Stripe invoice
           if (p.stripeInvoiceId && stripeInvoiceIds.has(p.stripeInvoiceId)) continue;
           if (p.status !== "completed") continue;
+          // Skip $0 records — these are card-setup confirmations, not real payments
+          if (!p.amount || parseFloat(p.amount) === 0) continue;
 
-          const createdTs = Math.floor(new Date(p.createdAt).getTime() / 1000);
+          const createdAtMs = p.createdAt ? new Date(p.createdAt).getTime() : Date.now();
+          const createdTs = Math.floor(createdAtMs / 1000);
           const studentName = [p.studentFirstName, p.studentLastName].filter(Boolean).join(" ");
           const description = [studentName, p.courseTitle].filter(Boolean).join(" — ") || "Course payment";
 

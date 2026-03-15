@@ -65,15 +65,17 @@ export default function ParentPayments() {
           <div className="space-y-4">
             {invoices.map(inv => {
               const isPaid = inv.status === "paid";
+              const isUpcoming = inv.status === "upcoming";
               const isOpen = expanded[inv.id] ?? false;
-              const invoiceDate = new Date(inv.created * 1000);
-              const billingPeriod = format(new Date(inv.periodStart * 1000), "MMMM yyyy");
+              const invoiceDate = inv.created ? new Date(inv.created * 1000) : new Date();
+              const periodStartDate = inv.periodStart ? new Date(inv.periodStart * 1000) : invoiceDate;
+              const billingPeriod = format(periodStartDate, "MMMM yyyy");
 
               return (
                 <div
                   key={inv.id}
                   className={`rounded-xl border bg-card overflow-hidden border-l-4 ${
-                    isPaid ? "border-l-green-500" : "border-l-amber-400"
+                    isPaid ? "border-l-green-500" : isUpcoming ? "border-l-blue-400" : "border-l-amber-400"
                   }`}
                 >
                   {/* Invoice Header */}
@@ -83,7 +85,7 @@ export default function ParentPayments() {
                       <div className="space-y-1">
                         <div className="flex items-center gap-3 flex-wrap">
                           <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground border border-border rounded px-2 py-0.5">
-                            Invoice Date
+                            {isUpcoming ? "Next Billing Date" : "Invoice Date"}
                           </span>
                           <span className="text-xl font-bold">
                             {format(invoiceDate, "MMMM d, yyyy")}
@@ -137,6 +139,11 @@ export default function ParentPayments() {
                             ✓ Paid {format(invoiceDate, "MMM d, yyyy")}
                           </p>
                         )}
+                        {isUpcoming && (
+                          <p className="text-sm text-blue-600 font-medium">
+                            ⏳ Scheduled — will be charged on {format(invoiceDate, "MMM d, yyyy")}
+                          </p>
+                        )}
                       </div>
 
                       {/* Right: amount + status + actions */}
@@ -148,11 +155,13 @@ export default function ParentPayments() {
                           className={
                             isPaid
                               ? "bg-green-100 text-green-800 border-green-200 dark:bg-green-950 dark:text-green-200"
+                              : isUpcoming
+                              ? "bg-blue-100 text-blue-800 border-blue-200 dark:bg-blue-950 dark:text-blue-200"
                               : "bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-950 dark:text-amber-200"
                           }
                           variant="outline"
                         >
-                          {isPaid ? "● Paid" : "● Pending"}
+                          {isPaid ? "● Paid" : isUpcoming ? "● Upcoming" : "● Pending"}
                         </Badge>
                         <Button
                           variant="outline"
@@ -166,7 +175,7 @@ export default function ParentPayments() {
                             <><ChevronDown className="h-4 w-4" /> Show</>
                           )}
                         </Button>
-                        {inv.hostedInvoiceUrl && (
+                        {!isUpcoming && inv.hostedInvoiceUrl && (
                           <Button
                             size="sm"
                             onClick={() => window.open(inv.hostedInvoiceUrl!, "_blank")}

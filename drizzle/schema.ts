@@ -270,7 +270,7 @@ export const subscriptions = mysqlTable("subscriptions", {
   sessionsCompleted: int("sessionsCompleted").default(0),
   stripeSubscriptionId: varchar("stripeSubscriptionId", { length: 255 }),
   stripeItemId: varchar("stripeItemId", { length: 255 }),
-  paymentStatus: mysqlEnum("paymentStatus", ["paid", "pending", "failed"]).default("pending").notNull(),
+  paymentStatus: mysqlEnum("paymentStatus", ["paid", "pending", "failed", "completed"]).default("pending").notNull(),
   paymentPlan: mysqlEnum("paymentPlan", ["full", "installment", "monthly"]).default("monthly").notNull(),
   firstInstallmentPaid: boolean("firstInstallmentPaid").default(false).notNull(),
   secondInstallmentPaid: boolean("secondInstallmentPaid").default(false).notNull(),

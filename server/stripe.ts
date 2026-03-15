@@ -101,8 +101,9 @@ export async function getOrCreateStripeCustomer(params: {
       if (!existing.deleted) {
         return existing.id;
       }
-    } catch {
-      // Customer not found in Stripe — create a new one
+      console.warn(`[Stripe] Customer ${params.existingStripeCustomerId} is deleted — creating new one`);
+    } catch (err: any) {
+      console.warn(`[Stripe] Could not retrieve customer ${params.existingStripeCustomerId}: ${err?.message} — creating new one`);
     }
   }
 
@@ -140,32 +141,40 @@ export async function createStripePrice(params: {
   });
 }
 
-// Get the parent's Stripe subscription created on the same calendar day (UTC), if any.
-// Only subscriptions created today are eligible for combining — different day = separate invoice.
+// Compute the trial_end Unix timestamp for an enrollment happening now.
+// Always midnight UTC on the same calendar day + 1 month, so same-day enrollments
+// always produce the exact same value regardless of server timezone.
+export function computeTrialEndTs(): number {
+  const now = new Date();
+  // Use UTC date components to avoid local-timezone drift
+  const trialEnd = new Date(Date.UTC(
+    now.getUTCFullYear(),
+    now.getUTCMonth() + 1, // +1 month
+    now.getUTCDate(),
+    0, 0, 0, 0
+  ));
+  return Math.floor(trialEnd.getTime() / 1000);
+}
+
+// Get the parent's trialing Stripe subscription whose trial_end matches today's enrollment,
+// so same-day enrollments share one subscription (combined invoice).
+// Different enrollment days produce different trial_end timestamps → separate subscriptions.
 export async function getParentStripeSubscriptionForToday(
   stripeCustomerId: string
 ): Promise<Stripe.Subscription | null> {
   const stripe = getStripe();
 
-  // Fetch both active and trialing (new subs start as trialing when trial_end is set)
-  const [activeList, trialingList] = await Promise.all([
-    stripe.subscriptions.list({ customer: stripeCustomerId, status: "active", limit: 10 }),
-    stripe.subscriptions.list({ customer: stripeCustomerId, status: "trialing", limit: 10 }),
-  ]);
+  const expectedTrialEnd = computeTrialEndTs();
 
-  const allSubs = [...activeList.data, ...trialingList.data];
-
-  // Today's date boundaries in UTC
-  const now = new Date();
-  const startOfToday = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-  const startOfTomorrow = new Date(startOfToday.getTime() + 86400000);
-
-  const todaySub = allSubs.find(sub => {
-    const createdAt = sub.created * 1000;
-    return createdAt >= startOfToday.getTime() && createdAt < startOfTomorrow.getTime();
+  // Only trialing subs are eligible — active subs have already been charged
+  const trialingList = await stripe.subscriptions.list({
+    customer: stripeCustomerId,
+    status: "trialing",
+    limit: 10,
   });
 
-  return todaySub ?? null;
+  const match = trialingList.data.find(sub => sub.trial_end === expectedTrialEnd);
+  return match ?? null;
 }
 
 // Add a new course item to the parent's existing Stripe subscription
@@ -194,14 +203,11 @@ export async function createStripeSubscription(params: {
   localSubscriptionId: number;
 }): Promise<Stripe.Subscription> {
   const stripe = getStripe();
-  const trialEnd = new Date();
-  trialEnd.setMonth(trialEnd.getMonth() + 1);
-  trialEnd.setHours(0, 0, 0, 0);
   return await stripe.subscriptions.create({
     customer: params.stripeCustomerId,
     items: [{ price: params.priceId, metadata: { local_subscription_id: params.localSubscriptionId.toString() } }],
     proration_behavior: "none",
-    trial_end: Math.floor(trialEnd.getTime() / 1000),
+    trial_end: computeTrialEndTs(),
     metadata: {
       parent_id: params.parentId.toString(),
     },
