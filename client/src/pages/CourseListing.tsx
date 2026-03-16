@@ -172,9 +172,16 @@ export default function CourseListing() {
                   >
                     <CardHeader>
                       <div className="flex items-start justify-between mb-2">
-                        <Badge variant="secondary" className="mb-2">
-                          {course.subject}
-                        </Badge>
+                        <div className="flex flex-col gap-1">
+                          <Badge variant="secondary">
+                            {course.subject}
+                          </Badge>
+                          {course.aiPowered && (
+                            <Badge className="bg-violet-100 text-violet-700 border-violet-200 text-[10px] w-fit">
+                              ✦ AI Powered
+                            </Badge>
+                          )}
+                        </div>
                         <CoursePrice price={course.price} priceClassName="text-2xl font-bold text-primary" />
                       </div>
                       <CardTitle className="text-xl">{course.title}</CardTitle>

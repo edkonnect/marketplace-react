@@ -5115,6 +5115,7 @@ export const appRouter = router({
         totalSessions: z.number().optional(),
         imageUrl: z.string().optional(),
         curriculum: z.string().optional(),
+        aiPowered: z.boolean().optional(),
       }))
       .mutation(async ({ input }) => {
         const course = await db.createCourse(input as any);
@@ -5135,6 +5136,7 @@ export const appRouter = router({
         imageUrl: z.string().optional(),
         curriculum: z.string().optional(),
         isActive: z.boolean().optional(),
+        aiPowered: z.boolean().optional(),
       }))
       .mutation(async ({ input }) => {
         const { id, ...data } = input;

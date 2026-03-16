@@ -358,10 +358,15 @@ export default function TutorDetail() {
                           </CardHeader>
                           <CardContent>
                             <div className="flex items-center justify-between">
-                              <div className="flex gap-2">
+                              <div className="flex gap-2 flex-wrap">
                                 <Badge variant="secondary">{course.subject}</Badge>
                                 {course.gradeLevel && (
                                   <Badge variant="outline">{course.gradeLevel}</Badge>
+                                )}
+                                {course.aiPowered && (
+                                  <Badge className="bg-violet-100 text-violet-700 border-violet-200 text-[10px]">
+                                    ✦ AI Powered
+                                  </Badge>
                                 )}
                               </div>
                               <Button asChild size="sm">

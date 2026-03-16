@@ -1,7 +1,9 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { SelectItem } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { useValidatedForm } from "@/hooks/useValidatedForm";
@@ -14,6 +16,8 @@ interface CourseCreationFormProps {
 }
 
 export function CourseCreationForm({ onSuccess, editingCourse }: CourseCreationFormProps) {
+  const [aiPowered, setAiPowered] = useState<boolean>(false);
+
   const emptyValues = {
     title: "",
     description: "",
@@ -52,6 +56,7 @@ export function CourseCreationForm({ onSuccess, editingCourse }: CourseCreationF
 
   useEffect(() => {
     reset(initialValues);
+    setAiPowered(editingCourse?.aiPowered ?? false);
   }, [editingCourse, reset]);
 
   const createMutation = trpc.adminCourses.createCourse.useMutation({
@@ -77,6 +82,7 @@ export function CourseCreationForm({ onSuccess, editingCourse }: CourseCreationF
 
   const resetForm = () => {
     reset(emptyValues);
+    setAiPowered(false);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -94,6 +100,7 @@ export function CourseCreationForm({ onSuccess, editingCourse }: CourseCreationF
       sessionsPerWeek: parseInt(values.sessionsPerWeek),
       totalSessions: values.totalSessions ? parseInt(values.totalSessions) : undefined,
       price: values.price,
+      aiPowered,
     };
 
     if (editingCourse) {
@@ -221,6 +228,17 @@ export function CourseCreationForm({ onSuccess, editingCourse }: CourseCreationF
             placeholder="Detailed curriculum outline..."
             rows={5}
           />
+
+          <div className="flex items-center gap-2">
+            <Checkbox
+              id="aiPowered"
+              checked={aiPowered}
+              onCheckedChange={(checked) => setAiPowered(checked === true)}
+            />
+            <Label htmlFor="aiPowered" className="cursor-pointer">
+              AI Powered
+            </Label>
+          </div>
 
           <div className="flex gap-2">
             <Button

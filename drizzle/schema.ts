@@ -209,6 +209,7 @@ export const courses = mysqlTable("courses", {
   imageUrl: text("imageUrl"),
   curriculum: text("curriculum"),
   quizEnabled: boolean("quizEnabled").default(false).notNull(),
+  aiPowered: boolean("aiPowered").default(false).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 }, (table) => ({
