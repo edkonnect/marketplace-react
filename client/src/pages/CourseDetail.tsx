@@ -1,5 +1,6 @@
 import React from "react";
 import Navigation from "@/components/Navigation";
+import { CoursePrice } from "@/components/CoursePrice";
 import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -398,7 +399,7 @@ export default function CourseDetail() {
               <Card className="sticky top-24 border-2 z-20 bg-background">
                 <CardHeader>
                   <div className="flex items-baseline gap-2 mb-2">
-                    <span className="text-4xl font-bold text-primary">${price}</span>
+                    <CoursePrice price={price} priceClassName="text-4xl font-bold text-primary" />
                     {course.totalSessions && (
                       <span className="text-sm text-muted-foreground">
                         / {course.totalSessions} sessions

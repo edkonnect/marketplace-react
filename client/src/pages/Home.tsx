@@ -403,10 +403,8 @@ export default function Home() {
                       <h3 className="text-xl font-semibold mb-2">{course.title}</h3>
                       <p className="text-sm text-muted-foreground mb-4">{course.description}</p>
                       <div className="flex items-center justify-end pt-4 border-t border-border">
-                        <div className="text-right">
-                          <div className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide leading-none mb-0.5">
-                            as low as
-                          </div>
+                        <div className="flex items-baseline gap-1">
+                          <span className="text-xs text-muted-foreground font-normal">from</span>
                           <span className="text-lg font-bold text-primary">${course.priceFrom}/hr</span>
                         </div>
                       </div>

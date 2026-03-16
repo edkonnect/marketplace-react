@@ -6,13 +6,11 @@ interface CoursePriceProps {
 
 export function CoursePrice({ price, className = "", priceClassName = "" }: CoursePriceProps) {
   return (
-    <div className={`text-right ${className}`}>
-      <div className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide leading-none mb-0.5">
-        as low as
-      </div>
-      <div className={priceClassName}>
+    <div className={`flex items-baseline gap-1 ${className}`}>
+      <span className="text-xs text-muted-foreground font-normal">from</span>
+      <span className={priceClassName}>
         ${typeof price === "string" ? parseFloat(price) : price}
-      </div>
+      </span>
     </div>
   );
 }
