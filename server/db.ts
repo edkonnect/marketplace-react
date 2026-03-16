@@ -1178,19 +1178,30 @@ export async function getCoursesByTutorId(tutorId: number) {
     .orderBy(desc(courses.createdAt));
 }
 
-export async function getAllActiveCourses() {
+export async function getAllActiveCourses(region?: "global" | "us" | "india") {
   const db = await getDb();
   if (!db) return [];
 
-  return await db.select().from(courses).where(eq(courses.isActive, true)).orderBy(desc(courses.createdAt));
+  const allowedRegions: ("global" | "us" | "india")[] =
+    region === "india" ? ["global", "india"]
+    : region === "us"  ? ["global", "us"]
+    : ["global", "us", "india"]; // no region = return all (undetected/admin)
+
+  return await db.select().from(courses)
+    .where(and(eq(courses.isActive, true), inArray(courses.region, allowedRegions)))
+    .orderBy(desc(courses.createdAt));
 }
 
-export async function updateCourse(id: number, updates: Partial<InsertCourse>) {
+export async function updateCourse(id: number, updates: Record<string, any>) {
   const db = await getDb();
   if (!db) return false;
 
   try {
-    await db.update(courses).set(updates).where(eq(courses.id, id));
+    const { region, aiPowered, ...rest } = updates;
+    const setData: any = { ...rest };
+    if (region !== undefined) setData.region = region;
+    if (aiPowered !== undefined) setData.aiPowered = aiPowered;
+    await db.update(courses).set(setData).where(eq(courses.id, id));
     return true;
   } catch (error) {
     console.error("[Database] Failed to update course:", error);

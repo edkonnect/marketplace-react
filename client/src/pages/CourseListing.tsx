@@ -1,5 +1,6 @@
 import Navigation from "@/components/Navigation";
 import { CoursePrice } from "@/components/CoursePrice";
+import { useIsIndianUser } from "@/hooks/useIsIndianUser";
 import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -7,17 +8,22 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { BookOpen, Clock, DollarSign, GraduationCap, Search } from "lucide-react";
+import { BookOpen, Clock, DollarSign, GraduationCap, Search, ChevronLeft, ChevronRight } from "lucide-react";
 import { useState } from "react";
 import { Link } from "wouter";
+
+const COURSES_PER_PAGE = 9; // 3 rows × 3 columns
 
 export default function CourseListing() {
   const [searchQuery, setSearchQuery] = useState("");
   const [subjectFilter, setSubjectFilter] = useState<string>("all");
   const [gradeLevelFilter, setGradeLevelFilter] = useState<string>("all");
   const [priceSort, setPriceSort] = useState<string>("default");
+  const [currentPage, setCurrentPage] = useState(1);
 
-  const { data: courses, isLoading } = trpc.course.list.useQuery();
+  const isIndian = useIsIndianUser();
+  const region = isIndian ? "india" : "us";
+  const { data: courses, isLoading } = trpc.course.list.useQuery({ region });
 
   // Filter and sort courses
   const filteredCourses = courses
@@ -48,6 +54,12 @@ export default function CourseListing() {
       }
       return 0;
     });
+
+  const totalPages = Math.ceil((filteredCourses?.length || 0) / COURSES_PER_PAGE);
+  const paginatedCourses = filteredCourses?.slice(
+    (currentPage - 1) * COURSES_PER_PAGE,
+    currentPage * COURSES_PER_PAGE
+  );
 
   // Get unique subjects and grade levels for filters
   const subjects = Array.from(new Set(courses?.map((c) => c.subject).filter((s): s is string => !!s) || []));
@@ -88,13 +100,13 @@ export default function CourseListing() {
                 <Input
                   placeholder="Search courses..."
                   value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
                   className="pl-10"
                 />
               </div>
 
               {/* Subject Filter */}
-              <Select value={subjectFilter} onValueChange={setSubjectFilter}>
+              <Select value={subjectFilter} onValueChange={(v) => { setSubjectFilter(v); setCurrentPage(1); }}>
                 <SelectTrigger>
                   <SelectValue placeholder="All Subjects" />
                 </SelectTrigger>
@@ -109,7 +121,7 @@ export default function CourseListing() {
               </Select>
 
               {/* Grade Level Filter */}
-              <Select value={gradeLevelFilter} onValueChange={setGradeLevelFilter}>
+              <Select value={gradeLevelFilter} onValueChange={(v) => { setGradeLevelFilter(v); setCurrentPage(1); }}>
                 <SelectTrigger>
                   <SelectValue placeholder="All Grade Levels" />
                 </SelectTrigger>
@@ -128,6 +140,7 @@ export default function CourseListing() {
             <div className="flex items-center justify-between mt-4">
               <p className="text-sm text-muted-foreground">
                 {filteredCourses?.length || 0} courses found
+                {totalPages > 1 && ` · Page ${currentPage} of ${totalPages}`}
               </p>
               <Select value={priceSort} onValueChange={setPriceSort}>
                 <SelectTrigger className="w-[180px]">
@@ -164,8 +177,9 @@ export default function CourseListing() {
                 ))}
               </div>
             ) : filteredCourses && filteredCourses.length > 0 ? (
+              <>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {filteredCourses.map((course) => (
+                {paginatedCourses!.map((course) => (
                   <Card
                     key={course.id}
                     className="hover:shadow-lg transition-shadow duration-300 h-full flex flex-col"
@@ -182,7 +196,7 @@ export default function CourseListing() {
                             </Badge>
                           )}
                         </div>
-                        <CoursePrice price={course.price} priceClassName="text-2xl font-bold text-primary" />
+                        <CoursePrice price={course.price} region={course.region ?? "global"} priceClassName="text-2xl font-bold text-primary" />
                       </div>
                       <CardTitle className="text-xl">{course.title}</CardTitle>
                       {course.gradeLevel && (
@@ -240,6 +254,44 @@ export default function CourseListing() {
                   </Card>
                 ))}
               </div>
+
+              {/* Pagination */}
+              {totalPages > 1 && (
+                <div className="flex items-center justify-center gap-2 mt-10">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                    disabled={currentPage === 1}
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                    Previous
+                  </Button>
+
+                  {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+                    <Button
+                      key={page}
+                      variant={currentPage === page ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setCurrentPage(page)}
+                      className="w-9"
+                    >
+                      {page}
+                    </Button>
+                  ))}
+
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                    disabled={currentPage === totalPages}
+                  >
+                    Next
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              )}
+              </>
             ) : (
               <Card className="py-16">
                 <CardContent className="text-center">

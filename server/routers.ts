@@ -771,19 +771,23 @@ export const appRouter = router({
         return tutorsWithAvailability;
       }),
 
-    list: publicProcedure.query(async () => {
-      const courses = await db.getAllActiveCourses();
-      
-      // Add tutors to each course
-      const coursesWithTutors = await Promise.all(
-        courses.map(async (course) => {
-          const tutors = await db.getTutorsForCourse(course.id);
-          return { ...course, tutors };
-        })
-      );
-      
-      return coursesWithTutors;
-    }),
+    list: publicProcedure
+      .input(z.object({
+        region: z.enum(["global", "us", "india"]).optional(),
+      }).optional())
+      .query(async ({ input }) => {
+        const courses = await db.getAllActiveCourses(input?.region);
+
+        // Add tutors to each course
+        const coursesWithTutors = await Promise.all(
+          courses.map(async (course) => {
+            const tutors = await db.getTutorsForCourse(course.id);
+            return { ...course, tutors };
+          })
+        );
+
+        return coursesWithTutors;
+      }),
 
     search: publicProcedure
       .input(z.object({
@@ -5116,6 +5120,7 @@ export const appRouter = router({
         imageUrl: z.string().optional(),
         curriculum: z.string().optional(),
         aiPowered: z.boolean().optional(),
+        region: z.enum(["global", "us", "india"]).optional(),
       }))
       .mutation(async ({ input }) => {
         const course = await db.createCourse(input as any);
@@ -5137,10 +5142,11 @@ export const appRouter = router({
         curriculum: z.string().optional(),
         isActive: z.boolean().optional(),
         aiPowered: z.boolean().optional(),
+        region: z.enum(["global", "us", "india"]).optional(),
       }))
       .mutation(async ({ input }) => {
         const { id, ...data } = input;
-        await db.updateCourse(id, data as any);
+        await db.updateCourse(id, data);
         return { success: true };
       }),
 

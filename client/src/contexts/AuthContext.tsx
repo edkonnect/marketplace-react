@@ -7,6 +7,7 @@ type User = {
   firstName?: string | null;
   lastName?: string | null;
   role: "parent" | "tutor" | "admin" | "coordinator";
+  timezone?: string | null;
 };
 
 type AuthContextValue = {

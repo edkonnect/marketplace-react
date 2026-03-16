@@ -6,8 +6,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Star, Clock, BookOpen, Award } from "lucide-react";
+import { Star, Clock, BookOpen, Award, ChevronLeft, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
+
+const TUTORS_PER_PAGE = 6;
 
 export function FindTutors() {
   const [filters, setFilters] = useState<TutorFilterState>({
@@ -17,12 +19,20 @@ export function FindTutors() {
     maxRate: undefined,
     minRating: 0,
   });
+  const [currentPage, setCurrentPage] = useState(1);
 
   const { data: tutors, isLoading, refetch } = trpc.tutors.search.useQuery(filters, {
     enabled: false, // Only search when user clicks search button
   });
 
+  const totalPages = Math.ceil((tutors?.length || 0) / TUTORS_PER_PAGE);
+  const paginatedTutors = tutors?.slice(
+    (currentPage - 1) * TUTORS_PER_PAGE,
+    currentPage * TUTORS_PER_PAGE
+  );
+
   const handleSearch = () => {
+    setCurrentPage(1);
     refetch();
   };
 
@@ -79,11 +89,48 @@ export function FindTutors() {
               <div className="space-y-4">
                 <p className="text-sm text-muted-foreground">
                   Found {tutors.length} tutor{tutors.length !== 1 ? "s" : ""}
+                  {totalPages > 1 && ` · Page ${currentPage} of ${totalPages}`}
                 </p>
 
-                {tutors.map((tutor) => (
+                {paginatedTutors!.map((tutor) => (
                   <TutorCard key={tutor.id} tutor={tutor} />
                 ))}
+
+                {totalPages > 1 && (
+                  <div className="flex items-center justify-center gap-2 mt-6">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                      disabled={currentPage === 1}
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                      Previous
+                    </Button>
+
+                    {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+                      <Button
+                        key={page}
+                        variant={currentPage === page ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => setCurrentPage(page)}
+                        className="w-9"
+                      >
+                        {page}
+                      </Button>
+                    ))}
+
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                      disabled={currentPage === totalPages}
+                    >
+                      Next
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  </div>
+                )}
               </div>
             )}
           </div>

@@ -68,10 +68,10 @@ export function CourseManagementTable({ onAssignTutors }: CourseManagementTableP
     setIsEditDialogOpen(true);
   };
 
-  const handleEditSuccess = () => {
+  const handleEditSuccess = async () => {
+    await refetch();
     setIsEditDialogOpen(false);
     setEditingCourse(null);
-    refetch();
   };
 
   const subjects = [
@@ -145,6 +145,7 @@ export function CourseManagementTable({ onAssignTutors }: CourseManagementTableP
               <TableHead>Subject</TableHead>
               <TableHead>Grade</TableHead>
               <TableHead>Price</TableHead>
+              <TableHead>Region</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Assigned Tutors</TableHead>
               <TableHead className="text-right">Actions</TableHead>
@@ -165,6 +166,9 @@ export function CourseManagementTable({ onAssignTutors }: CourseManagementTableP
                   <TableCell>{course.subject}</TableCell>
                   <TableCell>{course.gradeLevel || "—"}</TableCell>
                   <TableCell>${course.price}</TableCell>
+                  <TableCell>
+                    {course.region === "us" ? "🇺🇸 US" : course.region === "india" ? "🇮🇳 India" : "🌐 Global"}
+                  </TableCell>
                   <TableCell>
                     <Badge variant={course.isActive ? "default" : "secondary"}>
                       {course.isActive ? "Active" : "Inactive"}
