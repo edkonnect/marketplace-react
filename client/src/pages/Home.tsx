@@ -402,9 +402,13 @@ export default function Home() {
                       </div>
                       <h3 className="text-xl font-semibold mb-2">{course.title}</h3>
                       <p className="text-sm text-muted-foreground mb-4">{course.description}</p>
-                      <div className="flex items-center justify-between pt-4 border-t border-border">
-                        <span className="text-sm text-muted-foreground">From</span>
-                        <span className="text-lg font-bold text-primary">${course.priceFrom}/hr</span>
+                      <div className="flex items-center justify-end pt-4 border-t border-border">
+                        <div className="text-right">
+                          <div className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide leading-none mb-0.5">
+                            as low as
+                          </div>
+                          <span className="text-lg font-bold text-primary">${course.priceFrom}/hr</span>
+                        </div>
                       </div>
                       <Button asChild className="w-full mt-4" variant="outline">
                         <Link href="/courses">View Courses</Link>

@@ -1,4 +1,5 @@
 import Navigation from "@/components/Navigation";
+import { CoursePrice } from "@/components/CoursePrice";
 import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -174,9 +175,7 @@ export default function CourseListing() {
                         <Badge variant="secondary" className="mb-2">
                           {course.subject}
                         </Badge>
-                        <div className="text-2xl font-bold text-primary">
-                          ${course.price}
-                        </div>
+                        <CoursePrice price={course.price} priceClassName="text-2xl font-bold text-primary" />
                       </div>
                       <CardTitle className="text-xl">{course.title}</CardTitle>
                       {course.gradeLevel && (

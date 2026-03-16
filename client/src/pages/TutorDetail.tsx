@@ -1,4 +1,5 @@
 import Navigation from "@/components/Navigation";
+import { CoursePrice } from "@/components/CoursePrice";
 import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -345,12 +346,10 @@ export default function TutorDetail() {
                                   </CardDescription>
                                 )}
                               </div>
-                              <div className="text-right ml-4">
-                                <div className="text-xl font-semibold text-primary">
-                                  ${parseFloat(course.price)}
-                                </div>
+                              <div className="ml-4">
+                                <CoursePrice price={course.price} priceClassName="text-xl font-semibold text-primary" />
                                 {course.duration && (
-                                  <div className="text-xs text-muted-foreground">
+                                  <div className="text-xs text-muted-foreground text-right">
                                     {course.duration} min/session
                                   </div>
                                 )}
