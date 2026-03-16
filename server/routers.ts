@@ -1240,7 +1240,7 @@ export const appRouter = router({
                 sub.subscription.stripeSubscriptionId
               );
               // current_period_end is the next billing date (Unix timestamp in seconds)
-              nextBillingDate = stripeSub.current_period_end * 1000; // convert to ms
+              nextBillingDate = (stripeSub as any).current_period_end * 1000; // convert to ms
               // Find the matching item's price amount
               const item = stripeSub.items.data.find(
                 (i) => i.id === sub.subscription.stripeItemId
@@ -2335,7 +2335,7 @@ export const appRouter = router({
                 courseName,
                 sessionDate: formatEmailDate(sessionDate, parentProfile?.timezone || undefined),
                 sessionTime: formatEmailTime(sessionDate, parentProfile?.timezone || undefined),
-                progressSummary: input.feedbackFromTutor,
+                progressSummary: input.feedbackFromTutor || "",
                 notesUrl: `${process.env.VITE_FRONTEND_FORGE_API_URL || ''}/session-notes`,
               });
 
@@ -2993,7 +2993,7 @@ export const appRouter = router({
               seenStripeSubIds.add(stripeSubId);
 
               try {
-                const stripeSub = await stripe.subscriptions.retrieve(stripeSubId);
+                const stripeSub = await stripe.subscriptions.retrieve(stripeSubId) as any;
                 // For trialing subs the first charge is at trial_end; for active subs use current_period_end
                 const nextBillingTs = stripeSub.status === "trialing"
                   ? (stripeSub.trial_end ?? stripeSub.current_period_end)
@@ -3013,7 +3013,7 @@ export const appRouter = router({
 
                 const lines = sharedSubs.map((s: any) => {
                   const item = stripeSub.items.data.find(
-                    (i) => i.id === s.subscription.stripeItemId
+                    (i: any) => i.id === s.subscription.stripeItemId
                   );
                   const amount = item?.price?.unit_amount ?? 0;
                   const studentName = [s.subscription.studentFirstName, s.subscription.studentLastName]

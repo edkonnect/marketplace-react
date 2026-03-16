@@ -164,8 +164,8 @@ export default function Navigation() {
                       Dashboard
                     </Link>
 
-                    <Link href={role === 'coordinator' ? '/coordinator/messages' : '/messages'} className={`flex items-center gap-2 text-sm font-medium transition-colors hover:text-primary ${
-                      (role === 'coordinator' ? location === "/coordinator/messages" : location === "/messages") ? "text-primary" : "text-muted-foreground"
+                    <Link href={role === ('coordinator' as typeof role) ? '/coordinator/messages' : '/messages'} className={`flex items-center gap-2 text-sm font-medium transition-colors hover:text-primary ${
+                      (role === ('coordinator' as typeof role) ? location === "/coordinator/messages" : location === "/messages") ? "text-primary" : "text-muted-foreground"
                     }`}>
                       <span className="relative">
                         <MessageSquare className="w-4 h-4" />

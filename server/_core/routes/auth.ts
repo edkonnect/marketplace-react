@@ -104,7 +104,7 @@ authRouter.post("/login", async (req, res) => {
   await setAuthCookies(req, res, {
     sub: user.id,
     email: user.email || "",
-    role: user.role as "parent" | "tutor" | "admin",
+    role: user.role as "parent" | "tutor" | "admin" | "coordinator",
   });
 
   const { passwordHash: _pw2, ...safeUser } = user as any;
