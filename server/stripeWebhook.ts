@@ -42,12 +42,8 @@ export async function handleStripeWebhook(req: Request, res: Response) {
   }
 
   // Only log actionable events — suppress noise
-  const silentEvents = ["setup_intent.created","setup_intent.succeeded","payment_method.attached","customer.updated","product.created","plan.created","price.created","invoice.paid","invoice_payment.paid","charge.succeeded","payment_intent.created","test_helpers.test_clock.advancing","invoice.updated","invoice.created","invoice.finalized","customer.subscription.created","payment_intent.succeeded","payment_intent.failed","customer.created"];
+  const silentEvents = ["setup_intent.created","setup_intent.succeeded","payment_method.attached","customer.updated","product.created","plan.created","price.created","invoice.paid","invoice_payment.paid","charge.succeeded","payment_intent.created","test_helpers.test_clock.advancing","test_helpers.test_clock.ready","invoice.updated","invoice.created","invoice.finalized","customer.subscription.created","payment_intent.succeeded","payment_intent.failed","customer.created"];
   if (silentEvents.includes(event.type)) return res.json({ received: true });
-  if (event.type === "test_helpers.test_clock.ready") {
-    console.log(`[Webhook] ✅ Clock ready — safe to advance to next month`);
-    return res.json({ received: true });
-  }
 
   try {
     switch (event.type) {
