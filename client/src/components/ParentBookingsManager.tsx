@@ -10,6 +10,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
+import { useAuth } from "@/_core/hooks/useAuth";
+import { formatSessionTime, COMMON_TIMEZONES } from "@/../../shared/timezone-utils";
 import { Calendar as CalendarIcon, Clock, Edit, Trash2, RefreshCw, Star, Info, X, List, CalendarDays, ChevronDown, ChevronUp, User, ChevronLeft, ChevronRight } from "lucide-react";
 import { RatingModal } from "@/components/RatingModal";
 import { StarRatingDisplay } from "@/components/StarRatingDisplay";
@@ -230,11 +232,7 @@ function CalendarView({
                   {/* Sessions for this day */}
                   <div className="space-y-1">
                     {daySessions.slice(0, 3).map(({ session, student, subject }) => {
-                      const time = new Date(session.scheduledAt).toLocaleTimeString('en-US', {
-                        hour: 'numeric',
-                        minute: '2-digit',
-                        hour12: true,
-                      });
+                      const time = formatTime(session.scheduledAt);
 
                       return (
                         <button
@@ -280,11 +278,7 @@ function CalendarView({
             </DialogHeader>
             <div className="space-y-2 mt-4">
               {(sessionsByDate[viewAllDate] || []).map(({ session, student, subject }) => {
-                const time = new Date(session.scheduledAt).toLocaleTimeString('en-US', {
-                  hour: 'numeric',
-                  minute: '2-digit',
-                  hour12: true,
-                });
+                const time = formatTime(session.scheduledAt);
 
                 return (
                   <button
@@ -556,6 +550,16 @@ function SessionCard({
 }
 
 export function ParentBookingsManager() {
+  const { user } = useAuth();
+  const parentTimezone = user?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const tzAbbr = useMemo(() => {
+    const found = COMMON_TIMEZONES.find(t => t.value === parentTimezone);
+    if (found) {
+      const match = found.label.match(/\(([^)]+)\)$/);
+      return match ? match[1] : "";
+    }
+    return "";
+  }, [parentTimezone]);
   const [selectedSeries, setSelectedSeries] = useState<number | null>(null);
   const [rescheduleDialogOpen, setRescheduleDialogOpen] = useState(false);
   const [rescheduleSeriesDialogOpen, setRescheduleSeriesDialogOpen] = useState(false);
@@ -758,20 +762,12 @@ export function ParentBookingsManager() {
   };
 
   const formatDate = (timestamp: number) => {
-    return new Date(timestamp).toLocaleDateString("en-US", {
-      weekday: "short",
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-    });
+    return formatSessionTime(timestamp, parentTimezone, "EEE, MMM d, yyyy");
   };
 
   const formatTime = (timestamp: number) => {
-    return new Date(timestamp).toLocaleTimeString("en-US", {
-      hour: "numeric",
-      minute: "2-digit",
-      hour12: true,
-    });
+    const time = formatSessionTime(timestamp, parentTimezone, "h:mm a");
+    return tzAbbr ? `${time} ${tzAbbr}` : time;
   };
 
   const getStatusBadge = (status?: string | null) => {
@@ -919,8 +915,10 @@ export function ParentBookingsManager() {
 
     const slots: string[] = [];
     const minutesFromMidnight = (d: Date) => d.getHours() * 60 + d.getMinutes();
-    const formatSlot = (d: Date) =>
-      d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
+    const formatSlot = (d: Date) => {
+      const time = formatSessionTime(d.getTime(), parentTimezone, "h:mm a");
+      return tzAbbr ? `${time} ${tzAbbr}` : time;
+    };
 
     const now = Date.now();
 

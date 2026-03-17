@@ -169,7 +169,15 @@ export const appRouter = router({
           throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to update profile' });
         }
         if (timezone) {
+          // Update users.timezone (drives INR/USD pricing)
           await db.updateUserTimezone(ctx.user.id, timezone);
+          // Also sync to profile tables so session/scheduling components pick it up
+          const role = ctx.user.role;
+          if (role === "tutor") {
+            await db.updateTutorProfile(ctx.user.id, { timezone }).catch(() => {});
+          } else if (role === "parent") {
+            await db.updateParentProfile(ctx.user.id, { timezone }).catch(() => {});
+          }
         }
         return { success: true };
       }),

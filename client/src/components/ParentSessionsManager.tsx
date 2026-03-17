@@ -3,6 +3,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Calendar, Clock, Video, ChevronDown, ChevronUp, FileText } from "lucide-react";
+import { useAuth } from "@/_core/hooks/useAuth";
+import { formatSessionTime, COMMON_TIMEZONES } from "@/../../shared/timezone-utils";
 
 interface ParentSessionsManagerProps {
   upcomingSessions: any[];
@@ -13,6 +15,19 @@ export function ParentSessionsManager({
   upcomingSessions,
   sessionsLoading,
 }: ParentSessionsManagerProps) {
+  const { user } = useAuth();
+  const parentTimezone = user?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+  // Get short abbreviation like "IST", "EST" from COMMON_TIMEZONES; fallback to offset
+  const tzAbbr = useMemo(() => {
+    const found = COMMON_TIMEZONES.find(t => t.value === parentTimezone);
+    if (found) {
+      const match = found.label.match(/\(([^)]+)\)$/);
+      return match ? match[1] : "";
+    }
+    return "";
+  }, [parentTimezone]);
+
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
 
   const toggleGroup = (key: string) => {
@@ -58,19 +73,12 @@ export function ParentSessionsManager({
   }, [upcomingSessions]);
 
   const formatDate = (timestamp: number) => {
-    return new Date(timestamp).toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-    });
+    return formatSessionTime(timestamp, parentTimezone, "MMM d, yyyy");
   };
 
   const formatTime = (timestamp: number) => {
-    return new Date(timestamp).toLocaleTimeString("en-US", {
-      hour: "numeric",
-      minute: "2-digit",
-      hour12: true,
-    });
+    const time = formatSessionTime(timestamp, parentTimezone, "h:mm a");
+    return tzAbbr ? `${time} ${tzAbbr}` : time;
   };
 
   if (sessionsLoading) {

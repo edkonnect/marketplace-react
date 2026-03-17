@@ -22,5 +22,6 @@ export function useAuth(options?: { redirectOnUnauthenticated?: boolean; redirec
     signup,
     logout,
     refresh: refreshProfile,
+    refreshProfile,
   };
 }

@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
+import { useAuth } from "@/_core/hooks/useAuth";
 import { Calendar as CalendarIcon, Clock, AlertCircle, Globe } from "lucide-react";
 import { format } from "date-fns";
 import crypto from "crypto-js";
@@ -41,6 +42,7 @@ interface AppointmentSchedulerProps {
 }
 
 export function AppointmentScheduler({ subscriptions, onScheduleComplete }: AppointmentSchedulerProps) {
+  const { user } = useAuth();
   const [selectedSubscriptionId, setSelectedSubscriptionId] = useState<number | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
   const [selectedTimeSlot, setSelectedTimeSlot] = useState<string>("");
@@ -84,7 +86,9 @@ export function AppointmentScheduler({ subscriptions, onScheduleComplete }: Appo
 
   // Determine timezones
   const tutorTimezone = tutorProfile?.timezone || detectUserTimezone();
-  const parentTimezone = parentProfile?.timezone || detectUserTimezone();
+  // user.timezone is kept up-to-date by Settings page (refreshProfile called on save)
+  // parentProfile.timezone may be stale if the tRPC cache hasn't been invalidated yet
+  const parentTimezone = user?.timezone || parentProfile?.timezone || detectUserTimezone();
 
   // Get timezone abbreviation for parent e.g. "EST", "IST"
   const parentTimezoneAbbr = useMemo(() => {

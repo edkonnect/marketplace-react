@@ -95,7 +95,8 @@ export function BookableCalendar({
 
   // Determine timezones
   const tutorTimezone = tutorProfile?.timezone || detectUserTimezone();
-  const parentTimezone = parentProfile?.timezone || detectUserTimezone();
+  // user.timezone is kept in sync by Settings (refreshProfile on save), so prefer it over the cached parentProfile query
+  const parentTimezone = user?.timezone || parentProfile?.timezone || detectUserTimezone();
 
   // Get friendly timezone names
   const parentTimezoneName = useMemo(() => {
