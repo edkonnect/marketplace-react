@@ -1,6 +1,7 @@
 import Navigation from "@/components/Navigation";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
+import { useFormatPrice } from "@/hooks/useFormatPrice";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -28,6 +29,7 @@ import { formatSessionTime, COMMON_TIMEZONES } from "@/../../shared/timezone-uti
 export default function TutorDashboard() {
   const { user, isAuthenticated, loading } = useAuth();
   const [, setLocation] = useLocation();
+  const formatPrice = useFormatPrice();
 
   // Get tab from URL query parameter
   const urlParams = new URLSearchParams(window.location.search);
@@ -782,7 +784,7 @@ export default function TutorDashboard() {
                       <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
                         <DollarSign className="w-5 h-5 text-primary" />
                       </div>
-                      <span className="text-3xl font-bold">${earnings?.completed.toFixed(0) || 0}</span>
+                      <span className="text-3xl font-bold">{formatPrice(earnings?.completed || 0)}</span>
                     </div>
                   </CardContent>
                 </Card>
@@ -849,7 +851,7 @@ export default function TutorDashboard() {
                             <div className="grid grid-cols-2 gap-4 text-sm">
                               <div>
                                 <p className="text-muted-foreground">Price</p>
-                                <p className="font-semibold text-lg">${parseFloat(course.price)}</p>
+                                <p className="font-semibold text-lg">{formatPrice(course.price)}</p>
                               </div>
                               {course.duration && (
                                 <div>

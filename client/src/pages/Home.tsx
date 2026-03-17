@@ -1,5 +1,6 @@
 import React from "react";
 import { useAuth } from "@/_core/hooks/useAuth";
+import { useFormatPrice } from "@/hooks/useFormatPrice";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
@@ -115,6 +116,7 @@ const listItemReveal: Variants = {
 
 export default function Home() {
   const { isAuthenticated, user } = useAuth();
+  const formatPrice = useFormatPrice();
 
   const heroRef = React.useRef<HTMLElement>(null);
   const { scrollYProgress } = useScroll({ target: heroRef, offset: ["start start", "end start"] });
@@ -405,7 +407,7 @@ export default function Home() {
                       <div className="flex items-center justify-end pt-4 border-t border-border">
                         <div className="flex items-baseline gap-1">
                           <span className="text-xs text-muted-foreground font-normal">from</span>
-                          <span className="text-lg font-bold text-primary">${course.priceFrom}/hr</span>
+                          <span className="text-lg font-bold text-primary">{formatPrice(course.priceFrom, "/hr")}</span>
                         </div>
                       </div>
                       <Button asChild className="w-full mt-4" variant="outline">

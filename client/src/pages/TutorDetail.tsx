@@ -1,5 +1,6 @@
 import Navigation from "@/components/Navigation";
 import { CoursePrice } from "@/components/CoursePrice";
+import { useFormatPrice } from "@/hooks/useFormatPrice";
 import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -173,6 +174,7 @@ export default function TutorDetail() {
   const gradeLevels = parseGradeLevels(tutorProfile.gradeLevels);
   const rating = tutorProfile.rating ? parseFloat(tutorProfile.rating) : 0;
   const hourlyRate = tutorProfile.hourlyRate ? parseFloat(tutorProfile.hourlyRate) : 0;
+  const formatPrice = useFormatPrice();
 
   const tutorTz = (tutorProfile as any).businessTimezone || (tutorProfile as any).timezone || null;
   const viewerTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -223,7 +225,7 @@ export default function TutorDetail() {
                   {hourlyRate > 0 && (
                     <div className="flex items-center gap-2">
                       <DollarSign className="w-4 h-4" />
-                      <span>${hourlyRate}/hour</span>
+                      <span>{formatPrice(hourlyRate, "/hour")}</span>
                     </div>
                   )}
                   <div className="flex items-center gap-2">

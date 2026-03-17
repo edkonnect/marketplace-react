@@ -380,6 +380,17 @@ export async function updateUserRole(userId: number, role: "parent" | "tutor" | 
   }
 }
 
+export async function updateUserTimezone(userId: number, timezone: string) {
+  const db = await getDb();
+  if (!db) return false;
+  try {
+    await db.update(users).set({ timezone }).where(eq(users.id, userId));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export async function updateUserProfile(userId: number, updates: { firstName?: string; lastName?: string; email?: string }) {
   const db = await getDb();
   if (!db) return false;

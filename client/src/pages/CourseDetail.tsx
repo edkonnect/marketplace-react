@@ -1,6 +1,7 @@
 import React from "react";
 import Navigation from "@/components/Navigation";
 import { CoursePrice } from "@/components/CoursePrice";
+import { useFormatPrice } from "@/hooks/useFormatPrice";
 import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -22,6 +23,7 @@ import { TutorAvailabilityModal } from "@/components/TutorAvailabilityModal";
 export default function CourseDetail() {
   const { id } = useParams();
   const courseId = parseInt(id || "0");
+  const formatPrice = useFormatPrice();
   const { user, isAuthenticated } = useAuth();
   const [, setLocation] = useLocation();
   const [isEnrollDialogOpen, setIsEnrollDialogOpen] = React.useState(false);
@@ -407,8 +409,8 @@ export default function CourseDetail() {
                     )}
                   </div>
                   <CardDescription>
-                    {course.totalSessions 
-                      ? `$${(price / course.totalSessions).toFixed(2)} per session`
+                    {course.totalSessions
+                      ? `${formatPrice(price / course.totalSessions)} per session`
                       : "Course package pricing"
                     }
                   </CardDescription>
@@ -445,7 +447,7 @@ export default function CourseDetail() {
                                   <SelectContent>
                                     {tutorsWithAvailability.map((tutor: any) => (
                                       <SelectItem key={tutor.user.id} value={tutor.user.id.toString()}>
-                                        {tutor.user.name} {tutor.profile?.hourlyRate && `- $${tutor.profile.hourlyRate}/hr`}
+                                        {tutor.user.name} {tutor.profile?.hourlyRate && `- ${formatPrice(tutor.profile.hourlyRate)}/hr`}
                                       </SelectItem>
                                     ))}
                                   </SelectContent>

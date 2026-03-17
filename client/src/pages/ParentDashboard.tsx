@@ -1,6 +1,7 @@
 import Navigation from "@/components/Navigation";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
+import { useFormatPrice } from "@/hooks/useFormatPrice";
 import { toast } from "sonner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -24,6 +25,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 export default function ParentDashboard() {
   const { user, isAuthenticated, loading } = useAuth();
   const [, setLocation] = useLocation();
+  const formatPrice = useFormatPrice();
   const tabContentClass =
     "space-y-6 absolute inset-0 w-full transition-all duration-300 data-[state=active]:opacity-100 data-[state=active]:translate-x-0 data-[state=inactive]:opacity-0 data-[state=inactive]:translate-x-4 data-[state=inactive]:pointer-events-none [&[hidden]]:block [&[hidden]]:opacity-0";
 
@@ -619,7 +621,7 @@ export default function ParentDashboard() {
                               <span className="font-medium text-blue-900 dark:text-blue-100">
                                 {new Date(nextBillingDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
                                 {nextBillingAmount != null && (
-                                  <span className="ml-2">${(nextBillingAmount as number).toFixed(2)}</span>
+                                  <span className="ml-2">{formatPrice(nextBillingAmount as number)}</span>
                                 )}
                               </span>
                             </div>

@@ -1,5 +1,6 @@
 import Navigation from "@/components/Navigation";
 import { trpc } from "@/lib/trpc";
+import { useFormatPrice } from "@/hooks/useFormatPrice";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -13,6 +14,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 export default function TutorListing() {
   const [searchTerm, setSearchTerm] = useState("");
   const { data: tutors, isLoading } = trpc.tutorProfile.list.useQuery();
+  const formatPrice = useFormatPrice();
 
   const filteredTutors = tutors?.filter(tutor => {
     if (!searchTerm) return true;
@@ -156,9 +158,7 @@ export default function TutorListing() {
                         <div className="flex items-center justify-between mt-auto pt-4 border-t border-border">
                           {hourlyRate > 0 && (
                             <div className="flex items-center gap-1 text-lg font-semibold text-primary">
-                              <DollarSign className="w-5 h-5" />
-                              <span>{hourlyRate}</span>
-                              <span className="text-sm text-muted-foreground font-normal">/hour</span>
+                              <span>{formatPrice(hourlyRate, "/hour")}</span>
                             </div>
                           )}
                           <Button asChild size="sm" className="ml-auto">

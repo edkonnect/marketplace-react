@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { trpc } from "@/lib/trpc";
+import { useFormatPrice } from "@/hooks/useFormatPrice";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -14,6 +15,7 @@ import { Pagination } from "@/components/Pagination";
 export function RegisteredTutorsManager() {
   const [selectedTutor, setSelectedTutor] = useState<any | null>(null);
   const [rejectionReason, setRejectionReason] = useState("");
+  const formatPrice = useFormatPrice();
   const [isRejectDialogOpen, setIsRejectDialogOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedTutorIds, setSelectedTutorIds] = useState<number[]>([]);
@@ -237,7 +239,7 @@ export function RegisteredTutorsManager() {
                                 {tutor.hourlyRate && (
                                   <div className="flex items-center gap-1">
                                     <DollarSign className="w-4 h-4" />
-                                    ${parseFloat(tutor.hourlyRate).toFixed(0)}/hour
+                                    {formatPrice(tutor.hourlyRate, "/hour")}
                                   </div>
                                 )}
                               </div>

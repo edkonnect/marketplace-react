@@ -66,9 +66,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [fetchProfile]);
 
   const login = useCallback(async (email: string, password: string) => {
+    const timezone = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { return undefined; } })();
     await request<{ user: User }>("/api/auth/login", {
       method: "POST",
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ email, password, timezone }),
     });
     const next = await fetchProfile();
     return next;

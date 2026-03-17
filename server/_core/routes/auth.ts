@@ -48,6 +48,11 @@ authRouter.post("/signup", async (req, res) => {
     console.error("[Auth] Failed to send verification email:", err);
   }
 
+  // Save timezone to users table so it's returned by getUserById
+  if (timezone) {
+    try { await db.updateUserTimezone(user.id, timezone); } catch {}
+  }
+
   // Create a basic profile matching the selected role
   try {
     if (role === "parent") {

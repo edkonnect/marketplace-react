@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Star, Clock, BookOpen, Award, ChevronLeft, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
+import { useFormatPrice } from "@/hooks/useFormatPrice";
 
 const TUTORS_PER_PAGE = 6;
 
@@ -146,6 +147,7 @@ interface TutorCardProps {
 
 function TutorCard({ tutor }: TutorCardProps) {
   const rating = tutor.rating ? parseFloat(tutor.rating as string) : 0;
+  const formatPrice = useFormatPrice();
   
   // Handle both JSON array and comma-separated string formats
   let subjects: string[] = [];
@@ -197,8 +199,7 @@ function TutorCard({ tutor }: TutorCardProps) {
           <div className="text-right">
             {tutor.hourlyRate && (
               <div className="text-2xl font-bold text-primary">
-                ${parseFloat(tutor.hourlyRate as string).toFixed(0)}
-                <span className="text-sm font-normal text-muted-foreground">/hr</span>
+                {formatPrice(tutor.hourlyRate as string, "/hr")}
               </div>
             )}
           </div>

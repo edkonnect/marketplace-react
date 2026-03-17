@@ -1,5 +1,6 @@
 import Navigation from "@/components/Navigation";
 import { useAuth } from "@/_core/hooks/useAuth";
+import { useFormatPrice } from "@/hooks/useFormatPrice";
 import { trpc } from "@/lib/trpc";
 import { LOGIN_PATH } from "@/const";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -35,6 +36,7 @@ function StatusBadge({ status }: { status: string }) {
 
 export default function TutorPayments() {
   const { isAuthenticated, loading, user } = useAuth();
+  const formatPrice = useFormatPrice();
 
   if (!loading && !isAuthenticated) {
     window.location.href = LOGIN_PATH;
@@ -107,10 +109,10 @@ export default function TutorPayments() {
                     <CardContent className="space-y-3">
                       <div className="text-sm text-muted-foreground space-y-1">
                         <div>Sessions completed: <span className="font-medium text-foreground">{enrollment.sessionsCompleted}</span></div>
-                        <div>Rate per session: <span className="font-medium text-foreground">${ratePerSession.toFixed(2)}</span></div>
+                        <div>Rate per session: <span className="font-medium text-foreground">{formatPrice(ratePerSession)}</span></div>
                       </div>
                       <div className="text-lg font-bold text-green-600">
-                        Total: ${totalAmount.toFixed(2)}
+                        Total: {formatPrice(totalAmount)}
                       </div>
                       <Button
                         className="w-full"
@@ -156,7 +158,7 @@ export default function TutorPayments() {
                             Student: {studentName} · Parent: {req.parentName}
                           </p>
                           <p className="text-sm text-muted-foreground">
-                            {req.sessionsCompleted} sessions · ${parseFloat(req.ratePerSession).toFixed(2)}/session
+                            {req.sessionsCompleted} sessions · {formatPrice(req.ratePerSession)}/session
                           </p>
                           {req.adminNotes && (
                             <p className="text-sm text-red-600 mt-1">
@@ -165,7 +167,7 @@ export default function TutorPayments() {
                           )}
                         </div>
                         <div className="text-right space-y-2 shrink-0">
-                          <p className="text-lg font-bold">${parseFloat(req.totalAmount).toFixed(2)}</p>
+                          <p className="text-lg font-bold">{formatPrice(req.totalAmount)}</p>
                           <StatusBadge status={req.status} />
                           <p className="text-xs text-muted-foreground">
                             {new Date(req.createdAt).toLocaleDateString()}
