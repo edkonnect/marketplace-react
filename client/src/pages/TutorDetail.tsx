@@ -9,7 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useState } from "react";
 import { useParams, Link, useLocation } from "wouter";
 import { ChevronDown, ChevronUp } from "lucide-react";
-import { Star, BookOpen, Clock, DollarSign, MessageSquare, Calendar as CalendarIcon, Mail } from "lucide-react";
+import { Star, BookOpen, Clock, MessageSquare, Calendar as CalendarIcon, Mail } from "lucide-react";
 import { VideoPlayerWithRecommendations } from "@/components/VideoPlayerWithRecommendations";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { LOGIN_PATH } from "@/const";
@@ -90,6 +90,7 @@ export default function TutorDetail() {
   const [, navigate] = useLocation();
   const [showAllCourses, setShowAllCourses] = useState(false);
   const COURSES_PREVIEW = 3;
+  const formatPrice = useFormatPrice();
 
   const { data: tutorProfile, isLoading: profileLoading } = trpc.tutorProfile.get.useQuery(
     { userId: tutorId },
@@ -174,9 +175,8 @@ export default function TutorDetail() {
   const gradeLevels = parseGradeLevels(tutorProfile.gradeLevels);
   const rating = tutorProfile.rating ? parseFloat(tutorProfile.rating) : 0;
   const hourlyRate = tutorProfile.hourlyRate ? parseFloat(tutorProfile.hourlyRate) : 0;
-  const formatPrice = useFormatPrice();
 
-  const tutorTz = (tutorProfile as any).businessTimezone || (tutorProfile as any).timezone || null;
+  const tutorTz = tutorProfile ? ((tutorProfile as any).businessTimezone || (tutorProfile as any).timezone || null) : null;
   const viewerTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
   const viewerTzAbbr = new Intl.DateTimeFormat("en-US", { timeZone: viewerTz, timeZoneName: "short" })
     .formatToParts(new Date())
@@ -224,7 +224,6 @@ export default function TutorDetail() {
                   )}
                   {hourlyRate > 0 && (
                     <div className="flex items-center gap-2">
-                      <DollarSign className="w-4 h-4" />
                       <span>{formatPrice(hourlyRate, "/hour")}</span>
                     </div>
                   )}
