@@ -590,11 +590,11 @@ export default function Home() {
             <div className="grid md:grid-cols-3 gap-8">
               {[1, 2, 3].map((i) => (
                 <Card key={i} className="overflow-hidden">
-                  <div className="h-48 bg-muted animate-pulse" />
                   <CardContent className="p-6">
                     <div className="h-4 bg-muted rounded animate-pulse mb-4" />
                     <div className="h-6 bg-muted rounded animate-pulse mb-3" />
-                    <div className="h-4 bg-muted rounded animate-pulse" />
+                    <div className="h-4 bg-muted rounded animate-pulse mb-3" />
+                    <div className="h-4 bg-muted rounded animate-pulse w-2/3" />
                   </CardContent>
                 </Card>
               ))}
@@ -624,15 +624,6 @@ export default function Home() {
                     key={`${post.id}-${idx}`}
                     className="overflow-hidden hover:shadow-lg transition-shadow group min-w-[260px] md:min-w-[300px] lg:min-w-[320px] max-w-[320px]"
                   >
-                    {post.coverImageUrl && (
-                      <div className="h-48 overflow-hidden">
-                        <img
-                          src={post.coverImageUrl}
-                          alt={post.title}
-                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                        />
-                      </div>
-                    )}
                     <CardContent className="p-6">
                       {post.category && (
                         <span className="inline-block px-3 py-1 text-xs font-semibold text-primary bg-primary/10 rounded-full mb-3">
