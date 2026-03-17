@@ -22,6 +22,7 @@ import {
 } from "@/components/forms/FormInput";
 import { detectUserTimezone } from "@/../../shared/timezone-utils";
 import { TimezoneSelector } from "@/components/TimezoneSelector";
+import { PhoneInput } from "@/components/PhoneInput";
 
 const SUBJECTS = [
   "Mathematics",
@@ -87,6 +88,7 @@ export default function TutorRegistration() {
   );
 
   const { values, register, setValue, validateForm } = form;
+  const [phone, setPhone] = useState("");
 
   // Pre-fill form with user data — only once when user first loads
   const hasPrefilledRef = useRef(false);
@@ -159,7 +161,7 @@ export default function TutorRegistration() {
     registerMutation.mutate({
       name: values.name.trim(),
       email: values.email.trim(),
-      phone: values.phone || undefined,
+      phone: phone || undefined,
       bio: values.bio,
       qualifications: values.qualifications,
       yearsOfExperience: experience,
@@ -287,11 +289,11 @@ export default function TutorRegistration() {
                         className={isAuthenticated ? "opacity-60 cursor-not-allowed" : ""}
                       />
 
-                      <FormInput
-                        field={register("phone")}
-                        label="Phone Number"
-                        type="tel"
-                        placeholder="+1 (555) 123-4567"
+                      <PhoneInput
+                        value={phone}
+                        onChange={setPhone}
+                        onTimezoneDetected={setTimezone}
+                        currentTimezone={timezone}
                       />
                     </div>
                   </div>

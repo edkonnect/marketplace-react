@@ -17,6 +17,7 @@ import {
 } from "@/lib/validation";
 import { detectUserTimezone } from "@/../../shared/timezone-utils";
 import { TimezoneSelector } from "@/components/TimezoneSelector";
+import { PhoneInput } from "@/components/PhoneInput";
 
 export default function SignUp() {
   const [, setLocation] = useLocation();
@@ -38,9 +39,10 @@ export default function SignUp() {
       password: required("Password is required"),
     }
   );
-  const { values, register, validateForm } = form;
+  const { values, register, validateForm, setValue } = form;
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [timezone, setTimezone] = useState(detectUserTimezone());
+  const [phone, setPhone] = useState("");
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -126,11 +128,11 @@ export default function SignUp() {
                   placeholder="••••••••"
                 />
 
-                <FormInput
-                  field={register("phone")}
-                  label="Phone Number"
-                  type="tel"
-                  placeholder="+1 (555) 123-4567"
+                <PhoneInput
+                  value={phone}
+                  onChange={setPhone}
+                  onTimezoneDetected={setTimezone}
+                  currentTimezone={timezone}
                 />
 
                 <FormTextarea

@@ -159,11 +159,17 @@ export const appRouter = router({
         firstName: z.string().min(1).optional(),
         lastName: z.string().min(1).optional(),
         email: z.string().email().optional(),
+        phoneNumber: z.string().optional(),
+        timezone: z.string().optional(),
       }))
       .mutation(async ({ ctx, input }) => {
-        const success = await db.updateUserProfile(ctx.user.id, input);
+        const { timezone, ...profileUpdates } = input;
+        const success = await db.updateUserProfile(ctx.user.id, profileUpdates);
         if (!success) {
           throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to update profile' });
+        }
+        if (timezone) {
+          await db.updateUserTimezone(ctx.user.id, timezone);
         }
         return { success: true };
       }),

@@ -391,7 +391,7 @@ export async function updateUserTimezone(userId: number, timezone: string) {
   }
 }
 
-export async function updateUserProfile(userId: number, updates: { firstName?: string; lastName?: string; email?: string }) {
+export async function updateUserProfile(userId: number, updates: { firstName?: string; lastName?: string; email?: string; phoneNumber?: string }) {
   const db = await getDb();
   if (!db) return false;
 

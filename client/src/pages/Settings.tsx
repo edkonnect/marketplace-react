@@ -10,6 +10,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
 import { User, Lock, BookOpen, Users, GraduationCap, ChevronRight } from "lucide-react";
+import { PhoneInput } from "@/components/PhoneInput";
+import { TimezoneSelector } from "@/components/TimezoneSelector";
 import { Badge } from "@/components/ui/badge";
 
 export default function Settings() {
@@ -19,6 +21,9 @@ export default function Settings() {
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const [phoneTimezone, setPhoneTimezone] = useState<string | undefined>(undefined);
+  const [timezone, setTimezone] = useState<string>("");
 
   // Password
   const [currentPassword, setCurrentPassword] = useState("");
@@ -50,6 +55,8 @@ const { data: subscriptions } = trpc.subscription.mySubscriptions.useQuery(undef
       setFirstName((meData as any).firstName || "");
       setLastName((meData as any).lastName || "");
       setEmail((meData as any).email || "");
+      setPhone((meData as any).phoneNumber || "");
+      setTimezone((meData as any).timezone || "");
     }
   }, [meData]);
 
@@ -71,7 +78,11 @@ const { data: subscriptions } = trpc.subscription.mySubscriptions.useQuery(undef
   // --- Mutations ---
 
   const updateProfileMutation = trpc.auth.updateProfile.useMutation({
-    onSuccess: () => { toast.success("Profile updated successfully"); refreshProfile(); },
+    onSuccess: () => {
+      toast.success("Profile updated successfully");
+      setPhoneTimezone(undefined); // reset so it doesn't re-save on next save
+      refreshProfile(); // re-fetch user so timezone change takes effect immediately
+    },
     onError: (err: any) => toast.error(err.message || "Failed to update profile"),
   });
 
@@ -97,9 +108,12 @@ const { data: subscriptions } = trpc.subscription.mySubscriptions.useQuery(undef
   // --- Handlers ---
 
   const handleProfileSave = () => {
-    const updates: { firstName?: string; lastName?: string } = {};
+    const updates: { firstName?: string; lastName?: string; phoneNumber?: string; timezone?: string } = {};
     if (firstName.trim()) updates.firstName = firstName.trim();
     if (lastName.trim()) updates.lastName = lastName.trim();
+    if (phone) updates.phoneNumber = phone;
+    // phoneTimezone takes priority (set when user changes country code), else use timezone selector value
+    updates.timezone = phoneTimezone || timezone || undefined;
     updateProfileMutation.mutate(updates);
   };
 
@@ -179,6 +193,22 @@ const { data: subscriptions } = trpc.subscription.mySubscriptions.useQuery(undef
               <Label htmlFor="email" className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Email Address</Label>
               <Input id="email" type="email" value={email} readOnly disabled className="bg-muted/50 cursor-not-allowed" />
               <p className="text-xs text-muted-foreground">Email cannot be changed. Contact support if needed.</p>
+            </div>
+            <PhoneInput
+              value={phone}
+              onChange={setPhone}
+              onTimezoneDetected={(tz) => { setPhoneTimezone(tz); setTimezone(tz); }}
+              currentTimezone={timezone}
+              label="Phone Number"
+            />
+            <div>
+              <TimezoneSelector
+                value={timezone}
+                onChange={(tz) => { setTimezone(tz); setPhoneTimezone(undefined); }}
+                label="Timezone"
+                showDetected={false}
+              />
+              <p className="text-xs text-muted-foreground mt-1">Controls your currency display (₹ INR for India, $ USD for others)</p>
             </div>
             <div className="flex justify-end pt-1">
               <Button onClick={handleProfileSave} disabled={updateProfileMutation.isPending} size="sm">
