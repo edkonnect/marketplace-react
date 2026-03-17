@@ -447,7 +447,7 @@ export default function CourseDetail() {
                                   <SelectContent>
                                     {tutorsWithAvailability.map((tutor: any) => (
                                       <SelectItem key={tutor.user.id} value={tutor.user.id.toString()}>
-                                        {tutor.user.name} {tutor.profile?.hourlyRate && `- ${formatPrice(tutor.profile.hourlyRate)}/hr`}
+                                        {tutor.user.name}
                                       </SelectItem>
                                     ))}
                                   </SelectContent>
