@@ -3,7 +3,7 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { LOGIN_PATH } from "@/const";
 import { Button } from "@/components/ui/button";
 import { Link, useLocation } from "wouter";
-import { GraduationCap, MessageSquare, LayoutDashboard, LogOut, Play, Bell, CreditCard, Settings, User, Calendar } from "lucide-react";
+import { GraduationCap, MessageSquare, LayoutDashboard, LogOut, Play, Bell, CreditCard, Settings, User, Calendar, Menu, X } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import VideoModal from "@/components/VideoModal";
 import {
@@ -23,6 +23,7 @@ export default function Navigation() {
   const [isVideoModalOpen, setIsVideoModalOpen] = React.useState(false);
   const [isVisible, setIsVisible] = React.useState(true);
   const [lastScrollY, setLastScrollY] = React.useState(0);
+  const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
   const logoutMutation = trpc.auth.logout.useMutation();
 
   // Scroll behavior for show/hide navbar
@@ -115,7 +116,7 @@ export default function Navigation() {
           </Link>
 
           {/* Navigation Links */}
-          <div className="hidden md:flex items-center gap-6">
+          <div className="hidden lg:flex items-center gap-6">
             {/* For coordinators, only show Dashboard */}
             {role === "coordinator" ? (
               <Link href={getDashboardLink()} className={`flex items-center gap-2 text-sm font-medium transition-colors hover:text-primary ${
@@ -184,7 +185,7 @@ export default function Navigation() {
           </div>
 
           {/* Auth Section */}
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 lg:gap-4">
             {loading ? (
               <div className="w-8 h-8 rounded-full bg-muted animate-pulse" />
             ) : isAuthenticated && user ? (
@@ -311,8 +312,62 @@ export default function Navigation() {
                 <a href={LOGIN_PATH}>Sign In</a>
               </Button>
             )}
+            {/* Hamburger — visible below lg */}
+            <button
+              className="lg:hidden p-2 rounded-lg hover:bg-muted transition-colors"
+              onClick={() => setMobileMenuOpen(prev => !prev)}
+              aria-label="Toggle menu"
+            >
+              {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+            </button>
           </div>
         </div>
+
+        {/* Mobile Menu */}
+        {mobileMenuOpen && (
+          <div className="lg:hidden border-t border-border px-6 py-4 flex flex-col gap-3">
+            {role === "coordinator" ? (
+              <Link href={getDashboardLink()} onClick={() => setMobileMenuOpen(false)} className="flex items-center gap-2 text-sm font-medium py-2 hover:text-primary transition-colors">
+                <LayoutDashboard className="w-4 h-4" /> Dashboard
+              </Link>
+            ) : (
+              <>
+                <Link href="/tutors" onClick={() => setMobileMenuOpen(false)} className="text-sm font-medium py-2 hover:text-primary transition-colors">Find Tutors</Link>
+                <Link href="/courses" onClick={() => setMobileMenuOpen(false)} className="text-sm font-medium py-2 hover:text-primary transition-colors">Browse Courses</Link>
+                {role !== "tutor" && (
+                  <Link href="/tutor-registration" onClick={() => setMobileMenuOpen(false)} className="text-sm font-medium py-2 hover:text-primary transition-colors">Become a Tutor</Link>
+                )}
+                <button
+                  onClick={() => { setIsVideoModalOpen(true); setMobileMenuOpen(false); }}
+                  className="flex items-center gap-2 text-sm font-medium py-2 hover:text-primary transition-colors text-left"
+                >
+                  <Play className="w-4 h-4" /> What's EdKonnect
+                </button>
+                {isAuthenticated && (
+                  <>
+                    <Link href={getDashboardLink()} onClick={() => setMobileMenuOpen(false)} className="flex items-center gap-2 text-sm font-medium py-2 hover:text-primary transition-colors">
+                      <LayoutDashboard className="w-4 h-4" /> Dashboard
+                    </Link>
+                    <Link href={role === ('coordinator' as typeof role) ? '/coordinator/messages' : '/messages'} onClick={() => setMobileMenuOpen(false)} className="flex items-center gap-2 text-sm font-medium py-2 hover:text-primary transition-colors">
+                      <span className="relative">
+                        <MessageSquare className="w-4 h-4" />
+                        {unreadCount > 0 && (
+                          <span className="absolute -top-1.5 -right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white">
+                            {unreadCount > 9 ? "9+" : unreadCount}
+                          </span>
+                        )}
+                      </span>
+                      Messages
+                    </Link>
+                  </>
+                )}
+              </>
+            )}
+            {!isAuthenticated && !loading && (
+              <a href={LOGIN_PATH} className="text-sm font-medium py-2 hover:text-primary transition-colors">Sign In</a>
+            )}
+          </div>
+        )}
       </div>
       <VideoModal open={isVideoModalOpen} onOpenChange={setIsVideoModalOpen} />
     </div>
