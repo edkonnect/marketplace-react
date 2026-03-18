@@ -21,6 +21,7 @@ import { TimeBlockManager } from "@/components/TimeBlockManager";
 import { VideoUploadManager } from "@/components/VideoUploadManager";
 import { ZoomMeetingSetup } from "@/components/ZoomMeetingSetup";
 import { TutorSessionsManager } from "@/components/TutorSessionsManager";
+import { ReferralCouponPopup } from "@/components/ReferralCouponPopup";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { LOGIN_PATH } from "@/const";
 import { toast } from "sonner";
@@ -1621,7 +1622,8 @@ export default function TutorDashboard() {
         </DialogContent>
       </Dialog>
 
-      {/* Transcript + Quiz Modal */}
+      <ReferralCouponPopup />
+
       {transcriptModal && (
         <Dialog open={true} onOpenChange={() => setTranscriptModal(null)}>
           <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col overflow-hidden p-0">

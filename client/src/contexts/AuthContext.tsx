@@ -75,7 +75,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return next;
   }, [fetchProfile]);
 
-  const signup = useCallback(async (data: { firstName: string; lastName: string; email: string; password: string; role: "parent" | "tutor" | "admin" | "coordinator"; timezone?: string }) => {
+  const signup = useCallback(async (data: { firstName: string; lastName: string; email: string; password: string; role: "parent" | "tutor" | "admin" | "coordinator"; timezone?: string; refCode?: string }) => {
     await request<{ user: User }>("/api/auth/signup", {
       method: "POST",
       body: JSON.stringify(data),

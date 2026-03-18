@@ -26,6 +26,7 @@ export async function createCheckoutSession(params: {
   subscriptionId?: number;
   tutorId?: number;
   discountPercent?: number; // e.g. 5 for 5%
+  discountLabel?: string; // e.g. "5% sibling + 25% promo"
 }) {
   const stripe = getStripe();
 
@@ -42,7 +43,7 @@ export async function createCheckoutSession(params: {
           product_data: {
             name: params.courseName,
             description: params.discountPercent
-              ? `One-on-one tutoring course (${params.discountPercent}% sibling discount applied)`
+              ? `One-on-one tutoring course (${params.discountLabel ?? `${params.discountPercent}% discount`} applied)`
               : `One-on-one tutoring course`,
           },
           unit_amount: Math.round(discountedAmount * 100), // Convert to cents

@@ -23,12 +23,15 @@ export const users = mysqlTable("users", {
   phoneNumberVerified: boolean("phoneNumberVerified").default(false),
   timezone: varchar("timezone", { length: 100 }),
   stripeCustomerId: varchar("stripeCustomerId", { length: 255 }),
+  referralCode: varchar("referralCode", { length: 16 }).unique(),
+  referredBy: varchar("referredBy", { length: 16 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
 }, (table) => ({
   emailIdx: index("users_email_idx").on(table.email),
   openIdIdx: index("users_openId_idx").on(table.openId),
+  referralCodeIdx: uniqueIndex("users_referralCode_idx").on(table.referralCode),
 }));
 
 export type User = typeof users.$inferSelect;
@@ -279,6 +282,7 @@ export const subscriptions = mysqlTable("subscriptions", {
   firstInstallmentAmount: decimal("firstInstallmentAmount", { precision: 10, scale: 2 }),
   secondInstallmentAmount: decimal("secondInstallmentAmount", { precision: 10, scale: 2 }),
   siblingDiscountApplied: boolean("siblingDiscountApplied").default(false).notNull(),
+  promoDiscountPercent: int("promoDiscountPercent").default(0).notNull(),
   discountAmount: decimal("discountAmount", { precision: 10, scale: 2 }),
   smsOptIn: boolean("smsOptIn").default(false).notNull(),
   smsConsentTimestamp: timestamp("smsConsentTimestamp"),
@@ -975,3 +979,41 @@ export const sessionQuizzes = mysqlTable("session_quizzes", {
 
 export type SessionQuiz = typeof sessionQuizzes.$inferSelect;
 export type InsertSessionQuiz = typeof sessionQuizzes.$inferInsert;
+
+// ============ Referrals ============
+
+export const referrals = mysqlTable("referrals", {
+  id: int("id").autoincrement().primaryKey(),
+  referrerId: int("referrerId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  invitedEmail: varchar("invitedEmail", { length: 320 }).notNull(),
+  referredUserId: int("referredUserId").references(() => users.id, { onDelete: "set null" }),
+  status: mysqlEnum("referral_status", ["pending", "signed_up", "rewarded"]).default("pending").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => ({
+  referrerIdx: index("referrals_referrer_idx").on(table.referrerId),
+  invitedEmailIdx: index("referrals_invitedEmail_idx").on(table.invitedEmail),
+  referrerEmailUnique: uniqueIndex("referrals_referrer_email_unique").on(table.referrerId, table.invitedEmail),
+}));
+
+export type Referral = typeof referrals.$inferSelect;
+export type InsertReferral = typeof referrals.$inferInsert;
+
+// ============ Coupons ============
+
+export const coupons = mysqlTable("coupons", {
+  id: int("id").autoincrement().primaryKey(),
+  code: varchar("code", { length: 16 }).notNull().unique(),
+  userId: int("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  discountPercent: int("discountPercent").notNull().default(25),
+  isUsed: boolean("isUsed").default(false).notNull(),
+  usedAt: timestamp("usedAt"),
+  sourceReferralId: int("sourceReferralId").references(() => referrals.id, { onDelete: "set null" }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => ({
+  codeIdx: uniqueIndex("coupons_code_idx").on(table.code),
+  userIdIdx: index("coupons_userId_idx").on(table.userId),
+}));
+
+export type Coupon = typeof coupons.$inferSelect;
+export type InsertCoupon = typeof coupons.$inferInsert;

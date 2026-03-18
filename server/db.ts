@@ -28,7 +28,9 @@ import {
   coordinatorAssignments, InsertCoordinatorAssignment,
   zoomMeetingRecordings, InsertZoomMeetingRecording,
   sessionAIInsights, InsertSessionAIInsight,
-  sessionQuizzes, InsertSessionQuiz
+  sessionQuizzes, InsertSessionQuiz,
+  referrals, InsertReferral, Referral,
+  coupons, InsertCoupon, Coupon
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
@@ -4986,5 +4988,195 @@ export async function updateCourseQuizEnabled(courseId: number, quizEnabled: boo
     console.error("[Database] Failed to update course quizEnabled:", error);
     return false;
   }
+}
+
+// ============ Referral & Coupon Management ============
+
+function generateShortCode(length: number): string {
+  return crypto.randomBytes(length).toString("base64url").slice(0, length).toUpperCase();
+}
+
+export async function generateUniqueReferralCode(): Promise<string> {
+  const db = await getDb();
+  if (!db) return generateShortCode(8);
+  for (let i = 0; i < 10; i++) {
+    const code = generateShortCode(8);
+    const existing = await db.select({ id: users.id }).from(users).where(eq(users.referralCode, code)).limit(1);
+    if (existing.length === 0) return code;
+  }
+  return generateShortCode(12);
+}
+
+export async function setUserReferralCode(userId: number, code: string) {
+  const db = await getDb();
+  if (!db) return false;
+  try {
+    await db.update(users).set({ referralCode: code }).where(eq(users.id, userId));
+    return true;
+  } catch { return false; }
+}
+
+export async function setUserReferredBy(userId: number, referralCode: string) {
+  const db = await getDb();
+  if (!db) return false;
+  try {
+    await db.update(users).set({ referredBy: referralCode }).where(eq(users.id, userId));
+    return true;
+  } catch { return false; }
+}
+
+export async function getUserByReferralCode(code: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(users).where(eq(users.referralCode, code)).limit(1);
+  return result[0];
+}
+
+export async function createReferral(input: { referrerId: number; invitedEmail: string }) {
+  const db = await getDb();
+  if (!db) return null;
+  try {
+    await db.insert(referrals).values({
+      referrerId: input.referrerId,
+      invitedEmail: input.invitedEmail.toLowerCase().trim(),
+      status: "pending",
+    });
+    const created = await db
+      .select()
+      .from(referrals)
+      .where(and(eq(referrals.referrerId, input.referrerId), eq(referrals.invitedEmail, input.invitedEmail.toLowerCase().trim())))
+      .limit(1);
+    return created[0] ?? null;
+  } catch (error) {
+    console.error("[Database] Failed to create referral:", error);
+    return null;
+  }
+}
+
+export async function getReferralByInvitedEmail(email: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db
+    .select()
+    .from(referrals)
+    .where(eq(referrals.invitedEmail, email.toLowerCase().trim()))
+    .limit(1);
+  return result[0];
+}
+
+export async function getReferralsByReferrer(referrerId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select({
+      referral: referrals,
+      referredUser: {
+        id: users.id,
+        firstName: users.firstName,
+        lastName: users.lastName,
+        email: users.email,
+      },
+    })
+    .from(referrals)
+    .leftJoin(users, eq(referrals.referredUserId, users.id))
+    .where(eq(referrals.referrerId, referrerId))
+    .orderBy(desc(referrals.createdAt));
+}
+
+export async function updateReferralSignedUp(invitedEmail: string, referredUserId: number) {
+  const db = await getDb();
+  if (!db) return false;
+  try {
+    await db
+      .update(referrals)
+      .set({ status: "signed_up", referredUserId })
+      .where(and(eq(referrals.invitedEmail, invitedEmail.toLowerCase().trim()), eq(referrals.status, "pending")));
+    return true;
+  } catch { return false; }
+}
+
+export async function updateReferralRewarded(referralId: number) {
+  const db = await getDb();
+  if (!db) return false;
+  try {
+    await db.update(referrals).set({ status: "rewarded" }).where(eq(referrals.id, referralId));
+    return true;
+  } catch { return false; }
+}
+
+export async function getReferralByReferredUserId(referredUserId: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db
+    .select()
+    .from(referrals)
+    .where(eq(referrals.referredUserId, referredUserId))
+    .limit(1);
+  return result[0];
+}
+
+export async function hasUserAlreadyEnrolled(parentId: number): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return false;
+  const result = await db
+    .select({ id: subscriptions.id })
+    .from(subscriptions)
+    .where(and(eq(subscriptions.parentId, parentId), ne(subscriptions.status, "cancelled")))
+    .limit(2);
+  // More than 1 means this is NOT the first enrollment (first one was just created)
+  return result.length > 1;
+}
+
+async function generateUniqueCouponCode(): Promise<string> {
+  const db = await getDb();
+  if (!db) return generateShortCode(10);
+  for (let i = 0; i < 10; i++) {
+    const code = "REF-" + generateShortCode(6);
+    const existing = await db.select({ id: coupons.id }).from(coupons).where(eq(coupons.code, code)).limit(1);
+    if (existing.length === 0) return code;
+  }
+  return "REF-" + generateShortCode(10);
+}
+
+export async function createCoupon(input: { userId: number; discountPercent?: number; sourceReferralId?: number }) {
+  const db = await getDb();
+  if (!db) return null;
+  try {
+    const code = await generateUniqueCouponCode();
+    await db.insert(coupons).values({
+      code,
+      userId: input.userId,
+      discountPercent: input.discountPercent ?? 25,
+      isUsed: false,
+      sourceReferralId: input.sourceReferralId ?? null,
+    });
+    const created = await db.select().from(coupons).where(eq(coupons.code, code)).limit(1);
+    return created[0] ?? null;
+  } catch (error) {
+    console.error("[Database] Failed to create coupon:", error);
+    return null;
+  }
+}
+
+export async function getCouponByCode(code: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(coupons).where(eq(coupons.code, code.trim().toUpperCase())).limit(1);
+  return result[0];
+}
+
+export async function getCouponsByUserId(userId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(coupons).where(eq(coupons.userId, userId)).orderBy(desc(coupons.createdAt));
+}
+
+export async function markCouponUsed(couponId: number) {
+  const db = await getDb();
+  if (!db) return false;
+  try {
+    await db.update(coupons).set({ isUsed: true, usedAt: new Date() }).where(eq(coupons.id, couponId));
+    return true;
+  } catch { return false; }
 }
 

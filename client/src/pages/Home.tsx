@@ -4,9 +4,13 @@ import { useFormatPrice } from "@/hooks/useFormatPrice";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import Navigation from "@/components/Navigation";
 import { Link } from "wouter";
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 import {
   GraduationCap,
   Calendar,
@@ -23,6 +27,11 @@ import {
   LayoutDashboard,
   ChevronLeft,
   ChevronRight,
+  Gift,
+  Share2,
+  UserPlus,
+  CheckCircle,
+  Mail,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { AnimatePresence, motion, useScroll, useTransform, type Variants } from "framer-motion";
@@ -140,6 +149,47 @@ export default function Home() {
   const { data: testimonialsData = [] } = trpc.home.testimonials.useQuery();
   const { data: faqsData = [] } = trpc.home.faqs.useQuery();
   const { data: blogPostsData = [], isLoading: blogPostsLoading } = trpc.home.blogPosts.useQuery({ limit: 3 });
+
+  // Referral state
+  const [referralDialogOpen, setReferralDialogOpen] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [emailCheckResult, setEmailCheckResult] = useState<{ available: boolean; reason: string | null } | null>(null);
+  const [isCheckingEmail, setIsCheckingEmail] = useState(false);
+
+  const sendInviteMutation = trpc.referral.sendInvite.useMutation({
+    onSuccess: (data) => {
+      toast.success(data.message);
+      setReferralDialogOpen(false);
+      setInviteEmail("");
+      setEmailCheckResult(null);
+    },
+    onError: (err) => {
+      toast.error(err.message);
+    },
+  });
+
+  const checkEmailMutation = trpc.referral.checkEmail.useQuery(
+    { email: inviteEmail },
+    { enabled: false }
+  );
+
+  const handleCheckAndSendInvite = async () => {
+    if (!inviteEmail) return;
+    setIsCheckingEmail(true);
+    try {
+      const result = await checkEmailMutation.refetch();
+      const check = result.data;
+      if (!check) { setIsCheckingEmail(false); return; }
+      setEmailCheckResult(check);
+      if (check.available) {
+        sendInviteMutation.mutate({ email: inviteEmail });
+      }
+    } catch {
+      toast.error("Failed to check email. Please try again.");
+    } finally {
+      setIsCheckingEmail(false);
+    }
+  };
 
   const learningFeatures = [
     {
@@ -508,6 +558,115 @@ export default function Home() {
           </div>
         </div>
       </motion.section>
+
+      {/* Referral Section */}
+      <motion.section className="py-20 bg-gradient-to-br from-primary/10 via-accent/5 to-background" {...scrollReveal}>
+        <div className="container max-w-5xl">
+          <div className="grid lg:grid-cols-2 gap-12 items-center">
+            {/* Left — Copy */}
+            <div>
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 text-primary text-sm font-semibold mb-4">
+                <Gift className="w-4 h-4" />
+                Referral Program
+              </div>
+              <h2 className="text-3xl lg:text-4xl font-bold mb-4">
+                Invite a Friend,<br />Both of You Win
+              </h2>
+              <p className="text-lg text-muted-foreground mb-6">
+                Know someone who'd benefit from EdKonnect? Invite them via email. When they enroll in their first course, <strong>you both receive a 25% discount coupon</strong> delivered straight to your inbox.
+              </p>
+              <div className="flex flex-col sm:flex-row gap-3">
+                {isAuthenticated ? (
+                  <Button size="lg" className="gap-2" onClick={() => setReferralDialogOpen(true)}>
+                    <Mail className="w-5 h-5" />
+                    Invite a Friend
+                  </Button>
+                ) : (
+                  <Link href="/signup">
+                    <Button size="lg" className="gap-2">
+                      <Mail className="w-5 h-5" />
+                      Sign Up to Invite
+                    </Button>
+                  </Link>
+                )}
+              </div>
+            </div>
+
+            {/* Right — How it works */}
+            <div className="space-y-4">
+              {[
+                { icon: Share2, step: "1", title: "You send an invite", desc: "Enter your friend's email — we send them a personalised invitation with your referral link." },
+                { icon: UserPlus, step: "2", title: "Friend signs up", desc: "They create an account using your referral link. No coupon yet — the reward comes after enrollment." },
+                { icon: BookOpen, step: "3", title: "Friend enrolls in a course", desc: "Once they enroll in their first course, the reward is triggered automatically." },
+                { icon: Gift, step: "4", title: "You both get 25% off", desc: "A 25% discount coupon is emailed to both of you — one-time use, never expires." },
+              ].map((item) => (
+                <div key={item.step} className="flex items-start gap-4 p-4 rounded-xl bg-background/70 border border-border/50">
+                  <div className="flex-shrink-0 w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+                    <item.icon className="w-5 h-5 text-primary" />
+                  </div>
+                  <div>
+                    <p className="font-semibold text-sm">{item.title}</p>
+                    <p className="text-sm text-muted-foreground mt-0.5">{item.desc}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </motion.section>
+
+      {/* Referral Invite Dialog */}
+      <Dialog open={referralDialogOpen} onOpenChange={(open) => {
+        setReferralDialogOpen(open);
+        if (!open) { setInviteEmail(""); setEmailCheckResult(null); }
+      }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Gift className="w-5 h-5 text-primary" />
+              Invite a Friend
+            </DialogTitle>
+            <DialogDescription>
+              Enter your friend's email address. They'll receive an invitation with your referral link.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 pt-2">
+            <div className="space-y-2">
+              <Label htmlFor="invite-email">Friend's Email Address</Label>
+              <Input
+                id="invite-email"
+                type="email"
+                placeholder="friend@example.com"
+                value={inviteEmail}
+                onChange={(e) => { setInviteEmail(e.target.value); setEmailCheckResult(null); }}
+                onKeyDown={(e) => e.key === "Enter" && handleCheckAndSendInvite()}
+              />
+              {emailCheckResult && !emailCheckResult.available && (
+                <p className="text-sm text-destructive">{emailCheckResult.reason}</p>
+              )}
+            </div>
+            <div className="flex items-start gap-2 p-3 rounded-lg bg-primary/5 border border-primary/20">
+              <CheckCircle className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
+              <p className="text-xs text-muted-foreground">
+                When your friend enrolls in their first course, you'll both receive a <strong>25% discount coupon</strong> via email.
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <Button variant="outline" className="flex-1" onClick={() => setReferralDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button
+                className="flex-1 gap-2"
+                onClick={handleCheckAndSendInvite}
+                disabled={!inviteEmail || isCheckingEmail || sendInviteMutation.isPending}
+              >
+                <Mail className="w-4 h-4" />
+                {sendInviteMutation.isPending ? "Sending..." : isCheckingEmail ? "Checking..." : "Send Invite"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* FAQ Section */}
       <motion.section className="py-20" {...scrollReveal}>

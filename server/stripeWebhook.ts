@@ -3,6 +3,37 @@ import Stripe from "stripe";
 import { getStripe } from "./stripe";
 import { ENV } from "./_core/env";
 import * as db from "./db";
+import { sendCouponRewardEmail } from "./email-helpers";
+
+/**
+ * Called after the referred user's first enrollment is confirmed.
+ * Only rewards the REFERRER — referred user already got their coupon at email verification.
+ */
+async function processReferralReward(parentId: number): Promise<void> {
+  try {
+    const parentUser = await db.getUserById(parentId);
+    if (!parentUser || !parentUser.referredBy) return;
+
+    const referral = await db.getReferralByReferredUserId(parentId);
+    if (!referral || referral.status === "rewarded") return;
+
+    const referrerUser = await db.getUserByReferralCode(parentUser.referredBy);
+    if (!referrerUser) return;
+
+    // Only create coupon for the referrer
+    const referrerCoupon = await db.createCoupon({ userId: referrerUser.id, discountPercent: 25, sourceReferralId: referral.id });
+
+    await db.updateReferralRewarded(referral.id);
+
+    if (referrerCoupon && referrerUser.email) {
+      const parentName = `${parentUser.firstName} ${parentUser.lastName}`.trim();
+      const referrerName = `${referrerUser.firstName} ${referrerUser.lastName}`.trim();
+      await sendCouponRewardEmail({ userEmail: referrerUser.email, userName: referrerName, couponCode: referrerCoupon.code, discountPercent: 25, reason: "referrer", friendName: parentName }).catch(() => {});
+    }
+  } catch (err) {
+    console.error("[Webhook] processReferralReward failed:", err);
+  }
+}
 
 export async function handleStripeWebhook(req: Request, res: Response) {
   const stripe = getStripe();
@@ -103,8 +134,11 @@ export async function handleStripeWebhook(req: Request, res: Response) {
                 const sessionsPerMonth = sessionsPerWeek * 4;
                 const numberOfMonths = Math.max(1, Math.ceil(totalSessions / sessionsPerMonth));
                 const rawPriceCents = Math.round(parseFloat(course.price) * 100);
-                const totalPriceCents = localSub.siblingDiscountApplied
-                  ? Math.round(rawPriceCents * 0.95)
+                const siblingPct = localSub.siblingDiscountApplied ? 5 : 0;
+                const promoPct = localSub.promoDiscountPercent ?? 0;
+                const totalDiscountPct = Math.min(100, siblingPct + promoPct);
+                const totalPriceCents = totalDiscountPct > 0
+                  ? Math.round(rawPriceCents * (1 - totalDiscountPct / 100))
                   : rawPriceCents;
                 const monthlyAmountCents = Math.round(totalPriceCents / numberOfMonths);
                   const studentName = [localSub.studentFirstName, localSub.studentLastName].filter(Boolean).join(" ");
@@ -156,6 +190,11 @@ export async function handleStripeWebhook(req: Request, res: Response) {
                   stripeItemId,
                   paymentStatus: "paid",
                 });
+                // Trigger referral reward on first enrollment
+                const localSubForReferral = await db.getSubscriptionById(subscriptionId);
+                if (localSubForReferral?.parentId) {
+                  await processReferralReward(localSubForReferral.parentId);
+                }
                 console.log(`[Webhook] ✓ Enrollment setup: sub=${subscriptionId} → Stripe ${stripeSubId} (${existingStripeSub ? "combined" : "new"})`);
               } catch (err: any) {
                 console.error("[Webhook] Failed to create/update subscription after card setup:", err?.message || err);
@@ -172,9 +211,28 @@ export async function handleStripeWebhook(req: Request, res: Response) {
           if (subscriptionId) {
             // Mark subscription as paid
             await db.updateSubscription(subscriptionId, { paymentStatus: "paid" });
+            // Trigger referral reward on first enrollment
+            if (userId) await processReferralReward(userId);
 
-            // Do NOT create a payment record here — this is just a card setup (no charge taken).
-            // The real payment record will be created when the first invoice.payment_succeeded fires.
+            // Pay-in-full: Stripe Checkout mode=payment charges immediately.
+            // No invoice.payment_succeeded fires for one-time payments, so we
+            // must create the payment record here so it shows in billing history.
+            const amountTotal = session.amount_total || 0;
+            const resolvedTutorId = tutorId || (await db.getSubscriptionById(subscriptionId))?.preferredTutorId || 0;
+            if (amountTotal > 0 && userId && resolvedTutorId) {
+              await db.createPayment({
+                parentId: userId,
+                tutorId: resolvedTutorId,
+                subscriptionId,
+                sessionId: null,
+                amount: (amountTotal / 100).toFixed(2),
+                currency: session.currency || "usd",
+                status: "completed",
+                stripePaymentIntentId: session.payment_intent as string || null,
+                stripeInvoiceId: null,
+                paymentType: "subscription",
+              });
+            }
           }
         } else if (type === "trial_lesson") {
 

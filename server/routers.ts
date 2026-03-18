@@ -8,7 +8,7 @@ import * as db from "./db";
 import { TRPCError } from "@trpc/server";
 import { searchFaq, logUnansweredQuestion, logQuery } from "./faq-search";
 import { checkChatbotRateLimit } from "./chatbot-rate-limiter";
-import { sendWelcomeEmail, sendBookingConfirmation, sendEnrollmentConfirmation, sendTutorEnrollmentNotification, sendNoShowNotification, formatEmailDate, formatEmailTime, formatEmailPrice, sendTutorApplicationReceivedEmail } from "./email-helpers";
+import { sendWelcomeEmail, sendBookingConfirmation, sendEnrollmentConfirmation, sendTutorEnrollmentNotification, sendNoShowNotification, formatEmailDate, formatEmailTime, formatEmailPrice, sendTutorApplicationReceivedEmail, sendReferralInviteEmail, sendCouponRewardEmail } from "./email-helpers";
 import { generateBookingToken, isValidBookingToken } from "./booking-management";
 import { sendCancellationConfirmationEmail } from "./cancellation-email";
 import { generateCurriculumPDF } from "./pdf-generator";
@@ -84,6 +84,60 @@ async function checkSiblingDiscount(
   });
 
   return !studentHasEnrollment;
+}
+
+/**
+ * Called after a parent's FIRST enrollment is confirmed.
+ * Issues 25% coupon to both the referred user and their referrer, sends reward emails.
+ * Safe to call even if the user wasn't referred — it simply does nothing in that case.
+ */
+/**
+ * Called after the referred user's FIRST enrollment is confirmed.
+ * Only rewards the REFERRER — the referred user already got their coupon at email verification.
+ */
+async function triggerReferralReward(parentId: number): Promise<void> {
+  try {
+    // Must be first enrollment
+    const isFirstEnrollment = !(await db.hasUserAlreadyEnrolled(parentId));
+    if (!isFirstEnrollment) return;
+
+    const parentUser = await db.getUserById(parentId);
+    if (!parentUser || !parentUser.referredBy) return;
+
+    // Find the referral record
+    const referral = await db.getReferralByReferredUserId(parentId);
+    if (!referral || referral.status === "rewarded") return;
+
+    // Find the referrer
+    const referrerUser = await db.getUserByReferralCode(parentUser.referredBy);
+    if (!referrerUser) return;
+
+    // Create coupon only for the referrer
+    const referrerCoupon = await db.createCoupon({
+      userId: referrerUser.id,
+      discountPercent: 25,
+      sourceReferralId: referral.id,
+    });
+
+    // Mark referral as fully rewarded
+    await db.updateReferralRewarded(referral.id);
+
+    // Email the referrer their reward
+    if (referrerCoupon && referrerUser.email) {
+      const parentName = `${parentUser.firstName} ${parentUser.lastName}`.trim();
+      const referrerName = `${referrerUser.firstName} ${referrerUser.lastName}`.trim();
+      await sendCouponRewardEmail({
+        userEmail: referrerUser.email,
+        userName: referrerName,
+        couponCode: referrerCoupon.code,
+        discountPercent: 25,
+        reason: "referrer",
+        friendName: parentName,
+      }).catch(err => console.error("[Referral] Failed to send reward email to referrer:", err));
+    }
+  } catch (err) {
+    console.error("[Referral] triggerReferralReward failed:", err);
+  }
 }
 
 /**
@@ -881,6 +935,7 @@ export const appRouter = router({
         studentLastName: z.string(),
         studentGrade: z.string(),
         origin: z.string(),
+        promoCode: z.string().optional(),
       }))
       .mutation(async ({ ctx, input }) => {
         let subscriptionId: number | null = null;
@@ -957,9 +1012,30 @@ export const appRouter = router({
             throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to create enrollment" });
           }
 
+          // Validate promo code if provided
+          let promoDiscount = 0;
+          let appliedCouponId: number | null = null;
+          if (input.promoCode) {
+            const coupon = await db.getCouponByCode(input.promoCode);
+            if (!coupon || coupon.isUsed || coupon.userId !== ctx.user.id) {
+              throw new TRPCError({ code: "BAD_REQUEST", message: "Invalid or expired promo code." });
+            }
+            promoDiscount = coupon.discountPercent;
+            appliedCouponId = coupon.id;
+          }
+
+          const effectiveDiscountPercent = Math.min(100, (hasSiblingDiscount ? SIBLING_DISCOUNT_PERCENT : 0) + promoDiscount);
+
+          // Store promo discount on subscription so webhook can use it
+          if (promoDiscount > 0) {
+            await db.updateSubscription(subscriptionId, { promoDiscountPercent: promoDiscount });
+          }
+
           // STRIPE_BYPASS=true — skip payment, mark as paid immediately
           if (ENV.stripeBypass) {
             await db.updateSubscription(subscriptionId, { paymentStatus: 'paid' });
+            if (appliedCouponId) await db.markCouponUsed(appliedCouponId);
+            await triggerReferralReward(ctx.user.id);
             return { success: true, subscriptionId, checkoutUrl: null };
           }
 
@@ -974,7 +1050,12 @@ export const appRouter = router({
             origin: input.origin,
             subscriptionId,
             tutorId: selectedTutorId,
-            discountPercent: hasSiblingDiscount ? SIBLING_DISCOUNT_PERCENT : undefined,
+            discountPercent: effectiveDiscountPercent > 0 ? effectiveDiscountPercent : undefined,
+            discountLabel: hasSiblingDiscount && promoDiscount > 0
+              ? `${SIBLING_DISCOUNT_PERCENT}% sibling + ${promoDiscount}% promo`
+              : hasSiblingDiscount ? `${SIBLING_DISCOUNT_PERCENT}% sibling`
+              : promoDiscount > 0 ? `${promoDiscount}% promo`
+              : undefined,
           });
 
           return { success: true, subscriptionId, checkoutUrl: session.url, siblingDiscount: hasSiblingDiscount };
@@ -996,6 +1077,7 @@ export const appRouter = router({
         studentLastName: z.string(),
         studentGrade: z.string(),
         origin: z.string(),
+        promoCode: z.string().optional(),
       }))
       .mutation(async ({ ctx, input }) => {
         // Get course details
@@ -1045,6 +1127,18 @@ export const appRouter = router({
           ? Math.round(coursePrice * SIBLING_DISCOUNT_PERCENT) / 100
           : 0;
 
+        // Validate promo code if provided
+        let promoDiscount = 0;
+        let appliedCouponId: number | null = null;
+        if (input.promoCode) {
+          const coupon = await db.getCouponByCode(input.promoCode);
+          if (!coupon || coupon.isUsed || coupon.userId !== ctx.user.id) {
+            throw new TRPCError({ code: 'BAD_REQUEST', message: 'Invalid or expired promo code.' });
+          }
+          promoDiscount = coupon.discountPercent;
+          appliedCouponId = coupon.id;
+        }
+
         // Create local subscription row (billing anchored to today)
         const now = new Date();
         const subscriptionId = await db.createSubscription({
@@ -1059,6 +1153,7 @@ export const appRouter = router({
           paymentStatus: 'pending',
           paymentPlan: 'monthly',
           siblingDiscountApplied: hasSiblingDiscount,
+          promoDiscountPercent: promoDiscount,
           discountAmount: hasSiblingDiscount ? discountAmount.toFixed(2) : null,
         });
 
@@ -1066,9 +1161,13 @@ export const appRouter = router({
           throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to create enrollment' });
         }
 
+        // Mark coupon used immediately so it can't be reused on another enrollment
+        if (appliedCouponId) await db.markCouponUsed(appliedCouponId);
+
         // STRIPE_BYPASS=true — skip payment collection, mark as paid immediately
         if (ENV.stripeBypass) {
           await db.updateSubscription(subscriptionId, { paymentStatus: 'paid' });
+          await triggerReferralReward(ctx.user.id);
           return { success: true, subscriptionId, setupUrl: null };
         }
 
@@ -1139,7 +1238,20 @@ export const appRouter = router({
           origin: input.origin,
           subscriptionId: input.subscriptionId,
           tutorId: localSub.preferredTutorId ?? undefined,
-          discountPercent: localSub.siblingDiscountApplied ? SIBLING_DISCOUNT_PERCENT : undefined,
+          discountPercent: (() => {
+            const s = localSub.siblingDiscountApplied ? SIBLING_DISCOUNT_PERCENT : 0;
+            const p = localSub.promoDiscountPercent ?? 0;
+            const total = Math.min(100, s + p);
+            return total > 0 ? total : undefined;
+          })(),
+          discountLabel: (() => {
+            const s = localSub.siblingDiscountApplied ? SIBLING_DISCOUNT_PERCENT : 0;
+            const p = localSub.promoDiscountPercent ?? 0;
+            if (s > 0 && p > 0) return `${s}% sibling + ${p}% promo`;
+            if (s > 0) return `${s}% sibling`;
+            if (p > 0) return `${p}% promo`;
+            return undefined;
+          })(),
         });
 
         return { checkoutUrl: session.url };
@@ -6425,6 +6537,130 @@ Return ONLY the JSON object.`;
         }
 
         return { answer, matched, category, intent, suggestions: suggestions ?? [] };
+      }),
+  }),
+
+  // ============ Referral Router ============
+  referral: router({
+
+    /** Get the current user's referral code and link */
+    getMyCode: protectedProcedure.query(async ({ ctx }) => {
+      const user = await db.getUserById(ctx.user.id);
+      if (!user) throw new TRPCError({ code: "NOT_FOUND", message: "User not found" });
+      const BASE_URL = process.env.VITE_FRONTEND_FORGE_API_URL || "http://localhost:3000";
+      const referralLink = user.referralCode
+        ? `${BASE_URL}/signup?ref=${user.referralCode}`
+        : null;
+      return { referralCode: user.referralCode ?? null, referralLink };
+    }),
+
+    /** Check if an email is already registered (used before sending invite) */
+    checkEmail: protectedProcedure
+      .input(z.object({ email: z.string().email() }))
+      .query(async ({ ctx, input }) => {
+        // Can't invite yourself
+        if (input.email.toLowerCase() === ctx.user.email.toLowerCase()) {
+          return { available: false, reason: "You cannot invite yourself." };
+        }
+        const existing = await db.getUserByEmail(input.email);
+        if (existing) {
+          return { available: false, reason: "This user is already registered on EdKonnect." };
+        }
+        return { available: true, reason: null };
+      }),
+
+    /** Send a referral invite email to a friend */
+    sendInvite: protectedProcedure
+      .input(z.object({ email: z.string().email() }))
+      .mutation(async ({ ctx, input }) => {
+        const invitedEmail = input.email.toLowerCase().trim();
+
+        // Can't invite yourself
+        if (invitedEmail === ctx.user.email.toLowerCase()) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "You cannot invite yourself." });
+        }
+
+        // Check if already registered
+        const existing = await db.getUserByEmail(invitedEmail);
+        if (existing) {
+          throw new TRPCError({ code: "CONFLICT", message: "This user is already registered on EdKonnect." });
+        }
+
+        // Get referrer's code (generate if missing)
+        let referrerUser = await db.getUserById(ctx.user.id);
+        if (!referrerUser) throw new TRPCError({ code: "NOT_FOUND", message: "User not found" });
+
+        if (!referrerUser.referralCode) {
+          const newCode = await db.generateUniqueReferralCode();
+          await db.setUserReferralCode(ctx.user.id, newCode);
+          referrerUser = await db.getUserById(ctx.user.id);
+        }
+
+        const referralCode = referrerUser!.referralCode!;
+
+        // Prevent duplicate invite to same email from same referrer
+        const referrals = await db.getReferralsByReferrer(ctx.user.id);
+        const alreadyInvited = referrals.some((r: any) => r.referral.invitedEmail === invitedEmail);
+        if (alreadyInvited) {
+          throw new TRPCError({ code: "CONFLICT", message: "You have already sent an invite to this email." });
+        }
+
+        // Create referral record
+        const referral = await db.createReferral({ referrerId: ctx.user.id, invitedEmail });
+        if (!referral) {
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to create referral record." });
+        }
+
+        // Send invite email
+        const BASE_URL = process.env.VITE_FRONTEND_FORGE_API_URL || "http://localhost:3000";
+        const signupUrl = `${BASE_URL}/signup?ref=${referralCode}`;
+        const referrerName = `${referrerUser!.firstName} ${referrerUser!.lastName}`.trim();
+
+        await sendReferralInviteEmail({ invitedEmail, referrerName, signupUrl });
+
+        return { success: true, message: `Invite sent to ${invitedEmail}` };
+      }),
+
+    /** Get referral history for the current user */
+    getMyReferrals: protectedProcedure.query(async ({ ctx }) => {
+      const referrals = await db.getReferralsByReferrer(ctx.user.id);
+      return referrals.map((r: any) => ({
+        id: r.referral.id,
+        invitedEmail: r.referral.invitedEmail,
+        status: r.referral.status,
+        referredUserName: r.referredUser
+          ? `${r.referredUser.firstName} ${r.referredUser.lastName}`.trim()
+          : null,
+        createdAt: r.referral.createdAt,
+      }));
+    }),
+
+    /** Get all coupons belonging to the current user */
+    getMyCoupons: protectedProcedure.query(async ({ ctx }) => {
+      const coupons = await db.getCouponsByUserId(ctx.user.id);
+      // Determine if each coupon was issued because this user was referred (vs being a referrer reward)
+      const referredReferral = await db.getReferralByReferredUserId(ctx.user.id);
+      return coupons.map(c => ({
+        ...c,
+        isReferredCoupon: !!(referredReferral && c.sourceReferralId === referredReferral.id),
+      }));
+    }),
+
+    /** Validate a coupon code (used in enrollment UI) */
+    validateCoupon: protectedProcedure
+      .input(z.object({ code: z.string() }))
+      .query(async ({ ctx, input }) => {
+        const coupon = await db.getCouponByCode(input.code);
+        if (!coupon) {
+          return { valid: false, reason: "Invalid coupon code." };
+        }
+        if (coupon.userId !== ctx.user.id) {
+          return { valid: false, reason: "This coupon does not belong to your account." };
+        }
+        if (coupon.isUsed) {
+          return { valid: false, reason: "This coupon has already been used." };
+        }
+        return { valid: true, discountPercent: coupon.discountPercent, couponId: coupon.id };
       }),
   }),
 });

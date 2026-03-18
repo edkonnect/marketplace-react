@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useLocation, Link } from "wouter";
 import Navigation from "@/components/Navigation";
 import { Button } from "@/components/ui/button";
@@ -43,6 +43,20 @@ export default function SignUp() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [timezone, setTimezone] = useState(detectUserTimezone());
   const [phone, setPhone] = useState("");
+  const [refCode, setRefCode] = useState<string | null>(null);
+
+  // Read ?ref= from URL and store in state (also persist in localStorage as fallback)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const ref = params.get("ref");
+    if (ref) {
+      setRefCode(ref.trim().toUpperCase());
+      localStorage.setItem("edkonnect_ref", ref.trim().toUpperCase());
+    } else {
+      const stored = localStorage.getItem("edkonnect_ref");
+      if (stored) setRefCode(stored);
+    }
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -62,7 +76,10 @@ export default function SignUp() {
         password: values.password,
         role: values.role,
         timezone: timezone,
+        ...(refCode ? { refCode } : {}),
       });
+      // Clear stored referral code after successful signup
+      localStorage.removeItem("edkonnect_ref");
       toast.success("Account created! Check your email for the verification link.");
       setLocation("/login");
     } catch (error) {
@@ -88,6 +105,16 @@ export default function SignUp() {
             </p>
           </div>
 
+          {refCode && (
+            <div className="mb-4 flex items-center gap-3 p-4 rounded-xl bg-primary/5 border border-primary/20">
+              <span className="text-2xl">🎁</span>
+              <div>
+                <p className="font-semibold text-sm">You were invited!</p>
+                <p className="text-sm text-muted-foreground">Enroll in your first course after signing up to unlock a <strong>25% discount coupon</strong>.</p>
+              </div>
+            </div>
+          )}
+
           <Card>
             <CardHeader>
               <CardTitle>Sign Up</CardTitle>
@@ -96,7 +123,7 @@ export default function SignUp() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <form onSubmit={handleSubmit} className="space-y-6">
+              <form onSubmit={handleSubmit} className="space-y-6" autoComplete="off">
                 <div className="grid md:grid-cols-2 gap-4">
                   <FormInput
                     field={register("firstName")}
@@ -118,6 +145,7 @@ export default function SignUp() {
                   required
                   type="email"
                   placeholder="john.doe@example.com"
+                  autoComplete="new-email"
                 />
 
                 <FormInput
@@ -126,6 +154,7 @@ export default function SignUp() {
                   required
                   type="password"
                   placeholder="••••••••"
+                  autoComplete="new-password"
                 />
 
                 <PhoneInput

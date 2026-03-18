@@ -18,6 +18,9 @@ import {
   getNoShowNotificationEmail,
   getTutorApplicationReceivedEmail,
   getPasswordResetEmail,
+  getReferralInviteEmail,
+  getReferralWelcomeEmail,
+  getCouponRewardEmail,
 } from './email-templates';
 
 const BASE_URL = process.env.VITE_FRONTEND_FORGE_API_URL || 'http://localhost:3000';
@@ -402,6 +405,63 @@ export async function sendPasswordResetEmail(params: {
   return await emailService.sendEmail({
     to: params.userEmail,
     subject: 'Reset your EdKonnect Academy password',
+    html,
+  });
+}
+
+// ============ Referral Emails ============
+
+export async function sendReferralInviteEmail(params: {
+  invitedEmail: string;
+  referrerName: string;
+  signupUrl: string;
+}): Promise<boolean> {
+  const html = getReferralInviteEmail({
+    invitedEmail: params.invitedEmail,
+    referrerName: params.referrerName,
+    signupUrl: params.signupUrl,
+  });
+  return await emailService.sendEmail({
+    to: params.invitedEmail,
+    subject: `${params.referrerName} invited you to EdKonnect Academy`,
+    html,
+  });
+}
+
+export async function sendReferralWelcomeEmail(params: {
+  userEmail: string;
+  userName: string;
+  referrerName: string;
+}): Promise<boolean> {
+  const html = getReferralWelcomeEmail({
+    userName: params.userName,
+    referrerName: params.referrerName,
+  });
+  return await emailService.sendEmail({
+    to: params.userEmail,
+    subject: 'Welcome to EdKonnect Academy — your reward is waiting!',
+    html,
+  });
+}
+
+export async function sendCouponRewardEmail(params: {
+  userEmail: string;
+  userName: string;
+  couponCode: string;
+  discountPercent: number;
+  reason: 'referrer' | 'referred';
+  friendName?: string;
+}): Promise<boolean> {
+  const html = getCouponRewardEmail({
+    userName: params.userName,
+    couponCode: params.couponCode,
+    discountPercent: params.discountPercent,
+    reason: params.reason,
+    friendName: params.friendName,
+  });
+  return await emailService.sendEmail({
+    to: params.userEmail,
+    subject: `Your ${params.discountPercent}% discount coupon — ${params.couponCode}`,
     html,
   });
 }

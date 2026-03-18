@@ -60,6 +60,24 @@ export default function CourseDetail() {
   const siblingDiscount = siblingDiscountData?.eligible ?? false;
   const discountPercent = siblingDiscountData?.discountPercent ?? 0;
 
+  // Promo code state
+  const [promoCode, setPromoCode] = React.useState("");
+  const [promoValidation, setPromoValidation] = React.useState<{ valid: boolean; discountPercent?: number; reason?: string } | null>(null);
+  const validateCouponQuery = trpc.referral.validateCoupon.useQuery(
+    { code: promoCode },
+    { enabled: false }
+  );
+
+  const handleValidatePromo = async () => {
+    if (!promoCode.trim()) return;
+    const result = await validateCouponQuery.refetch();
+    if (result.data) setPromoValidation(result.data);
+  };
+
+  // Combine both discounts independently — promo code always applies on top of any sibling discount
+  const promoDiscountPercent = promoValidation?.valid ? (promoValidation.discountPercent ?? 0) : 0;
+  const effectiveDiscountPercent = Math.min(100, discountPercent + promoDiscountPercent);
+
   const createCheckoutMutation = trpc.course.createCheckoutSession.useMutation();
   const enrollWithoutPaymentMutation = trpc.course.enrollWithoutPayment.useMutation();
 
@@ -150,11 +168,16 @@ export default function CourseDetail() {
         studentLastName,
         studentGrade: studentGrade || "Grade Not Specified",
         origin: window.location.origin,
+        promoCode: promoValidation?.valid ? promoCode.trim().toUpperCase() : undefined,
       });
 
       if (result?.success) {
         setIsEnrollDialogOpen(false);
         if (result.checkoutUrl) {
+          // Store the applied promo code so the dashboard can suppress the popup after redirect
+          if (promoValidation?.valid && promoCode.trim()) {
+            sessionStorage.setItem("justUsedCoupon", promoCode.trim().toUpperCase());
+          }
           toast.success("Opening payment in a new tab...");
           window.open(result.checkoutUrl, "_blank");
         } else {
@@ -184,6 +207,7 @@ export default function CourseDetail() {
         studentGrade: studentGrade || "Grade Not specified",
         preferredTutorId: selectedTutorId || undefined,
         origin: window.location.origin,
+        promoCode: promoValidation?.valid ? promoCode.trim().toUpperCase() : undefined,
       });
 
       setIsEnrollDialogOpen(false);
@@ -525,10 +549,56 @@ export default function CourseDetail() {
                                 {discountPercent}% Sibling Discount
                               </Badge>
                               <p className="text-sm text-green-800 dark:text-green-200">
-                                First enrollment for this child — ${(price * discountPercent / 100).toFixed(2)} off applied automatically.
+                                First enrollment for this child — {formatPrice(price * discountPercent / 100)} off applied automatically.
                               </p>
                             </div>
                           )}
+
+                          {/* Promo Code */}
+                          {isAuthenticated && (
+                            <div className="space-y-2">
+                              <Label htmlFor="promo-code">Promo Code (Optional)</Label>
+                              <div className="flex gap-2">
+                                <Input
+                                  id="promo-code"
+                                  placeholder="e.g. REF-ABC123"
+                                  value={promoCode}
+                                  onChange={(e) => { setPromoCode(e.target.value.toUpperCase()); setPromoValidation(null); }}
+                                  className="uppercase"
+                                />
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  onClick={handleValidatePromo}
+                                  disabled={!promoCode.trim() || validateCouponQuery.isFetching}
+                                >
+                                  {validateCouponQuery.isFetching ? "..." : "Apply"}
+                                </Button>
+                              </div>
+                              {promoValidation && (
+                                promoValidation.valid ? (
+                                  <p className="text-sm text-green-600 font-medium">
+                                    ✓ {promoValidation.discountPercent}% discount applied!
+                                  </p>
+                                ) : (
+                                  <p className="text-sm text-destructive">{promoValidation.reason}</p>
+                                )
+                              )}
+                            </div>
+                          )}
+
+                          {effectiveDiscountPercent > 0 && (
+                            <div className="flex items-center justify-between p-3 bg-primary/5 rounded-lg border border-primary/20 text-sm">
+                              <span className="text-muted-foreground">
+                                Total after {effectiveDiscountPercent}% discount
+                                {siblingDiscount && promoDiscountPercent > 0 && (
+                                  <span className="ml-1 text-xs">({discountPercent}% sibling + {promoDiscountPercent}% promo)</span>
+                                )}
+                              </span>
+                              <span className="font-bold text-primary">{formatPrice(price * (1 - effectiveDiscountPercent / 100))}</span>
+                            </div>
+                          )}
+
                           <div className="space-y-3">
                             <div className="flex gap-2">
                               <Button
@@ -543,7 +613,7 @@ export default function CourseDetail() {
                                 onClick={handleEnroll}
                                 disabled={createCheckoutMutation.isPending || !studentFirstName || !studentLastName}
                               >
-                                {createCheckoutMutation.isPending ? "Processing..." : siblingDiscount ? `Pay $${(price * (1 - discountPercent / 100)).toFixed(2)}` : "Pay in Full"}
+                                {createCheckoutMutation.isPending ? "Processing..." : effectiveDiscountPercent > 0 ? `Pay ${formatPrice(price * (1 - effectiveDiscountPercent / 100))}` : "Pay in Full"}
                               </Button>
                             </div>
                             {price >= 150 && (

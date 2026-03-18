@@ -3,7 +3,7 @@ import { z } from "zod";
 import { authSchema, clearAuthCookies, setAuthCookies, verifyPassword, verifyRefreshToken } from "../services/authService";
 import * as db from "../../db";
 import { REFRESH_TOKEN_COOKIE } from "@shared/const";
-import { sendVerificationEmail } from "../../email-helpers";
+import { sendVerificationEmail, sendCouponRewardEmail } from "../../email-helpers";
 
 export const authRouter = express.Router();
 
@@ -14,10 +14,24 @@ authRouter.post("/signup", async (req, res) => {
     return res.status(400).json({ error: firstError });
   }
   const { email, password, firstName, lastName, role, timezone } = parsed.data;
+  const refCode = typeof req.body.refCode === "string" ? req.body.refCode.trim().toUpperCase() : null;
 
   const existing = await db.getUserByEmail(email);
   if (existing) {
     return res.status(409).json({ error: "Email already registered" });
+  }
+
+  // Validate referral code if provided
+  let referrer = null;
+  if (refCode) {
+    referrer = await db.getUserByReferralCode(refCode);
+    if (!referrer) {
+      return res.status(400).json({ error: "Invalid referral code." });
+    }
+    // Prevent self-referral
+    if (referrer.email.toLowerCase() === email.toLowerCase()) {
+      return res.status(400).json({ error: "You cannot refer yourself." });
+    }
   }
 
   const passwordHash = await (await import("../services/authService")).hashPassword(password);
@@ -32,6 +46,44 @@ authRouter.post("/signup", async (req, res) => {
 
   if (!user) {
     return res.status(500).json({ error: "Failed to create user" });
+  }
+
+  // Generate unique referral code for new user
+  try {
+    const newRefCode = await db.generateUniqueReferralCode();
+    await db.setUserReferralCode(user.id, newRefCode);
+  } catch (err) {
+    console.error("[Auth] Failed to generate referral code:", err);
+  }
+
+  // Link referral if code was provided, then issue coupon to referred user immediately
+  if (refCode && referrer) {
+    try {
+      await db.setUserReferredBy(user.id, refCode);
+      await db.updateReferralSignedUp(email, user.id);
+
+      // Issue 25% coupon to referred user right away
+      const referral = await db.getReferralByReferredUserId(user.id);
+      if (referral) {
+        const coupon = await db.createCoupon({
+          userId: user.id,
+          discountPercent: 25,
+          sourceReferralId: referral.id,
+        });
+        if (coupon) {
+          const userName = `${user.firstName} ${user.lastName}`.trim();
+          await sendCouponRewardEmail({
+            userEmail: user.email || email,
+            userName,
+            couponCode: coupon.code,
+            discountPercent: 25,
+            reason: "referred",
+          }).catch(err => console.error("[Auth] Failed to send coupon email to referred user:", err));
+        }
+      }
+    } catch (err) {
+      console.error("[Auth] Failed to link referral:", err);
+    }
   }
 
   try {

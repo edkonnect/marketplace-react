@@ -9,6 +9,7 @@ import { Users, Calendar, MessageSquare, Mail } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import Navigation from "@/components/Navigation";
+import { ReferralCouponPopup } from "@/components/ReferralCouponPopup";
 
 export function CoordinatorDashboard() {
   const { user, isAuthenticated, loading } = useAuth();
@@ -63,6 +64,7 @@ export function CoordinatorDashboard() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-blue-50">
       <Navigation />
+      <ReferralCouponPopup />
 
       <div className="container mx-auto px-4 py-8 mt-20">
         {/* Header */}

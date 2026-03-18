@@ -970,3 +970,144 @@ export function getPasswordResetEmail(props: PasswordResetEmailProps): string {
     preheaderText: 'Reset your EdKonnect Academy password'
   });
 }
+
+// ============ Referral Emails ============
+
+interface ReferralInviteEmailProps {
+  invitedEmail: string;
+  referrerName: string;
+  signupUrl: string;
+}
+
+/**
+ * Email sent to the friend who was invited via referral
+ */
+export function getReferralInviteEmail(props: ReferralInviteEmailProps): string {
+  const { referrerName, signupUrl } = props;
+
+  const content = `
+    <h1>You've been invited to EdKonnect Academy!</h1>
+    <p>Hi there,</p>
+    <p><strong>${referrerName}</strong> thinks you'd love EdKonnect Academy — a platform connecting students with expert tutors for personalized learning.</p>
+
+    <div class="highlight-box">
+      <p style="margin: 0; font-weight: 600;">🎁 Special offer just for you</p>
+      <p style="margin: 8px 0 0 0;">Sign up using the link below and enroll in your first course to receive a <strong>25% discount coupon</strong> — delivered to your inbox automatically.</p>
+    </div>
+
+    <div style="text-align: center; margin: 32px 0;">
+      <a href="${signupUrl}" class="button">Accept Invitation &amp; Sign Up</a>
+    </div>
+
+    <div class="divider"></div>
+
+    <p style="font-size: 14px; color: #6b7280;">
+      This invitation was sent by ${referrerName}. If you didn't expect this email, you can safely ignore it.
+    </p>
+
+    <p style="margin-top: 24px;">
+      Best regards,<br>
+      <strong>The EdKonnect Academy Team</strong>
+    </p>
+  `;
+
+  return getEmailBase(content, {
+    preheaderText: `${referrerName} invited you to EdKonnect Academy — get 25% off your first enrollment!`
+  });
+}
+
+interface ReferralWelcomeEmailProps {
+  userName: string;
+  referrerName: string;
+}
+
+/**
+ * Email sent to newly signed-up user who came via a referral link
+ */
+export function getReferralWelcomeEmail(props: ReferralWelcomeEmailProps): string {
+  const { userName, referrerName } = props;
+
+  const content = `
+    <h1>Welcome to EdKonnect Academy, ${userName}!</h1>
+    <p>You joined through a referral from <strong>${referrerName}</strong> — great choice!</p>
+
+    <div class="highlight-box">
+      <p style="margin: 0; font-weight: 600;">🎁 Your reward is waiting</p>
+      <p style="margin: 8px 0 0 0;">Enroll in your first course and a <strong>25% discount coupon</strong> will be sent to your email automatically. You can use it on any future enrollment.</p>
+    </div>
+
+    <p>Start exploring our courses and find the perfect tutor for your learning journey.</p>
+
+    <p style="margin-top: 24px;">
+      Best regards,<br>
+      <strong>The EdKonnect Academy Team</strong>
+    </p>
+  `;
+
+  return getEmailBase(content, {
+    preheaderText: `Welcome! Enroll in your first course to unlock your 25% discount coupon.`
+  });
+}
+
+interface CouponRewardEmailProps {
+  userName: string;
+  couponCode: string;
+  discountPercent: number;
+  reason: 'referrer' | 'referred';
+  friendName?: string;
+}
+
+/**
+ * Email sent when a coupon reward is issued (to both referrer and referred user)
+ */
+export function getCouponRewardEmail(props: CouponRewardEmailProps): string {
+  const { userName, couponCode, discountPercent, reason, friendName } = props;
+
+  const isReferred = reason === 'referred';
+
+  const headline = isReferred
+    ? `🎁 Your ${discountPercent}% discount coupon is here, ${userName}!`
+    : `🎉 Your referral reward is here, ${userName}!`;
+
+  const description = isReferred
+    ? `You verified your email — welcome to EdKonnect Academy! As a thank you for joining through a referral, here is your exclusive discount coupon. <strong>Use it when enrolling in your first course</strong> to get ${discountPercent}% off the course price.`
+    : `<strong>${friendName}</strong> just enrolled in their first course using your referral link. As a thank you, here is your reward coupon — use it on your next enrollment!`;
+
+  const usageNote = isReferred
+    ? `Valid for your <strong>first course enrollment only</strong>. Enter the code in the Promo Code field during enrollment.`
+    : `Valid for one-time use on any course enrollment.`;
+
+  const content = `
+    <h1>${headline}</h1>
+    <p>${description}</p>
+
+    <div class="highlight-box" style="text-align: center;">
+      <p style="margin: 0; font-size: 14px; color: #6b7280;">Your ${discountPercent}% discount coupon code</p>
+      <p style="margin: 12px 0 4px 0; font-size: 36px; font-weight: 700; letter-spacing: 6px; color: #2563eb;">${couponCode}</p>
+      <p style="margin: 0; font-size: 13px; color: #6b7280;">One-time use &nbsp;·&nbsp; Never expires</p>
+    </div>
+
+    <p>How to apply your coupon:</p>
+    <ol style="margin: 16px 0; padding-left: 24px;">
+      <li style="margin-bottom: 8px;">Go to a course and click <strong>Enroll</strong></li>
+      <li style="margin-bottom: 8px;">Fill in the student details</li>
+      <li style="margin-bottom: 8px;">Enter <strong>${couponCode}</strong> in the <strong>Promo Code</strong> field and click Apply</li>
+      <li style="margin-bottom: 8px;">The ${discountPercent}% discount will be applied to the course price automatically</li>
+    </ol>
+
+    <div class="divider"></div>
+
+    <p style="font-size: 13px; color: #6b7280;">
+      ${usageNote} This coupon is tied to your account and cannot be transferred.
+    </p>
+
+    <p style="margin-top: 24px;">
+      Best regards,<br>
+      <strong>The EdKonnect Academy Team</strong>
+    </p>
+  `;
+
+  return getEmailBase(content, {
+    preheaderText: `Your ${discountPercent}% discount coupon: ${couponCode} — use it on your${isReferred ? ' first' : ' next'} enrollment`
+  });
+}
