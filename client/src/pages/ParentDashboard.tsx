@@ -14,7 +14,6 @@ import { Link, useLocation } from "wouter";
 import { BookOpen, Calendar, MessageSquare, CreditCard, Clock, Users, Video, FileText, HelpCircle, CheckCircle } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { LOGIN_PATH } from "@/const";
-import { SessionNotesFeed } from "@/components/SessionNotesFeed";
 import { NotificationCenter } from "@/components/NotificationCenter";
 import { ParentBookingsManager } from "@/components/ParentBookingsManager";
 import { ParentSessionsManager } from "@/components/ParentSessionsManager";
@@ -45,7 +44,7 @@ export default function ParentDashboard() {
     { enabled: isAuthenticated && user?.role === "parent" }
   );
 
-  const { data: sessionNotes, isLoading: notesLoading } = trpc.parentProfile.getSessionNotes.useQuery(
+  const { data: sessionNotes } = trpc.parentProfile.getSessionNotes.useQuery(
     { limit: 50 },
     { enabled: isAuthenticated && user?.role === "parent" }
   );
@@ -209,9 +208,6 @@ export default function ParentDashboard() {
 
   const [selectedStudent, setSelectedStudent] = useState<string | null>(null);
   const [selectedSubscriptionStudent, setSelectedSubscriptionStudent] = useState<string>("all");
-  const [selectedNoteStudent, setSelectedNoteStudent] = useState<string>("all");
-  const [selectedSubject, setSelectedSubject] = useState<string>("all");
-  const [selectedTimeFilter, setSelectedTimeFilter] = useState<string>("all");
   const [selectedHistoryStudent, setSelectedHistoryStudent] = useState<string>("all");
   const [selectedHistoryTime, setSelectedHistoryTime] = useState<string>("all");
   const [selectedHistoryCourse, setSelectedHistoryCourse] = useState<string>("all");
@@ -295,40 +291,6 @@ export default function ParentDashboard() {
     return Array.from(set);
   }, [combinedNotes, activeSubscriptions]);
 
-  const filteredSessionNotes = useMemo(() => {
-    const now = new Date();
-    const currentMonth = now.getMonth();
-    const currentYear = now.getFullYear();
-
-    return combinedNotes.filter((note) => {
-      const studentName =
-        [note.studentFirstName, note.studentLastName].filter(Boolean).join(" ").trim() ||
-        (note.subscriptionId ? subscriptionStudentMap.get(note.subscriptionId) ?? "" : "");
-      const subject = note.courseTitle || note.courseSubject || "";
-
-      const matchesStudent = selectedNoteStudent === "all" || studentName === selectedNoteStudent;
-      const matchesSubject = selectedSubject === "all" || subject === selectedSubject;
-
-      // Time filter logic
-      let matchesTime = true;
-      if (selectedTimeFilter !== "all") {
-        const noteDate = new Date(note.scheduledAt);
-        const noteMonth = noteDate.getMonth();
-        const noteYear = noteDate.getFullYear();
-
-        if (selectedTimeFilter === "this_month") {
-          matchesTime = noteMonth === currentMonth && noteYear === currentYear;
-        } else if (selectedTimeFilter === "last_month") {
-          const lastMonth = currentMonth === 0 ? 11 : currentMonth - 1;
-          const lastMonthYear = currentMonth === 0 ? currentYear - 1 : currentYear;
-          matchesTime = noteMonth === lastMonth && noteYear === lastMonthYear;
-        }
-      }
-
-      return matchesStudent && matchesSubject && matchesTime;
-    });
-  }, [combinedNotes, selectedNoteStudent, selectedSubject, selectedTimeFilter, subscriptionStudentMap]);
-
   // Filtered history sessions
   const filteredHistorySessions = useMemo(() => {
     if (!sessionHistory) return [];
@@ -375,6 +337,15 @@ export default function ParentDashboard() {
       return name === selectedSubscriptionStudent;
     });
   }, [activeSubscriptions, selectedSubscriptionStudent]);
+
+  // Map sessionId -> structured note for quick lookup in history
+  const noteBySessionId = useMemo(() => {
+    const map = new Map<number, NonNullable<typeof sessionNotes>[number]>();
+    (sessionNotes || []).forEach((note) => {
+      if (note.sessionId) map.set(note.sessionId, note);
+    });
+    return map;
+  }, [sessionNotes]);
 
   // Map sessionId -> quiz for quick lookup in history
   const quizBySessionId = useMemo(() => {
@@ -500,7 +471,6 @@ export default function ParentDashboard() {
                 >
                   History
                 </TabsTrigger>
-                <TabsTrigger className="whitespace-nowrap" value="notes">Notes</TabsTrigger>
               </TabsList>
             </div>
 
@@ -914,6 +884,34 @@ export default function ParentDashboard() {
                             </div>
                           )}
 
+                          {noteBySessionId.has(session.id) && (() => {
+                            const n = noteBySessionId.get(session.id)!;
+                            const hasExtra = n.homework || n.challenges || n.nextSteps;
+                            if (!hasExtra) return null;
+                            return (
+                              <div className="mt-3 p-4 rounded-xl border-l-4 border-blue-400 bg-gradient-to-br from-blue-50 to-blue-100/40 dark:from-blue-950/20 dark:to-blue-900/10 space-y-2">
+                                {n.homework && (
+                                  <div>
+                                    <p className="text-xs font-semibold text-blue-800 dark:text-blue-200 uppercase tracking-wide mb-0.5">Homework</p>
+                                    <p className="text-sm text-blue-900 dark:text-blue-50 leading-relaxed whitespace-pre-wrap">{n.homework}</p>
+                                  </div>
+                                )}
+                                {n.challenges && (
+                                  <div>
+                                    <p className="text-xs font-semibold text-blue-800 dark:text-blue-200 uppercase tracking-wide mb-0.5">Challenges</p>
+                                    <p className="text-sm text-blue-900 dark:text-blue-50 leading-relaxed whitespace-pre-wrap">{n.challenges}</p>
+                                  </div>
+                                )}
+                                {n.nextSteps && (
+                                  <div>
+                                    <p className="text-xs font-semibold text-blue-800 dark:text-blue-200 uppercase tracking-wide mb-0.5">Next Steps</p>
+                                    <p className="text-sm text-blue-900 dark:text-blue-50 leading-relaxed whitespace-pre-wrap">{n.nextSteps}</p>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })()}
+
                           {quizBySessionId.has(session.id) && (
                             <div className="mt-3">
                               {quizBySessionId.get(session.id)!.status === "completed" ? (
@@ -979,70 +977,6 @@ export default function ParentDashboard() {
               )}
             </TabsContent>
 
-            {/* Session Notes Tab */}
-            <TabsContent value="notes" forceMount className={tabContentClass}>
-              <h2 className="text-2xl font-bold">Session Notes</h2>
-
-              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 mt-4">
-                <div className="space-y-2">
-                  <Label htmlFor="note-student">Student</Label>
-                  <Select value={selectedNoteStudent} onValueChange={setSelectedNoteStudent}>
-                    <SelectTrigger id="note-student">
-                      <SelectValue placeholder="All students" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All students</SelectItem>
-                      {noteStudentOptions.map((name) => (
-                        <SelectItem key={name} value={name}>{name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="note-time">Time Period</Label>
-                  <Select value={selectedTimeFilter} onValueChange={setSelectedTimeFilter}>
-                    <SelectTrigger id="note-time">
-                      <SelectValue placeholder="All time" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All time</SelectItem>
-                      <SelectItem value="this_month">This month</SelectItem>
-                      <SelectItem value="last_month">Last month</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="note-subject">Course</Label>
-                  <Select value={selectedSubject} onValueChange={setSelectedSubject}>
-                    <SelectTrigger id="note-subject">
-                      <SelectValue placeholder="All courses" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All courses</SelectItem>
-                      {subjectOptions.map((subject) => (
-                        <SelectItem key={subject} value={subject}>{subject}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              {notesLoading ? (
-                <Skeleton className="h-32" />
-              ) : sessionNotes && sessionNotes.length > 0 ? (
-                <SessionNotesFeed notes={filteredSessionNotes} />
-              ) : (
-                <Card className="mt-6">
-                  <CardContent className="py-16 text-center">
-                    <FileText className="w-16 h-16 mx-auto mb-4 text-muted-foreground" />
-                    <h3 className="text-xl font-semibold mb-2">No notes yet</h3>
-                    <p className="text-muted-foreground">Your tutor's session notes will appear here.</p>
-                  </CardContent>
-                </Card>
-              )}
-            </TabsContent>
 
 
             </div>
