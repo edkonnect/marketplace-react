@@ -154,13 +154,7 @@ export default function TutorListing() {
                           </div>
                         )}
 
-                        {/* Hourly Rate */}
                         <div className="flex items-center justify-between mt-auto pt-4 border-t border-border">
-                          {hourlyRate > 0 && (
-                            <div className="flex items-center gap-1 text-lg font-semibold text-primary">
-                              <span>{formatPrice(hourlyRate, "/hour")}</span>
-                            </div>
-                          )}
                           <Button asChild size="sm" className="ml-auto">
                             <Link href={`/tutor/${tutor.userId}`}>
                               View Profile

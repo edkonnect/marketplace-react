@@ -1196,7 +1196,7 @@ export function AdminDashboard() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="grid gap-3 md:grid-cols-2">
+                <div className="flex flex-wrap items-end gap-4">
                   <div>
                     <label className="text-sm font-medium mb-2 block">Select Tutor</label>
                     <Select
@@ -1204,7 +1204,7 @@ export function AdminDashboard() {
                       onValueChange={(value) => setSelectedTutorId(Number(value))}
                       disabled={tutorOptionsLoading}
                     >
-                      <SelectTrigger>
+                      <SelectTrigger className="w-72">
                         <SelectValue placeholder="Select Tutor" />
                       </SelectTrigger>
                       <SelectContent>
@@ -1216,6 +1216,16 @@ export function AdminDashboard() {
                       </SelectContent>
                     </Select>
                   </div>
+                  {selectedTutorId && (() => {
+                    const selected = tutorOptions?.find((t) => t.id === selectedTutorId);
+                    const rate = selected?.hourlyRate ? parseFloat(selected.hourlyRate) : null;
+                    return rate && rate > 0 ? (
+                      <div className="pb-0.5">
+                        <p className="text-xs text-muted-foreground mb-1">Requested Hourly Rate</p>
+                        <p className="text-lg font-semibold text-primary">${rate.toFixed(2)}<span className="text-sm font-normal text-muted-foreground">/hr</span></p>
+                      </div>
+                    ) : null;
+                  })()}
                 </div>
 
                 {!tutorOptionsLoading && (!tutorOptions || tutorOptions.length === 0) && (

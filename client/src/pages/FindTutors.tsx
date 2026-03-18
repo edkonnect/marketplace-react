@@ -197,11 +197,6 @@ function TutorCard({ tutor }: TutorCardProps) {
             </div>
           </div>
           <div className="text-right">
-            {tutor.hourlyRate && (
-              <div className="text-2xl font-bold text-primary">
-                {formatPrice(tutor.hourlyRate as string, "/hr")}
-              </div>
-            )}
           </div>
         </div>
       </CardHeader>

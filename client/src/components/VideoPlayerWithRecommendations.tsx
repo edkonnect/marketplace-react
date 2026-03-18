@@ -104,13 +104,6 @@ export function VideoPlayerWithRecommendations({
                                 </div>
                               )}
                             </div>
-                            {tutor.hourlyRate && (
-                              <div className="text-right">
-                                <div className="text-xl font-bold text-primary">
-                                  {formatPrice(tutor.hourlyRate, "/hr")}
-                                </div>
-                              </div>
-                            )}
                           </div>
 
                           {/* Bio */}

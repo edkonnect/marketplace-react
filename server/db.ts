@@ -1403,8 +1403,10 @@ export async function getTutorsForPreferenceDropdown() {
         id: users.id,
         name: users.name,
         email: users.email,
+        hourlyRate: tutorProfiles.hourlyRate,
       })
       .from(users)
+      .leftJoin(tutorProfiles, eq(tutorProfiles.userId, users.id))
       .where(eq(users.role, "tutor"))
       .orderBy(asc(users.name));
   } catch (error) {
