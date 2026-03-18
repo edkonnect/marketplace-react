@@ -11,7 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Link, useLocation } from "wouter";
-import { BookOpen, Calendar, MessageSquare, CreditCard, Clock, Users, Video, FileText, HelpCircle, CheckCircle, Share2, Copy, Gift, UserPlus } from "lucide-react";
+import { BookOpen, Calendar, MessageSquare, CreditCard, Clock, Users, Video, FileText, HelpCircle, CheckCircle } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { LOGIN_PATH } from "@/const";
 import { SessionNotesFeed } from "@/components/SessionNotesFeed";
@@ -55,26 +55,6 @@ export default function ParentDashboard() {
     { enabled: isAuthenticated && user?.role === "parent" }
   );
 
-  const { data: myReferrals = [] } = trpc.referral.getMyReferrals.useQuery(
-    undefined,
-    { enabled: isAuthenticated && user?.role === "parent" }
-  );
-  const { data: myCoupons = [] } = trpc.referral.getMyCoupons.useQuery(
-    undefined,
-    { enabled: isAuthenticated && user?.role === "parent" }
-  );
-  const { data: myReferralCode } = trpc.referral.getMyCode.useQuery(
-    undefined,
-    { enabled: isAuthenticated && user?.role === "parent" }
-  );
-  const [copiedLink, setCopiedLink] = useState(false);
-  const handleCopyReferralLink = () => {
-    if (myReferralCode?.referralLink) {
-      navigator.clipboard.writeText(myReferralCode.referralLink);
-      setCopiedLink(true);
-      setTimeout(() => setCopiedLink(false), 2000);
-    }
-  };
 
 
   type QuizModalState = {
@@ -521,7 +501,6 @@ export default function ParentDashboard() {
                   History
                 </TabsTrigger>
                 <TabsTrigger className="whitespace-nowrap" value="notes">Notes</TabsTrigger>
-                <TabsTrigger className="whitespace-nowrap" value="referrals">Referrals</TabsTrigger>
               </TabsList>
             </div>
 
@@ -1065,120 +1044,6 @@ export default function ParentDashboard() {
               )}
             </TabsContent>
 
-            {/* Referrals Tab */}
-            <TabsContent value="referrals" forceMount className={tabContentClass}>
-              <div className="space-y-6">
-                {/* Share your link */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <Share2 className="w-5 h-5 text-primary" />
-                      Your Referral Link
-                    </CardTitle>
-                    <CardDescription>
-                      Share this link with friends. When they enroll in their first course, you both get a 25% discount coupon.
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    {myReferralCode?.referralLink ? (
-                      <div className="flex gap-2">
-                        <input
-                          readOnly
-                          value={myReferralCode.referralLink}
-                          className="flex-1 px-3 py-2 text-sm rounded-md border border-border bg-muted/40 font-mono"
-                        />
-                        <Button variant="outline" className="gap-2 shrink-0" onClick={handleCopyReferralLink}>
-                          <Copy className="w-4 h-4" />
-                          {copiedLink ? "Copied!" : "Copy"}
-                        </Button>
-                      </div>
-                    ) : (
-                      <p className="text-sm text-muted-foreground">Generating your referral link...</p>
-                    )}
-                  </CardContent>
-                </Card>
-
-                {/* My Coupons */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <Gift className="w-5 h-5 text-primary" />
-                      My Coupons
-                    </CardTitle>
-                    <CardDescription>Discount coupons earned from referrals. Use them at enrollment.</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    {myCoupons.length === 0 ? (
-                      <div className="text-center py-8">
-                        <Gift className="w-12 h-12 mx-auto mb-3 text-muted-foreground" />
-                        <p className="text-muted-foreground text-sm">No coupons yet. Refer a friend to earn your first reward!</p>
-                      </div>
-                    ) : (
-                      <div className="space-y-3">
-                        {myCoupons.map((coupon: any) => (
-                          <div key={coupon.id} className={`flex items-center justify-between p-4 rounded-lg border ${coupon.isUsed ? "opacity-50 bg-muted/30" : "bg-primary/5 border-primary/20"}`}>
-                            <div className="flex items-center gap-3">
-                              <div className={`w-10 h-10 rounded-full flex items-center justify-center ${coupon.isUsed ? "bg-muted" : "bg-primary/10"}`}>
-                                <Gift className={`w-5 h-5 ${coupon.isUsed ? "text-muted-foreground" : "text-primary"}`} />
-                              </div>
-                              <div>
-                                <p className="font-mono font-bold text-lg tracking-widest">{coupon.code}</p>
-                                <p className="text-xs text-muted-foreground">{coupon.discountPercent}% off · {coupon.isUsed ? `Used on ${new Date(coupon.usedAt).toLocaleDateString()}` : "Not yet used · Never expires"}</p>
-                              </div>
-                            </div>
-                            {coupon.isUsed ? (
-                              <Badge variant="secondary">Used</Badge>
-                            ) : (
-                              <Badge className="bg-green-600 text-white">Active</Badge>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-
-                {/* Referral History */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <UserPlus className="w-5 h-5 text-primary" />
-                      Referral History
-                    </CardTitle>
-                    <CardDescription>Track the status of friends you've invited.</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    {myReferrals.length === 0 ? (
-                      <div className="text-center py-8">
-                        <UserPlus className="w-12 h-12 mx-auto mb-3 text-muted-foreground" />
-                        <p className="text-muted-foreground text-sm">No referrals sent yet. Use the Invite a Friend button on the home page!</p>
-                      </div>
-                    ) : (
-                      <div className="space-y-3">
-                        {myReferrals.map((r: any) => (
-                          <div key={r.id} className="flex items-center justify-between p-4 rounded-lg border bg-card/50">
-                            <div>
-                              <p className="font-medium text-sm">{r.referredUserName || r.invitedEmail}</p>
-                              {r.referredUserName && <p className="text-xs text-muted-foreground">{r.invitedEmail}</p>}
-                              <p className="text-xs text-muted-foreground mt-1">Invited {new Date(r.createdAt).toLocaleDateString()}</p>
-                            </div>
-                            <Badge
-                              className={
-                                r.status === "rewarded" ? "bg-green-600 text-white" :
-                                r.status === "signed_up" ? "bg-blue-600 text-white" :
-                                "bg-muted text-muted-foreground"
-                              }
-                            >
-                              {r.status === "rewarded" ? "Rewarded" : r.status === "signed_up" ? "Signed Up" : "Pending"}
-                            </Badge>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              </div>
-            </TabsContent>
 
             </div>
           </Tabs>
