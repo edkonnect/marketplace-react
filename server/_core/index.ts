@@ -38,15 +38,22 @@ async function startServer() {
   const server = createServer(app);
 
   // Security & middleware
-  app.use(helmet());
-  if (process.env.NODE_ENV === "development") {
-    // TEMP: Loosen CSP in dev to satisfy Brave Shields / Vite HMR inline preamble.
-    // Remove before production.
-    app.use((_, res, next) => {
-      res.setHeader("Content-Security-Policy", "script-src 'self' 'unsafe-inline' 'unsafe-eval'");
-      next();
-    });
-  }
+  app.use(
+    helmet({
+      contentSecurityPolicy: {
+        directives: {
+          defaultSrc: ["'self'"],
+          scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+          styleSrc: ["'self'", "'unsafe-inline'"],
+          imgSrc: ["'self'", "data:", "blob:", "https://*.amazonaws.com"],
+          connectSrc: ["'self'", "https://*.amazonaws.com"],
+          fontSrc: ["'self'", "data:"],
+          objectSrc: ["'none'"],
+          frameAncestors: ["'none'"],
+        },
+      },
+    })
+  );
   // Stripe webhook MUST be registered before CORS and express.json() middleware
   // Stripe sends from its own servers so CORS must not apply here
   const { handleStripeWebhook } = await import("../stripeWebhook");

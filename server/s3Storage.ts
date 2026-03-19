@@ -82,11 +82,7 @@ export async function uploadProfileImageToS3(
   const uuid = crypto.randomUUID();
   const key = `profile-images/${userId}/${uuid}.${ext}`;
 
-  console.log(`[s3Storage] uploadProfileImageToS3 called — userId=${userId}, mimeType=${mimeType}, bufferSize=${buffer.length}`);
-  console.log(`[s3Storage] hasS3Credentials=${hasS3Credentials()}, bucket="${ENV.awsS3Bucket}", region="${ENV.awsS3Region}", keyId="${ENV.awsAccessKeyId ? ENV.awsAccessKeyId.slice(0, 8) + '...' : 'MISSING'}"`);
-
   if (hasS3Credentials()) {
-    console.log(`[s3Storage] Uploading to S3 key: ${key}`);
     await getS3Client().send(
       new PutObjectCommand({
         Bucket: ENV.awsS3Bucket,
@@ -96,13 +92,10 @@ export async function uploadProfileImageToS3(
         // No ACL — public read is granted via bucket policy on profile-images/*
       })
     );
-    const url = `https://${ENV.awsS3Bucket}.s3.${ENV.awsS3Region}.amazonaws.com/${key}`;
-    console.log(`[s3Storage] Upload successful: ${url}`);
-    return url;
+    return `https://${ENV.awsS3Bucket}.s3.${ENV.awsS3Region}.amazonaws.com/${key}`;
   }
 
   // Local dev fallback
-  console.log("[s3Storage] No S3 credentials — saving to local uploads/");
   return saveLocally(key, buffer, mimeType);
 }
 
