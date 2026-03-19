@@ -24,7 +24,6 @@ export function ReferralCouponPopup() {
 
   const [couponPopup, setCouponPopup] = useState<{
     code: string;
-    discountPercent: number;
     type: "referred" | "referrer";
   } | null>(null);
   const [copiedCoupon, setCopiedCoupon] = useState(false);
@@ -70,7 +69,6 @@ export function ReferralCouponPopup() {
 
     setCouponPopup({
       code: coupon.code,
-      discountPercent: coupon.discountPercent,
       type: referredCoupon ? "referred" : "referrer",
     });
     shownThisMountRef.current = true;
@@ -108,14 +106,14 @@ export function ReferralCouponPopup() {
             <>
               <DialogTitle className="text-2xl">Your referral paid off! 🎉</DialogTitle>
               <DialogDescription className="text-base">
-                Someone you referred has enrolled in their first course on EdKonnect Academy. As a thank you, here's your <strong>{couponPopup?.discountPercent}% discount coupon</strong> — use it on your next enrollment.
+                Someone you referred has enrolled in their first course on EdKonnect Academy. As a thank you, here's your <strong>referral discount coupon</strong> — use it on your next enrollment.
               </DialogDescription>
             </>
           ) : (
             <>
               <DialogTitle className="text-2xl">You've got a welcome gift!</DialogTitle>
               <DialogDescription className="text-base">
-                A friend referred you to EdKonnect Academy. Here's your <strong>{couponPopup?.discountPercent}% discount coupon</strong> — use it on your first course enrollment.
+                A friend referred you to EdKonnect Academy. Here's your <strong>referral discount coupon</strong> — use it on your first course enrollment.
               </DialogDescription>
             </>
           )}

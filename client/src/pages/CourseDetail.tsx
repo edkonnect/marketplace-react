@@ -62,9 +62,9 @@ export default function CourseDetail() {
 
   // Promo code state
   const [promoCode, setPromoCode] = React.useState("");
-  const [promoValidation, setPromoValidation] = React.useState<{ valid: boolean; discountPercent?: number; reason?: string } | null>(null);
+  const [promoValidation, setPromoValidation] = React.useState<{ valid: boolean; discountAmountUsd?: number; discountAmountInr?: number; reason?: string } | null>(null);
   const validateCouponQuery = trpc.referral.validateCoupon.useQuery(
-    { code: promoCode },
+    { code: promoCode, coursePriceUsd: course ? parseFloat(course.price) : undefined },
     { enabled: false }
   );
 
@@ -74,9 +74,8 @@ export default function CourseDetail() {
     if (result.data) setPromoValidation(result.data);
   };
 
-  // Combine both discounts independently — promo code always applies on top of any sibling discount
-  const promoDiscountPercent = promoValidation?.valid ? (promoValidation.discountPercent ?? 0) : 0;
-  const effectiveDiscountPercent = Math.min(100, discountPercent + promoDiscountPercent);
+  // Promo code gives fixed USD amount off; sibling discount is still percentage-based
+  const promoDiscountUsd = promoValidation?.valid ? (promoValidation.discountAmountUsd ?? 0) : 0;
 
   const createCheckoutMutation = trpc.course.createCheckoutSession.useMutation();
   const enrollWithoutPaymentMutation = trpc.course.enrollWithoutPayment.useMutation();
@@ -295,6 +294,8 @@ export default function CourseDetail() {
   }
 
   const price = parseFloat(course.price);
+  const siblingDiscountAmount = siblingDiscount ? (price * discountPercent / 100) : 0;
+  const effectiveTotal = Math.max(0, price - siblingDiscountAmount - promoDiscountUsd);
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
@@ -578,7 +579,7 @@ export default function CourseDetail() {
                               {promoValidation && (
                                 promoValidation.valid ? (
                                   <p className="text-sm text-green-600 font-medium">
-                                    ✓ {promoValidation.discountPercent}% discount applied!
+                                    ✓ {formatPrice(promoDiscountUsd)} discount applied!
                                   </p>
                                 ) : (
                                   <p className="text-sm text-destructive">{promoValidation.reason}</p>
@@ -587,15 +588,21 @@ export default function CourseDetail() {
                             </div>
                           )}
 
-                          {effectiveDiscountPercent > 0 && (
+                          {(siblingDiscount || promoDiscountUsd > 0) && (
                             <div className="flex items-center justify-between p-3 bg-primary/5 rounded-lg border border-primary/20 text-sm">
                               <span className="text-muted-foreground">
-                                Total after {effectiveDiscountPercent}% discount
-                                {siblingDiscount && promoDiscountPercent > 0 && (
-                                  <span className="ml-1 text-xs">({discountPercent}% sibling + {promoDiscountPercent}% promo)</span>
+                                Total after discount
+                                {siblingDiscount && promoDiscountUsd > 0 && (
+                                  <span className="ml-1 text-xs">({discountPercent}% sibling + {formatPrice(promoDiscountUsd)} promo)</span>
+                                )}
+                                {siblingDiscount && promoDiscountUsd === 0 && (
+                                  <span className="ml-1 text-xs">({discountPercent}% sibling)</span>
+                                )}
+                                {!siblingDiscount && promoDiscountUsd > 0 && (
+                                  <span className="ml-1 text-xs">({formatPrice(promoDiscountUsd)} promo)</span>
                                 )}
                               </span>
-                              <span className="font-bold text-primary">{formatPrice(price * (1 - effectiveDiscountPercent / 100))}</span>
+                              <span className="font-bold text-primary">{formatPrice(effectiveTotal)}</span>
                             </div>
                           )}
 
@@ -613,7 +620,7 @@ export default function CourseDetail() {
                                 onClick={handleEnroll}
                                 disabled={createCheckoutMutation.isPending || !studentFirstName || !studentLastName}
                               >
-                                {createCheckoutMutation.isPending ? "Processing..." : effectiveDiscountPercent > 0 ? `Pay ${formatPrice(price * (1 - effectiveDiscountPercent / 100))}` : "Pay in Full"}
+                                {createCheckoutMutation.isPending ? "Processing..." : (siblingDiscount || promoDiscountUsd > 0) ? `Pay ${formatPrice(effectiveTotal)}` : "Pay in Full"}
                               </Button>
                             </div>
                             {price >= 150 && (

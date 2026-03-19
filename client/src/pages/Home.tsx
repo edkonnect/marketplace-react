@@ -573,7 +573,7 @@ export default function Home() {
                 Invite a Friend,<br />Both of You Win
               </h2>
               <p className="text-lg text-muted-foreground mb-6">
-                Know someone who'd benefit from EdKonnect? Invite them via email. When they enroll in their first course, <strong>you both receive a 25% discount coupon</strong> delivered straight to your inbox.
+                Know someone who'd benefit from EdKonnect? Invite them via email. When they enroll in their first course, <strong>you both receive a discount coupon</strong> (up to $25 off) delivered straight to your inbox.
               </p>
               <div className="flex flex-col sm:flex-row gap-3">
                 {isAuthenticated ? (
@@ -598,7 +598,7 @@ export default function Home() {
                 { icon: Share2, step: "1", title: "You send an invite", desc: "Enter your friend's email — we send them a personalised invitation with your referral link." },
                 { icon: UserPlus, step: "2", title: "Friend signs up", desc: "They create an account using your referral link. No coupon yet — the reward comes after enrollment." },
                 { icon: BookOpen, step: "3", title: "Friend enrolls in a course", desc: "Once they enroll in their first course, the reward is triggered automatically." },
-                { icon: Gift, step: "4", title: "You both get 25% off", desc: "A 25% discount coupon is emailed to both of you — one-time use, never expires." },
+                { icon: Gift, step: "4", title: "You both get a discount", desc: "A discount coupon (up to $25 off) is emailed to both of you — one-time use, never expires." },
               ].map((item) => (
                 <div key={item.step} className="flex items-start gap-4 p-4 rounded-xl bg-background/70 border border-border/50">
                   <div className="flex-shrink-0 w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
@@ -648,7 +648,7 @@ export default function Home() {
             <div className="flex items-start gap-2 p-3 rounded-lg bg-primary/5 border border-primary/20">
               <CheckCircle className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
               <p className="text-xs text-muted-foreground">
-                When your friend enrolls in their first course, you'll both receive a <strong>25% discount coupon</strong> via email.
+                When your friend enrolls in their first course, you'll both receive a <strong>discount coupon</strong> (up to $25 off) via email.
               </p>
             </div>
             <div className="flex gap-2">

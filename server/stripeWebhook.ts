@@ -20,15 +20,15 @@ async function processReferralReward(parentId: number): Promise<void> {
     const referrerUser = await db.getUserByReferralCode(parentUser.referredBy);
     if (!referrerUser) return;
 
-    // Only create coupon for the referrer
-    const referrerCoupon = await db.createCoupon({ userId: referrerUser.id, discountPercent: 25, sourceReferralId: referral.id });
+    // Only create coupon for the referrer (amounts are 0; resolved at enrollment based on course price)
+    const referrerCoupon = await db.createCoupon({ userId: referrerUser.id, sourceReferralId: referral.id });
 
     await db.updateReferralRewarded(referral.id);
 
     if (referrerCoupon && referrerUser.email) {
       const parentName = `${parentUser.firstName} ${parentUser.lastName}`.trim();
       const referrerName = `${referrerUser.firstName} ${referrerUser.lastName}`.trim();
-      await sendCouponRewardEmail({ userEmail: referrerUser.email, userName: referrerName, couponCode: referrerCoupon.code, discountPercent: 25, reason: "referrer", friendName: parentName }).catch(() => {});
+      await sendCouponRewardEmail({ userEmail: referrerUser.email, userName: referrerName, couponCode: referrerCoupon.code, reason: "referrer", friendName: parentName }).catch(() => {});
     }
   } catch (err) {
     console.error("[Webhook] processReferralReward failed:", err);
@@ -135,11 +135,11 @@ export async function handleStripeWebhook(req: Request, res: Response) {
                 const numberOfMonths = Math.max(1, Math.ceil(totalSessions / sessionsPerMonth));
                 const rawPriceCents = Math.round(parseFloat(course.price) * 100);
                 const siblingPct = localSub.siblingDiscountApplied ? 5 : 0;
-                const promoPct = localSub.promoDiscountPercent ?? 0;
-                const totalDiscountPct = Math.min(100, siblingPct + promoPct);
-                const totalPriceCents = totalDiscountPct > 0
-                  ? Math.round(rawPriceCents * (1 - totalDiscountPct / 100))
+                const promoAmountCents = Math.round(parseFloat(localSub.promoDiscountAmount ?? "0") * 100);
+                const afterSiblingCents = siblingPct > 0
+                  ? Math.round(rawPriceCents * (1 - siblingPct / 100))
                   : rawPriceCents;
+                const totalPriceCents = Math.max(0, afterSiblingCents - promoAmountCents);
                 const monthlyAmountCents = Math.round(totalPriceCents / numberOfMonths);
                   const studentName = [localSub.studentFirstName, localSub.studentLastName].filter(Boolean).join(" ");
 

@@ -62,12 +62,11 @@ authRouter.post("/signup", async (req, res) => {
       await db.setUserReferredBy(user.id, refCode);
       await db.updateReferralSignedUp(email, user.id);
 
-      // Issue 25% coupon to referred user right away
+      // Issue coupon to referred user right away (amounts are 0; resolved at enrollment based on course price)
       const referral = await db.getReferralByReferredUserId(user.id);
       if (referral) {
         const coupon = await db.createCoupon({
           userId: user.id,
-          discountPercent: 25,
           sourceReferralId: referral.id,
         });
         if (coupon) {
@@ -76,7 +75,6 @@ authRouter.post("/signup", async (req, res) => {
             userEmail: user.email || email,
             userName,
             couponCode: coupon.code,
-            discountPercent: 25,
             reason: "referred",
           }).catch(err => console.error("[Auth] Failed to send coupon email to referred user:", err));
         }

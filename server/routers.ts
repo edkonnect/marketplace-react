@@ -112,10 +112,9 @@ async function triggerReferralReward(parentId: number): Promise<void> {
     const referrerUser = await db.getUserByReferralCode(parentUser.referredBy);
     if (!referrerUser) return;
 
-    // Create coupon only for the referrer
+    // Create coupon for the referrer (amounts are 0; applied at their next enrollment)
     const referrerCoupon = await db.createCoupon({
       userId: referrerUser.id,
-      discountPercent: 25,
       sourceReferralId: referral.id,
     });
 
@@ -130,7 +129,6 @@ async function triggerReferralReward(parentId: number): Promise<void> {
         userEmail: referrerUser.email,
         userName: referrerName,
         couponCode: referrerCoupon.code,
-        discountPercent: 25,
         reason: "referrer",
         friendName: parentName,
       }).catch(err => console.error("[Referral] Failed to send reward email to referrer:", err));
@@ -1018,22 +1016,24 @@ export const appRouter = router({
           }
 
           // Validate promo code if provided
-          let promoDiscount = 0;
+          let promoDiscountUsd = 0;
           let appliedCouponId: number | null = null;
           if (input.promoCode) {
             const coupon = await db.getCouponByCode(input.promoCode);
             if (!coupon || coupon.isUsed || coupon.userId !== ctx.user.id) {
               throw new TRPCError({ code: "BAD_REQUEST", message: "Invalid or expired promo code." });
             }
-            promoDiscount = coupon.discountPercent;
+            // Resolve fixed discount amount based on course price tier
+            const referralDiscount = await db.getReferralDiscountForPrice(coursePrice);
+            promoDiscountUsd = referralDiscount.usd;
+            // Persist resolved amount on coupon and subscription
+            await db.updateCouponAmounts(coupon.id, { usd: referralDiscount.usd, inr: referralDiscount.inr });
             appliedCouponId = coupon.id;
           }
 
-          const effectiveDiscountPercent = Math.min(100, (hasSiblingDiscount ? SIBLING_DISCOUNT_PERCENT : 0) + promoDiscount);
-
           // Store promo discount on subscription so webhook can use it
-          if (promoDiscount > 0) {
-            await db.updateSubscription(subscriptionId, { promoDiscountPercent: promoDiscount });
+          if (promoDiscountUsd > 0) {
+            await db.updateSubscription(subscriptionId, { promoDiscountAmount: promoDiscountUsd });
           }
 
           // STRIPE_BYPASS=true — skip payment, mark as paid immediately
@@ -1055,11 +1055,12 @@ export const appRouter = router({
             origin: input.origin,
             subscriptionId,
             tutorId: selectedTutorId,
-            discountPercent: effectiveDiscountPercent > 0 ? effectiveDiscountPercent : undefined,
-            discountLabel: hasSiblingDiscount && promoDiscount > 0
-              ? `${SIBLING_DISCOUNT_PERCENT}% sibling + ${promoDiscount}% promo`
+            discountPercent: hasSiblingDiscount ? SIBLING_DISCOUNT_PERCENT : undefined,
+            discountAmountUsd: promoDiscountUsd > 0 ? promoDiscountUsd : undefined,
+            discountLabel: hasSiblingDiscount && promoDiscountUsd > 0
+              ? `${SIBLING_DISCOUNT_PERCENT}% sibling + $${promoDiscountUsd} promo`
               : hasSiblingDiscount ? `${SIBLING_DISCOUNT_PERCENT}% sibling`
-              : promoDiscount > 0 ? `${promoDiscount}% promo`
+              : promoDiscountUsd > 0 ? `$${promoDiscountUsd} promo`
               : undefined,
           });
 
@@ -1133,14 +1134,17 @@ export const appRouter = router({
           : 0;
 
         // Validate promo code if provided
-        let promoDiscount = 0;
+        let promoDiscountUsd = 0;
         let appliedCouponId: number | null = null;
         if (input.promoCode) {
           const coupon = await db.getCouponByCode(input.promoCode);
           if (!coupon || coupon.isUsed || coupon.userId !== ctx.user.id) {
             throw new TRPCError({ code: 'BAD_REQUEST', message: 'Invalid or expired promo code.' });
           }
-          promoDiscount = coupon.discountPercent;
+          // Resolve fixed discount amount based on course price tier
+          const referralDiscount = await db.getReferralDiscountForPrice(coursePrice);
+          promoDiscountUsd = referralDiscount.usd;
+          await db.updateCouponAmounts(coupon.id, { usd: referralDiscount.usd, inr: referralDiscount.inr });
           appliedCouponId = coupon.id;
         }
 
@@ -1158,7 +1162,7 @@ export const appRouter = router({
           paymentStatus: 'pending',
           paymentPlan: 'monthly',
           siblingDiscountApplied: hasSiblingDiscount,
-          promoDiscountPercent: promoDiscount,
+          promoDiscountAmount: promoDiscountUsd,
           discountAmount: hasSiblingDiscount ? discountAmount.toFixed(2) : null,
         });
 
@@ -1243,18 +1247,17 @@ export const appRouter = router({
           origin: input.origin,
           subscriptionId: input.subscriptionId,
           tutorId: localSub.preferredTutorId ?? undefined,
-          discountPercent: (() => {
-            const s = localSub.siblingDiscountApplied ? SIBLING_DISCOUNT_PERCENT : 0;
-            const p = localSub.promoDiscountPercent ?? 0;
-            const total = Math.min(100, s + p);
-            return total > 0 ? total : undefined;
+          discountPercent: localSub.siblingDiscountApplied ? SIBLING_DISCOUNT_PERCENT : undefined,
+          discountAmountUsd: (() => {
+            const p = parseFloat(localSub.promoDiscountAmount ?? "0");
+            return p > 0 ? p : undefined;
           })(),
           discountLabel: (() => {
             const s = localSub.siblingDiscountApplied ? SIBLING_DISCOUNT_PERCENT : 0;
-            const p = localSub.promoDiscountPercent ?? 0;
-            if (s > 0 && p > 0) return `${s}% sibling + ${p}% promo`;
+            const p = parseFloat(localSub.promoDiscountAmount ?? "0");
+            if (s > 0 && p > 0) return `${s}% sibling + $${p} promo`;
             if (s > 0) return `${s}% sibling`;
-            if (p > 0) return `${p}% promo`;
+            if (p > 0) return `$${p} promo`;
             return undefined;
           })(),
         });
@@ -6653,7 +6656,7 @@ Return ONLY the JSON object.`;
 
     /** Validate a coupon code (used in enrollment UI) */
     validateCoupon: protectedProcedure
-      .input(z.object({ code: z.string() }))
+      .input(z.object({ code: z.string(), coursePriceUsd: z.number().optional() }))
       .query(async ({ ctx, input }) => {
         const coupon = await db.getCouponByCode(input.code);
         if (!coupon) {
@@ -6665,8 +6668,54 @@ Return ONLY the JSON object.`;
         if (coupon.isUsed) {
           return { valid: false, reason: "This coupon has already been used." };
         }
-        return { valid: true, discountPercent: coupon.discountPercent, couponId: coupon.id };
+        // Resolve tier-based discount if course price is provided
+        let discountAmountUsd = parseFloat(coupon.discountAmountUsd ?? "0");
+        let discountAmountInr = parseFloat(coupon.discountAmountInr ?? "0");
+        if (input.coursePriceUsd != null && input.coursePriceUsd > 0) {
+          const resolved = await db.getReferralDiscountForPrice(input.coursePriceUsd);
+          discountAmountUsd = resolved.usd;
+          discountAmountInr = resolved.inr;
+        }
+        return {
+          valid: true,
+          discountAmountUsd,
+          discountAmountInr,
+          couponId: coupon.id,
+        };
       }),
+
+    /** Admin: get referral discount tier settings */
+    getReferralSettings: adminProcedure.query(async () => {
+      const tiers = await db.getReferralSettings();
+      return tiers.map(t => ({
+        id: t.id,
+        maxPriceUsd: t.maxPriceUsd != null ? parseFloat(t.maxPriceUsd) : null,
+        discountAmountUsd: parseFloat(t.discountAmountUsd),
+        discountAmountInr: parseFloat(t.discountAmountInr),
+        label: t.label,
+        sortOrder: t.sortOrder,
+      }));
+    }),
+
+    /** Admin: save referral discount tier settings */
+    saveReferralSettings: adminProcedure
+      .input(z.array(z.object({
+        id: z.number().optional(),
+        maxPriceUsd: z.number().nullable(),
+        discountAmountUsd: z.number(),
+        discountAmountInr: z.number(),
+        label: z.string(),
+        sortOrder: z.number(),
+      })))
+      .mutation(async ({ input }) => {
+        await db.upsertReferralSettings(input);
+        return { success: true };
+      }),
+
+    /** Admin: get all referral history */
+    getAllReferrals: adminProcedure.query(async () => {
+      return db.getAllReferrals();
+    }),
   }),
 });
 

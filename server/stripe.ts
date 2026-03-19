@@ -25,14 +25,17 @@ export async function createCheckoutSession(params: {
   origin: string;
   subscriptionId?: number;
   tutorId?: number;
-  discountPercent?: number; // e.g. 5 for 5%
-  discountLabel?: string; // e.g. "5% sibling + 25% promo"
+  discountPercent?: number; // sibling discount % (still percentage-based)
+  discountAmountUsd?: number; // fixed promo coupon discount in USD
+  discountLabel?: string;
 }) {
   const stripe = getStripe();
 
-  const discountedAmount = params.discountPercent
+  // Apply sibling % discount first, then subtract fixed coupon amount
+  const afterSibling = params.discountPercent
     ? params.priceAmount * (1 - params.discountPercent / 100)
     : params.priceAmount;
+  const discountedAmount = Math.max(0, afterSibling - (params.discountAmountUsd ?? 0));
 
   const session = await stripe.checkout.sessions.create({
     mode: "payment",
@@ -42,11 +45,11 @@ export async function createCheckoutSession(params: {
           currency: "usd",
           product_data: {
             name: params.courseName,
-            description: params.discountPercent
-              ? `One-on-one tutoring course (${params.discountLabel ?? `${params.discountPercent}% discount`} applied)`
+            description: (params.discountPercent || params.discountAmountUsd)
+              ? `One-on-one tutoring course (${params.discountLabel ?? "discount applied"})`
               : `One-on-one tutoring course`,
           },
-          unit_amount: Math.round(discountedAmount * 100), // Convert to cents
+          unit_amount: Math.round(discountedAmount * 100),
         },
         quantity: 1,
       },

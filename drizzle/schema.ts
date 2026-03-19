@@ -282,7 +282,7 @@ export const subscriptions = mysqlTable("subscriptions", {
   firstInstallmentAmount: decimal("firstInstallmentAmount", { precision: 10, scale: 2 }),
   secondInstallmentAmount: decimal("secondInstallmentAmount", { precision: 10, scale: 2 }),
   siblingDiscountApplied: boolean("siblingDiscountApplied").default(false).notNull(),
-  promoDiscountPercent: int("promoDiscountPercent").default(0).notNull(),
+  promoDiscountAmount: decimal("promoDiscountAmount", { precision: 10, scale: 2 }).default("0.00").notNull(),
   discountAmount: decimal("discountAmount", { precision: 10, scale: 2 }),
   smsOptIn: boolean("smsOptIn").default(false).notNull(),
   smsConsentTimestamp: timestamp("smsConsentTimestamp"),
@@ -1005,7 +1005,9 @@ export const coupons = mysqlTable("coupons", {
   id: int("id").autoincrement().primaryKey(),
   code: varchar("code", { length: 16 }).notNull().unique(),
   userId: int("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
-  discountPercent: int("discountPercent").notNull().default(25),
+  // Fixed-amount discount — amount determined at enrollment based on course price tier
+  discountAmountUsd: decimal("discountAmountUsd", { precision: 10, scale: 2 }).default("0.00").notNull(),
+  discountAmountInr: decimal("discountAmountInr", { precision: 10, scale: 2 }).default("0.00").notNull(),
   isUsed: boolean("isUsed").default(false).notNull(),
   usedAt: timestamp("usedAt"),
   sourceReferralId: int("sourceReferralId").references(() => referrals.id, { onDelete: "set null" }),
@@ -1017,3 +1019,21 @@ export const coupons = mysqlTable("coupons", {
 
 export type Coupon = typeof coupons.$inferSelect;
 export type InsertCoupon = typeof coupons.$inferInsert;
+
+// ============ Referral Settings ============
+// Admin-configurable discount tiers for referral coupons
+
+export const referralSettings = mysqlTable("referral_settings", {
+  id: int("id").autoincrement().primaryKey(),
+  // Price tier upper bound in USD (null = no upper bound, i.e. highest tier)
+  maxPriceUsd: decimal("maxPriceUsd", { precision: 10, scale: 2 }),
+  discountAmountUsd: decimal("discountAmountUsd", { precision: 10, scale: 2 }).notNull(),
+  discountAmountInr: decimal("discountAmountInr", { precision: 10, scale: 2 }).notNull(),
+  // Display label e.g. "Up to $500", "$501–$1000", "Above $1000"
+  label: varchar("label", { length: 100 }).notNull(),
+  sortOrder: int("sortOrder").notNull().default(0),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull().onUpdateNow(),
+});
+
+export type ReferralSetting = typeof referralSettings.$inferSelect;
+export type InsertReferralSetting = typeof referralSettings.$inferInsert;

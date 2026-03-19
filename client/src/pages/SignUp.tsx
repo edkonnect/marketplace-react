@@ -110,7 +110,7 @@ export default function SignUp() {
               <span className="text-2xl">🎁</span>
               <div>
                 <p className="font-semibold text-sm">You were invited!</p>
-                <p className="text-sm text-muted-foreground">Enroll in your first course after signing up to unlock a <strong>25% discount coupon</strong>.</p>
+                <p className="text-sm text-muted-foreground">Enroll in your first course after signing up to unlock a <strong>discount coupon</strong> (up to $25 off).</p>
               </div>
             </div>
           )}

@@ -30,7 +30,8 @@ import {
   sessionAIInsights, InsertSessionAIInsight,
   sessionQuizzes, InsertSessionQuiz,
   referrals, InsertReferral, Referral,
-  coupons, InsertCoupon, Coupon
+  coupons, InsertCoupon, Coupon,
+  referralSettings, ReferralSetting
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
@@ -5130,6 +5131,27 @@ export async function getReferralByReferredUserId(referredUserId: number) {
   return result[0];
 }
 
+export async function getAllReferrals() {
+  const db = await getDb();
+  if (!db) return [];
+  const referrerUsers = alias(users, "referrer");
+  const referredUsers = alias(users, "referred");
+  return db
+    .select({
+      id: referrals.id,
+      status: referrals.status,
+      createdAt: referrals.createdAt,
+      referrerEmail: referrerUsers.email,
+      referrerName: sql<string>`CONCAT(${referrerUsers.firstName}, ' ', ${referrerUsers.lastName})`,
+      referredEmail: referredUsers.email,
+      referredName: sql<string>`CONCAT(${referredUsers.firstName}, ' ', ${referredUsers.lastName})`,
+    })
+    .from(referrals)
+    .leftJoin(referrerUsers, eq(referrals.referrerId, referrerUsers.id))
+    .leftJoin(referredUsers, eq(referrals.referredUserId, referredUsers.id))
+    .orderBy(desc(referrals.createdAt));
+}
+
 export async function hasUserAlreadyEnrolled(parentId: number): Promise<boolean> {
   const db = await getDb();
   if (!db) return false;
@@ -5153,7 +5175,13 @@ async function generateUniqueCouponCode(): Promise<string> {
   return "REF-" + generateShortCode(10);
 }
 
-export async function createCoupon(input: { userId: number; discountPercent?: number; sourceReferralId?: number }) {
+export async function createCoupon(input: {
+  userId: number;
+  sourceReferralId?: number;
+  // Amounts are set to 0 at creation; actual discount determined at enrollment based on course price
+  discountAmountUsd?: number;
+  discountAmountInr?: number;
+}) {
   const db = await getDb();
   if (!db) return null;
   try {
@@ -5161,7 +5189,8 @@ export async function createCoupon(input: { userId: number; discountPercent?: nu
     await db.insert(coupons).values({
       code,
       userId: input.userId,
-      discountPercent: input.discountPercent ?? 25,
+      discountAmountUsd: (input.discountAmountUsd ?? 0).toFixed(2),
+      discountAmountInr: (input.discountAmountInr ?? 0).toFixed(2),
       isUsed: false,
       sourceReferralId: input.sourceReferralId ?? null,
     });
@@ -5171,6 +5200,64 @@ export async function createCoupon(input: { userId: number; discountPercent?: nu
     console.error("[Database] Failed to create coupon:", error);
     return null;
   }
+}
+
+// ---- Referral Settings ----
+
+export async function getReferralSettings(): Promise<ReferralSetting[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(referralSettings).orderBy(asc(referralSettings.sortOrder));
+}
+
+export async function upsertReferralSettings(tiers: Array<{
+  id?: number;
+  maxPriceUsd: number | null;
+  discountAmountUsd: number;
+  discountAmountInr: number;
+  label: string;
+  sortOrder: number;
+}>) {
+  const db = await getDb();
+  if (!db) return false;
+  try {
+    // Delete all and re-insert for simplicity
+    await db.delete(referralSettings);
+    if (tiers.length > 0) {
+      await db.insert(referralSettings).values(tiers.map(t => ({
+        maxPriceUsd: t.maxPriceUsd != null ? t.maxPriceUsd.toFixed(2) : null,
+        discountAmountUsd: t.discountAmountUsd.toFixed(2),
+        discountAmountInr: t.discountAmountInr.toFixed(2),
+        label: t.label,
+        sortOrder: t.sortOrder,
+      })));
+    }
+    return true;
+  } catch (error) {
+    console.error("[Database] Failed to upsert referral settings:", error);
+    return false;
+  }
+}
+
+/**
+ * Given a course price in USD, return the matching discount tier amounts.
+ * Tiers are sorted by sortOrder; first tier where price <= maxPriceUsd wins.
+ * The last tier (maxPriceUsd = null) is the catch-all for the highest prices.
+ */
+export async function getReferralDiscountForPrice(priceUsd: number): Promise<{ usd: number; inr: number }> {
+  const tiers = await getReferralSettings();
+  if (!tiers.length) return { usd: 0, inr: 0 };
+  for (const tier of tiers) {
+    if (tier.maxPriceUsd === null || priceUsd <= parseFloat(tier.maxPriceUsd)) {
+      return {
+        usd: parseFloat(tier.discountAmountUsd),
+        inr: parseFloat(tier.discountAmountInr),
+      };
+    }
+  }
+  // Fallback to last tier
+  const last = tiers[tiers.length - 1];
+  return { usd: parseFloat(last.discountAmountUsd), inr: parseFloat(last.discountAmountInr) };
 }
 
 export async function getCouponByCode(code: string) {
@@ -5193,5 +5280,14 @@ export async function markCouponUsed(couponId: number) {
     await db.update(coupons).set({ isUsed: true, usedAt: new Date() }).where(eq(coupons.id, couponId));
     return true;
   } catch { return false; }
+}
+
+export async function updateCouponAmounts(couponId: number, amounts: { usd: number; inr: number }) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(coupons).set({
+    discountAmountUsd: amounts.usd.toFixed(2),
+    discountAmountInr: amounts.inr.toFixed(2),
+  }).where(eq(coupons.id, couponId));
 }
 

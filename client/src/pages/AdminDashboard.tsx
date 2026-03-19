@@ -27,6 +27,116 @@ import { CourseManagementTable } from "@/components/CourseManagementTable";
 import { TutorAssignmentDialog } from "@/components/TutorAssignmentDialog";
 import { toast } from "sonner";
 
+function ReferralSettingsPanel() {
+  const { data: tiers = [], refetch: refetchTiers } = trpc.referral.getReferralSettings.useQuery();
+  const { data: allReferrals = [] } = trpc.referral.getAllReferrals.useQuery();
+  const saveSettings = trpc.referral.saveReferralSettings.useMutation({ onSuccess: () => refetchTiers() });
+
+  const [editTiers, setEditTiers] = useState<Array<{
+    id?: number;
+    maxPriceUsd: number | null;
+    discountAmountUsd: number;
+    discountAmountInr: number;
+    label: string;
+    sortOrder: number;
+  }>>([]);
+
+  useEffect(() => {
+    if (tiers.length) setEditTiers(tiers);
+  }, [tiers]);
+
+  const handleSave = () => {
+    saveSettings.mutate(editTiers);
+    toast.success("Referral settings saved");
+  };
+
+  const updateTier = (idx: number, field: string, value: number | string | null) => {
+    setEditTiers(prev => prev.map((t, i) => i === idx ? { ...t, [field]: value } : t));
+  };
+
+  return (
+    <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle>Referral Discount Tiers</CardTitle>
+          <CardDescription>Configure the fixed discount amounts awarded based on course price.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {editTiers.map((tier, idx) => (
+            <div key={idx} className="grid grid-cols-12 gap-3 items-end border rounded-lg p-3">
+              <div className="col-span-3">
+                <label className="text-xs font-medium text-muted-foreground block mb-1">Label</label>
+                <Input value={tier.label} onChange={e => updateTier(idx, "label", e.target.value)} />
+              </div>
+              <div className="col-span-2">
+                <label className="text-xs font-medium text-muted-foreground block mb-1">Max Price (USD)</label>
+                <Input
+                  type="number"
+                  placeholder="∞"
+                  value={tier.maxPriceUsd ?? ""}
+                  onChange={e => updateTier(idx, "maxPriceUsd", e.target.value === "" ? null : Number(e.target.value))}
+                />
+              </div>
+              <div className="col-span-3">
+                <label className="text-xs font-medium text-muted-foreground block mb-1">Discount (USD)</label>
+                <Input type="number" value={tier.discountAmountUsd} onChange={e => updateTier(idx, "discountAmountUsd", Number(e.target.value))} />
+              </div>
+              <div className="col-span-3">
+                <label className="text-xs font-medium text-muted-foreground block mb-1">Discount (INR ₹)</label>
+                <Input type="number" value={tier.discountAmountInr} onChange={e => updateTier(idx, "discountAmountInr", Number(e.target.value))} />
+              </div>
+            </div>
+          ))}
+          <Button onClick={handleSave} disabled={saveSettings.isPending}>
+            {saveSettings.isPending ? "Saving..." : "Save Tiers"}
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Referral History</CardTitle>
+          <CardDescription>All referrals and their status.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {allReferrals.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No referrals yet.</p>
+          ) : (
+            <div className="divide-y">
+              <div className="grid grid-cols-12 text-xs font-medium text-muted-foreground py-2">
+                <div className="col-span-3">Referrer</div>
+                <div className="col-span-3">Referred</div>
+                <div className="col-span-2">Status</div>
+                <div className="col-span-4">Date</div>
+              </div>
+              {allReferrals.map((r: any) => (
+                <div key={r.id} className="grid grid-cols-12 items-center py-2 text-sm gap-2">
+                  <div className="col-span-3">
+                    <p className="font-medium truncate">{r.referrerName}</p>
+                    <p className="text-xs text-muted-foreground truncate">{r.referrerEmail}</p>
+                  </div>
+                  <div className="col-span-3">
+                    <p className="font-medium truncate">{r.referredName || "—"}</p>
+                    <p className="text-xs text-muted-foreground truncate">{r.referredEmail || "—"}</p>
+                  </div>
+                  <div className="col-span-2">
+                    <Badge variant={r.status === "rewarded" ? "default" : r.status === "signed_up" ? "secondary" : "outline"}>
+                      {r.status}
+                    </Badge>
+                  </div>
+                  <div className="col-span-4 text-xs text-muted-foreground">
+                    {new Date(r.createdAt).toLocaleDateString()}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 export function AdminDashboard() {
   const { user, isAuthenticated, loading } = useAuth();
 
@@ -368,6 +478,7 @@ export function AdminDashboard() {
               <TabsTrigger value="quicksetup">Quick Setup</TabsTrigger> */}
               <TabsTrigger value="email">Email Settings</TabsTrigger>
               <TabsTrigger value="course-approval">Tutor Course Approval</TabsTrigger>
+              <TabsTrigger value="referrals">Referrals</TabsTrigger>
             </TabsList>
           </div>
 
@@ -1325,6 +1436,11 @@ export function AdminDashboard() {
           {/* Email Settings Tab */}
           <TabsContent value="email" forceMount className={tabContentClass}>
             <EmailSettings />
+          </TabsContent>
+
+          {/* Referrals Tab */}
+          <TabsContent value="referrals" forceMount className={tabContentClass}>
+            <ReferralSettingsPanel />
           </TabsContent>
           </div>
         </Tabs>

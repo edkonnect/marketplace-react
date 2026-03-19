@@ -448,20 +448,18 @@ export async function sendCouponRewardEmail(params: {
   userEmail: string;
   userName: string;
   couponCode: string;
-  discountPercent: number;
   reason: 'referrer' | 'referred';
   friendName?: string;
 }): Promise<boolean> {
   const html = getCouponRewardEmail({
     userName: params.userName,
     couponCode: params.couponCode,
-    discountPercent: params.discountPercent,
     reason: params.reason,
     friendName: params.friendName,
   });
   return await emailService.sendEmail({
     to: params.userEmail,
-    subject: `Your ${params.discountPercent}% discount coupon — ${params.couponCode}`,
+    subject: `Your referral discount coupon — ${params.couponCode}`,
     html,
   });
 }

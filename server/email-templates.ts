@@ -992,7 +992,7 @@ export function getReferralInviteEmail(props: ReferralInviteEmailProps): string 
 
     <div class="highlight-box">
       <p style="margin: 0; font-weight: 600;">🎁 Special offer just for you</p>
-      <p style="margin: 8px 0 0 0;">Sign up using the link below and enroll in your first course to receive a <strong>25% discount coupon</strong> — delivered to your inbox automatically.</p>
+      <p style="margin: 8px 0 0 0;">Sign up using the link below and enroll in your first course to receive a <strong>discount coupon</strong> (up to $25 off) — delivered to your inbox automatically.</p>
     </div>
 
     <div style="text-align: center; margin: 32px 0;">
@@ -1012,7 +1012,7 @@ export function getReferralInviteEmail(props: ReferralInviteEmailProps): string 
   `;
 
   return getEmailBase(content, {
-    preheaderText: `${referrerName} invited you to EdKonnect Academy — get 25% off your first enrollment!`
+    preheaderText: `${referrerName} invited you to EdKonnect Academy — get up to $25 off your first enrollment!`
   });
 }
 
@@ -1033,7 +1033,7 @@ export function getReferralWelcomeEmail(props: ReferralWelcomeEmailProps): strin
 
     <div class="highlight-box">
       <p style="margin: 0; font-weight: 600;">🎁 Your reward is waiting</p>
-      <p style="margin: 8px 0 0 0;">Enroll in your first course and a <strong>25% discount coupon</strong> will be sent to your email automatically. You can use it on any future enrollment.</p>
+      <p style="margin: 8px 0 0 0;">Enroll in your first course and a <strong>discount coupon</strong> (up to $25 off) will be sent to your email automatically. You can use it on any future enrollment.</p>
     </div>
 
     <p>Start exploring our courses and find the perfect tutor for your learning journey.</p>
@@ -1045,14 +1045,13 @@ export function getReferralWelcomeEmail(props: ReferralWelcomeEmailProps): strin
   `;
 
   return getEmailBase(content, {
-    preheaderText: `Welcome! Enroll in your first course to unlock your 25% discount coupon.`
+    preheaderText: `Welcome! Enroll in your first course to unlock your discount coupon (up to $25 off).`
   });
 }
 
 interface CouponRewardEmailProps {
   userName: string;
   couponCode: string;
-  discountPercent: number;
   reason: 'referrer' | 'referred';
   friendName?: string;
 }
@@ -1061,16 +1060,16 @@ interface CouponRewardEmailProps {
  * Email sent when a coupon reward is issued (to both referrer and referred user)
  */
 export function getCouponRewardEmail(props: CouponRewardEmailProps): string {
-  const { userName, couponCode, discountPercent, reason, friendName } = props;
+  const { userName, couponCode, reason, friendName } = props;
 
   const isReferred = reason === 'referred';
 
   const headline = isReferred
-    ? `🎁 Your ${discountPercent}% discount coupon is here, ${userName}!`
+    ? `🎁 Your referral discount coupon is here, ${userName}!`
     : `🎉 Your referral reward is here, ${userName}!`;
 
   const description = isReferred
-    ? `You verified your email — welcome to EdKonnect Academy! As a thank you for joining through a referral, here is your exclusive discount coupon. <strong>Use it when enrolling in your first course</strong> to get ${discountPercent}% off the course price.`
+    ? `You verified your email — welcome to EdKonnect Academy! As a thank you for joining through a referral, here is your exclusive discount coupon. <strong>Use it when enrolling in your first course</strong> — the discount amount will be applied based on the course price.`
     : `<strong>${friendName}</strong> just enrolled in their first course using your referral link. As a thank you, here is your reward coupon — use it on your next enrollment!`;
 
   const usageNote = isReferred
@@ -1082,7 +1081,7 @@ export function getCouponRewardEmail(props: CouponRewardEmailProps): string {
     <p>${description}</p>
 
     <div class="highlight-box" style="text-align: center;">
-      <p style="margin: 0; font-size: 14px; color: #6b7280;">Your ${discountPercent}% discount coupon code</p>
+      <p style="margin: 0; font-size: 14px; color: #6b7280;">Your referral discount coupon code</p>
       <p style="margin: 12px 0 4px 0; font-size: 36px; font-weight: 700; letter-spacing: 6px; color: #2563eb;">${couponCode}</p>
       <p style="margin: 0; font-size: 13px; color: #6b7280;">One-time use &nbsp;·&nbsp; Never expires</p>
     </div>
@@ -1092,7 +1091,7 @@ export function getCouponRewardEmail(props: CouponRewardEmailProps): string {
       <li style="margin-bottom: 8px;">Go to a course and click <strong>Enroll</strong></li>
       <li style="margin-bottom: 8px;">Fill in the student details</li>
       <li style="margin-bottom: 8px;">Enter <strong>${couponCode}</strong> in the <strong>Promo Code</strong> field and click Apply</li>
-      <li style="margin-bottom: 8px;">The ${discountPercent}% discount will be applied to the course price automatically</li>
+      <li style="margin-bottom: 8px;">The discount will be applied automatically based on the course price</li>
     </ol>
 
     <div class="divider"></div>
@@ -1108,6 +1107,6 @@ export function getCouponRewardEmail(props: CouponRewardEmailProps): string {
   `;
 
   return getEmailBase(content, {
-    preheaderText: `Your ${discountPercent}% discount coupon: ${couponCode} — use it on your${isReferred ? ' first' : ' next'} enrollment`
+    preheaderText: `Your referral discount coupon: ${couponCode} — use it on your${isReferred ? ' first' : ' next'} enrollment`
   });
 }
