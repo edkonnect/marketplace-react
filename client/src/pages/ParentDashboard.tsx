@@ -1154,7 +1154,7 @@ export default function ParentDashboard() {
                         Scheduled
                       </div>
                       <span className="font-semibold text-blue-600 dark:text-blue-400">
-                        {(sessionHistory || []).filter(s => s.status === "scheduled").length}
+                        {(subscriptions || []).reduce((sum, s) => sum + (s.sessionStats?.scheduledCount ?? 0), 0)}
                       </span>
                     </div>
                     <div className="flex items-center justify-between px-5 py-3.5">
