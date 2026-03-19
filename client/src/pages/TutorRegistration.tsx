@@ -3,7 +3,7 @@ import Navigation from "@/components/Navigation";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
-import { CheckCircle2, Loader2 } from "lucide-react";
+import { CheckCircle2, Loader2, Camera, X } from "lucide-react";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { LOGIN_PATH } from "@/const";
 import { useValidatedForm } from "@/hooks/useValidatedForm";
@@ -23,6 +23,10 @@ import {
 import { detectUserTimezone } from "@/../../shared/timezone-utils";
 import { TimezoneSelector } from "@/components/TimezoneSelector";
 import { PhoneInput } from "@/components/PhoneInput";
+import { ImageCropModal } from "@/components/ImageCropModal";
+
+const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+const MAX_IMAGE_SIZE = 5 * 1024 * 1024; // 5 MB
 
 const SUBJECTS = [
   "Mathematics",
@@ -54,6 +58,14 @@ export default function TutorRegistration() {
   const [submitted, setSubmitted] = useState(() => !isAuthenticated && sessionStorage.getItem("tutorAppSubmitted") === "true");
   const [submittedEmail, setSubmittedEmail] = useState<string>(() => sessionStorage.getItem("tutorAppSubmittedEmail") || "");
   const [timezone, setTimezone] = useState(detectUserTimezone());
+
+  // Profile image state
+  const [profileImagePreview, setProfileImagePreview] = useState<string | null>(null);
+  const [profileImageFile, setProfileImageFile] = useState<{ base64: string; name: string; type: string; size: number } | null>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+  // Crop modal state
+  const [cropSrc, setCropSrc] = useState<string | null>(null);
+  const [cropFileName, setCropFileName] = useState<string>("photo.jpg");
 
   const form = useValidatedForm(
     {
@@ -169,6 +181,12 @@ export default function TutorRegistration() {
       subjects: values.subjects,
       gradeLevels: values.gradeLevels,
       timezone: timezone,
+      profileImage: profileImageFile ? {
+        base64Data: profileImageFile.base64,
+        fileName: profileImageFile.name,
+        fileType: profileImageFile.type as 'image/jpeg' | 'image/png' | 'image/webp' | 'image/gif',
+        fileSize: profileImageFile.size,
+      } : undefined,
     });
   };
 
@@ -194,54 +212,117 @@ export default function TutorRegistration() {
     );
   };
 
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
+      toast.error("Please upload a JPEG, PNG, WebP, or GIF image.");
+      e.target.value = "";
+      return;
+    }
+    if (file.size > MAX_IMAGE_SIZE) {
+      toast.error("Image must be 5 MB or smaller.");
+      e.target.value = "";
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const dataUrl = ev.target?.result as string;
+      setCropFileName(file.name);
+      setCropSrc(dataUrl); // open cropper
+    };
+    reader.readAsDataURL(file);
+    e.target.value = "";
+  };
+
+  const handleCropConfirm = (croppedDataUrl: string, croppedBlob: Blob) => {
+    const base64 = croppedDataUrl.split(",")[1];
+    setProfileImagePreview(croppedDataUrl);
+    setProfileImageFile({
+      base64,
+      name: cropFileName.replace(/\.[^.]+$/, "") + ".jpg",
+      type: "image/jpeg",
+      size: croppedBlob.size,
+    });
+    setCropSrc(null);
+  };
+
+  const handleCropCancel = () => {
+    setCropSrc(null);
+  };
+
+  const handleRemoveImage = () => {
+    setProfileImagePreview(null);
+    setProfileImageFile(null);
+  };
+
   if (submitted) {
     return (
-      <div className="min-h-screen flex flex-col bg-background">
-        <Navigation />
-        <div className="flex-1 flex items-center justify-center p-4">
-          <div className="max-w-md w-full bg-card border border-border rounded-lg shadow-sm">
-            <div className="p-6 text-center">
-              <div className="mx-auto w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mb-4">
-                <CheckCircle2 className="w-10 h-10 text-green-600" />
-              </div>
-              <h2 className="text-2xl font-bold mb-2">Application Submitted!</h2>
-              {submittedEmail && (
-                <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-2 mb-4 text-sm text-blue-800 font-medium">
-                  Application submitted for: <span className="font-bold">{submittedEmail}</span>
+      <>
+        {cropSrc && (
+          <ImageCropModal
+            imageSrc={cropSrc}
+            onConfirm={handleCropConfirm}
+            onCancel={handleCropCancel}
+          />
+        )}
+        <div className="min-h-screen flex flex-col bg-background">
+          <Navigation />
+          <div className="flex-1 flex items-center justify-center p-4">
+            <div className="max-w-md w-full bg-card border border-border rounded-lg shadow-sm">
+              <div className="p-6 text-center">
+                <div className="mx-auto w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mb-4">
+                  <CheckCircle2 className="w-10 h-10 text-green-600" />
                 </div>
-              )}
-              <p className="text-muted-foreground mb-6">
-                {isAuthenticated
-                  ? "Thank you for your interest in joining our tutoring platform. Your application is under review."
-                  : "Thank you for applying! A confirmation email has been sent to the address above. Once approved, you'll receive instructions to set up your account."
-                }
-              </p>
-              <div className="bg-muted p-4 rounded-lg space-y-2 text-sm text-left mb-6">
-                <p className="font-medium">What happens next?</p>
-                <ul className="list-disc list-inside space-y-1 text-muted-foreground">
-                  <li>Our team will review your application</li>
-                  <li>You'll receive an email notification with the decision</li>
-                  {isAuthenticated ? (
-                    <li>If approved, you can start creating your profile and accepting students</li>
-                  ) : (
-                    <li>If approved, you'll receive a secure link to set up your password and access your account</li>
-                  )}
-                </ul>
+                <h2 className="text-2xl font-bold mb-2">Application Submitted!</h2>
+                {submittedEmail && (
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-2 mb-4 text-sm text-blue-800 font-medium">
+                    Application submitted for: <span className="font-bold">{submittedEmail}</span>
+                  </div>
+                )}
+                <p className="text-muted-foreground mb-6">
+                  {isAuthenticated
+                    ? "Thank you for your interest in joining our tutoring platform. Your application is under review."
+                    : "Thank you for applying! A confirmation email has been sent to the address above. Once approved, you'll receive instructions to set up your account."
+                  }
+                </p>
+                <div className="bg-muted p-4 rounded-lg space-y-2 text-sm text-left mb-6">
+                  <p className="font-medium">What happens next?</p>
+                  <ul className="list-disc list-inside space-y-1 text-muted-foreground">
+                    <li>Our team will review your application</li>
+                    <li>You'll receive an email notification with the decision</li>
+                    {isAuthenticated ? (
+                      <li>If approved, you can start creating your profile and accepting students</li>
+                    ) : (
+                      <li>If approved, you'll receive a secure link to set up your password and access your account</li>
+                    )}
+                  </ul>
+                </div>
+                <button
+                  onClick={() => navigate("/")}
+                  className="w-full bg-primary text-primary-foreground hover:bg-primary/90 px-4 py-2 rounded-md font-medium"
+                >
+                  Return to Home
+                </button>
               </div>
-              <button
-                onClick={() => navigate("/")}
-                className="w-full bg-primary text-primary-foreground hover:bg-primary/90 px-4 py-2 rounded-md font-medium"
-              >
-                Return to Home
-              </button>
             </div>
           </div>
         </div>
-      </div>
+      </>
     );
   }
 
   return (
+    <>
+      {cropSrc && (
+        <ImageCropModal
+          imageSrc={cropSrc}
+          onConfirm={handleCropConfirm}
+          onCancel={handleCropCancel}
+        />
+      )}
     <div className="min-h-screen flex flex-col bg-background">
       <Navigation />
 
@@ -268,6 +349,55 @@ export default function TutorRegistration() {
                   {/* Personal Information */}
                   <div className="space-y-4">
                     <h3 className="font-semibold text-lg">Personal Information</h3>
+
+                    {/* Profile Photo */}
+                    <div className="space-y-2">
+                      <label className="block text-sm font-medium">
+                        Profile Photo <span className="text-muted-foreground font-normal">(optional)</span>
+                      </label>
+                      <div className="flex items-center gap-4">
+                        <div className="relative w-20 h-20 rounded-full overflow-hidden bg-muted border-2 border-border flex-shrink-0">
+                          {profileImagePreview ? (
+                            <img
+                              src={profileImagePreview}
+                              alt="Profile preview"
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-muted-foreground">
+                              <Camera className="w-7 h-7" />
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex flex-col gap-2">
+                          <button
+                            type="button"
+                            onClick={() => imageInputRef.current?.click()}
+                            className="px-3 py-1.5 text-sm border border-input rounded-md hover:bg-accent transition-colors"
+                          >
+                            {profileImagePreview ? "Change Photo" : "Upload Photo"}
+                          </button>
+                          {profileImagePreview && (
+                            <button
+                              type="button"
+                              onClick={handleRemoveImage}
+                              className="px-3 py-1.5 text-sm text-destructive border border-destructive/30 rounded-md hover:bg-destructive/10 transition-colors flex items-center gap-1"
+                            >
+                              <X className="w-3.5 h-3.5" /> Remove
+                            </button>
+                          )}
+                          <p className="text-xs text-muted-foreground">JPEG, PNG, WebP or GIF · Max 5 MB</p>
+                        </div>
+                      </div>
+                      <input
+                        ref={imageInputRef}
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp,image/gif"
+                        className="hidden"
+                        onChange={handleImageChange}
+                        aria-label="Upload profile photo"
+                      />
+                    </div>
 
                     <FormInput
                       field={register("name")}
@@ -396,5 +526,6 @@ export default function TutorRegistration() {
         </div>
       </div>
     </div>
+    </>
   );
 }

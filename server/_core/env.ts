@@ -20,4 +20,9 @@ export const ENV = {
   zoomClientId: process.env.ZOOM_CLIENT_ID ?? "",
   zoomClientSecret: process.env.ZOOM_CLIENT_SECRET ?? "",
   zoomWebhookSecret: process.env.ZOOM_WEBHOOK_SECRET_TOKEN ?? "",
+  // AWS S3 (profile image storage)
+  awsAccessKeyId: process.env.AWS_ACCESS_KEY_ID ?? "",
+  awsSecretAccessKey: process.env.AWS_SECRET_ACCESS_KEY ?? "",
+  awsS3Bucket: process.env.AWS_S3_BUCKET ?? "",
+  awsS3Region: process.env.AWS_S3_REGION ?? "us-east-1",
 };

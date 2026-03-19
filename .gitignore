@@ -1,3 +1,6 @@
+# Local dev file uploads (not for source control)
+uploads/
+
 # Chatbot runtime logs (append-only, not source-controlled)
 server/chatbot-query-log.ndjson
 server/unanswered-questions.ndjson

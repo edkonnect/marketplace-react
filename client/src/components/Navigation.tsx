@@ -13,7 +13,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { NotificationBell } from "@/components/NotificationBell";
 
 export default function Navigation() {
@@ -25,6 +25,13 @@ export default function Navigation() {
   const [lastScrollY, setLastScrollY] = React.useState(0);
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
   const logoutMutation = trpc.auth.logout.useMutation();
+
+  // Fetch tutor profile for avatar photo (tutors only)
+  const { data: tutorProfile } = trpc.tutorProfile.getMy.useQuery(undefined, {
+    enabled: isAuthenticated && user?.role === "tutor",
+    staleTime: 60_000,
+  });
+  const avatarImageUrl = user?.role === "tutor" ? (tutorProfile?.profileImageUrl ?? null) : null;
 
   // Scroll behavior for show/hide navbar
   React.useEffect(() => {
@@ -197,6 +204,9 @@ export default function Navigation() {
                 <DropdownMenuTrigger asChild>
                   <button className="relative h-10 w-10 rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                     <Avatar>
+                      {avatarImageUrl && (
+                        <AvatarImage src={avatarImageUrl} alt={user.name ?? "Profile photo"} />
+                      )}
                       <AvatarFallback className="bg-primary text-primary-foreground">
                         {getInitials(user.name)}
                       </AvatarFallback>

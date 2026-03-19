@@ -65,6 +65,22 @@ async function startServer() {
     limit: 100,
   });
 
+  // Local dev storage shim must be registered BEFORE express.json() so it can
+  // read the raw multipart body itself. Active only when Forge URL is localhost.
+  if (process.env.NODE_ENV !== "production") {
+    const forgeUrl = (process.env.BUILT_IN_FORGE_API_URL ?? "").replace(/\/+$/, "");
+    const localPrefixes = ["http://localhost", "http://127.0.0.1", ""];
+    const isLocalForge = localPrefixes.some(p => forgeUrl === p || forgeUrl.startsWith(p + ":"));
+    if (isLocalForge) {
+      const { createLocalDevStorageRouter, createLocalDevStaticRouter } = await import("../localDevStorage");
+      const preferredPort = parseInt(process.env.PORT || "3000");
+      const devBaseUrl = forgeUrl || `http://localhost:${preferredPort}`;
+      app.use(createLocalDevStorageRouter(devBaseUrl));
+      app.use(createLocalDevStaticRouter());
+      console.log(`[LocalDevStorage] Active — files saved to uploads/, served at ${devBaseUrl}/uploads/`);
+    }
+  }
+
   // Configure body parser with larger size limit for file uploads
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
@@ -80,7 +96,7 @@ async function startServer() {
   // PDF download route
   const { pdfRouter } = await import("../pdfRoute");
   app.use("/api/pdf", pdfRouter);
-  
+
   // tRPC API
   app.use(
     "/api/trpc",

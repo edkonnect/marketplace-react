@@ -281,6 +281,13 @@
       "when": 1773500000000,
       "tag": "0042_password_reset_tokens",
       "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1774000000000,
+      "tag": "0043_profile_image_mediumtext",
+      "breakpoints": true
     }
   ]
 }

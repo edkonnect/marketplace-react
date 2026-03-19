@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Navigation from "@/components/Navigation";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
@@ -9,9 +9,13 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
-import { User, Lock, BookOpen, Users, GraduationCap, ChevronRight } from "lucide-react";
+import { User, Lock, BookOpen, Users, GraduationCap, ChevronRight, Camera, Trash2, Loader2 } from "lucide-react";
 import { PhoneInput } from "@/components/PhoneInput";
 import { Badge } from "@/components/ui/badge";
+import { ImageCropModal } from "@/components/ImageCropModal";
+
+const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+const MAX_IMAGE_SIZE = 5 * 1024 * 1024; // 5 MB
 
 export default function Settings() {
   const { user, isAuthenticated, loading } = useAuth();
@@ -33,6 +37,14 @@ export default function Settings() {
   const [hourlyRate, setHourlyRate] = useState("");
   const [yearsOfExperience, setYearsOfExperience] = useState<number | "">("");
   const [subjects, setSubjects] = useState("");
+
+  // Profile image
+  const [profileImagePreview, setProfileImagePreview] = useState<string | null>(null);
+  const [pendingImageFile, setPendingImageFile] = useState<{ base64: string; name: string; type: string; size: number } | null>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+  // Crop modal
+  const [cropSrc, setCropSrc] = useState<string | null>(null);
+  const [cropFileName, setCropFileName] = useState<string>("photo.jpg");
 
 
   // --- Data fetching ---
@@ -68,6 +80,10 @@ const { data: subscriptions } = trpc.subscription.mySubscriptions.useQuery(undef
       } catch {
         setSubjects(tutorProfile.subjects || "");
       }
+      // Load existing profile image — only if no pending local selection
+      if (!pendingImageFile) {
+        setProfileImagePreview(tutorProfile.profileImageUrl || null);
+      }
     }
   }, [tutorProfile]);
 
@@ -90,6 +106,87 @@ const { data: subscriptions } = trpc.subscription.mySubscriptions.useQuery(undef
     onSuccess: () => toast.success("Tutor profile updated successfully"),
     onError: (err: any) => toast.error(err.message || "Failed to update tutor profile"),
   });
+
+  const uploadImageMutation = trpc.tutorProfile.uploadProfileImage.useMutation({
+    onSuccess: (data) => {
+      setProfileImagePreview(data.imageUrl);
+      setPendingImageFile(null);
+      toast.success("Profile photo updated successfully");
+    },
+    onError: (err: any) => toast.error(err.message || "Failed to upload profile photo"),
+  });
+
+  const deleteImageMutation = trpc.tutorProfile.deleteProfileImage.useMutation({
+    onSuccess: () => {
+      setProfileImagePreview(null);
+      setPendingImageFile(null);
+      toast.success("Profile photo removed");
+    },
+    onError: (err: any) => toast.error(err.message || "Failed to remove profile photo"),
+  });
+
+  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
+      toast.error("Please upload a JPEG, PNG, WebP, or GIF image.");
+      e.target.value = "";
+      return;
+    }
+    if (file.size > MAX_IMAGE_SIZE) {
+      toast.error("Image must be 5 MB or smaller.");
+      e.target.value = "";
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const dataUrl = ev.target?.result as string;
+      setCropFileName(file.name);
+      setCropSrc(dataUrl); // open cropper
+    };
+    reader.readAsDataURL(file);
+    e.target.value = "";
+  };
+
+  const handleCropConfirm = (croppedDataUrl: string, croppedBlob: Blob) => {
+    const base64 = croppedDataUrl.split(",")[1];
+    setProfileImagePreview(croppedDataUrl);
+    setPendingImageFile({
+      base64,
+      name: cropFileName.replace(/\.[^.]+$/, "") + ".jpg",
+      type: "image/jpeg",
+      size: croppedBlob.size,
+    });
+    setCropSrc(null);
+  };
+
+  const handleCropCancel = () => {
+    setCropSrc(null);
+  };
+
+  const handleImageUpload = () => {
+    if (!pendingImageFile) return;
+    uploadImageMutation.mutate({
+      fileName: pendingImageFile.name,
+      fileType: pendingImageFile.type,
+      fileSize: pendingImageFile.size,
+      base64Data: pendingImageFile.base64,
+    });
+  };
+
+  const handleImageDelete = () => {
+    if (tutorProfile?.profileImageUrl || pendingImageFile) {
+      if (pendingImageFile) {
+        // Just discard local selection, revert to server image
+        setPendingImageFile(null);
+        setProfileImagePreview(tutorProfile?.profileImageUrl || null);
+      } else {
+        deleteImageMutation.mutate();
+      }
+    }
+  };
 
 
   if (!loading && !isAuthenticated) {
@@ -148,6 +245,14 @@ const { data: subscriptions } = trpc.subscription.mySubscriptions.useQuery(undef
   })();
 
   return (
+    <>
+      {cropSrc && (
+        <ImageCropModal
+          imageSrc={cropSrc}
+          onConfirm={handleCropConfirm}
+          onCancel={handleCropCancel}
+        />
+      )}
     <div className="min-h-screen bg-muted/30">
       <Navigation />
       <div className="container max-w-3xl pt-24 pb-12 px-4">
@@ -244,6 +349,83 @@ const { data: subscriptions } = trpc.subscription.mySubscriptions.useQuery(undef
               <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Tutor Profile</h2>
             </div>
             <div className="bg-background rounded-xl border shadow-sm p-6 space-y-5">
+
+              {/* Profile Photo */}
+              <div className="space-y-3">
+                <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Profile Photo</Label>
+                <div className="flex items-center gap-5">
+                  <div className="relative w-24 h-24 rounded-full overflow-hidden bg-muted border-2 border-border flex-shrink-0">
+                    {profileImagePreview ? (
+                      <img
+                        src={profileImagePreview}
+                        alt="Profile photo"
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-muted-foreground">
+                        <Camera className="w-8 h-8" />
+                      </div>
+                    )}
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => imageInputRef.current?.click()}
+                        disabled={uploadImageMutation.isPending || deleteImageMutation.isPending}
+                      >
+                        <Camera className="w-3.5 h-3.5 mr-1.5" />
+                        {profileImagePreview ? "Change Photo" : "Upload Photo"}
+                      </Button>
+                      {pendingImageFile && (
+                        <Button
+                          type="button"
+                          size="sm"
+                          onClick={handleImageUpload}
+                          disabled={uploadImageMutation.isPending}
+                        >
+                          {uploadImageMutation.isPending ? (
+                            <><Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />Uploading...</>
+                          ) : "Save Photo"}
+                        </Button>
+                      )}
+                      {(profileImagePreview) && !uploadImageMutation.isPending && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={handleImageDelete}
+                          disabled={deleteImageMutation.isPending}
+                          className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                        >
+                          {deleteImageMutation.isPending ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <><Trash2 className="w-3.5 h-3.5 mr-1.5" />{pendingImageFile ? "Cancel" : "Remove"}</>
+                          )}
+                        </Button>
+                      )}
+                    </div>
+                    <p className="text-xs text-muted-foreground">JPEG, PNG, WebP or GIF · Max 5 MB</p>
+                    {pendingImageFile && (
+                      <p className="text-xs text-amber-600">Click "Save Photo" to apply your new photo.</p>
+                    )}
+                  </div>
+                </div>
+                <input
+                  ref={imageInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/gif"
+                  className="hidden"
+                  onChange={handleImageSelect}
+                  aria-label="Upload profile photo"
+                />
+              </div>
+
+              <Separator />
+
               <div className="space-y-1.5">
                 <Label htmlFor="bio" className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Bio</Label>
                 <Textarea id="bio" value={bio} onChange={e => setBio(e.target.value)} placeholder="Tell students about yourself..." rows={4} />
@@ -334,5 +516,6 @@ const { data: subscriptions } = trpc.subscription.mySubscriptions.useQuery(undef
 
       </div>
     </div>
+    </>
   );
 }

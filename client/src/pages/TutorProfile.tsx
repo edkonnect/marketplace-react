@@ -5,6 +5,7 @@ import { LOGIN_PATH } from "@/const";
 import { ZoomMeetingSetup } from "@/components/ZoomMeetingSetup";
 import { VideoUploadManager } from "@/components/VideoUploadManager";
 import { User } from "lucide-react";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 export default function TutorProfile() {
   const { user, isAuthenticated, loading } = useAuth();
@@ -23,13 +24,25 @@ export default function TutorProfile() {
       <Navigation />
       <div className="container max-w-3xl pt-24 pb-12 px-4">
         <div className="mb-8">
-          <div className="flex items-center gap-2 mb-1">
-            <User className="w-5 h-5 text-primary" />
-            <h1 className="text-2xl font-bold tracking-tight">Profile Settings</h1>
+          <div className="flex items-center gap-4 mb-3">
+            <Avatar className="h-16 w-16 ring-2 ring-border">
+              {(tutorProfile as any)?.profileImageUrl && (
+                <AvatarImage
+                  src={(tutorProfile as any).profileImageUrl}
+                  alt={user?.name ?? "Profile photo"}
+                />
+              )}
+              <AvatarFallback className="bg-primary/10 text-primary text-xl font-bold">
+                {user?.name ? user.name.split(" ").map((n: string) => n[0]).join("").toUpperCase().slice(0, 2) : <User className="w-7 h-7" />}
+              </AvatarFallback>
+            </Avatar>
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight">Profile Settings</h1>
+              <p className="text-sm text-muted-foreground mt-0.5">
+                Manage your Zoom meeting setup and introduction video
+              </p>
+            </div>
           </div>
-          <p className="text-sm text-muted-foreground mt-1">
-            Manage your Zoom meeting setup and introduction video
-          </p>
         </div>
 
         <ZoomMeetingSetup tutorProfile={tutorProfile} />

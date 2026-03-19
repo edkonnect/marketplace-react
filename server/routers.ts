@@ -15,6 +15,7 @@ import { generateCurriculumPDF } from "./pdf-generator";
 import { sendSessionNotesEmail } from "./session-notes-email";
 import { emailService } from "./email-service";
 import { storagePut } from "./storage";
+import { uploadProfileImageToS3, deleteProfileImageFromS3 } from "./s3Storage";
 import crypto from "crypto";
 import { and, eq } from "drizzle-orm";
 import { subscriptions as subscriptionsTable, tutorProfiles, users } from "../drizzle/schema";
@@ -379,6 +380,13 @@ export const appRouter = router({
         subjects: z.array(z.string()),
         gradeLevels: z.array(z.string()),
         timezone: z.string().optional(),
+        // Optional profile photo included at registration time
+        profileImage: z.object({
+          base64Data: z.string(),
+          fileName: z.string().max(255),
+          fileType: z.enum(['image/jpeg', 'image/png', 'image/webp', 'image/gif']),
+          fileSize: z.number().max(5 * 1024 * 1024),
+        }).optional(),
       }))
       .mutation(async ({ ctx, input }) => {
         // Determine if user is authenticated
@@ -474,6 +482,24 @@ export const appRouter = router({
             throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to create tutor profile' });
           }
           profileId = created;
+        }
+
+        // Upload profile image to S3 (or local dev storage) — non-fatal if it fails
+        if (input.profileImage) {
+          try {
+            const img = input.profileImage;
+            const base64Regex = /^[A-Za-z0-9+/]+=*$/;
+            const stripped = img.base64Data.replace(/\s/g, '');
+            const byteLength = Math.floor((stripped.length * 3) / 4);
+            if (base64Regex.test(stripped) && byteLength <= 500 * 1024) {
+              const imageBuffer = Buffer.from(stripped, 'base64');
+              const imageUrl = await uploadProfileImageToS3(imageBuffer, img.fileType, userId);
+              await db.updateTutorProfile(userId, { profileImageUrl: imageUrl });
+            }
+          } catch (imgErr) {
+            // Non-fatal: profile is created, image storage failure shouldn't block registration
+            console.error('[TutorRegistration] Profile image upload failed:', imgErr);
+          }
         }
 
         // Notify admin about new tutor registration
@@ -613,6 +639,97 @@ export const appRouter = router({
           throw new TRPCError({
             code: 'INTERNAL_SERVER_ERROR',
             message: 'Failed to delete video',
+          });
+        }
+
+        return { success: true };
+      }),
+
+    uploadProfileImage: tutorProcedure
+      .input(z.object({
+        fileName: z.string().max(255),
+        fileType: z.string(),
+        fileSize: z.number(),
+        base64Data: z.string(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        // Validate MIME type — images only
+        const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+        if (!allowedTypes.includes(input.fileType)) {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: 'Invalid file type. Only JPEG, PNG, WebP, and GIF images are allowed.',
+          });
+        }
+
+        // Client already resizes to ≤400×400 @ 0.8 quality (~50–80KB).
+        // Enforce a generous 500KB ceiling on the decoded bytes as a safety net.
+        const maxBytes = 500 * 1024;
+        if (input.fileSize > maxBytes) {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: 'Image size exceeds the 500 KB limit. Please crop to a smaller area.',
+          });
+        }
+
+        // Validate that base64Data is actually base64 (prevents data-URI injection)
+        const base64Regex = /^[A-Za-z0-9+/]+=*$/;
+        const stripped = input.base64Data.replace(/\s/g, '');
+        if (!base64Regex.test(stripped)) {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: 'Invalid image data.',
+          });
+        }
+
+        // Server-side byte length check on decoded data
+        const byteLength = Math.floor((stripped.length * 3) / 4);
+        if (byteLength > maxBytes) {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: 'Image size exceeds the 500 KB limit.',
+          });
+        }
+
+        // Decode base64 → Buffer and upload to S3 (or local dev storage)
+        const imageBuffer = Buffer.from(stripped, 'base64');
+
+        // Delete old image from S3 before replacing (best-effort)
+        const existingProfile = await db.getTutorProfileByUserId(ctx.user.id);
+        if (existingProfile?.profileImageUrl) {
+          await deleteProfileImageFromS3(existingProfile.profileImageUrl).catch(() => {});
+        }
+
+        const imageUrl = await uploadProfileImageToS3(imageBuffer, input.fileType, ctx.user.id);
+
+        const success = await db.updateTutorProfile(ctx.user.id, { profileImageUrl: imageUrl });
+
+        if (!success) {
+          throw new TRPCError({
+            code: 'INTERNAL_SERVER_ERROR',
+            message: 'Failed to save profile image.',
+          });
+        }
+
+        return { imageUrl };
+      }),
+
+    deleteProfileImage: tutorProcedure
+      .mutation(async ({ ctx }) => {
+        // Remove from S3 (or local dev storage) before clearing the DB record
+        const existingProfile = await db.getTutorProfileByUserId(ctx.user.id);
+        if (existingProfile?.profileImageUrl) {
+          await deleteProfileImageFromS3(existingProfile.profileImageUrl).catch(() => {});
+        }
+
+        const success = await db.updateTutorProfile(ctx.user.id, {
+          profileImageUrl: null,
+        });
+
+        if (!success) {
+          throw new TRPCError({
+            code: 'INTERNAL_SERVER_ERROR',
+            message: 'Failed to remove profile image.',
           });
         }
 
