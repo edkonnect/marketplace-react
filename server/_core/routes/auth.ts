@@ -158,6 +158,8 @@ authRouter.post("/login", async (req, res) => {
     return res.status(403).json({ error: "Please verify your email before logging in." });
   }
 
+  const previousLastSignedIn = await db.updateUserLastSignedIn(user.id);
+
   await setAuthCookies(req, res, {
     sub: user.id,
     email: user.email || "",
@@ -165,7 +167,7 @@ authRouter.post("/login", async (req, res) => {
   });
 
   const { passwordHash: _pw2, ...safeUser } = user as any;
-  res.json({ user: safeUser });
+  res.json({ user: safeUser, previousLastSignedIn: previousLastSignedIn ? previousLastSignedIn.toISOString() : null });
 });
 
 authRouter.post("/logout", async (req, res) => {

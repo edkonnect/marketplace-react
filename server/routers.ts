@@ -730,6 +730,11 @@ export const appRouter = router({
       return await db.getParentDashboardStats(ctx.user.id);
     }),
 
+    getLastLogin: parentProcedure.query(async ({ ctx }) => {
+      const user = await db.getUserById(ctx.user.id);
+      return { lastSignedIn: user?.lastSignedIn ?? null };
+    }),
+
     // Notification preferences (open to all authenticated users so tutors can reuse)
     getNotificationPreferences: protectedProcedure.query(async ({ ctx }) => {
       const prefs = await db.getNotificationPreferences(ctx.user.id);

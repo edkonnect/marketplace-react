@@ -393,6 +393,19 @@ export async function updateUserTimezone(userId: number, timezone: string) {
   }
 }
 
+export async function updateUserLastSignedIn(userId: number): Promise<Date | null> {
+  const db = await getDb();
+  if (!db) return null;
+  try {
+    const [existing] = await db.select({ lastSignedIn: users.lastSignedIn }).from(users).where(eq(users.id, userId)).limit(1);
+    const previous = existing?.lastSignedIn ?? null;
+    await db.update(users).set({ lastSignedIn: new Date() }).where(eq(users.id, userId));
+    return previous;
+  } catch {
+    return null;
+  }
+}
+
 export async function updateUserProfile(userId: number, updates: { firstName?: string; lastName?: string; email?: string; phoneNumber?: string }) {
   const db = await getDb();
   if (!db) return false;

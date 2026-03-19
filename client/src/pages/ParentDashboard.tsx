@@ -11,7 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Link, useLocation } from "wouter";
-import { BookOpen, Calendar, MessageSquare, CreditCard, Clock, Users, Video, FileText, HelpCircle, CheckCircle } from "lucide-react";
+import { BookOpen, Calendar, MessageSquare, CreditCard, Clock, Users, Video, FileText, HelpCircle, CheckCircle, TrendingUp, BarChart2, LogIn } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { LOGIN_PATH } from "@/const";
 import { NotificationCenter } from "@/components/NotificationCenter";
@@ -23,11 +23,11 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 export default function ParentDashboard() {
-  const { user, isAuthenticated, loading } = useAuth();
+  const { user, isAuthenticated, loading, previousLastSignedIn } = useAuth();
   const [, setLocation] = useLocation();
   const formatPrice = useFormatPrice();
   const tabContentClass =
-    "space-y-6 absolute inset-0 w-full transition-all duration-300 data-[state=active]:opacity-100 data-[state=active]:translate-x-0 data-[state=inactive]:opacity-0 data-[state=inactive]:translate-x-4 data-[state=inactive]:pointer-events-none [&[hidden]]:block [&[hidden]]:opacity-0";
+    "space-y-6 w-full transition-all duration-300 data-[state=inactive]:hidden";
 
   const { data: subscriptions, isLoading: subsLoading, refetch: refetchSubscriptions } = trpc.subscription.mySubscriptions.useQuery(
     undefined,
@@ -53,6 +53,7 @@ export default function ParentDashboard() {
     undefined,
     { enabled: isAuthenticated && user?.role === "parent" }
   );
+
 
 
 
@@ -363,6 +364,61 @@ export default function ParentDashboard() {
         })
       : [];
 
+  // Analytics computations
+  const analyticsStats = useMemo(() => {
+    const allSessions = sessionHistory || [];
+    const completed = allSessions.filter(s => s.status === "completed");
+    const noShows = allSessions.filter(s => s.status === "no_show");
+    const totalScheduled = allSessions.filter(s => s.status === "completed" || s.status === "no_show" || s.status === "scheduled");
+    const attendanceRate = totalScheduled.length > 0 ? Math.round((completed.length / totalScheduled.length) * 100) : 0;
+    const totalMinutes = completed.reduce((sum, s) => sum + (s.duration || 0), 0);
+
+    // Per-student breakdown
+    const studentMap = new Map<string, { sessions: number; lastSession: number | null; quizScores: number[] }>();
+    completed.forEach((s) => {
+      const name = [s.studentFirstName, s.studentLastName].filter(Boolean).join(" ").trim() || "Student";
+      if (!studentMap.has(name)) studentMap.set(name, { sessions: 0, lastSession: null, quizScores: [] });
+      const entry = studentMap.get(name)!;
+      entry.sessions += 1;
+      if (entry.lastSession === null || s.scheduledAt > entry.lastSession) entry.lastSession = s.scheduledAt;
+    });
+    (parentQuizzes || []).filter(q => q.status === "completed" && q.score != null).forEach((q) => {
+      const session = allSessions.find(s => s.id === q.sessionId);
+      if (!session) return;
+      const name = [session.studentFirstName, session.studentLastName].filter(Boolean).join(" ").trim() || "Student";
+      if (studentMap.has(name)) studentMap.get(name)!.quizScores.push(q.score!);
+    });
+
+    // Monthly sessions (last 6 months)
+    const now = new Date();
+    const months: { label: string; count: number }[] = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const label = d.toLocaleDateString(undefined, { month: "short", year: "numeric" });
+      const count = completed.filter(s => {
+        const sd = new Date(s.scheduledAt);
+        return sd.getMonth() === d.getMonth() && sd.getFullYear() === d.getFullYear();
+      }).length;
+      months.push({ label, count });
+    }
+
+    const completedQuizzes = (parentQuizzes || []).filter(q => q.status === "completed");
+    const avgQuizScore = completedQuizzes.length > 0
+      ? Math.round(completedQuizzes.reduce((sum, q) => sum + (q.score ?? 0), 0) / completedQuizzes.length)
+      : null;
+
+    return {
+      totalCompleted: completed.length,
+      noShowCount: noShows.length,
+      attendanceRate,
+      totalHours: Math.round(totalMinutes / 60 * 10) / 10,
+      studentBreakdown: Array.from(studentMap.entries()).map(([name, data]) => ({ name, ...data })),
+      monthlyActivity: months,
+      completedQuizzes: completedQuizzes.length,
+      avgQuizScore,
+    };
+  }, [sessionHistory, parentQuizzes]);
+
   if (loading || !isAuthenticated) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -471,10 +527,11 @@ export default function ParentDashboard() {
                 >
                   History
                 </TabsTrigger>
+                <TabsTrigger className="whitespace-nowrap" value="analytics">Analytics</TabsTrigger>
               </TabsList>
             </div>
 
-            <div className="relative min-h-[540px]">
+            <div>
             {/* Subscriptions Tab */}
             <TabsContent value="subscriptions" forceMount className={tabContentClass}>
               <div className="flex items-center justify-between">
@@ -977,7 +1034,198 @@ export default function ParentDashboard() {
               )}
             </TabsContent>
 
+            {/* Analytics Tab */}
+            <TabsContent value="analytics" forceMount className={tabContentClass}>
+              {/* Header */}
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                <div>
+                  <h2 className="text-2xl font-bold">Learning Analytics</h2>
+                  <p className="text-sm text-muted-foreground mt-0.5">Overview of your child's progress and activity</p>
+                </div>
+                {previousLastSignedIn && (
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/60 rounded-lg px-3 py-2 self-start sm:self-auto">
+                    <LogIn className="w-3.5 h-3.5 shrink-0" />
+                    <span>Last login: <span className="font-medium text-foreground">{new Date(previousLastSignedIn).toLocaleString()}</span></span>
+                  </div>
+                )}
+              </div>
 
+              {/* Stat Cards */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-2">
+                {/* Sessions Completed */}
+                <div className="rounded-2xl bg-gradient-to-br from-blue-500 to-blue-600 p-5 text-white shadow-md">
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="text-xs font-medium uppercase tracking-wider opacity-80">Sessions Done</p>
+                    <div className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center">
+                      <CheckCircle className="w-4 h-4" />
+                    </div>
+                  </div>
+                  <p className="text-4xl font-bold">{analyticsStats.totalCompleted}</p>
+                  <p className="text-xs opacity-70 mt-1">completed sessions</p>
+                </div>
+
+                {/* Attendance Rate */}
+                <div className={`rounded-2xl p-5 text-white shadow-md bg-gradient-to-br ${analyticsStats.attendanceRate >= 80 ? "from-emerald-500 to-emerald-600" : analyticsStats.attendanceRate >= 60 ? "from-orange-400 to-orange-500" : "from-red-500 to-red-600"}`}>
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="text-xs font-medium uppercase tracking-wider opacity-80">Attendance</p>
+                    <div className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center">
+                      <TrendingUp className="w-4 h-4" />
+                    </div>
+                  </div>
+                  <p className="text-4xl font-bold">{analyticsStats.attendanceRate}%</p>
+                  <p className="text-xs opacity-70 mt-1">{analyticsStats.attendanceRate >= 80 ? "excellent" : analyticsStats.attendanceRate >= 60 ? "needs improvement" : "low attendance"}</p>
+                </div>
+
+                {/* Total Hours */}
+                <div className="rounded-2xl bg-gradient-to-br from-violet-500 to-violet-600 p-5 text-white shadow-md">
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="text-xs font-medium uppercase tracking-wider opacity-80">Total Hours</p>
+                    <div className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center">
+                      <Clock className="w-4 h-4" />
+                    </div>
+                  </div>
+                  <p className="text-4xl font-bold">{analyticsStats.totalHours}</p>
+                  <p className="text-xs opacity-70 mt-1">hours of learning</p>
+                </div>
+
+                {/* Avg Quiz Score */}
+                <div className={`rounded-2xl p-5 text-white shadow-md bg-gradient-to-br ${analyticsStats.avgQuizScore == null ? "from-slate-400 to-slate-500" : analyticsStats.avgQuizScore >= 70 ? "from-teal-500 to-teal-600" : analyticsStats.avgQuizScore >= 40 ? "from-amber-400 to-amber-500" : "from-rose-500 to-rose-600"}`}>
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="text-xs font-medium uppercase tracking-wider opacity-80">Avg Quiz Score</p>
+                    <div className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center">
+                      <HelpCircle className="w-4 h-4" />
+                    </div>
+                  </div>
+                  <p className="text-4xl font-bold">{analyticsStats.avgQuizScore != null ? `${analyticsStats.avgQuizScore}%` : "—"}</p>
+                  <p className="text-xs opacity-70 mt-1">{analyticsStats.avgQuizScore != null ? `${analyticsStats.completedQuizzes} quiz${analyticsStats.completedQuizzes !== 1 ? "zes" : ""} taken` : "no quizzes yet"}</p>
+                </div>
+              </div>
+
+              <div className="grid md:grid-cols-2 gap-6">
+                {/* Monthly Activity */}
+                <div className="flex flex-col">
+                  <h3 className="text-base font-semibold flex items-center gap-2 mb-3">
+                    <BarChart2 className="w-4 h-4 text-primary" /> Monthly Activity
+                  </h3>
+                  <div className="rounded-xl border bg-card shadow-sm p-5 space-y-3 flex-1">
+                    {analyticsStats.monthlyActivity.every(m => m.count === 0) ? (
+                      <div className="flex flex-col items-center justify-center h-full min-h-[180px] text-muted-foreground gap-2">
+                        <BarChart2 className="w-8 h-8 opacity-30" />
+                        <p className="text-sm">No session data yet</p>
+                      </div>
+                    ) : (
+                      <>
+                        {(() => {
+                          const max = Math.max(...analyticsStats.monthlyActivity.map(m => m.count), 1);
+                          return analyticsStats.monthlyActivity.map(({ label, count }) => (
+                            <div key={label} className="flex items-center gap-3 text-sm">
+                              <span className="w-20 text-muted-foreground shrink-0 text-xs">{label}</span>
+                              <div className="flex-1 bg-muted rounded-full h-2.5 overflow-hidden">
+                                <div
+                                  className="h-2.5 rounded-full bg-gradient-to-r from-blue-500 to-violet-500 transition-all duration-500"
+                                  style={{ width: `${(count / max) * 100}%` }}
+                                />
+                              </div>
+                              <span className="w-5 text-right font-semibold text-xs">{count}</span>
+                            </div>
+                          ));
+                        })()}
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                {/* No-show + quick summary */}
+                <div className="flex flex-col">
+                  <h3 className="text-base font-semibold flex items-center gap-2 mb-3">
+                    <TrendingUp className="w-4 h-4 text-primary" /> Session Summary
+                  </h3>
+                  <div className="rounded-xl border bg-card shadow-sm divide-y flex-1">
+                    <div className="flex items-center justify-between px-5 py-3.5">
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0" />
+                        Completed
+                      </div>
+                      <span className="font-semibold text-emerald-600 dark:text-emerald-400">{analyticsStats.totalCompleted}</span>
+                    </div>
+                    <div className="flex items-center justify-between px-5 py-3.5">
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <div className="w-2.5 h-2.5 rounded-full bg-blue-500 shrink-0" />
+                        Scheduled
+                      </div>
+                      <span className="font-semibold text-blue-600 dark:text-blue-400">
+                        {(sessionHistory || []).filter(s => s.status === "scheduled").length}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between px-5 py-3.5">
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <div className="w-2.5 h-2.5 rounded-full bg-red-400 shrink-0" />
+                        No-shows
+                      </div>
+                      <span className={`font-semibold ${analyticsStats.noShowCount > 0 ? "text-red-500" : "text-muted-foreground"}`}>
+                        {analyticsStats.noShowCount}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between px-5 py-3.5">
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <div className="w-2.5 h-2.5 rounded-full bg-violet-500 shrink-0" />
+                        Active Enrollments
+                      </div>
+                      <span className="font-semibold text-violet-600 dark:text-violet-400">
+                        {(subscriptions || []).filter(s => s.subscription.status === "active").length}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Per-Student Breakdown */}
+              {analyticsStats.studentBreakdown.length > 0 && (
+                <div>
+                  <h3 className="text-base font-semibold flex items-center gap-2 mb-3">
+                    <Users className="w-4 h-4 text-primary" /> Student Breakdown
+                  </h3>
+                  <div className="grid md:grid-cols-2 gap-4">
+                    {analyticsStats.studentBreakdown.map(({ name, sessions, lastSession, quizScores }) => {
+                      const avg = quizScores.length > 0 ? Math.round(quizScores.reduce((a, b) => a + b, 0) / quizScores.length) : null;
+                      const initials = name.split(" ").map((n: string) => n[0]).join("").slice(0, 2).toUpperCase();
+                      return (
+                        <div key={name} className="rounded-xl border bg-card shadow-sm overflow-hidden">
+                          <div className="h-1.5 w-full bg-gradient-to-r from-blue-500 to-violet-500" />
+                          <div className="px-5 pt-4 pb-5 space-y-4">
+                            <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-violet-500 flex items-center justify-center text-white font-bold text-sm shrink-0">
+                                {initials}
+                              </div>
+                              <div>
+                                <p className="font-semibold text-base leading-tight">{name}</p>
+                                <p className="text-xs text-muted-foreground">{lastSession ? `Last session ${new Date(lastSession).toLocaleDateString()}` : "No sessions yet"}</p>
+                              </div>
+                            </div>
+                            <div className="grid grid-cols-3 gap-2">
+                              <div className="rounded-xl bg-blue-50 dark:bg-blue-950/40 p-3 text-center">
+                                <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">{sessions}</p>
+                                <p className="text-xs text-muted-foreground mt-0.5">Sessions</p>
+                              </div>
+                              <div className="rounded-xl bg-violet-50 dark:bg-violet-950/40 p-3 text-center">
+                                <p className="text-2xl font-bold text-violet-600 dark:text-violet-400">{quizScores.length}</p>
+                                <p className="text-xs text-muted-foreground mt-0.5">Quizzes</p>
+                              </div>
+                              <div className={`rounded-xl p-3 text-center ${avg == null ? "bg-muted/50" : avg >= 70 ? "bg-emerald-50 dark:bg-emerald-950/40" : avg >= 40 ? "bg-amber-50 dark:bg-amber-950/40" : "bg-red-50 dark:bg-red-950/40"}`}>
+                                <p className={`text-2xl font-bold ${avg == null ? "text-muted-foreground" : avg >= 70 ? "text-emerald-600 dark:text-emerald-400" : avg >= 40 ? "text-amber-600 dark:text-amber-400" : "text-red-600 dark:text-red-400"}`}>
+                                  {avg != null ? `${avg}%` : "—"}
+                                </p>
+                                <p className="text-xs text-muted-foreground mt-0.5">Avg Score</p>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </TabsContent>
 
             </div>
           </Tabs>

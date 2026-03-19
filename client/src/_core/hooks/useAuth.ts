@@ -3,7 +3,7 @@ import { useEffect } from "react";
 import { useLocation } from "wouter";
 
 export function useAuth(options?: { redirectOnUnauthenticated?: boolean; redirectPath?: string }) {
-  const { user, loading, login, logout, signup, refreshProfile } = useAuthContext();
+  const { user, loading, previousLastSignedIn, login, logout, signup, refreshProfile } = useAuthContext();
   const { redirectOnUnauthenticated = false, redirectPath = "/login" } = options ?? {};
   const [, setLocation] = useLocation();
 
@@ -17,6 +17,7 @@ export function useAuth(options?: { redirectOnUnauthenticated?: boolean; redirec
   return {
     user,
     loading,
+    previousLastSignedIn,
     isAuthenticated: Boolean(user),
     login,
     signup,
