@@ -907,7 +907,7 @@ export type InsertZoomMeetingRecording = typeof zoomMeetingRecordings.$inferInse
  */
 export const sessionAIInsights = mysqlTable("session_ai_insights", {
   id: int("id").autoincrement().primaryKey(),
-  recordingId: varchar("recordingId", { length: 255 }).notNull().references(() => zoomMeetingRecordings.id, { onDelete: "cascade" }),
+  recordingId: varchar("recordingId", { length: 255 }).references(() => zoomMeetingRecordings.id, { onDelete: "cascade" }),
   sessionId: int("sessionId").references(() => sessions.id, { onDelete: "set null" }),
   summary: mediumtext("summary"), // AI-generated session summary
   homework: mediumtext("homework"), // AI-generated homework/action items
@@ -915,6 +915,16 @@ export const sessionAIInsights = mysqlTable("session_ai_insights", {
   keyTopics: text("keyTopics"), // JSON array of key topics discussed
   generatedAt: timestamp("generatedAt").defaultNow().notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
+  // Rubric grading fields (1–4 scale per criterion)
+  rubricAcademicEfficiency: int("rubricAcademicEfficiency"),
+  rubricInstructionalQuality: int("rubricInstructionalQuality"),
+  rubricStrategyInsight: int("rubricStrategyInsight"),
+  rubricSynthesisBranding: int("rubricSynthesisBranding"),
+  rubricEvidence: text("rubricEvidence"), // JSON: { criterion, score, evidence }[]
+  rubricOverallScore: decimal("rubricOverallScore", { precision: 3, scale: 2 }),
+  rubricGradedAt: timestamp("rubricGradedAt"),
+  rubricTranscriptQuality: varchar("rubricTranscriptQuality", { length: 10 }), // "high"|"medium"|"low"
+  rubricTranscriptQualityReason: text("rubricTranscriptQualityReason"),
 }, (table) => ({
   recordingIdIdx: index("session_ai_insights_recordingId_idx").on(table.recordingId),
   sessionIdIdx: index("session_ai_insights_sessionId_idx").on(table.sessionId),

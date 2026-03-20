@@ -1150,7 +1150,7 @@ export const appRouter = router({
 
           // Store promo discount on subscription so webhook can use it
           if (promoDiscountUsd > 0) {
-            await db.updateSubscription(subscriptionId, { promoDiscountAmount: promoDiscountUsd });
+            await db.updateSubscription(subscriptionId, { promoDiscountAmount: promoDiscountUsd.toString() });
           }
 
           // STRIPE_BYPASS=true — skip payment, mark as paid immediately
@@ -1279,7 +1279,7 @@ export const appRouter = router({
           paymentStatus: 'pending',
           paymentPlan: 'monthly',
           siblingDiscountApplied: hasSiblingDiscount,
-          promoDiscountAmount: promoDiscountUsd,
+          promoDiscountAmount: promoDiscountUsd.toString(),
           discountAmount: hasSiblingDiscount ? discountAmount.toFixed(2) : null,
         });
 
@@ -6261,6 +6261,148 @@ Return ONLY the JSON object.`;
           });
         }
       }),
+
+    /**
+     * Grade a session transcript using the EdKonnect 4-criteria rubric (1–4 scale).
+     * Returns scores + evidence per criterion, overall score, and transcript quality signal.
+     */
+    gradeSession: tutorProcedure
+      .input(z.object({
+        transcript: z.string(),
+        sessionId: z.number(),
+        studentName: z.string().optional(),
+        courseName: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        // Guard: transcript must be long enough to grade meaningfully
+        const wordCount = input.transcript.trim().split(/\s+/).length;
+        if (wordCount < 300) {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: 'Transcript too short to grade accurately (fewer than 300 words). Check Zoom recording quality.',
+          });
+        }
+
+        const { GoogleGenerativeAI } = await import('@google/generative-ai');
+        const genAI = new GoogleGenerativeAI(ENV.geminiApiKey);
+        const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+
+        const prompt = `You are an expert educational quality auditor for EdKonnect, an elite tutoring platform. Grade this tutoring session transcript on 4 criteria using a 1–4 rubric.
+
+STUDENT: ${input.studentName || 'Student'}
+COURSE: ${input.courseName || 'General'}
+
+TRANSCRIPT:
+${input.transcript}
+
+RUBRIC CRITERIA:
+
+1. Academic Efficiency & Time Management
+   4 (Exceeds) = Masterful Flow: student is working within 2 mins, 55+ mins of pure subject content, invisible transitions, no tech delays
+   3 (Proficient) = Solid Pacing: brief 3-5 min intro/setup then consistent focus, ~85% time-on-task, minor friction handled quickly
+   2 (Developing) = Fragmented: 10-15 mins lost to non-academic talk, long stories, or repetitive tech setup instructions
+   1 (Support) = Inefficient: less than 70% of time on subject, session feels unorganized, tutor seems unprepared
+
+2. Instructional Quality (Socratic Audit)
+   4 (Exceeds) = Student-Led: student narrates logic and explains every step, tutor asks "Why?" instead of correcting, high rigor
+   3 (Proficient) = Balanced: good mix of "Tell" and "Do", tutor explains then student practices, corrective feedback is clear
+   2 (Developing) = Tutor-Led: too much lecturing, tutor solves most problems while student watches, limited student output
+   1 (Support) = Passive: student disengaged or copying, no check-for-understanding, tutor provides answers without explanation
+
+3. Strategy & Insider Insight
+   4 (Exceeds) = Strategic Edge: teaches specific test traps, shortcuts, or optimization (e.g. Vieta's Formulas, Desmos Regression, Memory Management logic)
+   3 (Proficient) = Curriculum Plus: teaches core concept plus 1-2 helpful tips or shortcuts
+   2 (Developing) = Basic Concepts: strictly follows textbook with no added value, rote memorization with no application strategy
+   1 (Support) = Weak Content: tutor struggles with material, provides incorrect formulas, confusion on syntax, no big picture explanation
+
+4. Synthesis & Branding
+   4 (Exceeds) = Full Closure: student summarizes "3 Golden Rules", homework is highly specific, professional background, correct Zoom name, clear tailored exit plan
+   3 (Proficient) = Standard Closure: quick summary of what was covered, generic homework assigned, professional presence
+   2 (Developing) = Rushed Exit: session ends abruptly, no summary, no clear homework, messy technical setup or distracting background
+   1 (Support) = No Closure: tutor logs off without checking if student has questions, no homework assigned, unprofessional environment
+
+Also assess transcript quality based on speaker attribution coverage, gap frequency, and dialogue completeness.
+
+CRITICAL: Return ONLY valid JSON. No markdown, no explanations. Exactly this format:
+{
+  "grades": [
+    { "criterion": "Academic Efficiency & Time Management", "score": 3, "evidence": "Specific quote or observation from the transcript" },
+    { "criterion": "Instructional Quality", "score": 2, "evidence": "Specific quote or observation from the transcript" },
+    { "criterion": "Strategy & Insider Insight", "score": 4, "evidence": "Specific quote or observation from the transcript" },
+    { "criterion": "Synthesis & Branding", "score": 3, "evidence": "Specific quote or observation from the transcript" }
+  ],
+  "overallScore": 3.0,
+  "overallNarrative": "2-3 sentence professional summary of this session's teaching quality.",
+  "transcriptQuality": "high",
+  "transcriptQualityReason": "Clear speaker attribution throughout with minimal gaps."
+}`;
+
+        try {
+          const result = await model.generateContent(prompt);
+          const rawResponse = result.response.text();
+
+          let parsed: any;
+          try {
+            const jsonMatch = rawResponse.match(/\{[\s\S]*\}/);
+            parsed = JSON.parse(jsonMatch ? jsonMatch[0] : rawResponse);
+          } catch {
+            throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'AI returned invalid JSON for grading.' });
+          }
+
+          if (!parsed.grades || !Array.isArray(parsed.grades) || parsed.grades.length !== 4) {
+            throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'AI grading response was malformed.' });
+          }
+
+          const criteriaMap: Record<string, keyof Pick<any, 'academicEfficiency' | 'instructionalQuality' | 'strategyInsight' | 'synthesisBranding'>> = {
+            'Academic Efficiency & Time Management': 'academicEfficiency',
+            'Instructional Quality': 'instructionalQuality',
+            'Strategy & Insider Insight': 'strategyInsight',
+            'Synthesis & Branding': 'synthesisBranding',
+          };
+
+          const scores: Record<string, number> = {};
+          for (const g of parsed.grades) {
+            const key = criteriaMap[g.criterion];
+            if (key) scores[key] = Math.min(4, Math.max(1, Math.round(g.score)));
+          }
+
+          const overallScore = parseFloat(parsed.overallScore) || (
+            (scores.academicEfficiency + scores.instructionalQuality + scores.strategyInsight + scores.synthesisBranding) / 4
+          );
+
+          // Find the recording id for this session if available
+          const sessionRow = await db.getSessionById(input.sessionId);
+          const recordingId = (sessionRow as any)?.zoomMeetingId ?? null;
+
+          await db.saveSessionRubricGrades({
+            sessionId: input.sessionId,
+            recordingId,
+            academicEfficiency: scores.academicEfficiency,
+            instructionalQuality: scores.instructionalQuality,
+            strategyInsight: scores.strategyInsight,
+            synthesisBranding: scores.synthesisBranding,
+            evidence: parsed.grades,
+            overallScore,
+            overallNarrative: parsed.overallNarrative || '',
+            transcriptQuality: parsed.transcriptQuality || 'medium',
+            transcriptQualityReason: parsed.transcriptQualityReason || '',
+          });
+
+          return {
+            grades: parsed.grades,
+            overallScore,
+            overallNarrative: parsed.overallNarrative || '',
+            transcriptQuality: parsed.transcriptQuality || 'medium',
+            transcriptQualityReason: parsed.transcriptQualityReason || '',
+          };
+        } catch (error: any) {
+          if (error instanceof TRPCError) throw error;
+          throw new TRPCError({
+            code: 'INTERNAL_SERVER_ERROR',
+            message: error instanceof Error ? error.message : 'Failed to grade session',
+          });
+        }
+      }),
   }),
 
   notifications: router({
@@ -6611,6 +6753,39 @@ Return ONLY the JSON object.`;
           throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to update course' });
         }
         return { success: true };
+      }),
+  }),
+
+  /**
+   * Session rubric grades — parent-facing queries
+   */
+  grades: router({
+    /**
+     * Get all rubric grades for sessions belonging to this parent
+     */
+    getByParent: parentProcedure
+      .query(async ({ ctx }) => {
+        const rows = await db.getRubricGradesByParentId(ctx.user.id);
+        return rows.map(r => ({
+          ...r,
+          rubricEvidence: r.rubricEvidence ? JSON.parse(r.rubricEvidence) : [],
+          rubricOverallScore: r.rubricOverallScore ? parseFloat(r.rubricOverallScore as string) : null,
+        }));
+      }),
+
+    /**
+     * Get rubric grade for a single session
+     */
+    getBySession: protectedProcedure
+      .input(z.object({ sessionId: z.number() }))
+      .query(async ({ input }) => {
+        const row = await db.getSessionRubricGrades(input.sessionId);
+        if (!row) return null;
+        return {
+          ...row,
+          rubricEvidence: row.rubricEvidence ? JSON.parse(row.rubricEvidence) : [],
+          rubricOverallScore: row.rubricOverallScore ? parseFloat(row.rubricOverallScore as string) : null,
+        };
       }),
   }),
 

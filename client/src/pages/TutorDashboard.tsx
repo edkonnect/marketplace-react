@@ -99,23 +99,30 @@ export default function TutorDashboard() {
 
 
   // Transcript modal state
+  type RubricGrade = { criterion: string; score: number; evidence: string };
   type TranscriptModalState = {
     sessionId: number;
     transcript: string;
     summary?: string;
     quizQuestions?: Array<{ id: string; question: string; options: string[]; correctAnswer: number }>;
-    activeTab: "transcript" | "quiz";
+    activeTab: "transcript" | "quiz" | "grade";
     courseTitle: string;
     studentName: string;
     courseId?: number;
     parentId?: number;
     quizEnabled?: boolean;
     editable?: boolean;
+    grades?: RubricGrade[];
+    overallScore?: number;
+    overallNarrative?: string;
+    transcriptQuality?: "high" | "medium" | "low";
+    transcriptQualityReason?: string;
   };
   const [transcriptModal, setTranscriptModal] = useState<TranscriptModalState | null>(null);
   const [summarizingInModal, setSummarizingInModal] = useState(false);
   const summarizingInModalRef = useRef(false);
   const [generatingQuiz, setGeneratingQuiz] = useState(false);
+  const [gradingSession, setGradingSession] = useState(false);
 
   const savePreferencesMutation = trpc.tutorCoursePreferences.saveMine.useMutation({
     onSuccess: () => {
@@ -204,6 +211,26 @@ export default function TutorDashboard() {
     onError: (error) => {
       setGeneratingQuiz(false);
       toast.error("Failed to generate quiz: " + error.message);
+    },
+  });
+
+  const gradeSessionMutation = trpc.ai.gradeSession.useMutation({
+    onSuccess: (data) => {
+      setTranscriptModal((prev) => prev ? {
+        ...prev,
+        grades: data.grades,
+        overallScore: data.overallScore,
+        overallNarrative: data.overallNarrative,
+        transcriptQuality: data.transcriptQuality as "high" | "medium" | "low",
+        transcriptQualityReason: data.transcriptQualityReason,
+        activeTab: "grade",
+      } : prev);
+      setGradingSession(false);
+      toast.success("Session graded successfully!");
+    },
+    onError: (error) => {
+      setGradingSession(false);
+      toast.error("Failed to grade session: " + error.message);
     },
   });
 
@@ -1630,15 +1657,15 @@ export default function TutorDashboard() {
             <div className="flex flex-col min-h-0 flex-1 overflow-hidden p-6 pb-0">
             <DialogHeader>
               <DialogTitle>Session Transcript</DialogTitle>
-              <DialogDescription>
-                {transcriptModal.courseTitle} &bull; {transcriptModal.studentName}
-              </DialogDescription>
             </DialogHeader>
+            <p className="text-sm text-muted-foreground -mt-1 mb-1">
+              {transcriptModal.courseTitle} &bull; {transcriptModal.studentName}
+            </p>
 
             <Tabs
               value={transcriptModal.activeTab}
               onValueChange={(v) =>
-                setTranscriptModal((prev) => prev ? { ...prev, activeTab: v as "transcript" | "quiz" } : prev)
+                setTranscriptModal((prev) => prev ? { ...prev, activeTab: v as "transcript" | "quiz" | "grade" } : prev)
               }
               className="flex-1 flex flex-col min-h-0 mt-4"
             >
@@ -1647,6 +1674,7 @@ export default function TutorDashboard() {
                 {transcriptModal.quizEnabled && (
                   <TabsTrigger value="quiz" className="flex-1">Quiz</TabsTrigger>
                 )}
+                <TabsTrigger value="grade" className="flex-1">Grade Session</TabsTrigger>
               </TabsList>
 
               {/* Transcript Tab */}
@@ -1809,6 +1837,110 @@ export default function TutorDashboard() {
                   )}
                 </TabsContent>
               )}
+
+              {/* Grade Tab */}
+              <TabsContent value="grade" className="flex-1 flex flex-col gap-4 min-h-0 mt-4 overflow-y-auto">
+                {!transcriptModal.grades ? (
+                  <div className="flex flex-col items-center justify-center py-8 gap-3">
+                    <p className="text-sm text-muted-foreground text-center max-w-sm">
+                      Grade this session using the EdKonnect 4-criteria rubric. AI will analyze the transcript and score teaching quality (1–4 scale).
+                    </p>
+                    <Button
+                      onClick={() => {
+                        setGradingSession(true);
+                        gradeSessionMutation.mutate({
+                          transcript: transcriptModal.transcript,
+                          sessionId: transcriptModal.sessionId,
+                          courseName: transcriptModal.courseTitle,
+                          studentName: transcriptModal.studentName,
+                        });
+                      }}
+                      disabled={gradingSession}
+                    >
+                      <Sparkles className="w-4 h-4 mr-2" />
+                      {gradingSession ? "Grading..." : "Grade Session"}
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {/* Transcript quality warning */}
+                    {transcriptModal.transcriptQuality === "low" && (
+                      <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-950/20 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
+                        <span className="shrink-0">⚠️</span>
+                        <span><strong>Grade may be inaccurate</strong> — {transcriptModal.transcriptQualityReason || "transcript had audio gaps"}</span>
+                      </div>
+                    )}
+
+                    {/* Overall score */}
+                    <div className="flex items-center justify-between rounded-xl bg-primary/5 border px-4 py-3">
+                      <div>
+                        <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Overall Score</p>
+                        <p className="text-2xl font-bold">{transcriptModal.overallScore?.toFixed(1)} <span className="text-sm font-normal text-muted-foreground">/ 4.0</span></p>
+                      </div>
+                      <div className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                        (transcriptModal.overallScore ?? 0) >= 3.5 ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400" :
+                        (transcriptModal.overallScore ?? 0) >= 2.5 ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400" :
+                        (transcriptModal.overallScore ?? 0) >= 1.5 ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400" :
+                        "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
+                      }`}>
+                        {(transcriptModal.overallScore ?? 0) >= 3.5 ? "Exceeds" : (transcriptModal.overallScore ?? 0) >= 2.5 ? "Proficient" : (transcriptModal.overallScore ?? 0) >= 1.5 ? "Developing" : "Needs Support"}
+                      </div>
+                    </div>
+
+                    {/* Per-criterion scores */}
+                    <div className="space-y-3">
+                      {transcriptModal.grades.map((g) => {
+                        const scoreColor = g.score === 4 ? "bg-emerald-500" : g.score === 3 ? "bg-blue-500" : g.score === 2 ? "bg-amber-400" : "bg-red-500";
+                        const scoreLabel = g.score === 4 ? "Exceeds" : g.score === 3 ? "Proficient" : g.score === 2 ? "Developing" : "Support";
+                        return (
+                          <div key={g.criterion} className="rounded-lg border p-3 space-y-2">
+                            <div className="flex items-center justify-between">
+                              <p className="text-xs font-semibold">{g.criterion}</p>
+                              <span className={`text-xs text-white px-2 py-0.5 rounded-full font-medium ${scoreColor}`}>{g.score}/4 · {scoreLabel}</span>
+                            </div>
+                            <div className="w-full bg-muted rounded-full h-1.5">
+                              <div className={`h-1.5 rounded-full ${scoreColor} transition-all`} style={{ width: `${(g.score / 4) * 100}%` }} />
+                            </div>
+                            <p className="text-xs text-muted-foreground italic">"{g.evidence}"</p>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* Narrative */}
+                    {transcriptModal.overallNarrative && (
+                      <div className="rounded-lg border bg-muted/30 p-3">
+                        <p className="text-xs font-medium text-muted-foreground mb-1">AI Summary</p>
+                        <p className="text-sm">{transcriptModal.overallNarrative}</p>
+                      </div>
+                    )}
+
+                    {/* Disclaimer */}
+                    <p className="text-xs text-muted-foreground text-center border-t pt-3">
+                      AI-assisted quality signal based on session transcript. Scores reflect observable teaching behaviors.
+                    </p>
+
+                    {/* Regrade */}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="self-start"
+                      disabled={gradingSession}
+                      onClick={() => {
+                        setGradingSession(true);
+                        gradeSessionMutation.mutate({
+                          transcript: transcriptModal.transcript,
+                          sessionId: transcriptModal.sessionId,
+                          courseName: transcriptModal.courseTitle,
+                          studentName: transcriptModal.studentName,
+                        });
+                      }}
+                    >
+                      {gradingSession ? "Regrading..." : "Regrade"}
+                    </Button>
+                  </div>
+                )}
+              </TabsContent>
             </Tabs>
             </div>
 

@@ -11,7 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Link, useLocation } from "wouter";
-import { BookOpen, Calendar, MessageSquare, CreditCard, Clock, Users, Video, FileText, HelpCircle, CheckCircle, TrendingUp, BarChart2, LogIn } from "lucide-react";
+import { BookOpen, Calendar, MessageSquare, CreditCard, Clock, Users, Video, FileText, HelpCircle, CheckCircle, TrendingUp, BarChart2, LogIn, Sparkles } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { LOGIN_PATH } from "@/const";
 import { NotificationCenter } from "@/components/NotificationCenter";
@@ -50,6 +50,11 @@ export default function ParentDashboard() {
   );
 
   const { data: parentQuizzes, refetch: refetchQuizzes } = trpc.quiz.getByParent.useQuery(
+    undefined,
+    { enabled: isAuthenticated && user?.role === "parent" }
+  );
+
+  const { data: parentGrades } = trpc.grades.getByParent.useQuery(
     undefined,
     { enabled: isAuthenticated && user?.role === "parent" }
   );
@@ -354,6 +359,23 @@ export default function ParentDashboard() {
     (parentQuizzes || []).forEach((q) => map.set(q.sessionId, q));
     return map;
   }, [parentQuizzes]);
+
+  // Map sessionId -> rubric grade for quick lookup in history
+  const gradeBySessionId = useMemo(() => {
+    const map = new Map<number, NonNullable<typeof parentGrades>[number]>();
+    (parentGrades || []).forEach((g) => { if (g.sessionId) map.set(g.sessionId, g); });
+    return map;
+  }, [parentGrades]);
+
+  // Track which session grade cards are expanded to show evidence
+  const [expandedGrades, setExpandedGrades] = useState<Set<number>>(new Set());
+  const toggleGradeExpand = (sessionId: number) => {
+    setExpandedGrades((prev) => {
+      const next = new Set(prev);
+      if (next.has(sessionId)) next.delete(sessionId); else next.add(sessionId);
+      return next;
+    });
+  };
 
   // Filter subscriptions by selected student for the Schedule tab
   const filteredSubscriptions =
@@ -1015,6 +1037,109 @@ export default function ParentDashboard() {
                               )}
                             </div>
                           )}
+
+                          {/* Session Grade */}
+                          {gradeBySessionId.has(session.id) && (() => {
+                            const g = gradeBySessionId.get(session.id)!;
+                            const score = g.rubricOverallScore;
+                            const isExpanded = expandedGrades.has(session.id);
+                            const evidence: { criterion: string; score: number; evidence: string }[] = Array.isArray(g.rubricEvidence) ? g.rubricEvidence : [];
+                            const scoreLabel = score == null ? null : score >= 3.5 ? "Excellent" : score >= 2.5 ? "Proficient" : score >= 1.5 ? "Developing" : "Needs Support";
+                            const scoreBg = score == null ? "bg-muted" : score >= 3.5 ? "bg-emerald-500" : score >= 2.5 ? "bg-blue-500" : score >= 1.5 ? "bg-amber-400" : "bg-red-500";
+                            const scoreText = score == null ? "text-muted-foreground" : score >= 3.5 ? "text-emerald-600 dark:text-emerald-400" : score >= 2.5 ? "text-blue-600 dark:text-blue-400" : score >= 1.5 ? "text-amber-500 dark:text-amber-400" : "text-red-500 dark:text-red-400";
+                            return (
+                              <div className="mt-4 rounded-xl border border-border/60 overflow-hidden shadow-sm">
+                                {/* Header bar */}
+                                <div className="flex items-center justify-between px-4 py-2.5 bg-gradient-to-r from-violet-50 to-indigo-50 dark:from-violet-950/30 dark:to-indigo-950/30 border-b border-border/50">
+                                  <div className="flex items-center gap-2">
+                                    <Sparkles className="w-3.5 h-3.5 text-violet-500" />
+                                    <span className="text-xs font-semibold text-violet-700 dark:text-violet-300 uppercase tracking-wide">Teaching Quality</span>
+                                  </div>
+                                  <button
+                                    onClick={() => toggleGradeExpand(session.id)}
+                                    className="flex items-center gap-1 text-xs text-violet-600 dark:text-violet-400 hover:text-violet-800 dark:hover:text-violet-200 font-medium transition-colors"
+                                  >
+                                    {isExpanded ? "Hide details" : "View details"}
+                                    <svg className={`w-3 h-3 transition-transform ${isExpanded ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
+                                  </button>
+                                </div>
+
+                                <div className="px-4 py-3 space-y-3 bg-background">
+                                  {/* Score summary row */}
+                                  <div className="flex items-center gap-3">
+                                    <div className="flex items-center gap-2 flex-1">
+                                      <div className="relative w-10 h-10 shrink-0">
+                                        <svg viewBox="0 0 36 36" className="w-10 h-10 -rotate-90">
+                                          <circle cx="18" cy="18" r="15" fill="none" stroke="currentColor" strokeWidth="3" className="text-muted/40" />
+                                          <circle cx="18" cy="18" r="15" fill="none" stroke="currentColor" strokeWidth="3"
+                                            strokeDasharray={`${((score ?? 0) / 4) * 94.2} 94.2`}
+                                            strokeLinecap="round"
+                                            className={score == null ? "text-muted" : score >= 3.5 ? "text-emerald-500" : score >= 2.5 ? "text-blue-500" : score >= 1.5 ? "text-amber-400" : "text-red-500"}
+                                          />
+                                        </svg>
+                                        <span className={`absolute inset-0 flex items-center justify-center text-[10px] font-bold ${scoreText}`}>
+                                          {score != null ? score.toFixed(1) : "—"}
+                                        </span>
+                                      </div>
+                                      <div>
+                                        <p className={`text-sm font-bold ${scoreText}`}>{scoreLabel ?? "—"}</p>
+                                        <p className="text-xs text-muted-foreground">out of 4.0</p>
+                                      </div>
+                                    </div>
+                                    {/* Mini score pills */}
+                                    <div className="flex gap-1.5 flex-wrap justify-end">
+                                      {evidence.map((e) => {
+                                        const pill = e.score === 4 ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300" : e.score === 3 ? "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300" : e.score === 2 ? "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300" : "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300";
+                                        const short = e.criterion.split(" ")[0];
+                                        return (
+                                          <span key={e.criterion} className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${pill}`} title={e.criterion}>
+                                            {short} {e.score}/4
+                                          </span>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+
+                                  {/* Expanded detail */}
+                                  {isExpanded && (
+                                    <div className="space-y-2.5 pt-1 border-t border-border/40">
+                                      {evidence.map((e) => {
+                                        const bar = e.score === 4 ? "bg-emerald-500" : e.score === 3 ? "bg-blue-500" : e.score === 2 ? "bg-amber-400" : "bg-red-500";
+                                        const label = e.score === 4 ? "Excellent" : e.score === 3 ? "Proficient" : e.score === 2 ? "Developing" : "Support";
+                                        return (
+                                          <div key={e.criterion} className="space-y-1">
+                                            <div className="flex items-center justify-between gap-2">
+                                              <span className="text-xs font-medium truncate flex-1">{e.criterion}</span>
+                                              <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full shrink-0 ${e.score === 4 ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300" : e.score === 3 ? "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300" : e.score === 2 ? "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300" : "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300"}`}>{e.score}/4 · {label}</span>
+                                            </div>
+                                            <div className="w-full bg-muted rounded-full h-1.5 overflow-hidden">
+                                              <div className={`h-1.5 rounded-full ${bar} transition-all`} style={{ width: `${(e.score / 4) * 100}%` }} />
+                                            </div>
+                                            {e.evidence && (
+                                              <p className="text-xs text-muted-foreground italic leading-relaxed border-l-2 border-muted pl-2">"{e.evidence}"</p>
+                                            )}
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  )}
+
+                                  {/* Quality warning */}
+                                  {g.rubricTranscriptQuality === "low" && (
+                                    <div className="flex items-start gap-1.5 rounded-md bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 px-2.5 py-1.5">
+                                      <span className="text-amber-500 shrink-0 text-xs mt-0.5">⚠️</span>
+                                      <p className="text-xs text-amber-700 dark:text-amber-400">Grade may be inaccurate — {g.rubricTranscriptQualityReason || "transcript had audio gaps"}</p>
+                                    </div>
+                                  )}
+
+                                  {/* Footer note */}
+                                  <p className="text-[10px] text-muted-foreground/70 italic border-t border-border/30 pt-2">
+                                    AI-assisted quality signal based on session transcript. Scores reflect observable teaching behaviors only.
+                                  </p>
+                                </div>
+                              </div>
+                            );
+                          })()}
                           </div>
                         </div>
                       </CardContent>
@@ -1178,6 +1303,78 @@ export default function ParentDashboard() {
                   </div>
                 </div>
               </div>
+
+              {/* Teaching Quality */}
+              {parentGrades && parentGrades.length > 0 && (() => {
+                const criteria = [
+                  { key: "rubricAcademicEfficiency", label: "Academic Efficiency" },
+                  { key: "rubricInstructionalQuality", label: "Instructional Quality" },
+                  { key: "rubricStrategyInsight", label: "Strategy & Insight" },
+                  { key: "rubricSynthesisBranding", label: "Synthesis & Branding" },
+                ] as const;
+                const gradedRows = parentGrades.filter(g => g.rubricOverallScore != null);
+                const avgFor = (key: string) => {
+                  const vals = gradedRows.map(g => (g as any)[key]).filter((v: any) => v != null) as number[];
+                  return vals.length > 0 ? (vals.reduce((a, b) => a + b, 0) / vals.length) : null;
+                };
+                const scoreColor = (v: number | null) => v == null ? "bg-muted" : v >= 3.5 ? "bg-emerald-500" : v >= 2.5 ? "bg-blue-500" : v >= 1.5 ? "bg-amber-400" : "bg-red-500";
+                const scoreText = (v: number | null) => v == null ? "text-muted-foreground" : v >= 3.5 ? "text-emerald-600 dark:text-emerald-400" : v >= 2.5 ? "text-blue-600 dark:text-blue-400" : v >= 1.5 ? "text-amber-500" : "text-red-600 dark:text-red-400";
+                return (
+                  <div>
+                    <h3 className="text-base font-semibold flex items-center gap-2 mb-3">
+                      <Sparkles className="w-4 h-4 text-primary" /> Teaching Quality
+                    </h3>
+                    <div className="grid md:grid-cols-2 gap-6">
+                      {/* Avg scores card */}
+                      <div className="rounded-xl border bg-card shadow-sm flex-1">
+                        <div className="px-5 pt-4 pb-5 space-y-3">
+                          <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Avg Rubric Scores ({gradedRows.length} session{gradedRows.length !== 1 ? "s" : ""} graded)</p>
+                          {criteria.map(({ key, label }) => {
+                            const avg = avgFor(key);
+                            return (
+                              <div key={key} className="flex items-center gap-3">
+                                <span className="text-xs text-muted-foreground w-36 shrink-0">{label}</span>
+                                <div className="flex-1 bg-muted rounded-full h-2 overflow-hidden">
+                                  <div className={`h-2 rounded-full ${scoreColor(avg)} transition-all`} style={{ width: avg ? `${(avg / 4) * 100}%` : "0%" }} />
+                                </div>
+                                <span className={`text-xs font-semibold w-8 text-right ${scoreText(avg)}`}>{avg != null ? avg.toFixed(1) : "—"}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Score trend card */}
+                      <div className="rounded-xl border bg-card shadow-sm flex-1">
+                        <div className="px-5 pt-4 pb-5 space-y-3">
+                          <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Score Trend (per session)</p>
+                          {gradedRows.length < 2 ? (
+                            <p className="text-sm text-muted-foreground py-4 text-center">Grade more sessions to see a trend.</p>
+                          ) : (
+                            <div className="flex items-end gap-2 h-24 pt-2">
+                              {gradedRows.slice().reverse().map((g, i) => {
+                                const score = g.rubricOverallScore ?? 0;
+                                const heightPct = (score / 4) * 100;
+                                const bar = score >= 3.5 ? "bg-emerald-500" : score >= 2.5 ? "bg-blue-500" : score >= 1.5 ? "bg-amber-400" : "bg-red-500";
+                                const dateLabel = g.scheduledAt ? new Date(g.scheduledAt).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : `#${i + 1}`;
+                                return (
+                                  <div key={i} className="flex flex-col items-center gap-1 flex-1" title={`${dateLabel}: ${score.toFixed(1)}/4`}>
+                                    <span className="text-xs font-semibold text-muted-foreground">{score.toFixed(1)}</span>
+                                    <div className="w-full flex items-end justify-center h-16">
+                                      <div className={`w-full rounded-t ${bar} transition-all`} style={{ height: `${heightPct}%` }} />
+                                    </div>
+                                    <span className="text-xs text-muted-foreground truncate w-full text-center">{dateLabel}</span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Per-Student Breakdown */}
               {analyticsStats.studentBreakdown.length > 0 && (

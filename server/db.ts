@@ -5291,3 +5291,118 @@ export async function updateCouponAmounts(couponId: number, amounts: { usd: numb
   }).where(eq(coupons.id, couponId));
 }
 
+// ============ Session Rubric Grading ============
+
+export interface RubricGradeEntry {
+  criterion: string;
+  score: number;
+  evidence: string;
+}
+
+export interface RubricGradePayload {
+  sessionId: number;
+  recordingId?: string | null;
+  academicEfficiency: number;
+  instructionalQuality: number;
+  strategyInsight: number;
+  synthesisBranding: number;
+  evidence: RubricGradeEntry[];
+  overallScore: number;
+  overallNarrative: string;
+  transcriptQuality: "high" | "medium" | "low";
+  transcriptQualityReason: string;
+}
+
+export async function saveSessionRubricGrades(payload: RubricGradePayload) {
+  const db = await getDb();
+  if (!db) return null;
+  try {
+    const evidenceJson = JSON.stringify(payload.evidence);
+    const now = new Date();
+
+    // Check if a row already exists for this session
+    const existing = await db
+      .select({ id: sessionAIInsights.id })
+      .from(sessionAIInsights)
+      .where(eq(sessionAIInsights.sessionId, payload.sessionId))
+      .limit(1);
+
+    if (existing.length > 0) {
+      await db.update(sessionAIInsights).set({
+        rubricAcademicEfficiency: payload.academicEfficiency,
+        rubricInstructionalQuality: payload.instructionalQuality,
+        rubricStrategyInsight: payload.strategyInsight,
+        rubricSynthesisBranding: payload.synthesisBranding,
+        rubricEvidence: evidenceJson,
+        rubricOverallScore: payload.overallScore.toFixed(2),
+        rubricGradedAt: now,
+        rubricTranscriptQuality: payload.transcriptQuality,
+        rubricTranscriptQualityReason: payload.transcriptQualityReason,
+      }).where(eq(sessionAIInsights.sessionId, payload.sessionId));
+      return existing[0].id;
+    } else {
+      const [result] = await db.insert(sessionAIInsights).values({
+        recordingId: payload.recordingId ?? null,
+        sessionId: payload.sessionId,
+        rubricAcademicEfficiency: payload.academicEfficiency,
+        rubricInstructionalQuality: payload.instructionalQuality,
+        rubricStrategyInsight: payload.strategyInsight,
+        rubricSynthesisBranding: payload.synthesisBranding,
+        rubricEvidence: evidenceJson,
+        rubricOverallScore: payload.overallScore.toFixed(2),
+        rubricGradedAt: now,
+        rubricTranscriptQuality: payload.transcriptQuality,
+        rubricTranscriptQualityReason: payload.transcriptQualityReason,
+      });
+      return (result as any).insertId ?? null;
+    }
+  } catch (err) {
+    console.error("[DB] saveSessionRubricGrades error:", err);
+    return null;
+  }
+}
+
+export async function getSessionRubricGrades(sessionId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db
+    .select({
+      rubricAcademicEfficiency: sessionAIInsights.rubricAcademicEfficiency,
+      rubricInstructionalQuality: sessionAIInsights.rubricInstructionalQuality,
+      rubricStrategyInsight: sessionAIInsights.rubricStrategyInsight,
+      rubricSynthesisBranding: sessionAIInsights.rubricSynthesisBranding,
+      rubricEvidence: sessionAIInsights.rubricEvidence,
+      rubricOverallScore: sessionAIInsights.rubricOverallScore,
+      rubricGradedAt: sessionAIInsights.rubricGradedAt,
+      rubricTranscriptQuality: sessionAIInsights.rubricTranscriptQuality,
+      rubricTranscriptQualityReason: sessionAIInsights.rubricTranscriptQualityReason,
+    })
+    .from(sessionAIInsights)
+    .where(and(eq(sessionAIInsights.sessionId, sessionId), isNotNull(sessionAIInsights.rubricGradedAt)))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function getRubricGradesByParentId(parentId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return await db
+    .select({
+      sessionId: sessionAIInsights.sessionId,
+      rubricAcademicEfficiency: sessionAIInsights.rubricAcademicEfficiency,
+      rubricInstructionalQuality: sessionAIInsights.rubricInstructionalQuality,
+      rubricStrategyInsight: sessionAIInsights.rubricStrategyInsight,
+      rubricSynthesisBranding: sessionAIInsights.rubricSynthesisBranding,
+      rubricEvidence: sessionAIInsights.rubricEvidence,
+      rubricOverallScore: sessionAIInsights.rubricOverallScore,
+      rubricGradedAt: sessionAIInsights.rubricGradedAt,
+      rubricTranscriptQuality: sessionAIInsights.rubricTranscriptQuality,
+      rubricTranscriptQualityReason: sessionAIInsights.rubricTranscriptQualityReason,
+      scheduledAt: sessions.scheduledAt,
+    })
+    .from(sessionAIInsights)
+    .innerJoin(sessions, eq(sessionAIInsights.sessionId, sessions.id))
+    .where(and(eq(sessions.parentId, parentId), isNotNull(sessionAIInsights.rubricGradedAt)))
+    .orderBy(desc(sessions.scheduledAt));
+}
+
