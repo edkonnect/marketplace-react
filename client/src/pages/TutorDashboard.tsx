@@ -1653,12 +1653,12 @@ export default function TutorDashboard() {
 
       {transcriptModal && (
         <Dialog open={true} onOpenChange={() => setTranscriptModal(null)}>
-          <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col overflow-hidden p-0">
-            <div className="flex flex-col min-h-0 flex-1 overflow-hidden p-6 pb-0">
-            <DialogHeader>
-              <DialogTitle>Session Transcript</DialogTitle>
+          <DialogContent className="w-full max-w-2xl max-h-[92vh] sm:max-h-[90vh] flex flex-col overflow-hidden p-0 mx-2 sm:mx-auto">
+            <div className="flex flex-col min-h-0 flex-1 overflow-hidden px-4 sm:px-6 pt-5 sm:pt-6 pb-0">
+            <DialogHeader className="mb-1">
+              <DialogTitle className="text-lg sm:text-xl leading-tight">Session Transcript</DialogTitle>
             </DialogHeader>
-            <p className="text-sm text-muted-foreground -mt-1 mb-1">
+            <p className="text-sm text-muted-foreground mt-1 mb-4 leading-snug">
               {transcriptModal.courseTitle} &bull; {transcriptModal.studentName}
             </p>
 
@@ -1667,14 +1667,14 @@ export default function TutorDashboard() {
               onValueChange={(v) =>
                 setTranscriptModal((prev) => prev ? { ...prev, activeTab: v as "transcript" | "quiz" | "grade" } : prev)
               }
-              className="flex-1 flex flex-col min-h-0 mt-4"
+              className="flex-1 flex flex-col min-h-0"
             >
-              <TabsList className="w-full shrink-0">
-                <TabsTrigger value="transcript" className="flex-1">Transcript / Summary</TabsTrigger>
+              <TabsList className="w-full shrink-0 h-auto flex-wrap gap-1 sm:flex-nowrap">
+                <TabsTrigger value="transcript" className="flex-1 text-xs sm:text-sm py-1.5 min-w-0">Transcript / Summary</TabsTrigger>
                 {transcriptModal.quizEnabled && (
-                  <TabsTrigger value="quiz" className="flex-1">Quiz</TabsTrigger>
+                  <TabsTrigger value="quiz" className="flex-1 text-xs sm:text-sm py-1.5 min-w-0">Quiz</TabsTrigger>
                 )}
-                <TabsTrigger value="grade" className="flex-1">Grade Session</TabsTrigger>
+                <TabsTrigger value="grade" className="flex-1 text-xs sm:text-sm py-1.5 min-w-0">Grade Session</TabsTrigger>
               </TabsList>
 
               {/* Transcript Tab */}
@@ -1944,7 +1944,7 @@ export default function TutorDashboard() {
             </Tabs>
             </div>
 
-            <DialogFooter className="shrink-0 px-6 py-4 border-t">
+            <DialogFooter className="shrink-0 px-4 sm:px-6 py-3 sm:py-4 border-t">
               <Button variant="outline" onClick={() => setTranscriptModal(null)}>
                 Close
               </Button>
