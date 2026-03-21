@@ -158,8 +158,8 @@ export function CourseManagementTable({ onAssignTutors }: CourseManagementTableP
                   <TableCell>
                     <div>
                       <div className="font-medium">{course.title}</div>
-                      <div className="text-sm text-muted-foreground line-clamp-1">
-                        {course.description}
+                      <div className="text-sm text-muted-foreground line-clamp-1 max-w-xs">
+                        {course.description?.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim()}
                       </div>
                     </div>
                   </TableCell>
