@@ -147,6 +147,137 @@ export function generatePaymentReceipt(data: PaymentReceiptData): Readable {
   return doc as unknown as Readable;
 }
 
+/** Convert rgb(r, g, b) or #hex to a hex string PDFKit accepts */
+function normalizeColor(color: string): string {
+  const rgb = color.match(/rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)/i);
+  if (rgb) {
+    return '#' + [rgb[1], rgb[2], rgb[3]].map(n => parseInt(n).toString(16).padStart(2, '0')).join('');
+  }
+  return color; // already hex
+}
+
+/**
+ * Parse HTML produced by the Tiptap rich text editor and render it into a PDFKit doc.
+ * Handles: p, h2, h3, ul, ol, li, strong, em, u, s, br, span (with inline color).
+ */
+function renderHtmlToPdf(doc: PDFKit.PDFDocument, html: string) {
+  // Normalise: collapse whitespace between tags, trim
+  const cleaned = html.replace(/\s*\n\s*/g, '').trim();
+
+  // Split into top-level block elements
+  const blockRe = /<(h2|h3|p|ul|ol|blockquote)((?:\s[^>]*)?)>([\s\S]*?)<\/\1>/gi;
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  const processInline = (inner: string): { text: string; bold: boolean; italic: boolean; underline: boolean; strike: boolean; color: string | null }[] => {
+    const segments: { text: string; bold: boolean; italic: boolean; underline: boolean; strike: boolean; color: string | null }[] = [];
+    // Strip any remaining tags we don't handle and decode entities
+    const spanRe = /<(strong|em|u|s|span)((?:\s[^>]*)?)>([\s\S]*?)<\/\1>|([^<]+)|<br\s*\/?>/gi;
+    let m: RegExpExecArray | null;
+    const decode = (t: string) => t.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&nbsp;/g, ' ').replace(/&#39;/g, "'").replace(/&quot;/g, '"');
+
+    while ((m = spanRe.exec(inner)) !== null) {
+      if (m[4]) {
+        // Plain text
+        segments.push({ text: decode(m[4]), bold: false, italic: false, underline: false, strike: false, color: null });
+      } else if (m[0].startsWith('<br')) {
+        segments.push({ text: '\n', bold: false, italic: false, underline: false, strike: false, color: null });
+      } else {
+        const tag = m[1].toLowerCase();
+        const attrs = m[2] || '';
+        const content = m[3];
+        // Extract color from style attr — Tiptap outputs rgb() or hex
+        const colorMatch = attrs.match(/color:\s*(rgb\(\s*\d+\s*,\s*\d+\s*,\s*\d+\s*\)|#[0-9a-fA-F]{3,6})/i);
+        const rawColor = colorMatch ? colorMatch[1] : null;
+        const color = rawColor ? normalizeColor(rawColor) : null;
+        // Recurse for nested spans
+        const inner2 = processInline(content);
+        inner2.forEach(seg => {
+          segments.push({
+            text: seg.text,
+            bold: seg.bold || tag === 'strong',
+            italic: seg.italic || tag === 'em',
+            underline: seg.underline || tag === 'u',
+            strike: seg.strike || tag === 's',
+            color: seg.color || color,
+          });
+        });
+      }
+    }
+    return segments;
+  };
+
+  const renderInlineSegments = (segments: ReturnType<typeof processInline>, opts: Record<string, unknown> = {}) => {
+    // PDFKit doesn't support per-character styling in one call; we split by style changes
+    let i = 0;
+    while (i < segments.length) {
+      const seg = segments[i];
+      const font = seg.bold && seg.italic ? 'Helvetica-BoldOblique' : seg.bold ? 'Helvetica-Bold' : seg.italic ? 'Helvetica-Oblique' : 'Helvetica';
+      const continued = i < segments.length - 1;
+      doc.font(font)
+        .fillColor(seg.color || 'black')
+        .text(seg.text, { ...opts, continued, underline: seg.underline, strike: seg.strike } as any);
+      i++;
+    }
+    if (segments.length === 0) doc.text('', opts as any);
+    // Reset color
+    doc.fillColor('black').font('Helvetica');
+  };
+
+  const renderBlock = (tag: string, inner: string) => {
+    if (tag === 'h2') {
+      doc.moveDown(0.4);
+      const segs = processInline(inner);
+      doc.fontSize(13).font('Helvetica-Bold').fillColor('black');
+      renderInlineSegments(segs);
+      doc.fontSize(10).font('Helvetica');
+      doc.moveDown(0.2);
+    } else if (tag === 'h3') {
+      doc.moveDown(0.3);
+      doc.fontSize(11).font('Helvetica-Bold').fillColor('black');
+      renderInlineSegments(processInline(inner));
+      doc.fontSize(10).font('Helvetica');
+      doc.moveDown(0.15);
+    } else if (tag === 'ul' || tag === 'ol') {
+      // Extract list items
+      const liRe = /<li(?:\s[^>]*)?>([\s\S]*?)<\/li>/gi;
+      let li: RegExpExecArray | null;
+      let idx = 1;
+      while ((li = liRe.exec(inner)) !== null) {
+        const bullet = tag === 'ol' ? `${idx}.  ` : '•  ';
+        doc.font('Helvetica').fillColor('black').fontSize(10);
+        const segs = processInline(li[1]);
+        // Prepend bullet as plain segment
+        segs.unshift({ text: bullet, bold: false, italic: false, underline: false, strike: false, color: null });
+        renderInlineSegments(segs, { indent: 15 });
+        idx++;
+      }
+      doc.moveDown(0.2);
+    } else {
+      // p or blockquote
+      const segs = processInline(inner);
+      if (segs.length === 0 || segs.every(s => s.text.trim() === '')) {
+        doc.moveDown(0.4);
+      } else {
+        doc.fontSize(10);
+        renderInlineSegments(segs);
+        doc.moveDown(0.15);
+      }
+    }
+  };
+
+  while ((match = blockRe.exec(cleaned)) !== null) {
+    lastIndex = match.index + match[0].length;
+    renderBlock(match[1].toLowerCase(), match[3]);
+  }
+
+  // Fallback: if no block tags matched (plain text stored before rich editor), render as-is
+  if (lastIndex === 0 && cleaned.length > 0) {
+    const plain = cleaned.replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').trim();
+    doc.fontSize(10).font('Helvetica').fillColor('black').text(plain);
+  }
+}
+
 export function generateCurriculumPDF(data: CurriculumPDFData): Readable {
   const doc = new PDFDocument({
     size: 'A4',
@@ -186,27 +317,9 @@ export function generateCurriculumPDF(data: CurriculumPDFData): Readable {
   // Curriculum Content
   doc.fontSize(12).font('Helvetica-Bold').text('Curriculum Details', { underline: true });
   doc.moveDown(0.5);
-  
-  doc.fontSize(10).font('Helvetica');
-  
-  // Split curriculum by lines and format
-  const lines = data.curriculum.split('\n');
-  lines.forEach((line) => {
-    if (line.trim() === '') {
-      doc.moveDown(0.5);
-    } else if (line.startsWith('Week ') || line.startsWith('Module ')) {
-      // Headers
-      doc.moveDown(0.3);
-      doc.font('Helvetica-Bold').text(line.trim());
-      doc.font('Helvetica');
-    } else if (line.trim().startsWith('•')) {
-      // Bullet points
-      doc.text(`  ${line.trim()}`, { indent: 10 });
-    } else {
-      // Regular text
-      doc.text(line.trim());
-    }
-  });
+
+  // Render HTML curriculum with basic formatting
+  renderHtmlToPdf(doc, data.curriculum);
 
   // Footer
   doc.moveDown(2);
