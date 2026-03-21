@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { useValidatedForm } from "@/hooks/useValidatedForm";
 import { required, positiveNumber } from "@/lib/validation";
 import { FormInput, FormTextarea, FormSelect } from "@/components/forms/FormInput";
+import { RichTextEditor } from "@/components/RichTextEditor";
 
 interface CourseCreationFormProps {
   onSuccess?: () => void;
@@ -226,12 +227,15 @@ export function CourseCreationForm({ onSuccess, editingCourse }: CourseCreationF
             placeholder="https://example.com/image.jpg"
           />
 
-          <FormTextarea
-            field={register("curriculum")}
-            label="Curriculum"
-            placeholder="Detailed curriculum outline..."
-            rows={5}
-          />
+          <div className="space-y-1.5">
+            <Label className="text-sm font-medium">Curriculum</Label>
+            <RichTextEditor
+              key={editingCourse?.id ?? "new"}
+              value={values.curriculum}
+              onChange={(html) => register("curriculum").inputProps.onChange(html)}
+              placeholder="Detailed curriculum outline — use formatting to organize topics, weeks, or units..."
+            />
+          </div>
 
           <div className="flex items-center gap-6">
             <div className="flex items-center gap-2">

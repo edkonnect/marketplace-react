@@ -1,4 +1,5 @@
 import React from "react";
+import { RichTextDisplay } from "@/components/RichTextEditor";
 import Navigation from "@/components/Navigation";
 import { CoursePrice } from "@/components/CoursePrice";
 import { useFormatPrice } from "@/hooks/useFormatPrice";
@@ -411,11 +412,7 @@ export default function CourseDetail() {
                     </div>
                   </CardHeader>
                   <CardContent>
-                    <div className="prose prose-sm max-w-none">
-                      <div className="whitespace-pre-wrap text-muted-foreground leading-relaxed">
-                        {course.curriculum}
-                      </div>
-                    </div>
+                    <RichTextDisplay html={course.curriculum} />
                   </CardContent>
                 </Card>
               )}

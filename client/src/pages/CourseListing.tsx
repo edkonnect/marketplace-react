@@ -214,8 +214,8 @@ export default function CourseListing() {
                       {course.curriculum && (
                         <div className="border-t pt-3">
                           <p className="text-xs font-semibold text-muted-foreground mb-1">Curriculum Preview:</p>
-                          <p className="text-xs text-muted-foreground line-clamp-2 whitespace-pre-wrap">
-                            {course.curriculum}
+                          <p className="text-xs text-muted-foreground line-clamp-2">
+                            {course.curriculum.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim()}
                           </p>
                         </div>
                       )}
