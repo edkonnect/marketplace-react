@@ -34,6 +34,7 @@ export default function CourseDetail() {
   const [studentLastName, setStudentLastName] = React.useState("");
   const [studentGrade, setStudentGrade] = React.useState("");
   const [availabilityModalOpen, setAvailabilityModalOpen] = React.useState(false);
+  const [expandedBios, setExpandedBios] = React.useState<Set<number>>(new Set());
   const [selectedTutorForAvailability, setSelectedTutorForAvailability] = React.useState<{
     id: number;
     name: string;
@@ -729,15 +730,32 @@ export default function CourseDetail() {
                                     {tutorAssignment.user.name}
                                   </h3>
                                 </Link>
-                                <p className="text-sm text-muted-foreground">
-                                  {tutorAssignment.profile?.bio ? tutorAssignment.profile.bio.split('\n')[0] : 'English tutor'}
-                                </p>
+                                {tutorAssignment.profile?.bio && (() => {
+                                  const bio = tutorAssignment.profile!.bio!;
+                                  const isExpanded = expandedBios.has(tutorAssignment.tutorId);
+                                  const isLong = bio.length > 160;
+                                  return (
+                                    <div>
+                                      <p className={`text-sm text-muted-foreground leading-relaxed break-words ${!isExpanded && isLong ? "line-clamp-2" : ""}`}>
+                                        {bio}
+                                      </p>
+                                      {isLong && (
+                                        <button
+                                          onClick={() => setExpandedBios(prev => {
+                                            const next = new Set(prev);
+                                            if (next.has(tutorAssignment.tutorId)) next.delete(tutorAssignment.tutorId);
+                                            else next.add(tutorAssignment.tutorId);
+                                            return next;
+                                          })}
+                                          className="text-xs text-primary font-medium mt-0.5 hover:underline"
+                                        >
+                                          {isExpanded ? "Show less" : "Show more"}
+                                        </button>
+                                      )}
+                                    </div>
+                                  );
+                                })()}
                               </div>
-                              {tutorAssignment.profile?.bio && tutorAssignment.profile.bio.includes('\n') && (
-                                <p className="text-sm text-muted-foreground leading-relaxed break-words">
-                                  {tutorAssignment.profile.bio.split('\n').slice(1).join('\n')}
-                                </p>
-                              )}
                               <div className="flex flex-col xs:flex-row gap-2">
                                 <Button
                                   variant="outline"
