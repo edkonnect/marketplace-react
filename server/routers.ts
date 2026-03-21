@@ -4741,6 +4741,25 @@ export const appRouter = router({
           });
         }
 
+        // Check for overlapping slots on the same day
+        const existingSlots = await db.getTutorAvailability(ctx.user.id);
+        const toMinutes = (t: string) => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
+        const newStart = toMinutes(input.startTime);
+        const newEnd = toMinutes(input.endTime);
+        const hasOverlap = existingSlots
+          .filter(s => s.dayOfWeek === input.dayOfWeek && s.isActive)
+          .some(s => {
+            const sStart = toMinutes(s.startTime);
+            const sEnd = toMinutes(s.endTime);
+            return newStart < sEnd && newEnd > sStart;
+          });
+        if (hasOverlap) {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: 'This time slot overlaps with an existing availability slot for this day.',
+          });
+        }
+
         const slot = await db.createTutorAvailability({
           tutorId: ctx.user.id,
           dayOfWeek: input.dayOfWeek,

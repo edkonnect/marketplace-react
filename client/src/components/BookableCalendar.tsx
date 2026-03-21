@@ -212,6 +212,11 @@ export function BookableCalendar({
             continue; // Skip blocked slots
           }
 
+          // Skip slots that are in the past
+          if (slotTimestampUTC <= Date.now()) {
+            continue;
+          }
+
           // Check if this time conflicts with an existing session (using UTC timestamps)
           let hasConflict = false;
           const newSessionStart = slotTimestampUTC;
@@ -449,8 +454,9 @@ export function BookableCalendar({
             selected={selectedDate}
             onSelect={setSelectedDate}
             disabled={(date) => {
-              // Disable past dates
-              if (date < new Date()) return true;
+              // Disable past dates (compare against midnight so today is never disabled)
+              const today = new Date(); today.setHours(0, 0, 0, 0);
+              if (date < today) return true;
 
               // Disable Sundays
               if (date.getDay() === 0) return true;
@@ -482,11 +488,10 @@ export function BookableCalendar({
                   key={slot.time}
                   variant="outline"
                   onClick={() => handleTimeSlotClick(slot)}
-                  className="h-12 sm:h-14 flex flex-col items-center justify-center hover:bg-primary hover:text-primary-foreground"
+                  className="h-14 flex flex-col items-center justify-center gap-0.5 hover:bg-primary hover:text-primary-foreground px-1"
                 >
-                  <Clock className="w-3 h-3 mb-1" />
-                  <span className="text-xs sm:text-sm font-medium">{slot.displayTime}</span>
-                  {parentTimezoneAbbr && <span className="text-[10px] opacity-60">{parentTimezoneAbbr}</span>}
+                  <span className="text-xs sm:text-sm font-semibold leading-none">{slot.displayTime}</span>
+                  {parentTimezoneAbbr && <span className="text-[10px] opacity-60 leading-none">{parentTimezoneAbbr}</span>}
                 </Button>
               ))}
             </div>
