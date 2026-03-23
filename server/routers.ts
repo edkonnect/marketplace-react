@@ -1107,8 +1107,13 @@ export const appRouter = router({
             input.studentLastName
           );
           const coursePrice = parseFloat(course.price);
-          const discountAmount = hasSiblingDiscount
-            ? Math.round(coursePrice * SIBLING_DISCOUNT_PERCENT) / 100
+          // 5% loyalty discount for ALL course types on pay-in-full
+          const LOYALTY_DISCOUNT_PERCENT = 5;
+          const totalPercentDiscount = Math.min(100,
+            LOYALTY_DISCOUNT_PERCENT + (hasSiblingDiscount ? SIBLING_DISCOUNT_PERCENT : 0)
+          );
+          const discountAmount = totalPercentDiscount > 0
+            ? Math.round(coursePrice * totalPercentDiscount) / 100
             : 0;
 
           // Create local subscription row (pending payment)
@@ -1125,7 +1130,8 @@ export const appRouter = router({
             paymentStatus: "pending",
             paymentPlan: "full",
             siblingDiscountApplied: hasSiblingDiscount,
-            discountAmount: hasSiblingDiscount ? discountAmount.toFixed(2) : null,
+            loyaltyDiscountApplied: true,
+            discountAmount: discountAmount > 0 ? discountAmount.toFixed(2) : null,
           });
 
           if (!subscriptionId) {
@@ -1161,6 +1167,13 @@ export const appRouter = router({
             return { success: true, subscriptionId, checkoutUrl: null };
           }
 
+          // Build discount label
+          const discountParts: string[] = [];
+          discountParts.push(`${LOYALTY_DISCOUNT_PERCENT}% loyalty`);
+          if (hasSiblingDiscount) discountParts.push(`${SIBLING_DISCOUNT_PERCENT}% sibling`);
+          if (promoDiscountUsd > 0) discountParts.push(`$${promoDiscountUsd} promo`);
+          const discountLabel = discountParts.length > 0 ? discountParts.join(" + ") : undefined;
+
           // Create Stripe Checkout session (one-time payment)
           const session = await stripeCheckout({
             priceAmount: coursePrice,
@@ -1172,13 +1185,9 @@ export const appRouter = router({
             origin: input.origin,
             subscriptionId,
             tutorId: selectedTutorId,
-            discountPercent: hasSiblingDiscount ? SIBLING_DISCOUNT_PERCENT : undefined,
+            discountPercent: totalPercentDiscount > 0 ? totalPercentDiscount : undefined,
             discountAmountUsd: promoDiscountUsd > 0 ? promoDiscountUsd : undefined,
-            discountLabel: hasSiblingDiscount && promoDiscountUsd > 0
-              ? `${SIBLING_DISCOUNT_PERCENT}% sibling + $${promoDiscountUsd} promo`
-              : hasSiblingDiscount ? `${SIBLING_DISCOUNT_PERCENT}% sibling`
-              : promoDiscountUsd > 0 ? `$${promoDiscountUsd} promo`
-              : undefined,
+            discountLabel,
           });
 
           return { success: true, subscriptionId, checkoutUrl: session.url, siblingDiscount: hasSiblingDiscount };
@@ -1265,6 +1274,23 @@ export const appRouter = router({
           appliedCouponId = coupon.id;
         }
 
+        // For Tutor/Homework courses: compute usage billing fields.
+        // First billing cycle: enrollment date → 1st of next month (partial free month).
+        // Subsequent cycles: 1st of month → 1st of next month.
+        const isUsageBased = course.courseType === "tutor" || course.courseType === "homework";
+        let billingCycleStart: Date | undefined;
+        let billingCycleEnd: Date | undefined;
+        let perSessionRateCents: number | undefined;
+        if (isUsageBased && course.totalSessions) {
+          const now2 = new Date();
+          // Start = today (UTC midnight), End = 1st of next month UTC midnight
+          billingCycleStart = new Date(Date.UTC(now2.getUTCFullYear(), now2.getUTCMonth(), now2.getUTCDate()));
+          billingCycleEnd = new Date(Date.UTC(now2.getUTCFullYear(), now2.getUTCMonth() + 1, 1));
+          // Apply sibling + promo discounts to the per-session rate (loyalty/pay-in-full not applicable for monthly)
+          const discountedCoursePrice = Math.max(0, coursePrice - discountAmount - promoDiscountUsd);
+          perSessionRateCents = Math.round((discountedCoursePrice / course.totalSessions) * 100);
+        }
+
         // Create local subscription row (billing anchored to today)
         const now = new Date();
         const subscriptionId = await db.createSubscription({
@@ -1281,6 +1307,9 @@ export const appRouter = router({
           siblingDiscountApplied: hasSiblingDiscount,
           promoDiscountAmount: promoDiscountUsd.toString(),
           discountAmount: hasSiblingDiscount ? discountAmount.toFixed(2) : null,
+          ...(isUsageBased && billingCycleStart && billingCycleEnd && perSessionRateCents !== undefined
+            ? { billingCycleStart, billingCycleEnd, perSessionRateCents }
+            : {}),
         });
 
         if (!subscriptionId) {
@@ -1331,6 +1360,150 @@ export const appRouter = router({
         }
 
         return { success: true, subscriptionId, setupUrl, siblingDiscount: hasSiblingDiscount };
+      }),
+
+    enrollWithInstallments: parentProcedure
+      .input(z.object({
+        courseId: z.number(),
+        preferredTutorId: z.number().optional(),
+        studentFirstName: z.string(),
+        studentLastName: z.string(),
+        studentGrade: z.string(),
+        origin: z.string(),
+        promoCode: z.string().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const course = await db.getCourseById(input.courseId);
+        if (!course) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'Course not found' });
+        }
+        if (course.courseType !== "test_prep") {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Installment plans are only available for Test Prep courses.' });
+        }
+
+        // Prevent duplicate enrollment
+        const normalize = (v: string | null | undefined) => (v || "").trim().toLowerCase();
+        const targetFirst = normalize(input.studentFirstName);
+        const targetLast = normalize(input.studentLastName);
+        const existingSubscriptions = await db.getSubscriptionsByParentId(ctx.user.id);
+        const duplicateCourse = existingSubscriptions.some((s: any) => {
+          const sub = s.subscription;
+          if (!sub || sub.status === "cancelled") return false;
+          return (
+            normalize(sub.studentFirstName) === targetFirst &&
+            normalize(sub.studentLastName) === targetLast &&
+            sub.courseId === input.courseId
+          );
+        });
+        if (duplicateCourse) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "This student is already enrolled in this course." });
+        }
+
+        const tutors = await db.getTutorsForCourse(input.courseId);
+        const primaryTutor = tutors.find((t: any) => t.isPrimary) || tutors[0];
+        if (!primaryTutor) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'No tutor found for this course' });
+        }
+        const selectedTutorId = input.preferredTutorId || primaryTutor.tutorId;
+
+        const hasSiblingDiscount = await checkSiblingDiscount(ctx.user.id, input.studentFirstName, input.studentLastName);
+        const coursePrice = parseFloat(course.price);
+
+        // Validate promo code
+        let promoDiscountUsd = 0;
+        let appliedCouponId: number | null = null;
+        if (input.promoCode) {
+          const coupon = await db.getCouponByCode(input.promoCode);
+          if (!coupon || coupon.isUsed || coupon.userId !== ctx.user.id) {
+            throw new TRPCError({ code: 'BAD_REQUEST', message: 'Invalid or expired promo code.' });
+          }
+          const referralDiscount = await db.getReferralDiscountForPrice(coursePrice);
+          promoDiscountUsd = referralDiscount.usd;
+          await db.updateCouponAmounts(coupon.id, { usd: referralDiscount.usd, inr: referralDiscount.inr });
+          appliedCouponId = coupon.id;
+        }
+
+        // Apply sibling + promo discounts to full price (loyalty discount is full-pay only)
+        const siblingPct = hasSiblingDiscount ? SIBLING_DISCOUNT_PERCENT : 0;
+        const afterSiblingCents = Math.round(coursePrice * 100 * (1 - siblingPct / 100));
+        const discountedTotalCents = Math.max(0, afterSiblingCents - Math.round(promoDiscountUsd * 100));
+
+        const numberOfInstallments = 3;
+        const installmentAmountCents = Math.round(discountedTotalCents / numberOfInstallments);
+        // Last installment absorbs rounding remainder
+        const lastInstallmentCents = discountedTotalCents - installmentAmountCents * (numberOfInstallments - 1);
+
+        const now = new Date();
+        const subscriptionId = await db.createSubscription({
+          parentId: ctx.user.id,
+          courseId: input.courseId,
+          preferredTutorId: selectedTutorId,
+          studentFirstName: input.studentFirstName,
+          studentLastName: input.studentLastName,
+          studentGrade: input.studentGrade,
+          status: 'active',
+          startDate: now,
+          paymentStatus: 'pending',
+          paymentPlan: 'installment',
+          numberOfInstallments,
+          firstInstallmentAmount: (installmentAmountCents / 100).toFixed(2),
+          secondInstallmentAmount: (installmentAmountCents / 100).toFixed(2),
+          thirdInstallmentAmount: (lastInstallmentCents / 100).toFixed(2),
+          siblingDiscountApplied: hasSiblingDiscount,
+          promoDiscountAmount: promoDiscountUsd.toString(),
+          discountAmount: (coursePrice - discountedTotalCents / 100).toFixed(2),
+        });
+
+        if (!subscriptionId) {
+          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to create enrollment' });
+        }
+
+        if (appliedCouponId) await db.markCouponUsed(appliedCouponId);
+
+        if (ENV.stripeBypass) {
+          await db.updateSubscription(subscriptionId, { paymentStatus: 'paid' });
+          await triggerReferralReward(ctx.user.id);
+          return { success: true, subscriptionId, setupUrl: null };
+        }
+
+        let setupUrl: string | null = null;
+        if (ctx.user.email) {
+          try {
+            const { getOrCreateStripeCustomer } = await import("./stripe");
+            const stripe = (await import("./stripe")).getStripe();
+            const parentUser = await db.getUserById(ctx.user.id);
+            const stripeCustomerId = await getOrCreateStripeCustomer({
+              userId: ctx.user.id,
+              email: ctx.user.email,
+              name: ctx.user.name,
+              existingStripeCustomerId: parentUser?.stripeCustomerId,
+            });
+            if (stripeCustomerId !== parentUser?.stripeCustomerId) {
+              await db.updateUserStripeCustomerId(ctx.user.id, stripeCustomerId);
+            }
+
+            // Use a setup checkout with type=installment_setup so the webhook
+            // creates an installment Stripe subscription (not a standard monthly one)
+            const setupSession = await stripe.checkout.sessions.create({
+              mode: "setup",
+              customer: stripeCustomerId,
+              currency: "usd",
+              metadata: {
+                type: "installment_setup",
+                subscription_id: subscriptionId.toString(),
+                course_id: input.courseId.toString(),
+                installment_amount_cents: installmentAmountCents.toString(),
+              },
+              success_url: `${input.origin}/parent/dashboard?setup=success`,
+              cancel_url: `${input.origin}/course/${input.courseId}?setup=cancelled`,
+            });
+            setupUrl = setupSession.url;
+          } catch (err) {
+            console.error('[enrollWithInstallments] Failed to create Stripe setup:', err);
+          }
+        }
+
+        return { success: true, subscriptionId, setupUrl };
       }),
 
     retryCheckout: parentProcedure
@@ -1482,10 +1655,10 @@ export const appRouter = router({
           let nextBillingDate: number | null = null;
           let nextBillingAmount: number | null = null;
 
-          // For monthly subs with a linked Stripe subscription, fetch next billing cycle
+          // For monthly/installment subs with a linked Stripe subscription, fetch next billing cycle
           if (
-            sub.subscription.paymentPlan === "monthly" &&
-            sub.subscription.paymentStatus === "paid" &&
+            (sub.subscription.paymentPlan === "monthly" || sub.subscription.paymentPlan === "installment") &&
+            (sub.subscription.paymentStatus === "paid" || sub.subscription.paymentStatus === "completed") &&
             sub.subscription.stripeSubscriptionId
           ) {
             try {
@@ -1495,7 +1668,10 @@ export const appRouter = router({
                 sub.subscription.stripeSubscriptionId
               );
               // current_period_end is the next billing date (Unix timestamp in seconds)
-              nextBillingDate = (stripeSub as any).current_period_end * 1000; // convert to ms
+              const nextTs = (stripeSub as any).status === "trialing"
+                ? ((stripeSub as any).trial_end ?? (stripeSub as any).current_period_end)
+                : (stripeSub as any).current_period_end;
+              nextBillingDate = nextTs * 1000; // convert to ms
               // Find the matching item's price amount
               const item = stripeSub.items.data.find(
                 (i) => i.id === sub.subscription.stripeItemId
@@ -1506,6 +1682,12 @@ export const appRouter = router({
             } catch (err) {
               // Non-fatal — just won't show next billing info
             }
+          }
+
+          let installmentsPaidCount = 0;
+          if (sub.subscription.paymentPlan === "installment") {
+            const installmentPayments = await db.getPaymentsBySubscriptionId(sub.subscription.id);
+            installmentsPaidCount = installmentPayments.filter((p: any) => p.status === "completed").length;
           }
 
           return {
@@ -1519,6 +1701,7 @@ export const appRouter = router({
             },
             nextBillingDate,
             nextBillingAmount,
+            installmentsPaidCount,
           };
         })
       );
@@ -3103,6 +3286,8 @@ export const appRouter = router({
             courseTitle?: string | null;
             paymentNumber?: number | null;
             totalPayments?: number | null;
+            sessionCount?: number | null;
+            perSessionRateCents?: number | null;
           }>;
         }> = [];
 
@@ -3121,9 +3306,11 @@ export const appRouter = router({
               return typeof sub === "string" ? sub : sub?.id ?? null;
             };
 
-            // Group invoice created timestamps per Stripe subscription for payment number
+            // Group invoice created timestamps per Stripe subscription for payment number.
+            // Only count non-$0 invoices so trial confirmation invoices don't inflate the count.
             const subInvoiceMap: Record<string, number[]> = {};
             for (const inv of invoices) {
+              if (inv.status === "paid" && inv.amount_paid === 0) continue; // skip $0 trial invoices
               const subId = getInvSubId(inv);
               if (subId) {
                 if (!subInvoiceMap[subId]) subInvoiceMap[subId] = [];
@@ -3173,10 +3360,21 @@ export const appRouter = router({
                     const course = await db.getCourseById(localSub.courseId);
                     if (course) {
                       lineCourseTitle = course.title;
-                      const totalSessions = course.totalSessions || 1;
-                      const sessionsPerWeek = course.sessionsPerWeek || 1;
-                      const sessionsPerMonth = sessionsPerWeek * 4;
-                      lineTotalPayments = Math.max(1, Math.ceil(totalSessions / sessionsPerMonth));
+                      if (localSub.paymentPlan === "installment") {
+                        // Installment: show "Installment X of 3"
+                        lineTotalPayments = localSub.numberOfInstallments ?? 3;
+                      } else if (localSub.paymentPlan === "monthly") {
+                        // Usage-based monthly: billed via standalone invoices, not subscription invoices.
+                        // Don't show payment number/total on the subscription invoice line.
+                        lineTotalPayments = null;
+                        linePaymentNumber = null;
+                      } else {
+                        // Full pay or legacy monthly: session-based formula
+                        const totalSessions = course.totalSessions || 1;
+                        const sessionsPerWeek = course.sessionsPerWeek || 1;
+                        const sessionsPerMonth = sessionsPerWeek * 4;
+                        lineTotalPayments = Math.max(1, Math.ceil(totalSessions / sessionsPerMonth));
+                      }
                     }
                   }
                 }
@@ -3236,7 +3434,7 @@ export const appRouter = router({
             const stripe = getStripe();
             const activeSubs = await db.getSubscriptionsByParentId(ctx.user.id);
             const monthlyActive = activeSubs.filter((s: any) =>
-              s.subscription.paymentPlan === "monthly" &&
+              (s.subscription.paymentPlan === "monthly" || s.subscription.paymentPlan === "installment") &&
               s.subscription.paymentStatus === "paid" &&
               s.subscription.stripeSubscriptionId
             );
@@ -3273,6 +3471,19 @@ export const appRouter = router({
                   const amount = item?.price?.unit_amount ?? 0;
                   const studentName = [s.subscription.studentFirstName, s.subscription.studentLastName]
                     .filter(Boolean).join(" ") || null;
+                  const isInstallment = s.subscription.paymentPlan === "installment";
+                  const totalPayments = isInstallment
+                    ? (s.subscription.numberOfInstallments ?? 3)
+                    : (() => {
+                        const totalSessions = s.course?.totalSessions || 1;
+                        const sessionsPerWeek = s.course?.sessionsPerWeek || 1;
+                        return Math.max(1, Math.ceil(totalSessions / (sessionsPerWeek * 4)));
+                      })();
+                  // Count how many invoices already paid for this stripe sub
+                  const paidCount = results.filter((r: any) =>
+                    r.source === "stripe" && r.status === "paid" &&
+                    r.lines?.some((l: any) => l.id?.includes(`_${s.subscription.id}`))
+                  ).length;
                   return {
                     id: `upcoming_line_${s.subscription.id}`,
                     description: s.course?.title ?? null,
@@ -3280,12 +3491,8 @@ export const appRouter = router({
                     currency: item?.price?.currency ?? "usd",
                     studentName,
                     courseTitle: s.course?.title ?? null,
-                    paymentNumber: 1,
-                    totalPayments: (() => {
-                      const totalSessions = s.course?.totalSessions || 1;
-                      const sessionsPerWeek = s.course?.sessionsPerWeek || 1;
-                      return Math.max(1, Math.ceil(totalSessions / (sessionsPerWeek * 4)));
-                    })(),
+                    paymentNumber: paidCount + 1,
+                    totalPayments,
                   };
                 });
 
@@ -3319,6 +3526,66 @@ export const appRouter = router({
           } catch (err) {
             console.error("[getStripeInvoices] Failed to build upcoming invoices:", err);
           }
+        }
+
+        // Add upcoming entries for usage-based (Tutor/Homework) subscriptions.
+        // These have no Stripe subscription — billing is driven by the cron job.
+        try {
+          const allSubs = await db.getSubscriptionsByParentId(ctx.user.id);
+          const usageActiveSubs = allSubs.filter((s: any) =>
+            s.subscription.paymentPlan === "monthly" &&
+            s.subscription.status === "active" &&
+            s.subscription.billingCycleEnd &&
+            (s.course?.courseType === "tutor" || s.course?.courseType === "homework")
+          );
+
+          for (const sub of usageActiveSubs) {
+            const cycleStart: Date = sub.subscription.billingCycleStart as Date;
+            const cycleEnd: Date = sub.subscription.billingCycleEnd as Date;
+            const perSessionRateCents: number = sub.subscription.perSessionRateCents ?? 0;
+            const sessionCount = await db.countCompletedSessionsInWindow(
+              sub.subscription.id,
+              cycleStart,
+              cycleEnd
+            );
+            const amountCents = sessionCount * perSessionRateCents;
+            const cycleEndTs = Math.floor(new Date(cycleEnd).getTime() / 1000);
+            const studentName = [sub.subscription.studentFirstName, sub.subscription.studentLastName]
+              .filter(Boolean).join(" ") || null;
+
+            results.push({
+              id: `usage_cycle_${sub.subscription.id}`,
+              number: null,
+              status: "upcoming",
+              amountPaid: 0,
+              amountDue: amountCents,
+              currency: "usd",
+              periodStart: Math.floor(new Date(cycleStart).getTime() / 1000),
+              periodEnd: cycleEndTs,
+              created: cycleEndTs,
+              hostedInvoiceUrl: null,
+              invoicePdf: null,
+              source: "local",
+              studentName,
+              courseTitle: sub.course?.title ?? null,
+              paymentNumber: null,
+              totalPayments: null,
+              lines: [{
+                id: `usage_cycle_line_${sub.subscription.id}`,
+                description: `${sessionCount} session${sessionCount !== 1 ? "s" : ""} × $${(perSessionRateCents / 100).toFixed(2)}/session`,
+                amount: amountCents,
+                currency: "usd",
+                studentName,
+                courseTitle: sub.course?.title ?? null,
+                paymentNumber: null,
+                totalPayments: null,
+                sessionCount,
+                perSessionRateCents,
+              }],
+            });
+          }
+        } catch (err) {
+          console.error("[getStripeInvoices] Failed to build usage-based upcoming entries:", err);
         }
 
         // Also include local payment records that have no Stripe invoice
@@ -3367,6 +3634,29 @@ export const appRouter = router({
         // Sort by created date descending
         results.sort((a, b) => b.created - a.created);
         return results;
+      }),
+
+    getCurrentCycleUsage: parentProcedure
+      .input(z.object({ subscriptionId: z.number() }))
+      .query(async ({ ctx, input }) => {
+        const sub = await db.getSubscriptionById(input.subscriptionId);
+        if (!sub || sub.parentId !== ctx.user.id) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Subscription not found" });
+        }
+        if (!sub.billingCycleStart || !sub.billingCycleEnd) {
+          return null;
+        }
+        const cycleStart = new Date(sub.billingCycleStart);
+        const cycleEnd = new Date(sub.billingCycleEnd);
+        const sessionsCount = await db.countCompletedSessionsInWindow(sub.id, cycleStart, cycleEnd);
+        const perSessionRateCents = sub.perSessionRateCents ?? 0;
+        return {
+          sessionsCount,
+          amountCents: sessionsCount * perSessionRateCents,
+          cycleStart: cycleStart.toISOString(),
+          cycleEnd: cycleEnd.toISOString(),
+          perSessionRateCents,
+        };
       }),
 
     createCheckout: protectedProcedure
@@ -5390,7 +5680,8 @@ export const appRouter = router({
         imageUrl: z.string().optional(),
         curriculum: z.string().optional(),
         aiPowered: z.boolean().optional(),
-        region: z.enum(["global", "us", "india"]).optional(),
+        region: z.enum(["global", "us", "india"]).optional().or(z.literal("")).transform(v => v || undefined),
+        courseType: z.enum(["tutor", "homework", "test_prep"]).optional().or(z.literal("")).transform(v => v || undefined),
       }))
       .mutation(async ({ input }) => {
         const course = await db.createCourse(input as any);
@@ -5412,7 +5703,8 @@ export const appRouter = router({
         curriculum: z.string().optional(),
         isActive: z.boolean().optional(),
         aiPowered: z.boolean().optional(),
-        region: z.enum(["global", "us", "india"]).optional(),
+        region: z.enum(["global", "us", "india"]).optional().or(z.literal("")).transform(v => v || undefined),
+        courseType: z.enum(["tutor", "homework", "test_prep"]).optional().or(z.literal("")).transform(v => v || undefined),
       }))
       .mutation(async ({ input }) => {
         const { id, ...data } = input;
@@ -5477,6 +5769,13 @@ export const appRouter = router({
       }))
       .mutation(async ({ input }) => {
         await db.updateTutorPayoutRequestStatus(input.id, input.status, input.adminNotes);
+        return { success: true };
+      }),
+
+    triggerUsageBilling: adminProcedure
+      .mutation(async () => {
+        const { processUsageBilling } = await import("./cron");
+        await processUsageBilling();
         return { success: true };
       }),
   }),
@@ -6805,6 +7104,19 @@ CRITICAL: Return ONLY valid JSON. No markdown, no explanations. Exactly this for
           rubricEvidence: row.rubricEvidence ? JSON.parse(row.rubricEvidence) : [],
           rubricOverallScore: row.rubricOverallScore ? parseFloat(row.rubricOverallScore as string) : null,
         };
+      }),
+
+    /**
+     * Get all rubric grades for sessions this tutor taught
+     */
+    getByTutor: tutorProcedure
+      .query(async ({ ctx }) => {
+        const rows = await db.getRubricGradesByTutorId(ctx.user.id);
+        return rows.map(r => ({
+          ...r,
+          rubricEvidence: r.rubricEvidence ? JSON.parse(r.rubricEvidence) : [],
+          rubricOverallScore: r.rubricOverallScore ? parseFloat(r.rubricOverallScore as string) : null,
+        }));
       }),
   }),
 
