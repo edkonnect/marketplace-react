@@ -214,6 +214,7 @@ export const courses = mysqlTable("courses", {
   quizEnabled: boolean("quizEnabled").default(false).notNull(),
   aiPowered: boolean("aiPowered").default(false).notNull(),
   region: mysqlEnum("region", ["global", "us", "india"]).default("global").notNull(),
+  courseType: mysqlEnum("courseType", ["test_prep", "tutor", "homework"]).default("tutor").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 }, (table) => ({
@@ -284,6 +285,13 @@ export const subscriptions = mysqlTable("subscriptions", {
   siblingDiscountApplied: boolean("siblingDiscountApplied").default(false).notNull(),
   promoDiscountAmount: decimal("promoDiscountAmount", { precision: 10, scale: 2 }).default("0.00").notNull(),
   discountAmount: decimal("discountAmount", { precision: 10, scale: 2 }),
+  thirdInstallmentPaid: boolean("thirdInstallmentPaid").default(false).notNull(),
+  thirdInstallmentAmount: decimal("thirdInstallmentAmount", { precision: 10, scale: 2 }),
+  numberOfInstallments: int("numberOfInstallments").default(1).notNull(),
+  billingCycleStart: timestamp("billingCycleStart"),
+  billingCycleEnd: timestamp("billingCycleEnd"),
+  perSessionRateCents: int("perSessionRateCents"),
+  loyaltyDiscountApplied: boolean("loyaltyDiscountApplied").default(false).notNull(),
   smsOptIn: boolean("smsOptIn").default(false).notNull(),
   smsConsentTimestamp: timestamp("smsConsentTimestamp"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
@@ -295,6 +303,31 @@ export const subscriptions = mysqlTable("subscriptions", {
 
 export type Subscription = typeof subscriptions.$inferSelect;
 export type InsertSubscription = typeof subscriptions.$inferInsert;
+
+/**
+ * Billing cycles for usage-based (Tutor/Homework) monthly billing
+ */
+export const billingCycles = mysqlTable("billing_cycles", {
+  id: int("id").autoincrement().primaryKey(),
+  subscriptionId: int("subscriptionId").notNull().references(() => subscriptions.id, { onDelete: "cascade" }),
+  cycleStart: timestamp("cycleStart").notNull(),
+  cycleEnd: timestamp("cycleEnd").notNull(),
+  sessionsCount: int("sessionsCount").default(0).notNull(),
+  amountCents: int("amountCents").default(0).notNull(),
+  status: mysqlEnum("status", ["pending", "invoiced", "paid", "failed"]).default("pending").notNull(),
+  stripeInvoiceId: varchar("stripeInvoiceId", { length: 255 }),
+  processedAt: timestamp("processedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => ({
+  subscriptionIdIdx: index("billing_cycles_subscriptionId_idx").on(table.subscriptionId),
+  statusIdx: index("billing_cycles_status_idx").on(table.status),
+  cycleEndIdx: index("billing_cycles_cycleEnd_idx").on(table.cycleEnd),
+  subStartUnique: uniqueIndex("billing_cycles_sub_start_unique").on(table.subscriptionId, table.cycleStart),
+}));
+
+export type BillingCycle = typeof billingCycles.$inferSelect;
+export type InsertBillingCycle = typeof billingCycles.$inferInsert;
 
 /**
  * Tutoring sessions/bookings

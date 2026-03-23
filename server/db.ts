@@ -31,7 +31,8 @@ import {
   sessionQuizzes, InsertSessionQuiz,
   referrals, InsertReferral, Referral,
   coupons, InsertCoupon, Coupon,
-  referralSettings, ReferralSetting
+  referralSettings, ReferralSetting,
+  billingCycles, InsertBillingCycle, BillingCycle
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
@@ -2413,6 +2414,110 @@ async function getUnreadCountsByConversation(userId: number): Promise<Map<number
     console.error("[Database] Failed to get unread counts by conversation:", error);
     return new Map();
   }
+}
+
+// ============ Billing Cycles ============
+
+export async function createBillingCycle(cycle: InsertBillingCycle): Promise<number | null> {
+  const db = await getDb();
+  if (!db) return null;
+  try {
+    const result = await db.insert(billingCycles).values(cycle) as any;
+    return Number(result.insertId);
+  } catch (error: any) {
+    // Duplicate (subscriptionId, cycleStart) — silently skip
+    if (error?.code === "ER_DUP_ENTRY") return null;
+    console.error("[Database] Failed to create billing cycle:", error);
+    return null;
+  }
+}
+
+export async function updateBillingCycle(id: number, updates: Partial<InsertBillingCycle>): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return false;
+  try {
+    await db.update(billingCycles).set(updates).where(eq(billingCycles.id, id));
+    return true;
+  } catch (error) {
+    console.error("[Database] Failed to update billing cycle:", error);
+    return false;
+  }
+}
+
+export async function getBillingCyclesBySubscriptionId(subscriptionId: number): Promise<BillingCycle[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return await db
+    .select()
+    .from(billingCycles)
+    .where(eq(billingCycles.subscriptionId, subscriptionId))
+    .orderBy(desc(billingCycles.cycleStart));
+}
+
+export async function getOpenBillingCycleForSubscription(subscriptionId: number): Promise<BillingCycle | null> {
+  const db = await getDb();
+  if (!db) return null;
+  const result = await db
+    .select()
+    .from(billingCycles)
+    .where(eq(billingCycles.subscriptionId, subscriptionId))
+    .orderBy(desc(billingCycles.cycleStart))
+    .limit(1);
+  return result[0] ?? null;
+}
+
+export async function getBillingCycleByStripeInvoiceId(stripeInvoiceId: string): Promise<BillingCycle | null> {
+  const db = await getDb();
+  if (!db) return null;
+  const result = await db
+    .select()
+    .from(billingCycles)
+    .where(eq(billingCycles.stripeInvoiceId, stripeInvoiceId))
+    .limit(1);
+  return result[0] ?? null;
+}
+
+export async function getUsageBasedSubscriptionsDue(): Promise<Array<{ subscription: any; course: any }>> {
+  const db = await getDb();
+  if (!db) return [];
+  const now = new Date();
+  const rows = await db
+    .select({ subscription: subscriptions, course: courses })
+    .from(subscriptions)
+    .innerJoin(courses, eq(subscriptions.courseId, courses.id))
+    .where(
+      and(
+        eq(subscriptions.paymentPlan, "monthly"),
+        eq(subscriptions.status, "active"),
+        inArray(courses.courseType, ["tutor", "homework"]),
+        isNotNull(subscriptions.billingCycleEnd),
+        lt(subscriptions.billingCycleEnd, now)
+      )
+    );
+  return rows;
+}
+
+export async function countCompletedSessionsInWindow(
+  subscriptionId: number,
+  windowStart: Date,
+  windowEnd: Date
+): Promise<number> {
+  const db = await getDb();
+  if (!db) return 0;
+  const startMs = windowStart.getTime();
+  const endMs = windowEnd.getTime();
+  const result = await db
+    .select({ count: sql<number>`COUNT(*)` })
+    .from(sessions)
+    .where(
+      and(
+        eq(sessions.subscriptionId, subscriptionId),
+        eq(sessions.status, "completed"),
+        gte(sessions.scheduledAt, startMs),
+        lt(sessions.scheduledAt, endMs)
+      )
+    );
+  return Number(result[0]?.count ?? 0);
 }
 
 // ============ Payment Management ============
@@ -5403,6 +5508,29 @@ export async function getRubricGradesByParentId(parentId: number) {
     .from(sessionAIInsights)
     .innerJoin(sessions, eq(sessionAIInsights.sessionId, sessions.id))
     .where(and(eq(sessions.parentId, parentId), isNotNull(sessionAIInsights.rubricGradedAt)))
+    .orderBy(desc(sessions.scheduledAt));
+}
+
+export async function getRubricGradesByTutorId(tutorId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return await db
+    .select({
+      sessionId: sessionAIInsights.sessionId,
+      rubricAcademicEfficiency: sessionAIInsights.rubricAcademicEfficiency,
+      rubricInstructionalQuality: sessionAIInsights.rubricInstructionalQuality,
+      rubricStrategyInsight: sessionAIInsights.rubricStrategyInsight,
+      rubricSynthesisBranding: sessionAIInsights.rubricSynthesisBranding,
+      rubricEvidence: sessionAIInsights.rubricEvidence,
+      rubricOverallScore: sessionAIInsights.rubricOverallScore,
+      rubricGradedAt: sessionAIInsights.rubricGradedAt,
+      rubricTranscriptQuality: sessionAIInsights.rubricTranscriptQuality,
+      rubricTranscriptQualityReason: sessionAIInsights.rubricTranscriptQualityReason,
+      scheduledAt: sessions.scheduledAt,
+    })
+    .from(sessionAIInsights)
+    .innerJoin(sessions, eq(sessionAIInsights.sessionId, sessions.id))
+    .where(and(eq(sessions.tutorId, tutorId), isNotNull(sessionAIInsights.rubricGradedAt)))
     .orderBy(desc(sessions.scheduledAt));
 }
 
