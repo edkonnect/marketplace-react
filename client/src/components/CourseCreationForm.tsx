@@ -19,6 +19,7 @@ interface CourseCreationFormProps {
 export function CourseCreationForm({ onSuccess, editingCourse }: CourseCreationFormProps) {
   const [aiPowered, setAiPowered] = useState<boolean>(false);
   const [region, setRegion] = useState<"global" | "us" | "india">("global");
+  const [courseType, setCourseType] = useState<"tutor" | "homework" | "test_prep">("tutor");
 
   const emptyValues = {
     title: "",
@@ -60,6 +61,7 @@ export function CourseCreationForm({ onSuccess, editingCourse }: CourseCreationF
     reset(initialValues);
     setAiPowered(editingCourse?.aiPowered ?? false);
     setRegion(editingCourse?.region ?? "global");
+    setCourseType(editingCourse?.courseType ?? "tutor");
   }, [editingCourse, reset]);
 
   const createMutation = trpc.adminCourses.createCourse.useMutation({
@@ -87,6 +89,7 @@ export function CourseCreationForm({ onSuccess, editingCourse }: CourseCreationF
     reset(emptyValues);
     setAiPowered(false);
     setRegion("global");
+    setCourseType("tutor");
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -106,6 +109,7 @@ export function CourseCreationForm({ onSuccess, editingCourse }: CourseCreationF
       price: values.price,
       aiPowered,
       region,
+      courseType,
     };
 
     if (editingCourse) {
@@ -146,7 +150,7 @@ export function CourseCreationForm({ onSuccess, editingCourse }: CourseCreationF
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <FormInput
               field={register("title")}
               label="Course Title *"
@@ -175,7 +179,7 @@ export function CourseCreationForm({ onSuccess, editingCourse }: CourseCreationF
             rows={3}
           />
 
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <FormSelect
               field={register("gradeLevel")}
               label="Grade Level"
@@ -196,16 +200,16 @@ export function CourseCreationForm({ onSuccess, editingCourse }: CourseCreationF
               step="0.01"
               placeholder="99.99"
             />
+          </div>
 
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <FormInput
               field={register("duration")}
               label="Duration (minutes)"
               type="number"
               placeholder="60"
             />
-          </div>
 
-          <div className="grid grid-cols-2 gap-4">
             <FormInput
               field={register("sessionsPerWeek")}
               label="Sessions Per Week"
@@ -237,7 +241,7 @@ export function CourseCreationForm({ onSuccess, editingCourse }: CourseCreationF
             />
           </div>
 
-          <div className="flex items-center gap-6">
+          <div className="flex items-center gap-6 flex-wrap">
             <div className="flex items-center gap-2">
               <Checkbox
                 id="aiPowered"
@@ -251,7 +255,7 @@ export function CourseCreationForm({ onSuccess, editingCourse }: CourseCreationF
 
             <div className="flex items-center gap-2">
               <Label className="text-sm font-medium">Region</Label>
-              <Select value={region} onValueChange={(v) => setRegion(v as typeof region)}>
+              <Select key={`region-${editingCourse?.id ?? "new"}-${region}`} value={region} onValueChange={(v) => setRegion(v as typeof region)}>
                 <SelectTrigger className="w-36">
                   <SelectValue />
                 </SelectTrigger>
@@ -259,6 +263,20 @@ export function CourseCreationForm({ onSuccess, editingCourse }: CourseCreationF
                   <SelectItem value="global">🌐 Global</SelectItem>
                   <SelectItem value="us">🇺🇸 US Only</SelectItem>
                   <SelectItem value="india">🇮🇳 India Only</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Label className="text-sm font-medium">Course Type</Label>
+              <Select key={`courseType-${editingCourse?.id ?? "new"}-${courseType}`} value={courseType} onValueChange={(v) => setCourseType(v as typeof courseType)}>
+                <SelectTrigger className="w-36">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="tutor">Tutor Prep</SelectItem>
+                  <SelectItem value="homework">Homework</SelectItem>
+                  <SelectItem value="test_prep">Test Prep</SelectItem>
                 </SelectContent>
               </Select>
             </div>

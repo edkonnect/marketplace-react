@@ -74,6 +74,17 @@ export default function TutorDashboard() {
     { enabled: isAuthenticated && user?.role === "tutor" }
   );
 
+  // Fetch all rubric grades for this tutor's sessions
+  const { data: tutorGrades } = trpc.grades.getByTutor.useQuery(
+    undefined,
+    { enabled: isAuthenticated && user?.role === "tutor" }
+  );
+  const tutorGradeBySessionId = useMemo(() => {
+    const map = new Map<number, NonNullable<typeof tutorGrades>[number]>();
+    (tutorGrades || []).forEach((g) => { if (g.sessionId) map.set(g.sessionId, g); });
+    return map;
+  }, [tutorGrades]);
+
   const [sessionNotes, setSessionNotes] = useState<Record<number, string>>({});
   const [summarizingSessionId, setSummarizingSessionId] = useState<number | null>(null);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
@@ -213,6 +224,26 @@ export default function TutorDashboard() {
       toast.error("Failed to generate quiz: " + error.message);
     },
   });
+
+  // Load existing grade when transcript modal is open
+  const existingGradeQuery = trpc.grades.getBySession.useQuery(
+    { sessionId: transcriptModal?.sessionId ?? 0 },
+    { enabled: !!transcriptModal?.sessionId }
+  );
+  useEffect(() => {
+    const data = existingGradeQuery.data;
+    if (!data) return;
+    const evidence = Array.isArray(data.rubricEvidence) ? data.rubricEvidence : [];
+    if (evidence.length > 0 && !transcriptModal?.grades) {
+      setTranscriptModal((prev) => prev ? {
+        ...prev,
+        grades: evidence as any,
+        overallScore: data.rubricOverallScore ?? undefined,
+        transcriptQuality: data.rubricTranscriptQuality as "high" | "medium" | "low" | undefined,
+        transcriptQualityReason: data.rubricTranscriptQualityReason ?? undefined,
+      } : prev);
+    }
+  }, [existingGradeQuery.data]);
 
   const gradeSessionMutation = trpc.ai.gradeSession.useMutation({
     onSuccess: (data) => {
@@ -1350,6 +1381,17 @@ export default function TutorDashboard() {
                                     <Badge variant={statusVariant(session.status)} className="text-xs">
                                       {session.status === "no_show" ? "No Show" : session.status}
                                     </Badge>
+                                    {tutorGradeBySessionId.has(session.id) && (() => {
+                                      const g = tutorGradeBySessionId.get(session.id)!;
+                                      const score = g.rubricOverallScore;
+                                      const color = score == null ? "bg-muted text-muted-foreground" : score >= 3.5 ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300" : score >= 2.5 ? "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300" : score >= 1.5 ? "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300" : "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300";
+                                      return (
+                                        <span className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full ${color}`}>
+                                          <Sparkles className="w-2.5 h-2.5" />
+                                          {score != null ? `${score.toFixed(1)}/4` : "Graded"}
+                                        </span>
+                                      );
+                                    })()}
                                     {session.status !== "cancelled" && session.status !== "completed" && session.status !== "no_show" && (
                                       <Button
                                         size="sm"

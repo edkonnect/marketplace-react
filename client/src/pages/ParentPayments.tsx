@@ -18,6 +18,59 @@ function formatCents(cents: number, currency: string) {
   }).format(cents / 100);
 }
 
+function CombinedCycleCard({ subs }: { subs: Array<{ subscriptionId: number; courseName: string; studentName: string | null }> }) {
+  const queries = subs.map(s => trpc.payment.getCurrentCycleUsage.useQuery({ subscriptionId: s.subscriptionId }));
+  if (queries.some(q => !q.data)) return null;
+
+  const parseUTCDate = (iso: string) => {
+    const [y, m, d] = iso.split("T")[0].split("-").map(Number);
+    return new Date(y, m - 1, d);
+  };
+
+  const usages = queries.map(q => q.data!);
+  const cycleEnd = parseUTCDate(usages[0].cycleEnd);
+  const totalAmountCents = usages.reduce((sum, u) => sum + u.amountCents, 0);
+  const totalSessions = usages.reduce((sum, u) => sum + u.sessionsCount, 0);
+  const isCombined = subs.length > 1;
+
+  return (
+    <Card className="border-l-4 border-l-blue-400 bg-blue-50/30 dark:bg-blue-950/10">
+      <CardContent className="p-5">
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div className="space-y-2 flex-1">
+            <div className="flex items-center gap-2">
+              <p className="text-xs text-muted-foreground">
+                Charges on {format(cycleEnd, "MMM d, yyyy")}
+              </p>
+              <span className="text-xs bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 px-1.5 py-0.5 rounded font-medium">
+                Upcoming invoice
+              </span>
+            </div>
+            {usages.map((usage, i) => {
+              const cycleStart = parseUTCDate(usage.cycleStart);
+              const cycleEndDate = parseUTCDate(usage.cycleEnd);
+              return (
+                <div key={subs[i].subscriptionId} className={isCombined ? "pl-2 border-l-2 border-blue-200 dark:border-blue-800" : ""}>
+                  <p className="font-semibold text-sm">{subs[i].courseName}{subs[i].studentName ? ` — ${subs[i].studentName}` : ""}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {format(cycleStart, "MMM d")} – {format(cycleEndDate, "MMM d, yyyy")} · {formatCents(usage.perSessionRateCents, "usd")}/session · {usage.sessionsCount} session{usage.sessionsCount !== 1 ? "s" : ""}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+          <div className="text-right shrink-0">
+            <p className="text-2xl font-bold">{formatCents(totalAmountCents, "usd")}</p>
+            <p className="text-xs text-muted-foreground">
+              {totalSessions} session{totalSessions !== 1 ? "s" : ""} completed
+            </p>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function ParentPayments() {
   const { user, isAuthenticated, loading } = useAuth();
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
@@ -25,6 +78,18 @@ export default function ParentPayments() {
   const { data: invoices, isLoading } = trpc.payment.getStripeInvoices.useQuery(
     undefined,
     { enabled: isAuthenticated && user?.role === "parent" }
+  );
+
+  const { data: mySubscriptions = [] } = trpc.subscription.mySubscriptions.useQuery(
+    undefined,
+    { enabled: isAuthenticated && user?.role === "parent" }
+  );
+
+  const usageActiveSubs = (mySubscriptions as any[]).filter((s: any) =>
+    s.subscription.paymentPlan === "monthly" &&
+    s.subscription.status === "active" &&
+    s.subscription.billingCycleEnd &&
+    (s.course?.courseType === "tutor" || s.course?.courseType === "homework")
   );
 
   if (!loading && !isAuthenticated) {
@@ -40,6 +105,32 @@ export default function ParentPayments() {
       <Navigation />
       <div className="container mx-auto px-4 py-8 mt-20 max-w-4xl">
         <h1 className="text-3xl font-bold">Billing History</h1>
+
+        {/* Current cycle tracker for usage-based subscriptions — grouped by billing cycle end date */}
+        {usageActiveSubs.length > 0 && (() => {
+          // Group by billingCycleEnd so same-end-date subscriptions show as one combined card
+          const cycleGroups = new Map<string, any[]>();
+          for (const s of usageActiveSubs) {
+            const key = s.subscription.billingCycleEnd?.toString() ?? "unknown";
+            if (!cycleGroups.has(key)) cycleGroups.set(key, []);
+            cycleGroups.get(key)!.push(s);
+          }
+          return (
+            <div className="space-y-3 mt-6">
+              <h2 className="text-lg font-semibold">Current Billing Cycle</h2>
+              {Array.from(cycleGroups.entries()).map(([key, groupSubs]) => (
+                <CombinedCycleCard
+                  key={key}
+                  subs={groupSubs.map((s: any) => ({
+                    subscriptionId: s.subscription.id,
+                    courseName: s.course?.title ?? "Course",
+                    studentName: [s.subscription.studentFirstName, s.subscription.studentLastName].filter(Boolean).join(" ") || null,
+                  }))}
+                />
+              ))}
+            </div>
+          );
+        })()}
 
         {isLoading ? (
           <div className="space-y-4">
@@ -63,7 +154,11 @@ export default function ParentPayments() {
           </Card>
         ) : (
           <div className="space-y-4">
-            {invoices.map(inv => {
+            {invoices.filter(inv => {
+              // Hide $0 upcoming invoices for usage-based subs — CurrentCycleCard already shows this info
+              if (inv.status === "upcoming" && (inv.amountDue === 0 || inv.amountDue == null) && usageActiveSubs.length > 0) return false;
+              return true;
+            }).map(inv => {
               const isPaid = inv.status === "paid";
               const isUpcoming = inv.status === "upcoming";
               const isOpen = expanded[inv.id] ?? false;
@@ -111,7 +206,11 @@ export default function ParentPayments() {
                               {inv.paymentNumber != null && inv.totalPayments != null && (
                                 <>
                                   <span>·</span>
-                                  <span>Payment {inv.paymentNumber} of {inv.totalPayments}</span>
+                                  <span>
+                                    {inv.totalPayments === 3
+                                      ? `Installment ${inv.paymentNumber} of 3`
+                                      : `Payment ${inv.paymentNumber} of ${inv.totalPayments}`}
+                                  </span>
                                 </>
                               )}
                             </>
@@ -128,7 +227,11 @@ export default function ParentPayments() {
                               {inv.lines[0].paymentNumber != null && inv.lines[0].totalPayments != null && (
                                 <>
                                   <span>·</span>
-                                  <span>Payment {inv.lines[0].paymentNumber} of {inv.lines[0].totalPayments}</span>
+                                  <span>
+                                    {inv.lines[0].totalPayments === 3
+                                      ? `Installment ${inv.lines[0].paymentNumber} of 3`
+                                      : `Payment ${inv.lines[0].paymentNumber} of ${inv.lines[0].totalPayments}`}
+                                  </span>
                                 </>
                               )}
                             </>
@@ -209,7 +312,14 @@ export default function ParentPayments() {
                                   )}
                                   {linePayNum != null && lineTotalPay != null && (
                                     <p className="text-xs text-muted-foreground">
-                                      Payment {linePayNum} of {lineTotalPay} monthly instalments
+                                      {lineTotalPay === 3
+                                        ? `Installment ${linePayNum} of 3`
+                                        : `Payment ${linePayNum} of ${lineTotalPay} monthly instalments`}
+                                    </p>
+                                  )}
+                                  {(line as any).sessionCount != null && (line as any).perSessionRateCents != null && (
+                                    <p className="text-xs text-muted-foreground">
+                                      {(line as any).sessionCount} session{(line as any).sessionCount !== 1 ? "s" : ""} × {formatCents((line as any).perSessionRateCents, line.currency)}/session
                                     </p>
                                   )}
                                 </div>

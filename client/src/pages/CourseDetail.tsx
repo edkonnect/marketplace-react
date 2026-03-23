@@ -81,6 +81,7 @@ export default function CourseDetail() {
 
   const createCheckoutMutation = trpc.course.createCheckoutSession.useMutation();
   const enrollWithoutPaymentMutation = trpc.course.enrollWithoutPayment.useMutation();
+  const enrollWithInstallmentsMutation = trpc.course.enrollWithInstallments.useMutation();
 
   // Trial lesson state
   const [isTrialDialogOpen, setIsTrialDialogOpen] = React.useState(false);
@@ -226,6 +227,35 @@ export default function CourseDetail() {
     }
   };
 
+  const handleEnrollInstallments = async () => {
+    if (!studentFirstName || !studentLastName) {
+      toast.error("Please provide student's first and last name");
+      return;
+    }
+    try {
+      const result = await enrollWithInstallmentsMutation.mutateAsync({
+        courseId,
+        preferredTutorId: selectedTutorId || undefined,
+        studentFirstName,
+        studentLastName,
+        studentGrade: studentGrade || "Grade Not Specified",
+        origin: window.location.origin,
+        promoCode: promoValidation?.valid ? promoCode.trim().toUpperCase() : undefined,
+      });
+      setIsEnrollDialogOpen(false);
+      if (result?.setupUrl) {
+        toast.success("Enrolled! Opening installment billing setup in a new tab...");
+        window.open(result.setupUrl, "_blank");
+      } else {
+        toast.success("Enrolled successfully! Add your payment method from the dashboard.");
+        setLocation("/parent/dashboard");
+      }
+    } catch (error: any) {
+      const message = error?.data?.message || error?.message || "Failed to enroll";
+      toast.error(message);
+    }
+  };
+
   const handleBookTrial = (tutorId: number) => {
     if (!isAuthenticated) {
       window.location.href = LOGIN_PATH;
@@ -296,8 +326,19 @@ export default function CourseDetail() {
   }
 
   const price = parseFloat(course.price);
-  const siblingDiscountAmount = siblingDiscount ? (price * discountPercent / 100) : 0;
-  const effectiveTotal = Math.max(0, price - siblingDiscountAmount - promoDiscountUsd);
+  const isTestPrep = course.courseType === "test_prep";
+  const isUsageBased = course.courseType === "tutor" || course.courseType === "homework";
+  const LOYALTY_DISCOUNT_PCT = 5;
+  // 5% loyalty discount on full payment for all course types + sibling discount stack, capped at 100%
+  const totalPctDiscount = Math.min(100, LOYALTY_DISCOUNT_PCT + (siblingDiscount ? discountPercent : 0));
+  const pctDiscountAmount = totalPctDiscount > 0 ? price * totalPctDiscount / 100 : 0;
+  const effectiveTotal = Math.max(0, price - pctDiscountAmount - promoDiscountUsd);
+  // Per-session rate for Tutor/Homework — applies sibling + promo discounts (loyalty is pay-in-full only)
+  const siblingOnlyDiscountAmount = siblingDiscount ? price * discountPercent / 100 : 0;
+  const discountedMonthlyBase = Math.max(0, price - siblingOnlyDiscountAmount - promoDiscountUsd);
+  const perSessionRate = course.totalSessions ? discountedMonthlyBase / course.totalSessions : null;
+  // Installment amount (3 equal parts of discounted price, sibling+promo only)
+  const installmentAmount = discountedMonthlyBase / 3;
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
@@ -586,23 +627,38 @@ export default function CourseDetail() {
                             </div>
                           )}
 
-                          {(siblingDiscount || promoDiscountUsd > 0) && (
-                            <div className="flex items-center justify-between p-3 bg-primary/5 rounded-lg border border-primary/20 text-sm">
-                              <span className="text-muted-foreground">
-                                Total after discount
-                                {siblingDiscount && promoDiscountUsd > 0 && (
-                                  <span className="ml-1 text-xs">({discountPercent}% sibling + {formatPrice(promoDiscountUsd)} promo)</span>
-                                )}
-                                {siblingDiscount && promoDiscountUsd === 0 && (
-                                  <span className="ml-1 text-xs">({discountPercent}% sibling)</span>
-                                )}
-                                {!siblingDiscount && promoDiscountUsd > 0 && (
-                                  <span className="ml-1 text-xs">({formatPrice(promoDiscountUsd)} promo)</span>
-                                )}
+                          {/* Price summary — always shown so user sees original vs discounted */}
+                          <div className="p-3 bg-primary/5 rounded-lg border border-primary/20 text-sm space-y-1.5">
+                            <div className="flex items-center justify-between">
+                              <span className="text-muted-foreground">Original price</span>
+                              <span className={totalPctDiscount > 0 || promoDiscountUsd > 0 ? "line-through text-muted-foreground" : "font-semibold"}>
+                                {formatPrice(price)}
                               </span>
-                              <span className="font-bold text-primary">{formatPrice(effectiveTotal)}</span>
                             </div>
-                          )}
+                            <div className="flex items-center justify-between text-blue-700 dark:text-blue-400">
+                              <span>Loyalty discount ({LOYALTY_DISCOUNT_PCT}% off) when you pay in full</span>
+                              <span>−{formatPrice(price * LOYALTY_DISCOUNT_PCT / 100)}</span>
+                            </div>
+                            {siblingDiscount && (
+                              <div className="flex items-center justify-between text-purple-700 dark:text-purple-400">
+                                <span>Sibling discount ({discountPercent}% off)</span>
+                                <span>−{formatPrice(price * discountPercent / 100)}</span>
+                              </div>
+                            )}
+                            {promoDiscountUsd > 0 && (
+                              <div className="flex items-center justify-between text-green-700 dark:text-green-400">
+                                <span>Promo code</span>
+                                <span>−{formatPrice(promoDiscountUsd)}</span>
+                              </div>
+                            )}
+                            <div className="border-t border-primary/20 pt-1.5 flex items-center justify-between font-bold">
+                              <span>You pay</span>
+                              <span className="text-primary text-base">{formatPrice(effectiveTotal)}</span>
+                            </div>
+                            <p className="text-xs text-green-700 dark:text-green-400 font-medium">
+                              You save {formatPrice(price - effectiveTotal)} on this course!
+                            </p>
+                          </div>
 
                           <div className="space-y-3">
                             <div className="flex gap-2">
@@ -618,10 +674,44 @@ export default function CourseDetail() {
                                 onClick={handleEnroll}
                                 disabled={createCheckoutMutation.isPending || !studentFirstName || !studentLastName}
                               >
-                                {createCheckoutMutation.isPending ? "Processing..." : (siblingDiscount || promoDiscountUsd > 0) ? `Pay ${formatPrice(effectiveTotal)}` : "Pay in Full"}
+                                {createCheckoutMutation.isPending ? "Processing..." : (
+                                  `Pay in Full — ${formatPrice(effectiveTotal)}${totalPctDiscount > 0 ? ` (${totalPctDiscount}% off)` : ""}`
+                                )}
                               </Button>
                             </div>
-                            {price >= 150 && (
+
+                            {/* Test Prep: 3-installment option */}
+                            {isTestPrep && (
+                              <Button
+                                variant="secondary"
+                                className="w-full"
+                                onClick={handleEnrollInstallments}
+                                disabled={enrollWithInstallmentsMutation.isPending || !studentFirstName || !studentLastName}
+                              >
+                                {enrollWithInstallmentsMutation.isPending
+                                  ? "Enrolling..."
+                                  : `Pay in 3 Installments — ${formatPrice(installmentAmount)}/month × 3`}
+                              </Button>
+                            )}
+
+                            {/* Tutor / Homework: usage-based monthly */}
+                            {isUsageBased && (
+                              <Button
+                                variant="secondary"
+                                className="w-full"
+                                onClick={handlePayLater}
+                                disabled={enrollWithoutPaymentMutation.isPending || !studentFirstName || !studentLastName}
+                              >
+                                {enrollWithoutPaymentMutation.isPending
+                                  ? "Enrolling..."
+                                  : perSessionRate !== null
+                                    ? `Enroll & Pay Monthly — ${formatPrice(perSessionRate)}/session`
+                                    : "Enroll & Pay Monthly"}
+                              </Button>
+                            )}
+
+                            {/* Legacy: non-typed courses with price >= 150 */}
+                            {!isTestPrep && !isUsageBased && price >= 150 && (
                               <Button
                                 variant="secondary"
                                 className="w-full"

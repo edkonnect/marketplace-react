@@ -292,6 +292,11 @@ export function AdminDashboard() {
     onError: (err) => toast.error(err.message || "Failed to update payout request"),
   });
 
+  const triggerUsageBillingMutation = trpc.adminCourses.triggerUsageBilling.useMutation({
+    onSuccess: () => toast.success("Usage billing job completed — check server logs for details"),
+    onError: (err) => toast.error(err.message || "Billing job failed"),
+  });
+
   useEffect(() => {
     if (!loading && !isAuthenticated) {
       window.location.href = LOGIN_PATH;
@@ -883,6 +888,28 @@ export function AdminDashboard() {
 
           {/* Payments Tab */}
           <TabsContent value="payments" forceMount className={tabContentClass}>
+            {/* Admin Tools */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Billing Tools</CardTitle>
+                <CardDescription>Administrative billing operations</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-center gap-4">
+                  <Button
+                    variant="outline"
+                    onClick={() => triggerUsageBillingMutation.mutate()}
+                    disabled={triggerUsageBillingMutation.isPending}
+                  >
+                    {triggerUsageBillingMutation.isPending ? "Running..." : "Run Usage Billing Now"}
+                  </Button>
+                  <p className="text-sm text-muted-foreground">
+                    Manually trigger the monthly cron job that charges Tutor/Homework courses for completed sessions. Normally runs at 02:00 UTC on the 1st of each month.
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+
             {/* Filters */}
             <Card>
               <CardHeader>

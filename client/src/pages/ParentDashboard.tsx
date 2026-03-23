@@ -633,7 +633,7 @@ export default function ParentDashboard() {
                             <Badge variant={subscription.status === "active" ? "default" : "secondary"}>
                               {subscription.status}
                             </Badge>
-                            {subscription.paymentStatus === "pending" && (subscription.paymentPlan === "full" || subscription.paymentPlan === "installment") && (
+                            {subscription.paymentStatus === "pending" && subscription.paymentPlan === "full" && (
                               <Badge variant="destructive" className="text-xs">
                                 Billing Pending
                               </Badge>
@@ -643,9 +643,19 @@ export default function ParentDashboard() {
                                 Payment Pending
                               </Badge>
                             )}
-                            {subscription.paymentPlan === "monthly" && subscription.paymentStatus === "paid" && (
+                            {subscription.paymentPlan === "monthly" && (subscription.paymentStatus === "paid" || subscription.paymentStatus === "completed") && (
                               <Badge variant="secondary" className="text-xs bg-green-100 text-green-900 dark:bg-green-950 dark:text-green-200">
                                 Monthly Billing Active
+                              </Badge>
+                            )}
+                            {subscription.paymentPlan === "installment" && subscription.paymentStatus === "paid" && (
+                              <Badge variant="secondary" className="text-xs bg-blue-100 text-blue-900 dark:bg-blue-950 dark:text-blue-200">
+                                Installment {(subscription as any).installmentsPaidCount ?? 0} of {subscription.numberOfInstallments ?? 3} paid
+                              </Badge>
+                            )}
+                            {subscription.paymentPlan === "installment" && subscription.paymentStatus === "pending" && (
+                              <Badge variant="secondary" className="text-xs bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200">
+                                Installment Setup Pending
                               </Badge>
                             )}
                           </div>
@@ -668,7 +678,23 @@ export default function ParentDashboard() {
                           </div>
                         </div>
 
-                        {subscription.paymentPlan === "monthly" && subscription.paymentStatus === "paid" && !!nextBillingDate && !isNaN(nextBillingDate) && (
+                        {subscription.paymentPlan === "installment" && subscription.paymentStatus === "paid" && !!nextBillingDate && !isNaN(nextBillingDate) && (subscription as any).installmentsPaidCount < (subscription.numberOfInstallments ?? 3) && (
+                          <div className="p-3 bg-blue-50 dark:bg-blue-950/20 rounded-lg border border-blue-200 dark:border-blue-900 text-sm">
+                            <div className="flex justify-between items-center">
+                              <span className="text-blue-800 dark:text-blue-200">
+                                Next installment ({((subscription as any).installmentsPaidCount ?? 0) + 1} of {subscription.numberOfInstallments ?? 3})
+                              </span>
+                              <span className="font-medium text-blue-900 dark:text-blue-100">
+                                {new Date(nextBillingDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                                {nextBillingAmount != null && (
+                                  <span className="ml-2">{formatPrice(nextBillingAmount as number)}</span>
+                                )}
+                              </span>
+                            </div>
+                          </div>
+                        )}
+
+                        {subscription.paymentPlan === "monthly" && (subscription.paymentStatus === "paid" || subscription.paymentStatus === "completed") && !!nextBillingDate && !isNaN(nextBillingDate) && (
                           <div className="p-3 bg-blue-50 dark:bg-blue-950/20 rounded-lg border border-blue-200 dark:border-blue-900 text-sm">
                             <div className="flex justify-between items-center">
                               <span className="text-blue-800 dark:text-blue-200">Next billing</span>
