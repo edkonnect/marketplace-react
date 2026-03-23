@@ -34,6 +34,7 @@ interface BookableCalendarProps {
   courseName: string;
   sessionDuration: number; // in minutes
   isTrial?: boolean; // Flag for trial booking mode
+  trialPriceLabel?: string; // e.g. "$" or equivalent "₹" depending on user region
   onBookingComplete: (scheduledAt?: number) => void; // Pass scheduledAt for trial mode
 }
 
@@ -53,6 +54,7 @@ export function BookableCalendar({
   courseName,
   sessionDuration,
   isTrial = false,
+  trialPriceLabel = "$1",
   onBookingComplete,
 }: BookableCalendarProps) {
   const { user } = useAuthContext();
@@ -438,10 +440,10 @@ export function BookableCalendar({
         <div className="bg-gradient-to-r from-blue-50 to-cyan-50 dark:from-blue-950/20 dark:to-cyan-950/20 border-2 border-blue-200 dark:border-blue-800 rounded-lg p-4">
           <div className="flex items-center gap-2 mb-2">
             <span className="text-2xl">🎉</span>
-            <h3 className="text-base sm:text-lg font-semibold text-blue-900 dark:text-blue-100">Free Trial Lesson</h3>
+            <h3 className="text-base sm:text-lg font-semibold text-blue-900 dark:text-blue-100">{trialPriceLabel} Trial Lesson</h3>
           </div>
           <p className="text-sm text-blue-700 dark:text-blue-300">
-            Select a convenient time for your 60-minute trial session.
+            Select a convenient time for your 60-minute trial session only {trialPriceLabel}.
           </p>
         </div>
       )}

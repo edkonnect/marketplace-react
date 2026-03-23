@@ -97,20 +97,12 @@ export default function CourseDetail() {
     { enabled: isAuthenticated && user?.role === 'parent' }
   );
 
-  // Book trial lesson directly (Stripe integration disabled for now)
-  const bookTrialMutation = trpc.trialLesson.book.useMutation({
+  const createTrialCheckoutMutation = trpc.trialLesson.createCheckoutSession.useMutation({
     onSuccess: (data) => {
-      toast.success(`Trial lesson booked successfully! ${data.trialsRemaining} trial(s) remaining.`);
-      setIsTrialDialogOpen(false);
-      setSelectedTrialTutorId(null);
-      setTrialStudentFirstName("");
-      setTrialStudentLastName("");
-      setTrialStudentGrade("");
-      setSelectedTrialTime(null);
-      setLocation("/parent/dashboard");
+      window.location.href = data.checkoutUrl;
     },
     onError: (error) => {
-      toast.error(error.message);
+      toast.error(`Failed to start payment: ${error.message}`);
     },
   });
 
@@ -139,6 +131,15 @@ export default function CourseDetail() {
       setStudentFirstName(student.firstName);
       setStudentLastName(student.lastName);
       setStudentGrade(student.grade);
+    }
+  };
+
+  const handleSelectExistingStudentForTrial = (fullName: string) => {
+    const student = existingStudents.find(s => s.fullName === fullName);
+    if (student) {
+      setTrialStudentFirstName(student.firstName);
+      setTrialStudentLastName(student.lastName);
+      setTrialStudentGrade(student.grade || "");
     }
   };
 
@@ -288,8 +289,7 @@ export default function CourseDetail() {
       return;
     }
 
-    // Book trial lesson directly (Stripe integration disabled)
-    bookTrialMutation.mutate({
+    createTrialCheckoutMutation.mutate({
       courseId,
       tutorId: selectedTrialTutorId,
       scheduledAt,
@@ -297,6 +297,7 @@ export default function CourseDetail() {
       studentFirstName: trialStudentFirstName,
       studentLastName: trialStudentLastName,
       studentGrade: trialStudentGrade,
+      origin: window.location.origin,
     });
   };
 
@@ -893,7 +894,7 @@ export default function CourseDetail() {
           <DialogHeader>
             <DialogTitle>Book Your Trial Lesson</DialogTitle>
             <DialogDescription>
-              Experience our teaching style with a free trial lesson!
+              Book a 60-minute trial lesson for just {formatPrice(1)}!
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
@@ -905,8 +906,26 @@ export default function CourseDetail() {
                   </p>
                 </div>
                 <p className="text-xs text-blue-700 dark:text-blue-300">
-                  Book a full 60-minute trial session to experience our teaching quality!
+                  Book a 60-minute trial session only {formatPrice(1)}!
                 </p>
+              </div>
+            )}
+
+            {existingStudents.length > 0 && (
+              <div className="space-y-2">
+                <Label>Select Existing Student (Optional)</Label>
+                <Select onValueChange={handleSelectExistingStudentForTrial}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Choose a student or enter new" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {existingStudents.map((student) => (
+                      <SelectItem key={student.fullName} value={student.fullName}>
+                        {student.fullName}{student.grade ? ` (${student.grade})` : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             )}
 
@@ -968,6 +987,7 @@ export default function CourseDetail() {
                   courseName={course.title}
                   sessionDuration={60}
                   isTrial={true}
+                  trialPriceLabel={formatPrice(1)}
                   onBookingComplete={handleTrialBookingComplete}
                 />
               </div>
