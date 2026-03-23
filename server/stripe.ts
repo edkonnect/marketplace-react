@@ -261,3 +261,126 @@ export async function getCustomer(customerId: string) {
   const stripe = getStripe();
   return await stripe.customers.retrieve(customerId);
 }
+
+// Create a Stripe subscription for 3-installment Test Prep plans.
+// Uses cancel_at so Stripe auto-cancels after the 3rd invoice fires.
+export async function createInstallmentStripeSubscription(params: {
+  stripeCustomerId: string;
+  priceId: string;
+  parentId: number;
+  localSubscriptionId: number;
+  numberOfInstallments: number;
+}): Promise<Stripe.Subscription> {
+  const stripe = getStripe();
+  const trialEndTs = computeTrialEndTs();
+  // cancel_at = trial_end + (numberOfInstallments months) in seconds
+  const cancelAt = trialEndTs + params.numberOfInstallments * 30 * 24 * 60 * 60;
+  return await stripe.subscriptions.create({
+    customer: params.stripeCustomerId,
+    items: [{ price: params.priceId, metadata: { local_subscription_id: params.localSubscriptionId.toString() } }],
+    proration_behavior: "none",
+    trial_end: trialEndTs,
+    cancel_at: cancelAt,
+    metadata: {
+      parent_id: params.parentId.toString(),
+      payment_type: "installment_3",
+      number_of_installments: params.numberOfInstallments.toString(),
+    },
+  });
+}
+
+// Create a standalone (non-subscription) Stripe invoice for one usage-based billing cycle.
+// Charges the parent's default payment method immediately.
+export async function createUsageInvoice(params: {
+  stripeCustomerId: string;
+  parentId: number;
+  localSubscriptionId: number;
+  billingCycleId: number;
+  sessionCount: number;
+  perSessionRateCents: number;
+  courseTitle: string;
+  studentName: string;
+  cycleStart: Date;
+  cycleEnd: Date;
+}): Promise<Stripe.Invoice> {
+  return createCombinedUsageInvoice({
+    stripeCustomerId: params.stripeCustomerId,
+    cycleEnd: params.cycleEnd,
+    billingCycleIds: [params.billingCycleId],
+    lines: [{
+      subscriptionId: params.localSubscriptionId,
+      billingCycleId: params.billingCycleId,
+      sessionCount: params.sessionCount,
+      perSessionRateCents: params.perSessionRateCents,
+      courseTitle: params.courseTitle,
+      studentName: params.studentName,
+      cycleStart: params.cycleStart,
+      cycleEnd: params.cycleEnd,
+    }],
+  });
+}
+
+export async function createCombinedUsageInvoice(params: {
+  stripeCustomerId: string;
+  cycleEnd: Date;
+  billingCycleIds: number[];
+  lines: Array<{
+    subscriptionId: number;
+    billingCycleId: number;
+    sessionCount: number;
+    perSessionRateCents: number;
+    courseTitle: string;
+    studentName: string;
+    cycleStart: Date;
+    cycleEnd: Date;
+  }>;
+}): Promise<Stripe.Invoice> {
+  const stripe = getStripe();
+  const { format } = await import("date-fns");
+
+  const invoice = await stripe.invoices.create({
+    customer: params.stripeCustomerId,
+    auto_advance: false,
+    metadata: {
+      type: "usage_cycle",
+      billing_cycle_ids: params.billingCycleIds.join(","),
+    },
+  });
+
+  // Attach one line item per subscription
+  for (const line of params.lines) {
+    const cycleLabel = `${format(line.cycleStart, "MMM d")} – ${format(line.cycleEnd, "MMM d, yyyy")}`;
+    const description = `${line.sessionCount} session${line.sessionCount !== 1 ? "s" : ""} — ${line.courseTitle}${line.studentName ? ` (${line.studentName})` : ""} · ${cycleLabel}`;
+    await stripe.invoiceItems.create({
+      customer: params.stripeCustomerId,
+      invoice: invoice.id,
+      amount: line.sessionCount * line.perSessionRateCents,
+      currency: "usd",
+      description,
+      metadata: {
+        local_subscription_id: line.subscriptionId.toString(),
+        billing_cycle_id: line.billingCycleId.toString(),
+        session_count: line.sessionCount.toString(),
+        per_session_rate_cents: line.perSessionRateCents.toString(),
+      },
+    });
+  }
+
+  const finalized = await stripe.invoices.finalizeInvoice(invoice.id);
+
+  if (finalized.status === "paid") {
+    return finalized;
+  }
+
+  try {
+    const paid = await stripe.invoices.pay(invoice.id);
+    return paid;
+  } catch (err: any) {
+    if ((err as any)?.message?.includes("already paid")) {
+      const retrieved = await stripe.invoices.retrieve(invoice.id);
+      return retrieved;
+    }
+    console.error(`[Stripe] Combined usage invoice ${invoice.id} pay() failed:`, err?.message);
+    throw err;
+  }
+}

@@ -126,6 +126,23 @@ export async function handleStripeWebhook(req: Request, res: Response) {
             }
 
             if (localSub && course) {
+              const isUsageBased = localSub.paymentPlan === "monthly" && localSub.perSessionRateCents != null;
+
+              if (isUsageBased) {
+                // Usage-based (tutor/homework): don't create a Stripe subscription item.
+                // Billing is handled entirely by the cron's standalone usage invoices.
+                // Just mark the subscription as paid (card is saved on the Stripe customer).
+                try {
+                  await db.updateSubscription(subscriptionId, { paymentStatus: "paid" });
+                  const localSubForReferral = await db.getSubscriptionById(subscriptionId);
+                  if (localSubForReferral?.parentId) {
+                    await processReferralReward(localSubForReferral.parentId);
+                  }
+                  console.log(`[Webhook] ✓ Usage-based enrollment card saved: sub=${subscriptionId}, customer=${stripeCustomerId}`);
+                } catch (err: any) {
+                  console.error("[Webhook] Failed to update usage-based subscription after card setup:", err?.message || err);
+                }
+              } else {
               const { createStripePrice, getParentStripeSubscriptionForToday, createStripeSubscription, addCourseToStripeSubscription } = await import("./stripe");
 
               try {
@@ -199,6 +216,72 @@ export async function handleStripeWebhook(req: Request, res: Response) {
               } catch (err: any) {
                 console.error("[Webhook] Failed to create/update subscription after card setup:", err?.message || err);
                 if (err?.raw) console.error("[Webhook] Stripe error detail:", err.raw);
+              }
+              }
+            }
+          }
+        } else if (type === "installment_setup") {
+          // 3-installment Test Prep: same as payment_method_setup but uses
+          // createInstallmentStripeSubscription so Stripe auto-cancels after N invoices.
+          const stripeCustomerId = session.customer as string | null;
+          const setupIntentId = session.setup_intent as string | null;
+          const subscriptionId = parseInt(session.metadata?.subscription_id || "0");
+          const courseId = parseInt(session.metadata?.course_id || "0");
+          const installmentAmountCents = parseInt(session.metadata?.installment_amount_cents || "0");
+
+          if (stripeCustomerId && setupIntentId) {
+            const stripe = getStripe();
+            const setupIntent = await stripe.setupIntents.retrieve(setupIntentId);
+            const paymentMethodId = setupIntent.payment_method as string | null;
+            if (paymentMethodId) {
+              await stripe.customers.update(stripeCustomerId, {
+                invoice_settings: { default_payment_method: paymentMethodId },
+              });
+            }
+          }
+
+          if (subscriptionId && stripeCustomerId && installmentAmountCents > 0) {
+            const localSub = await db.getSubscriptionById(subscriptionId);
+            const course = courseId ? await db.getCourseById(courseId) : null;
+
+            if (localSub) {
+              const parentUser = await db.getUserById(localSub.parentId);
+              if (!parentUser?.stripeCustomerId) {
+                await db.updateUserStripeCustomerId(localSub.parentId, stripeCustomerId);
+              }
+            }
+
+            if (localSub && course) {
+              const { createStripePrice, createInstallmentStripeSubscription } = await import("./stripe");
+              try {
+                const studentName = [localSub.studentFirstName, localSub.studentLastName].filter(Boolean).join(" ");
+                const numberOfInstallments = localSub.numberOfInstallments ?? 3;
+
+                const price = await createStripePrice({
+                  courseName: course.title,
+                  studentName,
+                  courseId: course.id,
+                  localSubscriptionId: subscriptionId,
+                  monthlyAmountCents: installmentAmountCents,
+                });
+
+                const stripeSub = await createInstallmentStripeSubscription({
+                  stripeCustomerId,
+                  priceId: price.id,
+                  parentId: localSub.parentId,
+                  localSubscriptionId: subscriptionId,
+                  numberOfInstallments,
+                });
+
+                await db.updateSubscription(subscriptionId, {
+                  stripeSubscriptionId: stripeSub.id,
+                  stripeItemId: stripeSub.items.data[0].id,
+                  paymentStatus: "paid",
+                });
+                await processReferralReward(localSub.parentId);
+                console.log(`[Webhook] ✓ Installment setup: sub=${subscriptionId} → Stripe ${stripeSub.id} (${numberOfInstallments} installments)`);
+              } catch (err: any) {
+                console.error("[Webhook] Failed to create installment subscription:", err?.message);
               }
             }
           }
@@ -371,6 +454,48 @@ export async function handleStripeWebhook(req: Request, res: Response) {
             break;
         }
 
+        // Handle usage-based invoices (standalone, no Stripe subscription)
+        if (invoice.metadata?.type === "usage_cycle") {
+          const billingCycleId = parseInt(invoice.metadata?.billing_cycle_id || "0");
+          const localSubId = parseInt(invoice.metadata?.local_subscription_id || "0");
+          if (billingCycleId) {
+            await db.updateBillingCycle(billingCycleId, {
+              status: "paid",
+              stripeInvoiceId: invoice.id,
+              processedAt: new Date(),
+            });
+          }
+          if (localSubId) {
+            const localSub = await db.getSubscriptionById(localSubId);
+            if (localSub) {
+              const tutors = await db.getTutorsForCourse(localSub.courseId);
+              const tutorId = localSub.preferredTutorId
+                ? tutors.find((t: any) => t.tutorId === localSub.preferredTutorId)?.tutorId
+                : undefined;
+              const resolvedTutorId = tutorId || tutors.find((t: any) => t.isPrimary)?.tutorId || tutors[0]?.tutorId;
+              if (resolvedTutorId) {
+                const stripePaymentIntentId = (invoice.payments?.data?.[0] as any)?.payment_details?.payment_intent
+                  ?? (invoice.payments?.data?.[0] as any)?.payment_intent ?? null;
+                const piStr = typeof stripePaymentIntentId === "string"
+                  ? stripePaymentIntentId : (stripePaymentIntentId as any)?.id ?? null;
+                await db.createPayment({
+                  parentId: localSub.parentId,
+                  tutorId: resolvedTutorId,
+                  subscriptionId: localSubId,
+                  sessionId: null,
+                  amount: (invoice.amount_paid / 100).toFixed(2),
+                  currency: invoice.currency,
+                  status: "completed",
+                  stripePaymentIntentId: piStr,
+                  stripeInvoiceId: invoice.id,
+                  paymentType: "subscription",
+                });
+                console.log(`[Webhook] ✓ Usage cycle payment recorded: sub=${localSubId}, cycle=${billingCycleId}`);
+              }
+            }
+          }
+          break;
+        }
 
         const stripeSubscriptionId = (
           typeof (invoice.parent as any)?.subscription_details?.subscription === "string"
@@ -441,11 +566,23 @@ export async function handleStripeWebhook(req: Request, res: Response) {
             continue;
           }
 
-          // Compute how many instalments this course requires
+          // Skip usage-based (tutor/homework monthly) subscriptions on subscription invoices.
+          // Their billing is handled exclusively via standalone usage invoices from the cron job.
+          if (localSub.paymentPlan === "monthly" && localSub.perSessionRateCents) {
+            console.log(`[Webhook] Skipping usage-based sub ${localSub.id} on subscription invoice — billed via cron`);
+            anySkippedAsCompleted = true;
+            continue;
+          }
+
+          // Compute how many instalments this course requires.
+          // For installment plans, use the explicit numberOfInstallments field.
+          // For monthly plans, derive from session count (existing logic).
           const course = await db.getCourseById(localSub.courseId);
-          const numberOfMonths = course
-            ? Math.max(1, Math.ceil((course.totalSessions || 1) / ((course.sessionsPerWeek || 1) * 4)))
-            : null;
+          const numberOfMonths = localSub.paymentPlan === "installment"
+            ? (localSub.numberOfInstallments ?? 3)
+            : course
+              ? Math.max(1, Math.ceil((course.totalSessions || 1) / ((course.sessionsPerWeek || 1) * 4)))
+              : null;
 
           // Count real payments already recorded for this subscription (BEFORE creating this one)
           const existingPayments = await db.getPaymentsBySubscriptionId(localSub.id);
@@ -602,6 +739,16 @@ export async function handleStripeWebhook(req: Request, res: Response) {
       // -----------------------------------------------------------------------
       case "invoice.payment_failed": {
         const invoice = event.data.object as Stripe.Invoice;
+
+        // Handle usage-based invoice failure
+        if (invoice.metadata?.type === "usage_cycle") {
+          const billingCycleId = parseInt(invoice.metadata?.billing_cycle_id || "0");
+          if (billingCycleId) {
+            await db.updateBillingCycle(billingCycleId, { status: "failed" });
+            console.log(`[Webhook] Usage cycle ${billingCycleId} payment failed`);
+          }
+          break;
+        }
 
         const stripeSubscriptionId = (
           typeof (invoice.parent as any)?.subscription_details?.subscription === "string"

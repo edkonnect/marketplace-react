@@ -129,6 +129,18 @@ async function startServer() {
   server.listen(port, () => {
     console.log(`Server running on http://localhost:${port}/`);
   });
+
+  // Start monthly usage billing cron
+  const { startBillingCron, processUsageBilling } = await import("../cron");
+  startBillingCron();
+
+  // Catch-up: if any billing cycles were missed (e.g. server was down on the 1st), run immediately
+  const { getUsageBasedSubscriptionsDue } = await import("../db");
+  const overdue = await getUsageBasedSubscriptionsDue();
+  if (overdue.length > 0) {
+    console.log(`[Cron] ${overdue.length} overdue billing cycle(s) found on startup — running catch-up billing`);
+    processUsageBilling().catch((err: any) => console.error("[Cron] Startup catch-up billing failed:", err?.message));
+  }
 }
 
 startServer().catch(console.error);
