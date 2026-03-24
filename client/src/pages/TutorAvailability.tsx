@@ -7,6 +7,7 @@ import { AvailabilityManager } from "@/components/AvailabilityManager";
 import { TimeBlockManager } from "@/components/TimeBlockManager";
 import { Globe, Clock } from "lucide-react";
 import { COMMON_TIMEZONES } from "@/../../shared/timezone-utils";
+import Footer from "@/components/Footer";
 
 export default function TutorAvailability() {
   const { user, isAuthenticated, loading } = useAuth();
@@ -67,6 +68,7 @@ export default function TutorAvailability() {
           <TimeBlockManager />
         </div>
       </div>
+      <Footer />
     </div>
   );
 }

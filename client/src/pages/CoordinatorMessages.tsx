@@ -11,6 +11,7 @@ import { MessageSquare, Send, User, Paperclip, X, FileText, Download } from "luc
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { LOGIN_PATH } from "@/const";
+import Footer from "@/components/Footer";
 
 export default function CoordinatorMessages() {
   const { user, isAuthenticated, loading } = useAuth();
@@ -417,6 +418,7 @@ export default function CoordinatorMessages() {
           </Card>
         </div>
       </div>
+      <Footer />
     </div>
   );
 }

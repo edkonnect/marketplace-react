@@ -13,6 +13,7 @@ import { User, Lock, BookOpen, Users, GraduationCap, ChevronRight, Camera, Trash
 import { PhoneInput } from "@/components/PhoneInput";
 import { Badge } from "@/components/ui/badge";
 import { ImageCropModal } from "@/components/ImageCropModal";
+import Footer from "@/components/Footer";
 
 const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
 const MAX_IMAGE_SIZE = 5 * 1024 * 1024; // 5 MB
@@ -516,6 +517,7 @@ const { data: subscriptions } = trpc.subscription.mySubscriptions.useQuery(undef
 
       </div>
     </div>
+      <Footer />
     </>
   );
 }

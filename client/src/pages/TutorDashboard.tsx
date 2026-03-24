@@ -26,6 +26,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { LOGIN_PATH } from "@/const";
 import { toast } from "sonner";
 import { formatSessionTime, COMMON_TIMEZONES } from "@/../../shared/timezone-utils";
+import Footer from "@/components/Footer";
 
 export default function TutorDashboard() {
   const { user, isAuthenticated, loading } = useAuth();
@@ -1994,6 +1995,7 @@ export default function TutorDashboard() {
           </DialogContent>
         </Dialog>
       )}
+      <Footer />
     </div>
   );
 }

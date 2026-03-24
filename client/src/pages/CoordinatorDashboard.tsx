@@ -10,6 +10,7 @@ import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import Navigation from "@/components/Navigation";
 import { ReferralCouponPopup } from "@/components/ReferralCouponPopup";
+import Footer from "@/components/Footer";
 
 export function CoordinatorDashboard() {
   const { user, isAuthenticated, loading } = useAuth();
@@ -204,6 +205,7 @@ export function CoordinatorDashboard() {
           </CardContent>
         </Card>
       </div>
+      <Footer />
     </div>
   );
 }

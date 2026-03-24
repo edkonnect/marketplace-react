@@ -6,6 +6,7 @@ import { ZoomMeetingSetup } from "@/components/ZoomMeetingSetup";
 import { VideoUploadManager } from "@/components/VideoUploadManager";
 import { User } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import Footer from "@/components/Footer";
 
 export default function TutorProfile() {
   const { user, isAuthenticated, loading } = useAuth();
@@ -48,6 +49,7 @@ export default function TutorProfile() {
         <ZoomMeetingSetup tutorProfile={tutorProfile} />
         <VideoUploadManager currentVideoUrl={(tutorProfile as any)?.introVideoUrl} />
       </div>
+      <Footer />
     </div>
   );
 }

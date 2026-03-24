@@ -1,4 +1,5 @@
 import Navigation from "@/components/Navigation";
+import Footer from "@/components/Footer";
 import { trpc } from "@/lib/trpc";
 import { useFormatPrice } from "@/hooks/useFormatPrice";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -180,6 +181,7 @@ export default function TutorListing() {
           )}
         </div>
       </div>
+      <Footer />
     </div>
   );
 }

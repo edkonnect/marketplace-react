@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { DollarSign, CheckCircle, Clock, XCircle } from "lucide-react";
+import Footer from "@/components/Footer";
 
 function StatusBadge({ status }: { status: string }) {
   if (status === "approved") {
@@ -182,6 +183,7 @@ export default function TutorPayments() {
           )}
         </section>
       </div>
+      <Footer />
     </div>
   );
 }

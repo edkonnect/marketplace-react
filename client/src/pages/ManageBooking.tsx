@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useState } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
+import Footer from "@/components/Footer";
 
 export function ManageBooking() {
   const params = useParams<{ token: string }>();
@@ -50,6 +51,7 @@ export function ManageBooking() {
             </CardContent>
           </Card>
         </div>
+        <Footer />
       </div>
     );
   }
@@ -66,6 +68,7 @@ export function ManageBooking() {
             </AlertDescription>
           </Alert>
         </div>
+        <Footer />
       </div>
     );
   }
@@ -95,6 +98,7 @@ export function ManageBooking() {
             </CardContent>
           </Card>
         </div>
+        <Footer />
       </div>
     );
   }
@@ -247,6 +251,7 @@ export function ManageBooking() {
           </CardContent>
         </Card>
       </div>
+      <Footer />
     </div>
   );
 }

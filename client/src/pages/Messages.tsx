@@ -12,6 +12,7 @@ import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
 import { LOGIN_PATH } from "@/const";
+import Footer from "@/components/Footer";
 
 // TypeScript interfaces for proper type safety
 interface TutorInfo {
@@ -1119,6 +1120,7 @@ export default function Messages() {
           </Card>
         </div>
       </div>
+      <Footer />
     </div>
   );
 }

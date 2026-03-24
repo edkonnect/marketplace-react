@@ -21,6 +21,7 @@ import { AppointmentScheduler } from "@/components/AppointmentScheduler";
 import { ReferralCouponPopup } from "@/components/ReferralCouponPopup";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import Footer from "@/components/Footer";
 
 export default function ParentDashboard() {
   const { user, isAuthenticated, loading, previousLastSignedIn } = useAuth();
@@ -1563,6 +1564,7 @@ export default function ParentDashboard() {
           </DialogContent>
         </Dialog>
       )}
+      <Footer />
     </div>
   );
 }

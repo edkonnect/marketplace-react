@@ -1,6 +1,7 @@
 import React from "react";
 import { RichTextDisplay } from "@/components/RichTextEditor";
 import Navigation from "@/components/Navigation";
+import Footer from "@/components/Footer";
 import { CoursePrice } from "@/components/CoursePrice";
 import { useFormatPrice } from "@/hooks/useFormatPrice";
 import { trpc } from "@/lib/trpc";
@@ -14,7 +15,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useParams, Link, useLocation } from "wouter";
-import { Clock, DollarSign, BookOpen, Calendar, Users, Download } from "lucide-react";
+import { Clock, DollarSign, BookOpen, Calendar, Users, Download, ArrowLeft } from "lucide-react";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { LOGIN_PATH } from "@/const";
 import { toast } from "sonner";
@@ -349,6 +350,10 @@ export default function CourseDetail() {
         {/* Course Header */}
         <div className="bg-gradient-to-br from-primary/5 via-accent/5 to-background border-b border-border">
           <div className="container py-12">
+            <Button variant="ghost" size="sm" className="mb-6 -ml-2 gap-1.5" onClick={() => window.history.back()}>
+              <ArrowLeft className="w-4 h-4" />
+              Back
+            </Button>
             <div className="max-w-4xl">
               <div className="flex gap-2 mb-4">
                 <Badge variant="secondary">{course.subject}</Badge>
@@ -1006,6 +1011,7 @@ export default function CourseDetail() {
           availability={tutorAvailability}
         />
       )}
+      <Footer />
     </div>
   );
 }

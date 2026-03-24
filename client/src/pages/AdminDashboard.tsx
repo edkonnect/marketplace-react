@@ -26,6 +26,7 @@ import { CourseCreationForm } from "@/components/CourseCreationForm";
 import { CourseManagementTable } from "@/components/CourseManagementTable";
 import { TutorAssignmentDialog } from "@/components/TutorAssignmentDialog";
 import { toast } from "sonner";
+import Footer from "@/components/Footer";
 
 function ReferralSettingsPanel() {
   const { data: tiers = [], refetch: refetchTiers } = trpc.referral.getReferralSettings.useQuery();
@@ -1472,6 +1473,7 @@ export function AdminDashboard() {
           </div>
         </Tabs>
       </div>
+      <Footer />
     </div>
   );
 }

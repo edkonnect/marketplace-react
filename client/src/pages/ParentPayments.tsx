@@ -10,6 +10,7 @@ import { CreditCard, ChevronUp, ChevronDown, ExternalLink, Users } from "lucide-
 import { format } from "date-fns";
 import { useState } from "react";
 import { LOGIN_PATH } from "@/const";
+import Footer from "@/components/Footer";
 
 function formatCents(cents: number, currency: string) {
   return new Intl.NumberFormat("en-US", {
@@ -347,6 +348,7 @@ export default function ParentPayments() {
           </div>
         )}
       </div>
+      <Footer />
     </div>
   );
 }

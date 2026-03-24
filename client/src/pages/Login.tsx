@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/_core/hooks/useAuth";
 import Navigation from "@/components/Navigation";
+import Footer from "@/components/Footer";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -113,7 +114,11 @@ export default function Login() {
     <div className="min-h-screen flex flex-col bg-background">
       <Navigation />
       <section className="flex-1 flex items-center justify-center py-16 px-4">
-        <Card className="w-full max-w-md">
+        <div className="w-full max-w-md">
+          <Link href="/" className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-primary transition-colors mb-4">
+            <span>←</span> Back to Home
+          </Link>
+          <Card>
           <CardHeader>
             <CardTitle>Welcome back</CardTitle>
             <CardDescription>Sign in with your email and password.</CardDescription>
@@ -205,7 +210,9 @@ export default function Login() {
             )}
           </CardContent>
         </Card>
+        </div>
       </section>
+      <Footer />
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import Navigation from "@/components/Navigation";
+import Footer from "@/components/Footer";
 import { CoursePrice } from "@/components/CoursePrice";
 import { useFormatPrice } from "@/hooks/useFormatPrice";
 import { trpc } from "@/lib/trpc";
@@ -8,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useState } from "react";
 import { useParams, Link, useLocation } from "wouter";
-import { ChevronDown, ChevronUp } from "lucide-react";
+import { ChevronDown, ChevronUp, ArrowLeft } from "lucide-react";
 import { Star, BookOpen, Clock, MessageSquare, Calendar as CalendarIcon, Mail } from "lucide-react";
 import { VideoPlayerWithRecommendations } from "@/components/VideoPlayerWithRecommendations";
 import { useAuth } from "@/_core/hooks/useAuth";
@@ -202,6 +203,10 @@ export default function TutorDetail() {
         {/* Profile Header */}
         <div className="bg-background border-b border-border pt-24 pb-16">
           <div className="container">
+            <Button variant="ghost" size="sm" className="mb-6 -ml-2 gap-1.5" onClick={() => window.history.back()}>
+              <ArrowLeft className="w-4 h-4" />
+              Back
+            </Button>
             <div className="flex flex-col md:flex-row items-start md:items-center gap-6">
               {/* Profile Image */}
               <div className="w-32 h-32 rounded-full bg-primary/10 flex items-center justify-center text-5xl font-bold text-primary flex-shrink-0 overflow-hidden">
@@ -464,6 +469,7 @@ export default function TutorDetail() {
           </div>
         </div>
       </div>
+      <Footer />
     </div>
   );
 }

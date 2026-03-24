@@ -1,11 +1,13 @@
 import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
 import Navigation from "@/components/Navigation";
+import Footer from "@/components/Footer";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SessionNotesView } from "@/components/SessionNotesView";
-import { FileText, Calendar, Clock3, BookOpen } from "lucide-react";
+import { FileText, Calendar, Clock3, BookOpen, ArrowLeft } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { useEffect, useMemo, useState } from "react";
 import { LOGIN_PATH } from "@/const";
@@ -157,6 +159,10 @@ export default function SessionNotesHistory() {
     <div className="min-h-screen bg-background">
       <Navigation />
       <div className="container py-8 mt-20">
+        <Button variant="ghost" size="sm" className="mb-6 -ml-2 gap-1.5" onClick={() => window.history.back()}>
+          <ArrowLeft className="w-4 h-4" />
+          Back
+        </Button>
         <div className="mb-8">
           <div className="flex items-center gap-2 mb-2">
             <FileText className="h-8 w-8 text-primary" />
@@ -308,6 +314,7 @@ export default function SessionNotesHistory() {
           </Card>
         )}
       </div>
+      <Footer />
     </div>
   );
 }

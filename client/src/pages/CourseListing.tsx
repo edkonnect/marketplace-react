@@ -1,4 +1,5 @@
 import Navigation from "@/components/Navigation";
+import Footer from "@/components/Footer";
 import { CoursePrice } from "@/components/CoursePrice";
 import { useIsIndianUser } from "@/hooks/useIsIndianUser";
 import { trpc } from "@/lib/trpc";
@@ -317,12 +318,7 @@ export default function CourseListing() {
         </section>
       </main>
 
-      {/* Footer */}
-      <footer className="border-t border-border py-8 bg-card/50">
-        <div className="container text-center text-sm text-muted-foreground">
-          <p>© 2024 EdKonnect Academy. All rights reserved.</p>
-        </div>
-      </footer>
+      <Footer />
     </div>
   );
 }

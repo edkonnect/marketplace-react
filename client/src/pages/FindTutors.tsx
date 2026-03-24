@@ -1,4 +1,5 @@
 import { useState } from "react";
+import Footer from "@/components/Footer";
 import { trpc } from "@/lib/trpc";
 import { TutorFilters, TutorFilterState } from "@/components/TutorFilters";
 import { WeeklyAvailabilityCalendar } from "@/components/WeeklyAvailabilityCalendar";
@@ -137,6 +138,7 @@ export function FindTutors() {
           </div>
         </div>
       </div>
+      <Footer />
     </div>
   );
 }
