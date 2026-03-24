@@ -87,7 +87,7 @@ export default function Navigation() {
   };
 
   // Public pages where navbar should always show (even when not authenticated)
-  const publicPages = ["/", "/tutors", "/courses", "/tutor-registration"];
+  const publicPages = ["/", "/tutors", "/courses", "/tutor-registration", "/about", "/contact", "/privacy-policy"];
   const isPublicPage = publicPages.some(page => location === page || (page === "/" && location === "/"));
 
   // Auth pages (login/signup) should NEVER show navbar
