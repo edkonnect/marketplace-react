@@ -3786,10 +3786,12 @@ export const appRouter = router({
         studentFirstName: z.string(),
         studentLastName: z.string(),
         studentGrade: z.string().optional(),
+        origin: z.string().optional(),
       }))
       .mutation(async ({ ctx, input }) => {
         const { default: Stripe } = await import('stripe');
         const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: '2025-12-15.clover' });
+        const origin = input.origin ?? `${ctx.req.protocol}://${ctx.req.get('host')}`;
 
         // Verify eligibility
         const trialSessions = await db.getTrialSessionsByParentId(ctx.user.id);
@@ -3828,8 +3830,8 @@ export const appRouter = router({
             },
           ],
           mode: 'payment',
-          success_url: `${ctx.req.protocol}://${ctx.req.get('host')}/parent/dashboard?trial=success`,
-          cancel_url: `${ctx.req.protocol}://${ctx.req.get('host')}/course/${input.courseId}?trial=cancelled`,
+          success_url: `${origin}/parent/dashboard?trial=success`,
+          cancel_url: `${origin}/course/${input.courseId}?trial=cancelled`,
           metadata: {
             type: 'trial_lesson',
             courseId: input.courseId.toString(),

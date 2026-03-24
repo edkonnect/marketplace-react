@@ -99,7 +99,7 @@ export default function CourseDetail() {
 
   const createTrialCheckoutMutation = trpc.trialLesson.createCheckoutSession.useMutation({
     onSuccess: (data) => {
-      window.location.href = data.checkoutUrl;
+      if (data.checkoutUrl) window.location.href = data.checkoutUrl;
     },
     onError: (error) => {
       toast.error(`Failed to start payment: ${error.message}`);
