@@ -11,7 +11,6 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { X } from "lucide-react";
 
 interface TutorAssignmentDialogProps {
   courseId: number | null;
@@ -57,6 +56,14 @@ export function TutorAssignmentDialog({
     },
   });
 
+  // Reset state when dialog opens for a different course
+  useEffect(() => {
+    if (!isOpen) {
+      setSelectedTutors(new Set());
+      setPrimaryTutor(null);
+    }
+  }, [isOpen, courseId]);
+
   // Initialize selected tutors from assignments
   useEffect(() => {
     if (assignments) {
@@ -64,8 +71,12 @@ export function TutorAssignmentDialog({
       setSelectedTutors(assigned);
       const primary = assignments.find((a: any) => a.isPrimary);
       setPrimaryTutor(primary?.tutorId || null);
+    } else if (isOpen && courseId !== null) {
+      // Reset while loading new course assignments
+      setSelectedTutors(new Set());
+      setPrimaryTutor(null);
     }
-  }, [assignments]);
+  }, [assignments, isOpen, courseId]);
 
   const handleTutorToggle = (tutorId: number) => {
     if (courseId === null) return;
