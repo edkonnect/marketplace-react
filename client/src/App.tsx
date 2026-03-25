@@ -35,7 +35,6 @@ import TutorPayments from "./pages/TutorPayments";
 import Settings from "./pages/Settings";
 import TutorProfile from "./pages/TutorProfile";
 import TutorAvailability from "./pages/TutorAvailability";
-import { ChatbotWidget } from "./components/ChatbotWidget";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
 import AboutUs from "./pages/AboutUs";
 import Contact from "./pages/Contact";
@@ -102,7 +101,7 @@ function App() {
         <TooltipProvider>
           <Toaster position="bottom-right" />
           <Router />
-          <ChatbotWidget />
+          {/* <ChatbotWidget /> */}
         </TooltipProvider>
       </ThemeProvider>
     </ErrorBoundary>

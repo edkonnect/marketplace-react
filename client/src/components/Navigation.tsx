@@ -155,13 +155,7 @@ export default function Navigation() {
                   </Link>
                 )}
 
-                <button
-                  onClick={() => setIsVideoModalOpen(true)}
-                  className="flex items-center gap-2 text-sm font-medium transition-colors hover:text-primary text-muted-foreground"
-                >
-                  <Play className="w-4 h-4" />
-                  What's EdKonnect
-                </button>
+                {/* What's EdKonnect button hidden */}
 
                 {isAuthenticated && (
                   <>

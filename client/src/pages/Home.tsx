@@ -290,12 +290,22 @@ export default function Home() {
         <div className="container relative py-16 sm:py-20 lg:py-28">
           <div className="grid items-center gap-12 lg:grid-cols-[minmax(0,1.02fr)_minmax(0,0.98fr)] lg:gap-20">
             <div className="max-w-[39rem]">
-              <h1 className="max-w-[34rem] text-4xl font-bold tracking-tight text-slate-950 sm:text-5xl lg:text-6xl">
-                Find the Right Tutor for Your Child in Minutes
+              <h1 className="max-w-[34rem] text-4xl font-extrabold tracking-tight text-slate-950 sm:text-5xl lg:text-[3.25rem] lg:leading-[1.2]">
+                Connect with Expert Tutors
+                <br />
+                <span className="text-primary">For Academic Excellence</span>
               </h1>
 
-              <p className="mt-6 max-w-[34rem] text-lg leading-8 text-slate-600 sm:text-xl">
-                Browse verified tutors, book 1-on-1 sessions, and track progress, <strong> all in one place</strong>.
+              <p className="mt-6 max-w-[30rem] text-base leading-7 text-slate-500 sm:text-lg">
+                <span className="inline-flex items-center gap-2">
+                  <span className="text-primary font-semibold">✦</span>
+                  1:1 Personalized Learning
+                </span>
+                <span className="mx-3 text-slate-300">|</span>
+                <span className="inline-flex items-center gap-2">
+                  <span className="text-primary font-semibold">✦</span>
+                  Rigorous Test Prep
+                </span>
               </p>
 
               <form onSubmit={handleHeroSearch} className="mt-9 max-w-[39rem]">
