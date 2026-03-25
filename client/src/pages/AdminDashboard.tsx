@@ -1,3 +1,4 @@
+import Navigation from "@/components/Navigation";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { LOGIN_PATH } from "@/const";
 import { trpc } from "@/lib/trpc";
@@ -385,7 +386,8 @@ export function AdminDashboard() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 flex flex-col">
-      <div className="container py-8 flex-1">
+      <Navigation />
+      <div className="container py-8 mt-20 flex-1">
         <div className="mb-8">
           <h1 className="text-4xl font-bold mb-2">Admin Dashboard</h1>
           <p className="text-muted-foreground">
