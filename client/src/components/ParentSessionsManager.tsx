@@ -49,8 +49,8 @@ export function ParentSessionsManager({
       const courseName = session.courseTitle || "Course";
       const tutorName = session.tutorName || "Tutor";
 
-      // Create a unique key for student + course combination
-      const key = `${studentName}|${courseName}`;
+      // Create a unique key for student + course combination (trial sessions get their own group)
+      const key = session.isTrial ? `TRIAL|${studentName}|${courseName}` : `${studentName}|${courseName}`;
 
       if (!grouped[key]) {
         grouped[key] = {
@@ -120,6 +120,11 @@ export function ParentSessionsManager({
                 <div className="flex-1">
                   <CardTitle className="flex flex-wrap items-center gap-2">
                     {group.course}
+                    {group.sessions[0]?.isTrial && (
+                      <Badge className="border-blue-500 text-blue-700 bg-blue-50 dark:bg-blue-950/20" variant="outline">
+                        Trial Lesson
+                      </Badge>
+                    )}
                     {group.sessions.length > 1 && (
                       <Badge variant="secondary">{group.sessions.length} sessions</Badge>
                     )}
@@ -169,6 +174,11 @@ export function ParentSessionsManager({
                         <Calendar className="w-4 h-4 text-muted-foreground flex-shrink-0" />
                         <span className="font-medium">{formatDate(session.scheduledAt)}</span>
                         <Badge className="text-xs">{session.status}</Badge>
+                        {session.isTrial && (
+                          <Badge className="text-xs border-blue-500 text-blue-700 bg-blue-50 dark:bg-blue-950/20" variant="outline">
+                            Trial
+                          </Badge>
+                        )}
                       </div>
                       <div className="flex items-center gap-2 text-sm text-muted-foreground">
                         <Clock className="w-4 h-4 flex-shrink-0" />
