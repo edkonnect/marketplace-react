@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { MessageSquare, Send, User, Users, GraduationCap, ChevronRight, Paperclip, X, FileText, Download, ArrowLeft, Mail, Phone } from "lucide-react";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
-import { useLocation } from "wouter";
+import { useLocation, useSearch } from "wouter";
 import { LOGIN_PATH } from "@/const";
 import Footer from "@/components/Footer";
 
@@ -91,8 +91,8 @@ export default function Messages() {
   const RECENCY_MS = 10 * 24 * 60 * 60 * 1000;
 
   // Get parentId from URL query params if coordinator is filtering
-  const urlParams = new URLSearchParams(window.location.search);
-  const filterParentId = urlParams.get('parentId');
+  const search = useSearch();
+  const filterParentId = new URLSearchParams(search).get('parentId');
 
   const isParent = user?.role === "parent";
   const isTutor = user?.role === "tutor";
@@ -478,15 +478,15 @@ export default function Messages() {
       <Navigation />
 
       <div className="flex-1 container py-4 sm:py-6 mt-20">
-        {/* Back button for filtered coordinator view */}
-        {isCoordinator && filterParentId && (
+        {/* Back button for coordinator view */}
+        {isCoordinator && (
           <Button
             variant="ghost"
             className="mb-4"
-            onClick={() => setLocation("/messages")}
+            onClick={() => setLocation("/coordinator/dashboard")}
           >
             <ArrowLeft className="h-4 w-4 mr-2" />
-            Back to All Messages
+            Back to Dashboard
           </Button>
         )}
 

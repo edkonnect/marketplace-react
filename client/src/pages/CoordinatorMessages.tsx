@@ -7,14 +7,16 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
-import { MessageSquare, Send, User, Paperclip, X, FileText, Download } from "lucide-react";
+import { MessageSquare, Send, User, Paperclip, X, FileText, Download, ArrowLeft } from "lucide-react";
 import { useState, useEffect } from "react";
+import { useLocation } from "wouter";
 import { toast } from "sonner";
 import { LOGIN_PATH } from "@/const";
 import Footer from "@/components/Footer";
 
 export default function CoordinatorMessages() {
   const { user, isAuthenticated, loading } = useAuth();
+  const [, setLocation] = useLocation();
   const utils = trpc.useUtils();
   const [selectedConversationId, setSelectedConversationId] = useState<number | null>(null);
   const [messageContent, setMessageContent] = useState("");
@@ -170,6 +172,15 @@ export default function CoordinatorMessages() {
       <Navigation />
 
       <div className="flex-1 container py-4 sm:py-6 mt-20">
+        <Button
+          variant="ghost"
+          className="mb-4 -ml-2"
+          onClick={() => setLocation("/coordinator/dashboard")}
+        >
+          <ArrowLeft className="h-4 w-4 mr-2" />
+          Back to Dashboard
+        </Button>
+
         <div className="mb-4 sm:mb-6">
           <h1 className="text-2xl sm:text-3xl font-bold mb-2">Parent Messages</h1>
           <p className="text-sm sm:text-base text-muted-foreground">
