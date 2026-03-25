@@ -1203,7 +1203,7 @@ export async function getCoursesByTutorId(tutorId: number) {
   const courseIds = tutorCourses.map(tc => tc.courseId);
   return await db.select().from(courses)
     .where(inArray(courses.id, courseIds))
-    .orderBy(desc(courses.createdAt));
+    .orderBy(sql`CASE WHEN ${courses.displayOrder} = 0 THEN 1 ELSE 0 END`, courses.displayOrder, desc(courses.createdAt));
 }
 
 export async function getAllActiveCourses(region?: "global" | "us" | "india") {
@@ -1217,7 +1217,7 @@ export async function getAllActiveCourses(region?: "global" | "us" | "india") {
 
   return await db.select().from(courses)
     .where(and(eq(courses.isActive, true), inArray(courses.region, allowedRegions)))
-    .orderBy(desc(courses.createdAt));
+    .orderBy(sql`CASE WHEN ${courses.displayOrder} = 0 THEN 1 ELSE 0 END`, courses.displayOrder, desc(courses.createdAt));
 }
 
 export async function updateCourse(id: number, updates: Record<string, any>) {
@@ -1274,7 +1274,7 @@ export async function searchCourses(filters: {
     );
   }
 
-  return await db.select().from(courses).where(and(...conditions)).orderBy(desc(courses.createdAt));
+  return await db.select().from(courses).where(and(...conditions)).orderBy(sql`CASE WHEN ${courses.displayOrder} = 0 THEN 1 ELSE 0 END`, courses.displayOrder, desc(courses.createdAt));
 }
 
 // ============ Tutor Course Preferences ============

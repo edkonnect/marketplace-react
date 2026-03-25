@@ -5684,6 +5684,7 @@ export const appRouter = router({
         aiPowered: z.boolean().optional(),
         region: z.enum(["global", "us", "india"]).optional().or(z.literal("")).transform(v => v || undefined),
         courseType: z.enum(["tutor", "homework", "test_prep"]).optional().or(z.literal("")).transform(v => v || undefined),
+        displayOrder: z.number().optional(),
       }))
       .mutation(async ({ input }) => {
         const course = await db.createCourse(input as any);
@@ -5707,6 +5708,7 @@ export const appRouter = router({
         aiPowered: z.boolean().optional(),
         region: z.enum(["global", "us", "india"]).optional().or(z.literal("")).transform(v => v || undefined),
         courseType: z.enum(["tutor", "homework", "test_prep"]).optional().or(z.literal("")).transform(v => v || undefined),
+        displayOrder: z.number().optional(),
       }))
       .mutation(async ({ input }) => {
         const { id, ...data } = input;

@@ -32,6 +32,7 @@ export function CourseCreationForm({ onSuccess, editingCourse }: CourseCreationF
     totalSessions: "",
     imageUrl: "",
     curriculum: "",
+    displayOrder: "0",
   };
 
   const initialValues = editingCourse
@@ -46,6 +47,7 @@ export function CourseCreationForm({ onSuccess, editingCourse }: CourseCreationF
         totalSessions: editingCourse?.totalSessions?.toString() || "",
         imageUrl: editingCourse?.imageUrl || "",
         curriculum: editingCourse?.curriculum || "",
+        displayOrder: editingCourse?.displayOrder?.toString() ?? "0",
       }
     : emptyValues;
 
@@ -107,6 +109,7 @@ export function CourseCreationForm({ onSuccess, editingCourse }: CourseCreationF
       sessionsPerWeek: parseInt(values.sessionsPerWeek),
       totalSessions: values.totalSessions ? parseInt(values.totalSessions) : undefined,
       price: values.price,
+      displayOrder: parseInt(values.displayOrder) || 0,
       aiPowered,
       region,
       courseType,
@@ -225,11 +228,20 @@ export function CourseCreationForm({ onSuccess, editingCourse }: CourseCreationF
             />
           </div>
 
-          <FormInput
-            field={register("imageUrl")}
-            label="Image URL"
-            placeholder="https://example.com/image.jpg"
-          />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <FormInput
+              field={register("imageUrl")}
+              label="Image URL"
+              placeholder="https://example.com/image.jpg"
+            />
+
+            <FormInput
+              field={register("displayOrder")}
+              label="Display Order"
+              type="number"
+              placeholder="0"
+            />
+          </div>
 
           <div className="space-y-1.5">
             <Label className="text-sm font-medium">Curriculum</Label>

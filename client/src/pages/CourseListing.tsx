@@ -53,7 +53,10 @@ export default function CourseListing() {
       } else if (priceSort === "high-low") {
         return parseFloat(b.price) - parseFloat(a.price);
       }
-      return 0;
+      // 0 means unset — push those to end; non-zero ordered ascending
+      const aOrder = (a.displayOrder ?? 0) || Infinity;
+      const bOrder = (b.displayOrder ?? 0) || Infinity;
+      return aOrder - bOrder;
     });
 
   const totalPages = Math.ceil((filteredCourses?.length || 0) / COURSES_PER_PAGE);

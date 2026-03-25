@@ -186,7 +186,7 @@ export function AdminDashboard() {
     endDate?: string;
   }>({});
   const tabContentClass =
-    "space-y-6 absolute inset-0 w-full transition-all duration-300 data-[state=active]:opacity-100 data-[state=active]:translate-x-0 data-[state=inactive]:opacity-0 data-[state=inactive]:translate-x-4 data-[state=inactive]:pointer-events-none [&[hidden]]:block [&[hidden]]:opacity-0";
+    "space-y-6 data-[state=inactive]:hidden [&[hidden]]:block data-[state=inactive]:[&[hidden]]:hidden";
 
   const [selectedTutorId, setSelectedTutorId] = useState<number | null>(null);
 
@@ -384,8 +384,8 @@ export function AdminDashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
-      <div className="container py-8">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 flex flex-col">
+      <div className="container py-8 flex-1">
         <div className="mb-8">
           <h1 className="text-4xl font-bold mb-2">Admin Dashboard</h1>
           <p className="text-muted-foreground">
@@ -487,8 +487,6 @@ export function AdminDashboard() {
               <TabsTrigger value="referrals">Referrals</TabsTrigger>
             </TabsList>
           </div>
-
-          <div className="relative min-h-[640px]">
 
           {/* Analytics Tab */}
           <TabsContent value="analytics" forceMount className={tabContentClass}>
@@ -1470,7 +1468,6 @@ export function AdminDashboard() {
           <TabsContent value="referrals" forceMount className={tabContentClass}>
             <ReferralSettingsPanel />
           </TabsContent>
-          </div>
         </Tabs>
       </div>
       <Footer />
