@@ -8,15 +8,15 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import Navigation from "@/components/Navigation";
-import Footer from "@/components/Footer";
-import { Link } from "wouter";
-import { useEffect, useState } from "react";
+import { Link, useLocation } from "wouter";
+import { useState, useRef, useEffect } from "react";
 import { toast } from "sonner";
 import {
   GraduationCap,
   Calendar,
   MessageSquare,
   CreditCard,
+  Search,
   Star,
   Users,
   BookOpen,
@@ -33,9 +33,10 @@ import {
   UserPlus,
   CheckCircle,
   Mail,
+  User,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
-import { AnimatePresence, motion, useScroll, useTransform, type Variants } from "framer-motion";
+import { motion, type Variants } from "framer-motion";
 import useEmblaCarousel from "embla-carousel-react";
 import { StatNumber } from "@/components/motion-primitives/StatNumber";
 import { AnimatedTestimonials } from "@/components/ui/animated-testimonials";
@@ -95,16 +96,6 @@ const scrollReveal = {
   transition: { type: "spring", stiffness: 55, damping: 18, mass: 0.8 },
 } as const;
 
-const heroContainer: Variants = {
-  hidden: {},
-  visible: { transition: { staggerChildren: 0.15, delayChildren: 0.1 } },
-};
-
-const heroChild: Variants = {
-  hidden: { opacity: 0, y: 24 },
-  visible: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 70, damping: 18 } },
-};
-
 const cardContainer: Variants = {
   hidden: {},
   visible: { transition: { staggerChildren: 0.1 } },
@@ -127,11 +118,7 @@ const listItemReveal: Variants = {
 export default function Home() {
   const { isAuthenticated, user } = useAuth();
   const formatPrice = useFormatPrice();
-
-  const heroRef = React.useRef<HTMLElement>(null);
-  const { scrollYProgress } = useScroll({ target: heroRef, offset: ["start start", "end start"] });
-  const heroBgY = useTransform(scrollYProgress, [0, 1], ["0%", "20%"]);
-  const heroContentOpacity = useTransform(scrollYProgress, [0, 0.7], [1, 0]);
+  const [, setLocation] = useLocation();
 
   const [emblaRef, emblaApi] = useEmblaCarousel({ loop: true, align: "start", dragFree: true });
 
@@ -150,6 +137,42 @@ export default function Home() {
   const { data: testimonialsData = [] } = trpc.home.testimonials.useQuery();
   const { data: faqsData = [] } = trpc.home.faqs.useQuery();
   const { data: blogPostsData = [], isLoading: blogPostsLoading } = trpc.home.blogPosts.useQuery({ limit: 3 });
+  const [heroSearchQuery, setHeroSearchQuery] = useState("");
+  const [searchDropdownOpen, setSearchDropdownOpen] = useState(false);
+  const searchContainerRef = useRef<HTMLDivElement>(null);
+
+  // Fetch all tutors and courses for instant search
+  const { data: allTutors = [] } = trpc.tutorProfile.list.useQuery();
+  const { data: allCourses = [] } = trpc.course.list.useQuery({});
+
+  // Derived search results from local data
+  const searchQuery = heroSearchQuery.trim().toLowerCase();
+  const matchedTutors = searchQuery.length >= 2
+    ? allTutors.filter((t: any) =>
+        t.userName?.toLowerCase().includes(searchQuery) ||
+        (typeof t.subjects === "string" ? t.subjects : JSON.stringify(t.subjects ?? ""))
+          .toLowerCase().includes(searchQuery)
+      ).slice(0, 4)
+    : [];
+  const matchedCourses = searchQuery.length >= 2
+    ? allCourses.filter((c: any) =>
+        c.title?.toLowerCase().includes(searchQuery) ||
+        c.subject?.toLowerCase().includes(searchQuery) ||
+        c.description?.toLowerCase().includes(searchQuery)
+      ).slice(0, 4)
+    : [];
+  const hasResults = matchedTutors.length > 0 || matchedCourses.length > 0;
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (searchContainerRef.current && !searchContainerRef.current.contains(e.target as Node)) {
+        setSearchDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   // Referral state
   const [referralDialogOpen, setReferralDialogOpen] = useState(false);
@@ -234,108 +257,196 @@ export default function Home() {
     if (user?.role === "coordinator") return "/coordinator/dashboard";
     return "/role-selection";
   };
-  const phrases = [
-    "Personalized Learning",
-    "Elite Mentorship",
-    "Academic Excellence",
-  ];
-    const [index, setIndex] = useState(0);
-  
-    useEffect(() => {
-      const interval = setInterval(() => {
-        setIndex((prev) => (prev + 1) % phrases.length);
-      }, 3000); // change every 3 seconds
-  
-      return () => clearInterval(interval);
-    }, []);  
+
+  const handleHeroSearch = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setSearchDropdownOpen(false);
+    const query = heroSearchQuery.trim();
+    if (!query) { setLocation("/tutors"); return; }
+    // If exactly one tutor matched, go directly to their profile
+    if (matchedTutors.length === 1 && matchedCourses.length === 0) {
+      setLocation(`/tutor-profile/${(matchedTutors[0] as any).userId}`);
+      return;
+    }
+    // If exactly one course matched, go directly to that course
+    if (matchedCourses.length === 1 && matchedTutors.length === 0) {
+      setLocation(`/course/${(matchedCourses[0] as any).id}`);
+      return;
+    }
+    // Otherwise go to tutor listing with query
+    setLocation(`/tutors?q=${encodeURIComponent(query)}`);
+  };
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
       <Navigation />
 
-      {/* Hero Section */}
-      <motion.section
-        ref={heroRef}
-        className="relative py-20 lg:py-32 overflow-hidden mt-20"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ type: "spring", stiffness: 60, damping: 20, mass: 1 }}
-      >
-        {/* Background image with parallax */}
-        <motion.div
-          className="absolute inset-0 z-0 bg-center bg-cover bg-no-repeat"
-          style={{ backgroundImage: "url(/images/connect_img.png)", backgroundPosition: "center 65%", y: heroBgY }}
-        />
+      <section className="relative overflow-hidden bg-gradient-to-br from-slate-50 via-white to-blue-50/70 mt-20">
+        <div className="pointer-events-none absolute inset-0">
+          <div className="absolute -left-16 top-0 h-64 w-64 rounded-full bg-blue-200/30 blur-3xl" />
+          <div className="absolute right-0 top-20 h-80 w-80 rounded-full bg-sky-200/20 blur-3xl" />
+        </div>
 
-        {/* Contrast overlay */}
-        <div className="absolute inset-0 z-10 bg-gradient-to-b from-black/70 via-black/55 to-black/35" />
-        <div className="absolute inset-0 z-20 backdrop-blur-[2px] saturate-90" />
+        <div className="container relative py-16 sm:py-20 lg:py-28">
+          <div className="grid items-center gap-12 lg:grid-cols-[minmax(0,1.02fr)_minmax(0,0.98fr)] lg:gap-20">
+            <div className="max-w-[39rem]">
+              <h1 className="max-w-[34rem] text-4xl font-bold tracking-tight text-slate-950 sm:text-5xl lg:text-6xl">
+                Find the Right Tutor for Your Child in Minutes
+              </h1>
 
-        <motion.div className="container relative z-30" style={{ opacity: heroContentOpacity }}>
-          <motion.div
-            className="max-w-3xl mx-auto text-center"
-            variants={heroContainer}
-            initial="hidden"
-            animate="visible"
-          >
-          <motion.h1
-            variants={heroChild}
-            className="text-3xl sm:text-4xl lg:text-6xl font-bold mb-6 tracking-tight text-white text-center"
-          >
-            {/* Line 1 */}
-            <span className="block">
-              Connect with Expert Tutors
-            </span>
+              <p className="mt-6 max-w-[34rem] text-lg leading-8 text-slate-600 sm:text-xl">
+                Browse verified tutors, book 1-on-1 sessions, and track progress, <strong> all in one place</strong>.
+              </p>
 
-            {/* Line 2 */}
-            <span className="block whitespace-nowrap">
-              for{" "}
-              <span className="inline-block min-w-[1ch] align-baseline">
-                <AnimatePresence mode="wait">
-                  <motion.span
-                    key={phrases[index]}
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    transition={{ duration: 0.6, ease: "easeInOut" }}
-                    className="inline-block"
-                  >
-                    {phrases[index]}
-                  </motion.span>
-                </AnimatePresence>
-              </span>
-            </span>
-          </motion.h1>
+              <form onSubmit={handleHeroSearch} className="mt-9 max-w-[39rem]">
+                <label htmlFor="hero-search" className="sr-only">
+                  Search by subject, grade, or need
+                </label>
 
-            <motion.p variants={heroChild} className="text-lg lg:text-xl text-white/80 mb-8 leading-relaxed">
-              EdKonnect Academy brings together dedicated parents and qualified tutors to create meaningful one-on-one learning
-              experiences. Schedule sessions, track progress, and communicate seamlessly—all in one platform.
-            </motion.p>
+                <div ref={searchContainerRef} className="relative">
+                  {/* Search pill */}
+                  <div className="group flex items-center rounded-full border border-slate-200 bg-white pl-5 pr-2 py-2 shadow-[0_8px_40px_-12px_rgba(37,99,235,0.18)] ring-1 ring-transparent transition-all duration-200 focus-within:border-blue-400 focus-within:ring-blue-200 focus-within:shadow-[0_8px_48px_-10px_rgba(37,99,235,0.32)] hover:border-blue-300 hover:shadow-[0_8px_44px_-10px_rgba(37,99,235,0.24)]">
+                    <Search className="mr-3 h-5 w-5 shrink-0 text-slate-400 transition-colors duration-200 group-focus-within:text-blue-500" />
+                    <Input
+                      id="hero-search"
+                      type="text"
+                      autoComplete="off"
+                      value={heroSearchQuery}
+                      onChange={(e) => {
+                        setHeroSearchQuery(e.target.value);
+                        setSearchDropdownOpen(e.target.value.trim().length >= 2);
+                      }}
+                      onFocus={() => { if (heroSearchQuery.trim().length >= 2) setSearchDropdownOpen(true); }}
+                      placeholder="Search tutors or subjects..."
+                      className="h-10 flex-1 border-0 bg-transparent p-0 text-base text-slate-900 shadow-none placeholder:text-slate-400 focus-visible:ring-0"
+                    />
+                    <button
+                      type="submit"
+                      aria-label="Search"
+                      className="ml-3 flex h-10 items-center gap-2 rounded-full bg-blue-600 px-5 text-sm font-semibold text-white shadow-[0_4px_14px_-4px_rgba(37,99,235,0.6)] transition-all duration-200 hover:bg-blue-700 hover:shadow-[0_6px_18px_-4px_rgba(37,99,235,0.7)] active:scale-95"
+                    >
+                      <Search className="h-4 w-4" />
+                      <span className="hidden sm:inline">Search</span>
+                    </button>
+                  </div>
 
-            <motion.div variants={heroChild} className="flex flex-col sm:flex-row gap-4 justify-center">
-              {isAuthenticated ? (
-                <Button asChild size="lg" className="text-lg px-8">
-                  <Link href={getDashboardLink()}>Go to Dashboard</Link>
-                </Button>
-              ) : (
-                <>
-                  <Button asChild size="lg" className="text-lg px-8">
-                    <Link href="/signup">Sign Up</Link>
-                  </Button>
-                  <Button
-                    asChild
-                    variant="outline"
-                    size="lg"
-                    className="text-lg px-8 border-white/50 text-white hover:bg-white/10"
-                  >
-                    <Link href="/tutors">Browse Tutors</Link>
-                  </Button>
-                </>
-              )}
-            </motion.div>
-          </motion.div>
-        </motion.div>
-      </motion.section>
+                  {/* Live dropdown */}
+                  {searchDropdownOpen && hasResults && (
+                    <div className="absolute left-0 right-0 top-[calc(100%+8px)] z-50 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_16px_48px_-12px_rgba(15,23,42,0.22)]">
+                      {matchedTutors.length > 0 && (
+                        <div>
+                          <p className="px-4 pt-3 pb-1 text-[11px] font-semibold uppercase tracking-widest text-slate-400">Tutors</p>
+                          {matchedTutors.map((tutor: any) => (
+                            <button
+                              key={tutor.userId}
+                              type="button"
+                              onMouseDown={() => {
+                                setSearchDropdownOpen(false);
+                                setLocation(`/tutor-profile/${tutor.userId}`);
+                              }}
+                              className="flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-blue-50"
+                            >
+                              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-100 text-blue-600">
+                                {tutor.profileImageUrl
+                                  ? <img src={tutor.profileImageUrl} alt={tutor.userName} className="h-8 w-8 rounded-full object-cover" />
+                                  : <User className="h-4 w-4" />}
+                              </div>
+                              <div className="min-w-0">
+                                <p className="truncate text-sm font-semibold text-slate-900">{tutor.userName}</p>
+                                <p className="truncate text-xs text-slate-500">
+                                  {typeof tutor.subjects === "string"
+                                    ? JSON.parse(tutor.subjects || "[]").slice(0, 3).join(", ")
+                                    : (tutor.subjects ?? []).slice(0, 3).join(", ")}
+                                </p>
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+
+                      {matchedCourses.length > 0 && (
+                        <div className={matchedTutors.length > 0 ? "border-t border-slate-100" : ""}>
+                          <p className="px-4 pt-3 pb-1 text-[11px] font-semibold uppercase tracking-widest text-slate-400">Courses</p>
+                          {matchedCourses.map((course: any) => (
+                            <button
+                              key={course.id}
+                              type="button"
+                              onMouseDown={() => {
+                                setSearchDropdownOpen(false);
+                                setLocation(`/course/${course.id}`);
+                              }}
+                              className="flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-blue-50"
+                            >
+                              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-indigo-100 text-indigo-600">
+                                <BookOpen className="h-4 w-4" />
+                              </div>
+                              <div className="min-w-0">
+                                <p className="truncate text-sm font-semibold text-slate-900">{course.title}</p>
+                                <p className="truncate text-xs text-slate-500">{course.subject}{course.gradeLevel ? ` · ${course.gradeLevel}` : ""}</p>
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+
+                      <div className="border-t border-slate-100 px-4 py-2.5">
+                        <button
+                          type="submit"
+                          className="text-xs font-medium text-blue-600 hover:underline"
+                        >
+                          See all results for "{heroSearchQuery.trim()}"
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* No results hint */}
+                  {searchDropdownOpen && !hasResults && searchQuery.length >= 2 && (
+                    <div className="absolute left-0 right-0 top-[calc(100%+8px)] z-50 rounded-2xl border border-slate-200 bg-white px-4 py-4 text-center shadow-[0_16px_48px_-12px_rgba(15,23,42,0.22)]">
+                      <p className="text-sm text-slate-500">No tutors or courses found for <span className="font-semibold text-slate-700">"{heroSearchQuery.trim()}"</span></p>
+                      <button type="submit" className="mt-1 text-xs font-medium text-blue-600 hover:underline">Browse all tutors</button>
+                    </div>
+                  )}
+                </div>
+              </form>
+
+
+              <div className="mt-6 flex items-center gap-3 text-sm font-medium text-slate-600 sm:text-base">
+                <span className="flex h-9 w-9 items-center justify-center rounded-full bg-amber-50 text-amber-500 ring-1 ring-amber-200/70">
+                  <Star className="h-4 w-4 fill-current" />
+                </span>
+                <span>Rated by parents {"\u2022"} 1000+ sessions completed</span>
+              </div>
+            </div>
+
+            <div className="relative">
+              <div className="absolute inset-x-8 inset-y-12 rounded-[2.75rem] bg-gradient-to-br from-blue-200/45 via-sky-100/30 to-white blur-3xl" />
+
+              <div className="relative mx-auto max-w-xl rounded-[2rem] border border-slate-200/80 bg-white/80 p-3 shadow-[0_34px_90px_-42px_rgba(15,23,42,0.45)] backdrop-blur-sm">
+                <div className="relative overflow-hidden rounded-[1.5rem] bg-slate-100">
+                  <img
+                    src="/images/Hero-Image.jpg"
+                    alt="Tutor supporting a student during a one-on-one learning session"
+                    className="h-[340px] w-full object-cover sm:h-[430px] lg:h-[520px]"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-slate-950/10 via-transparent to-white/10" />
+                  <div className="absolute bottom-5 left-5 hidden max-w-[270px] items-start gap-3 rounded-2xl border border-white/70 bg-white/95 p-4 shadow-[0_24px_55px_-30px_rgba(15,23,42,0.45)] sm:flex">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-50 text-blue-600">
+                      <CheckCircle className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900">Weekly progress updates</p>
+                      <p className="mt-1 text-xs leading-5 text-slate-500">
+                        Stay aligned with tutor notes and next steps after every session.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
 
       {/* Features Section */}
       <motion.section className="py-20 bg-muted/30" {...scrollReveal}>
@@ -856,7 +967,84 @@ export default function Home() {
         </div>
       </motion.section>
 
-      <Footer />
+      {/* Footer */}
+      <footer className="border-t border-border/50 py-12 bg-muted/30">
+        <div className="container">
+          <div className="grid md:grid-cols-4 gap-8">
+            <div>
+              <div className="flex items-center gap-2 mb-4">
+                <GraduationCap className="w-6 h-6 text-primary" />
+                <span className="font-bold text-lg">EdKonnect Academy</span>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Connecting parents and tutors for personalized learning experiences.
+              </p>
+            </div>
+
+            <div>
+              <h3 className="font-semibold mb-4">For Parents</h3>
+              <ul className="space-y-2 text-sm text-muted-foreground">
+                <li>
+                  <Link href="/tutors" className="hover:text-primary transition-colors">
+                    Find Tutors
+                  </Link>
+                </li>
+                <li>
+                  <Link href="/courses" className="hover:text-primary transition-colors">
+                    Browse Courses
+                  </Link>
+                </li>
+                <li>
+                  <Link href="/signup" className="hover:text-primary transition-colors">
+                    Sign Up
+                  </Link>
+                </li>
+              </ul>
+            </div>
+
+            <div>
+              <h3 className="font-semibold mb-4">For Tutors</h3>
+              <ul className="space-y-2 text-sm text-muted-foreground">
+                <li>
+                  <Link href="/signup" className="hover:text-primary transition-colors">
+                    Become a Tutor
+                  </Link>
+                </li>
+                <li>
+                  <Link href="/tutor/dashboard" className="hover:text-primary transition-colors">
+                    Tutor Dashboard
+                  </Link>
+                </li>
+              </ul>
+            </div>
+
+            <div>
+              <h3 className="font-semibold mb-4">Company</h3>
+              <ul className="space-y-2 text-sm text-muted-foreground">
+                <li>
+                  <Link href="/" className="hover:text-primary transition-colors">
+                    About Us
+                  </Link>
+                </li>
+                <li>
+                  <Link href="/" className="hover:text-primary transition-colors">
+                    Contact
+                  </Link>
+                </li>
+                <li>
+                  <Link href="/" className="hover:text-primary transition-colors">
+                    Privacy Policy
+                  </Link>
+                </li>
+              </ul>
+            </div>
+          </div>
+
+          <div className="border-t border-border/50 mt-8 pt-8 text-center text-sm text-muted-foreground">
+            <p>© 2026 EdKonnect Academy. All rights reserved.</p>
+          </div>
+        </div>
+      </footer>
     </div>
   );
 }

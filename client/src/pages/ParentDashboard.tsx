@@ -1,17 +1,20 @@
 import Navigation from "@/components/Navigation";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
+import { cn } from "@/lib/utils";
 import { useFormatPrice } from "@/hooks/useFormatPrice";
 import { toast } from "sonner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Link, useLocation } from "wouter";
-import { BookOpen, Calendar, MessageSquare, CreditCard, Clock, Users, Video, FileText, HelpCircle, CheckCircle, TrendingUp, BarChart2, LogIn, Sparkles } from "lucide-react";
+import { BookOpen, Calendar, MessageSquare, CreditCard, Clock, Users, Video, FileText, HelpCircle, CheckCircle, TrendingUp, BarChart2, LogIn, Sparkles, Search } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { LOGIN_PATH } from "@/const";
 import { NotificationCenter } from "@/components/NotificationCenter";
@@ -200,24 +203,10 @@ export default function ParentDashboard() {
   const activeSubscriptions = subscriptions?.filter(s => s.subscription.status === "active") || [];
   const completedSessions = sessionHistory?.filter(s => s.status === "completed") || [];
 
-  const studentOptions = useMemo(() => {
-    const unique = new Set<string>();
-    const names: string[] = [];
-    activeSubscriptions.forEach(({ subscription }) => {
-      const name = [subscription.studentFirstName, subscription.studentLastName].filter(Boolean).join(" ").trim() || "Student";
-      if (!unique.has(name)) {
-        unique.add(name);
-        names.push(name);
-      }
-    });
-    return names;
-  }, [activeSubscriptions]);
-
-  const [selectedStudent, setSelectedStudent] = useState<string | null>(null);
-  const [selectedSubscriptionStudent, setSelectedSubscriptionStudent] = useState<string>("all");
   const [selectedHistoryStudent, setSelectedHistoryStudent] = useState<string>("all");
   const [selectedHistoryTime, setSelectedHistoryTime] = useState<string>("all");
   const [selectedHistoryCourse, setSelectedHistoryCourse] = useState<string>("all");
+  const [subscriptionSearchQuery, setSubscriptionSearchQuery] = useState("");
 
   const subscriptionStudentMap = useMemo(() => {
     const map = new Map<number, string>();
@@ -335,15 +324,157 @@ export default function ParentDashboard() {
       });
   }, [sessionHistory, selectedHistoryStudent, selectedHistoryTime, selectedHistoryCourse]);
 
-  // Filter subscriptions by selected student for the Subscriptions tab
-  const filteredSubscriptionsForTab = useMemo(() => {
-    if (selectedSubscriptionStudent === "all") return activeSubscriptions;
+  const getStudentName = (subscription: any) =>
+    [subscription.studentFirstName, subscription.studentLastName].filter(Boolean).join(" ").trim() || "Student";
 
-    return activeSubscriptions.filter(({ subscription }) => {
-      const name = [subscription.studentFirstName, subscription.studentLastName].filter(Boolean).join(" ").trim() || "Student";
-      return name === selectedSubscriptionStudent;
+  const getStatusPriority = (subscription: any) => {
+    if (subscription.status === "active" && subscription.paymentStatus === "paid") return 0;
+    if (subscription.status === "active") return 1;
+    if (subscription.paymentStatus === "pending") return 2;
+    return 3;
+  };
+
+  const formatStatusLabel = (value: string | null | undefined) => {
+    if (!value) return "Status";
+    return value
+      .split("_")
+      .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(" ");
+  };
+
+  const getPrimaryStatusBadge = (subscription: any) => {
+    if (subscription.status === "active") {
+      return {
+        label: "Active",
+        className: "bg-emerald-100 text-emerald-900 dark:bg-emerald-950 dark:text-emerald-200",
+      };
+    }
+
+    return {
+      label: formatStatusLabel(subscription.status),
+      className: "bg-slate-100 text-slate-800 dark:bg-slate-900 dark:text-slate-200",
+    };
+  };
+
+  const getPaymentStatusBadge = (subscription: any) => {
+    if (subscription.paymentStatus === "pending" && subscription.paymentPlan === "full") {
+      return {
+        label: "Billing Pending",
+        className: "bg-red-100 text-red-900 dark:bg-red-950 dark:text-red-200",
+      };
+    }
+
+    if (subscription.paymentPlan === "monthly" && subscription.paymentStatus === "pending") {
+      return {
+        label: "Monthly Setup Needed",
+        className: "bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200",
+      };
+    }
+
+    if (subscription.paymentPlan === "monthly" && (subscription.paymentStatus === "paid" || subscription.paymentStatus === "completed")) {
+      return {
+        label: "Monthly Billing Active",
+        className: "bg-blue-100 text-blue-900 dark:bg-blue-950 dark:text-blue-200",
+      };
+    }
+
+    if (subscription.paymentPlan === "installment" && subscription.paymentStatus === "paid") {
+      return {
+        label: `Installment ${(subscription as any).installmentsPaidCount ?? 0} of ${subscription.numberOfInstallments ?? 3} paid`,
+        className: "bg-blue-100 text-blue-900 dark:bg-blue-950 dark:text-blue-200",
+      };
+    }
+
+    if (subscription.paymentPlan === "installment" && subscription.paymentStatus === "pending") {
+      return {
+        label: "Installment Setup Needed",
+        className: "bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200",
+      };
+    }
+
+    return null;
+  };
+
+  const getPaymentPlanLabel = (subscription: any) => {
+    if (subscription.paymentPlan === "monthly") return "Monthly billing";
+    if (subscription.paymentPlan === "installment") {
+      return `${subscription.numberOfInstallments ?? 3}-part installment`;
+    }
+    return "Full payment";
+  };
+
+  const groupedSubscriptionsForTab = useMemo(() => {
+    const groups = new Map<string, {
+      studentName: string;
+      grades: Set<string>;
+      items: any[];
+      activeCount: number;
+      actionRequiredCount: number;
+    }>();
+
+    activeSubscriptions.forEach((entry: any) => {
+      const studentName = getStudentName(entry.subscription);
+      const existing = groups.get(studentName) ?? {
+        studentName,
+        grades: new Set<string>(),
+        items: [],
+        activeCount: 0,
+        actionRequiredCount: 0,
+      };
+
+      if (entry.subscription.studentGrade) {
+        existing.grades.add(String(entry.subscription.studentGrade));
+      }
+
+      if (entry.subscription.status === "active") {
+        existing.activeCount += 1;
+      }
+
+      if (entry.subscription.paymentStatus === "pending") {
+        existing.actionRequiredCount += 1;
+      }
+
+      existing.items.push(entry);
+      groups.set(studentName, existing);
     });
-  }, [activeSubscriptions, selectedSubscriptionStudent]);
+
+    return Array.from(groups.values())
+      .sort((a, b) => a.studentName.localeCompare(b.studentName))
+      .map((group) => ({
+        ...group,
+        gradeLabel: group.grades.size === 1 ? Array.from(group.grades)[0] : null,
+        items: [...group.items].sort((a, b) => {
+          const priorityDiff = getStatusPriority(a.subscription) - getStatusPriority(b.subscription);
+          if (priorityDiff !== 0) return priorityDiff;
+          return (a.course?.title ?? "").localeCompare(b.course?.title ?? "");
+        }),
+      }));
+  }, [activeSubscriptions]);
+
+  const filteredGroupedSubscriptionsForTab = useMemo(() => {
+    const query = subscriptionSearchQuery.trim().toLowerCase();
+    if (!query) return groupedSubscriptionsForTab;
+
+    return groupedSubscriptionsForTab.flatMap((group) => {
+      const studentMatches = group.studentName.toLowerCase().includes(query);
+      const filteredItems = studentMatches
+        ? group.items
+        : group.items.filter(({ course }: any) => {
+            const title = course?.title?.toLowerCase() ?? "";
+            const subject = course?.subject?.toLowerCase() ?? "";
+            return title.includes(query) || subject.includes(query);
+          });
+
+      if (filteredItems.length === 0) return [];
+
+      return [{
+        ...group,
+        items: filteredItems,
+        activeCount: filteredItems.filter((item: any) => item.subscription.status === "active").length,
+        actionRequiredCount: filteredItems.filter((item: any) => item.subscription.paymentStatus === "pending").length,
+      }];
+    });
+  }, [groupedSubscriptionsForTab, subscriptionSearchQuery]);
 
   // Map sessionId -> structured note for quick lookup in history
   const noteBySessionId = useMemo(() => {
@@ -377,15 +508,6 @@ export default function ParentDashboard() {
       return next;
     });
   };
-
-  // Filter subscriptions by selected student for the Schedule tab
-  const filteredSubscriptions =
-    selectedStudent
-      ? activeSubscriptions.filter(({ subscription }) => {
-          const name = [subscription.studentFirstName, subscription.studentLastName].filter(Boolean).join(" ").trim() || "Student";
-          return name === selectedStudent;
-        })
-      : [];
 
   // Analytics computations
   const analyticsStats = useMemo(() => {
@@ -557,259 +679,302 @@ export default function ParentDashboard() {
             <div>
             {/* Subscriptions Tab */}
             <TabsContent value="subscriptions" forceMount className={tabContentClass}>
-              <div className="flex items-center justify-between">
-                <h2 className="text-2xl font-bold">My Subscriptions</h2>
-                <Button asChild>
-                  <Link href="/tutors">Find More Tutors</Link>
-                </Button>
-              </div>
-
-              {/* Student Filter Dropdown */}
-              {studentOptions.length > 1 && (
-                <div className="flex items-center gap-4">
-                  <Label htmlFor="subscription-student-filter" className="whitespace-nowrap">Filter by Student:</Label>
-                  <Select value={selectedSubscriptionStudent} onValueChange={setSelectedSubscriptionStudent}>
-                    <SelectTrigger id="subscription-student-filter" className="w-[250px]">
-                      <SelectValue placeholder="All Students" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Students</SelectItem>
-                      {studentOptions.map((student) => (
-                        <SelectItem key={student} value={student}>
-                          {student}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+                <div>
+                  <h2 className="text-2xl font-bold">My Subscriptions</h2>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Search by student name or enrolled course
+                  </p>
                 </div>
-              )}
+
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                  <div className="relative w-full sm:w-[340px]">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      value={subscriptionSearchQuery}
+                      onChange={(event) => setSubscriptionSearchQuery(event.target.value)}
+                      placeholder="Search student or course..."
+                      className="pl-9"
+                    />
+                  </div>
+
+                  <Button asChild>
+                    <Link href="/tutors">Find More Tutors</Link>
+                  </Button>
+                </div>
+              </div>
 
               {subsLoading ? (
                 <div className="space-y-4">
                   {[1, 2].map(i => <Skeleton key={i} className="h-48 w-full" />)}
                 </div>
-              ) : subscriptions && subscriptions.length > 0 ? (
-                <>
-                  {filteredSubscriptionsForTab.length === 0 ? (
+              ) : activeSubscriptions.length > 0 ? (
+                <div className="space-y-6">
+                  {filteredGroupedSubscriptionsForTab.length === 0 ? (
                     <Card>
-                      <CardContent className="py-16 text-center">
-                        <BookOpen className="w-16 h-16 mx-auto mb-4 text-muted-foreground" />
-                        <h3 className="text-xl font-semibold mb-2">No Subscriptions Found</h3>
-                        <p className="text-muted-foreground mb-6">
-                          {selectedSubscriptionStudent === "all"
-                            ? "No subscriptions found"
-                            : `No subscriptions found for ${selectedSubscriptionStudent}`}
+                      <CardContent className="py-14 text-center">
+                        <BookOpen className="mx-auto mb-4 h-12 w-12 text-muted-foreground" />
+                        <h3 className="text-lg font-semibold">No matching subscriptions</h3>
+                        <p className="mt-2 text-sm text-muted-foreground">
+                          No students or courses matched "{subscriptionSearchQuery.trim()}".
                         </p>
-                        <Button asChild>
-                          <Link href="/tutors">Browse Tutors</Link>
-                        </Button>
                       </CardContent>
                     </Card>
-                  ) : (
-                    <div className="grid md:grid-cols-2 gap-6">
-                      {filteredSubscriptionsForTab.map(({ subscription, course, tutor, sessionStats, nextBillingDate, nextBillingAmount }: any) => {
-                        // Calculate session progress
-                        const totalSessions = course.totalSessions || 0;
-                        const completedCount = sessionStats?.completedCount || 0;
-                        const scheduledCount = sessionStats?.scheduledCount || 0;
-                        const remainingSessions = totalSessions - completedCount - scheduledCount;
+                  ) : filteredGroupedSubscriptionsForTab.map(({ studentName, gradeLabel, items, activeCount, actionRequiredCount }) => {
+                    const useHorizontalScroll = items.length > 2;
 
-                        return (
-                    <Card key={subscription.id} className="hover:shadow-elegant transition-all flex flex-col">
-                      <CardHeader>
-                        <div className="flex items-start justify-between">
-                          <div className="flex-1">
-                            <CardTitle className="text-lg mb-2">{course.title}</CardTitle>
-                            <CardDescription>
-                              {subscription.studentFirstName && subscription.studentLastName ? (
-                                <span className="block mb-1">
-                                  Student: {subscription.studentFirstName} {subscription.studentLastName}
-                                  {subscription.studentGrade && ` (${subscription.studentGrade})`}
-                                </span>
-                              ) : null}
-                              <span>with {tutor?.name ?? "Tutor"}</span>
-                            </CardDescription>
-                          </div>
-                          <div className="flex flex-col gap-2 items-end">
-                            <Badge variant={subscription.status === "active" ? "default" : "secondary"}>
-                              {subscription.status}
-                            </Badge>
-                            {subscription.paymentStatus === "pending" && subscription.paymentPlan === "full" && (
-                              <Badge variant="destructive" className="text-xs">
-                                Billing Pending
-                              </Badge>
-                            )}
-                            {subscription.paymentPlan === "monthly" && subscription.paymentStatus === "pending" && (
-                              <Badge variant="secondary" className="text-xs bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200">
-                                Payment Pending
-                              </Badge>
-                            )}
-                            {subscription.paymentPlan === "monthly" && (subscription.paymentStatus === "paid" || subscription.paymentStatus === "completed") && (
-                              <Badge variant="secondary" className="text-xs bg-green-100 text-green-900 dark:bg-green-950 dark:text-green-200">
-                                Monthly Billing Active
-                              </Badge>
-                            )}
-                            {subscription.paymentPlan === "installment" && subscription.paymentStatus === "paid" && (
-                              <Badge variant="secondary" className="text-xs bg-blue-100 text-blue-900 dark:bg-blue-950 dark:text-blue-200">
-                                Installment {(subscription as any).installmentsPaidCount ?? 0} of {subscription.numberOfInstallments ?? 3} paid
-                              </Badge>
-                            )}
-                            {subscription.paymentPlan === "installment" && subscription.paymentStatus === "pending" && (
-                              <Badge variant="secondary" className="text-xs bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200">
-                                Installment Setup Pending
-                              </Badge>
-                            )}
-                          </div>
-                        </div>
-                      </CardHeader>
-                      <CardContent className="space-y-4 flex flex-col flex-1">
-                        <div className="grid grid-cols-2 gap-4 text-sm">
-                          <div>
-                            <p className="text-muted-foreground">Started</p>
-                            <p className="font-medium">
-                              {new Date(subscription.startDate).toLocaleDateString()}
-                            </p>
-                          </div>
-                          <div>
-                            <p className="text-muted-foreground">Sessions</p>
-                            <p className="font-medium">
-                              {completedCount} completed, {scheduledCount} scheduled
-                              {totalSessions > 0 && remainingSessions > 0 && `, ${remainingSessions} remaining`}
-                            </p>
-                          </div>
+                    return (
+                    <section key={studentName} className="space-y-3">
+                      <div className="flex flex-col gap-2 border-b border-border/70 pb-3 sm:flex-row sm:items-end sm:justify-between">
+                        <div>
+                          <h3 className="text-lg font-semibold tracking-tight">{studentName}</h3>
+                          <p className="mt-0.5 text-sm text-muted-foreground">
+                            {[
+                              items.length === 1 ? "1 course" : `${items.length} courses`,
+                              gradeLabel,
+                              actionRequiredCount > 0 ? `${actionRequiredCount} needs attention` : `${activeCount} active`,
+                            ].filter(Boolean).join(" • ")}
+                          </p>
                         </div>
 
-                        {subscription.paymentPlan === "installment" && subscription.paymentStatus === "paid" && !!nextBillingDate && !isNaN(nextBillingDate) && (subscription as any).installmentsPaidCount < (subscription.numberOfInstallments ?? 3) && (
-                          <div className="p-3 bg-blue-50 dark:bg-blue-950/20 rounded-lg border border-blue-200 dark:border-blue-900 text-sm">
-                            <div className="flex justify-between items-center">
-                              <span className="text-blue-800 dark:text-blue-200">
-                                Next installment ({((subscription as any).installmentsPaidCount ?? 0) + 1} of {subscription.numberOfInstallments ?? 3})
-                              </span>
-                              <span className="font-medium text-blue-900 dark:text-blue-100">
-                                {new Date(nextBillingDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
-                                {nextBillingAmount != null && (
-                                  <span className="ml-2">{formatPrice(nextBillingAmount as number)}</span>
-                                )}
-                              </span>
-                            </div>
-                          </div>
-                        )}
-
-                        {subscription.paymentPlan === "monthly" && (subscription.paymentStatus === "paid" || subscription.paymentStatus === "completed") && !!nextBillingDate && !isNaN(nextBillingDate) && (
-                          <div className="p-3 bg-blue-50 dark:bg-blue-950/20 rounded-lg border border-blue-200 dark:border-blue-900 text-sm">
-                            <div className="flex justify-between items-center">
-                              <span className="text-blue-800 dark:text-blue-200">Next billing</span>
-                              <span className="font-medium text-blue-900 dark:text-blue-100">
-                                {new Date(nextBillingDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
-                                {nextBillingAmount != null && (
-                                  <span className="ml-2">{formatPrice(nextBillingAmount as number)}</span>
-                                )}
-                              </span>
-                            </div>
-                          </div>
-                        )}
-
-                        {subscription.paymentStatus === "pending" && subscription.paymentPlan === "monthly" && (
-                          <div className="p-3 bg-amber-50 dark:bg-amber-950/20 rounded-lg border border-amber-200 dark:border-amber-900">
-                            <p className="text-sm text-amber-900 dark:text-amber-200 mb-2">
-                              Add your payment method to activate monthly billing
-                            </p>
-                            <Button
-                              size="sm"
-                              className="w-full"
-                              disabled={setupLoadingId === subscription.id}
-                              onClick={async () => {
-                                try {
-                                  setSetupLoadingId(subscription.id);
-                                  const result = await setupBillingMutation.mutateAsync({
-                                    subscriptionId: subscription.id,
-                                    origin: window.location.origin,
-                                  });
-                                  if (result?.setupUrl) {
-                                    window.open(result.setupUrl, "_blank");
-                                  } else {
-                                    toast.error("Could not create billing setup. Please contact support.");
-                                  }
-                                } catch (error) {
-                                  toast.error("Failed to set up billing");
-                                } finally {
-                                  setSetupLoadingId(null);
-                                }
-                              }}
-                            >
-                              <CreditCard className="w-4 h-4 mr-2" />
-                              {setupLoadingId === subscription.id ? "Setting up..." : "Set Up Monthly Billing"}
-                            </Button>
-                          </div>
-                        )}
-
-                        {subscription.paymentStatus === "pending" && (subscription.paymentPlan === "full" || subscription.paymentPlan === "installment") && (
-                          <div className="p-3 bg-red-50 dark:bg-red-950/20 rounded-lg border border-red-200 dark:border-red-900">
-                            <p className="text-sm text-red-900 dark:text-red-200 mb-2">
-                              Payment is required to activate this enrollment.
-                            </p>
-                            <Button
-                              size="sm"
-                              className="w-full"
-                              disabled={retryLoadingId === subscription.id}
-                              onClick={async () => {
-                                try {
-                                  setRetryLoadingId(subscription.id);
-                                  const result = await retryCheckoutMutation.mutateAsync({
-                                    subscriptionId: subscription.id,
-                                    origin: window.location.origin,
-                                  });
-                                  if (result?.checkoutUrl) {
-                                    window.open(result.checkoutUrl, "_blank");
-                                  } else {
-                                    toast.error("Could not create payment session. Please contact support.");
-                                  }
-                                } catch (error: any) {
-                                  toast.error(error?.message || "Failed to initiate payment");
-                                } finally {
-                                  setRetryLoadingId(null);
-                                }
-                              }}
-                            >
-                              <CreditCard className="w-4 h-4 mr-2" />
-                              {retryLoadingId === subscription.id ? "Redirecting..." : "Complete Payment"}
-                            </Button>
-                          </div>
-                        )}
-
-
-                        <div className="space-y-2 mt-auto">
-                          {subscription.status === "active" && subscription.paymentStatus === "paid" && (
-                            <Button
-                              size="sm"
-                              className="w-full"
-                              onClick={() => setActiveTab("schedule")}
-                            >
-                              <Calendar className="w-4 h-4 mr-2" />
-                              Book Session
-                            </Button>
+                        <div className="flex flex-wrap gap-2">
+                          {useHorizontalScroll && (
+                            <span className="self-center text-xs text-muted-foreground">
+                              Scroll to view all
+                            </span>
                           )}
-                          <div className="flex gap-2">
-                            <Button asChild variant="outline" size="sm" className="flex-1">
-                              <Link href={`/course/${course.id}`}>
-                                View Course
-                              </Link>
-                            </Button>
-                            <Button asChild variant="outline" size="sm" className="flex-1">
-                              <Link href="/messages" className="flex items-center gap-2">
-                                  <MessageSquare className="w-4 h-4" />
-                                  Message
-                              </Link>
-                            </Button>
-                          </div>
+                          {actionRequiredCount > 0 && (
+                            <Badge variant="secondary" className="bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200">
+                              {actionRequiredCount} action required
+                            </Badge>
+                          )}
+                          <Badge variant="outline" className="text-muted-foreground">
+                            {items.length} {items.length === 1 ? "course" : "courses"}
+                          </Badge>
                         </div>
-                      </CardContent>
-                    </Card>
-                        );
-                      })}
-                    </div>
-                  )}
-                </>
+                      </div>
+
+                      <div
+                        className={cn(
+                          useHorizontalScroll
+                            ? "grid grid-flow-col auto-cols-[85%] gap-3 overflow-x-auto pb-2 pr-1 snap-x snap-mandatory [scrollbar-width:thin] sm:auto-cols-[calc((100%-0.75rem)/2)]"
+                            : "grid gap-3 lg:grid-cols-2",
+                        )}
+                      >
+                        {items.map(({ subscription, course, tutor, sessionStats, nextBillingDate, nextBillingAmount }: any) => {
+                          const totalSessions = course.totalSessions || 0;
+                          const completedCount = sessionStats?.completedCount || 0;
+                          const scheduledCount = sessionStats?.scheduledCount || 0;
+                          const remainingSessions = Math.max(totalSessions - completedCount - scheduledCount, 0);
+                          const accountedSessions = totalSessions > 0 ? Math.min(completedCount + scheduledCount, totalSessions) : 0;
+                          const progressValue = totalSessions > 0 ? Math.round((accountedSessions / totalSessions) * 100) : 0;
+                          const primaryStatus = getPrimaryStatusBadge(subscription);
+                          const paymentStatus = getPaymentStatusBadge(subscription);
+
+                          return (
+                            <Card
+                              key={subscription.id}
+                              className={cn(
+                                "flex h-full flex-col border-border/60 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg",
+                                useHorizontalScroll && "snap-start"
+                              )}
+                            >
+                              <CardHeader className="space-y-3 p-5 pb-3">
+                                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                                  <div className="space-y-1">
+                                    <CardTitle className="text-lg leading-tight">{course.title}</CardTitle>
+                                    <CardDescription className="text-sm">
+                                      with <span className="font-medium text-foreground">{tutor?.name ?? "Tutor"}</span>
+                                    </CardDescription>
+                                  </div>
+
+                                  <div className="flex flex-wrap gap-2 sm:max-w-[240px] sm:justify-end">
+                                    <Badge variant="secondary" className={`text-[11px] ${primaryStatus.className}`}>
+                                      {primaryStatus.label}
+                                    </Badge>
+                                    {paymentStatus && (
+                                      <Badge variant="secondary" className={`text-[11px] ${paymentStatus.className}`}>
+                                        {paymentStatus.label}
+                                      </Badge>
+                                    )}
+                                  </div>
+                                </div>
+
+                                <div className="flex flex-wrap gap-2 text-xs">
+                                  <span className="rounded-full bg-muted/50 px-3 py-1 text-muted-foreground">
+                                    <span className="font-medium text-foreground">Started:</span>{" "}
+                                    {new Date(subscription.startDate).toLocaleDateString()}
+                                  </span>
+                                  <span className="rounded-full bg-muted/50 px-3 py-1 text-muted-foreground">
+                                    <span className="font-medium text-foreground">Plan:</span>{" "}
+                                    {getPaymentPlanLabel(subscription)}
+                                  </span>
+                                </div>
+                              </CardHeader>
+
+                              <CardContent className="flex flex-1 flex-col gap-3 px-5 pb-5 pt-0">
+                                <div className="rounded-lg border border-border/60 bg-background p-3">
+                                  <div className="flex items-center justify-between gap-3">
+                                    <p className="text-sm font-medium">Session progress</p>
+                                    {totalSessions > 0 ? (
+                                      <span className="text-xs text-muted-foreground">
+                                        {accountedSessions}/{totalSessions}
+                                      </span>
+                                    ) : (
+                                      <span className="text-xs text-muted-foreground">No session cap</span>
+                                    )}
+                                  </div>
+
+                                  {totalSessions > 0 && (
+                                    <Progress value={progressValue} className="mt-2 h-2" />
+                                  )}
+
+                                  <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground">
+                                    <span className="rounded-full bg-muted/50 px-2.5 py-1">
+                                      <span className="font-medium text-foreground">{completedCount}</span> completed
+                                    </span>
+                                    <span className="rounded-full bg-muted/50 px-2.5 py-1">
+                                      <span className="font-medium text-foreground">{scheduledCount}</span> scheduled
+                                    </span>
+                                    <span className="rounded-full bg-muted/50 px-2.5 py-1">
+                                      <span className="font-medium text-foreground">{totalSessions > 0 ? remainingSessions : "—"}</span> remaining
+                                    </span>
+                                  </div>
+                                </div>
+
+                                {subscription.paymentPlan === "installment" && subscription.paymentStatus === "paid" && !!nextBillingDate && !isNaN(nextBillingDate) && (subscription as any).installmentsPaidCount < (subscription.numberOfInstallments ?? 3) && (
+                                  <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2.5 text-sm dark:border-blue-900 dark:bg-blue-950/20">
+                                    <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                                      <span className="text-blue-800 dark:text-blue-200">
+                                        Next installment ({((subscription as any).installmentsPaidCount ?? 0) + 1} of {subscription.numberOfInstallments ?? 3})
+                                      </span>
+                                      <span className="font-medium text-blue-900 dark:text-blue-100">
+                                        {new Date(nextBillingDate).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
+                                        {nextBillingAmount != null && (
+                                          <span className="ml-2">{formatPrice(nextBillingAmount as number)}</span>
+                                        )}
+                                      </span>
+                                    </div>
+                                  </div>
+                                )}
+
+                                {subscription.paymentPlan === "monthly" && (subscription.paymentStatus === "paid" || subscription.paymentStatus === "completed") && !!nextBillingDate && !isNaN(nextBillingDate) && (
+                                  <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2.5 text-sm dark:border-blue-900 dark:bg-blue-950/20">
+                                    <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                                      <span className="text-blue-800 dark:text-blue-200">Next billing</span>
+                                      <span className="font-medium text-blue-900 dark:text-blue-100">
+                                        {new Date(nextBillingDate).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
+                                        {nextBillingAmount != null && (
+                                          <span className="ml-2">{formatPrice(nextBillingAmount as number)}</span>
+                                        )}
+                                      </span>
+                                    </div>
+                                  </div>
+                                )}
+
+                                {subscription.paymentStatus === "pending" && subscription.paymentPlan === "monthly" && (
+                                  <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 dark:border-amber-900 dark:bg-amber-950/20">
+                                    <p className="mb-2 text-sm text-amber-900 dark:text-amber-200">
+                                      Add your payment method to activate monthly billing.
+                                    </p>
+                                    <Button
+                                      size="sm"
+                                      className="w-full"
+                                      disabled={setupLoadingId === subscription.id}
+                                      onClick={async () => {
+                                        try {
+                                          setSetupLoadingId(subscription.id);
+                                          const result = await setupBillingMutation.mutateAsync({
+                                            subscriptionId: subscription.id,
+                                            origin: window.location.origin,
+                                          });
+                                          if (result?.setupUrl) {
+                                            window.open(result.setupUrl, "_blank");
+                                          } else {
+                                            toast.error("Could not create billing setup. Please contact support.");
+                                          }
+                                        } catch (error) {
+                                          toast.error("Failed to set up billing");
+                                        } finally {
+                                          setSetupLoadingId(null);
+                                        }
+                                      }}
+                                    >
+                                      <CreditCard className="mr-2 h-4 w-4" />
+                                      {setupLoadingId === subscription.id ? "Setting up..." : "Set Up Monthly Billing"}
+                                    </Button>
+                                  </div>
+                                )}
+
+                                {subscription.paymentStatus === "pending" && (subscription.paymentPlan === "full" || subscription.paymentPlan === "installment") && (
+                                  <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-3 dark:border-red-900 dark:bg-red-950/20">
+                                    <p className="mb-2 text-sm text-red-900 dark:text-red-200">
+                                      Payment is required to activate this enrollment.
+                                    </p>
+                                    <Button
+                                      size="sm"
+                                      className="w-full"
+                                      disabled={retryLoadingId === subscription.id}
+                                      onClick={async () => {
+                                        try {
+                                          setRetryLoadingId(subscription.id);
+                                          const result = await retryCheckoutMutation.mutateAsync({
+                                            subscriptionId: subscription.id,
+                                            origin: window.location.origin,
+                                          });
+                                          if (result?.checkoutUrl) {
+                                            window.open(result.checkoutUrl, "_blank");
+                                          } else {
+                                            toast.error("Could not create payment session. Please contact support.");
+                                          }
+                                        } catch (error: any) {
+                                          toast.error(error?.message || "Failed to initiate payment");
+                                        } finally {
+                                          setRetryLoadingId(null);
+                                        }
+                                      }}
+                                    >
+                                      <CreditCard className="mr-2 h-4 w-4" />
+                                      {retryLoadingId === subscription.id ? "Redirecting..." : "Complete Payment"}
+                                    </Button>
+                                  </div>
+                                )}
+
+                                <div className="mt-auto space-y-2">
+                                  {subscription.status === "active" && subscription.paymentStatus === "paid" && (
+                                    <Button
+                                      size="sm"
+                                      className="w-full"
+                                      onClick={() => setActiveTab("schedule")}
+                                    >
+                                      <Calendar className="mr-2 h-4 w-4" />
+                                      Book Session
+                                    </Button>
+                                  )}
+
+                                  <div className="flex gap-2">
+                                    <Button asChild variant="outline" size="sm" className="flex-1">
+                                      <Link href={`/course/${course.id}`}>
+                                        View Course
+                                      </Link>
+                                    </Button>
+                                    <Button asChild variant="outline" size="sm" className="flex-1">
+                                      <Link href="/messages" className="flex items-center justify-center gap-2">
+                                        <MessageSquare className="h-4 w-4" />
+                                        Message
+                                      </Link>
+                                    </Button>
+                                  </div>
+                                </div>
+                              </CardContent>
+                            </Card>
+                          );
+                        })}
+                      </div>
+                    </section>
+                    );
+                  })}
+                </div>
               ) : (
                 <Card>
                   <CardContent className="py-16 text-center">
