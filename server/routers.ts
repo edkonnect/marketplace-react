@@ -7344,6 +7344,114 @@ CRITICAL: Return ONLY valid JSON. No markdown, no explanations. Exactly this for
       return db.getAllReferrals();
     }),
   }),
+
+  adminTestimonials: router({
+    getAll: adminProcedure.query(async () => {
+      return db.getAllTestimonials();
+    }),
+
+    create: adminProcedure
+      .input(z.object({
+        parentName: z.string().min(1),
+        parentInitials: z.string().min(1).max(5),
+        parentRole: z.string().optional(),
+        parentImage: z.string().optional(),
+        content: z.string().min(1),
+        rating: z.number().int().min(1).max(5),
+        displayOrder: z.number().int().default(0),
+        isActive: z.boolean().default(true),
+      }))
+      .mutation(async ({ input }) => {
+        await db.createTestimonial(input);
+        return { success: true };
+      }),
+
+    update: adminProcedure
+      .input(z.object({
+        id: z.number(),
+        parentName: z.string().min(1).optional(),
+        parentInitials: z.string().min(1).max(5).optional(),
+        parentRole: z.string().nullable().optional(),
+        parentImage: z.string().nullable().optional(),
+        content: z.string().min(1).optional(),
+        rating: z.number().int().min(1).max(5).optional(),
+        displayOrder: z.number().int().optional(),
+        isActive: z.boolean().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const { id, ...data } = input;
+        await db.updateTestimonial(id, data);
+        return { success: true };
+      }),
+
+    delete: adminProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        await db.deleteTestimonial(input.id);
+        return { success: true };
+      }),
+
+    uploadImage: adminProcedure
+      .input(z.object({
+        fileName: z.string().max(255),
+        fileType: z.string(),
+        fileSize: z.number(),
+        base64Data: z.string(),
+      }))
+      .mutation(async ({ input }) => {
+        const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
+        if (!allowedTypes.includes(input.fileType)) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Only JPEG, PNG, and WebP images are allowed.' });
+        }
+        const maxBytes = 500 * 1024;
+        if (input.fileSize > maxBytes) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Image size exceeds the 500 KB limit.' });
+        }
+        const base64Regex = /^[A-Za-z0-9+/]+=*$/;
+        const stripped = input.base64Data.replace(/\s/g, '');
+        if (!base64Regex.test(stripped)) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Invalid image data.' });
+        }
+        const byteLength = Math.floor((stripped.length * 3) / 4);
+        if (byteLength > maxBytes) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Image size exceeds the 500 KB limit.' });
+        }
+        const ext = input.fileType === 'image/png' ? 'png' : 'jpg';
+        const uuid = crypto.randomUUID();
+        const key = `testimonial-images/${uuid}.${ext}`;
+        const imageBuffer = Buffer.from(stripped, 'base64');
+        const { uploadProfileImageToS3 } = await import('./s3Storage');
+        // Re-use uploadProfileImageToS3 with a pseudo userId of 0 for the key prefix override
+        // Instead, build the upload manually using the same helpers
+        const { ENV } = await import('./_core/env');
+        const { S3Client, PutObjectCommand } = await import('@aws-sdk/client-s3');
+        const fs = await import('fs');
+        const path = await import('path');
+        let imageUrl: string;
+        const hasS3 = !!(ENV.awsAccessKeyId && ENV.awsSecretAccessKey && ENV.awsS3Bucket);
+        if (hasS3) {
+          const s3 = new S3Client({
+            region: ENV.awsS3Region,
+            credentials: { accessKeyId: ENV.awsAccessKeyId, secretAccessKey: ENV.awsSecretAccessKey },
+          });
+          await s3.send(new PutObjectCommand({
+            Bucket: ENV.awsS3Bucket,
+            Key: key,
+            Body: imageBuffer,
+            ContentType: input.fileType,
+          }));
+          imageUrl = `https://${ENV.awsS3Bucket}.s3.${ENV.awsS3Region}.amazonaws.com/${key}`;
+        } else {
+          const uploadsDir = path.resolve(process.cwd(), 'uploads');
+          if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+          const safeFileName = key.replace(/\//g, '_');
+          fs.writeFileSync(path.join(uploadsDir, safeFileName), imageBuffer);
+          const baseUrl = ENV.forgeApiUrl || 'http://localhost:3000';
+          imageUrl = `${baseUrl}/uploads/${encodeURIComponent(safeFileName)}`;
+        }
+        return { imageUrl };
+      }),
+  }),
 });
 
 export type AppRouter = typeof appRouter;

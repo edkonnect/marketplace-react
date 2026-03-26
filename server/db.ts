@@ -2648,7 +2648,7 @@ export async function getFeaturedCourses() {
 export async function getTestimonials() {
   const db = await getDb();
   if (!db) return [];
-  
+
   try {
     return await db
       .select()
@@ -2658,6 +2658,74 @@ export async function getTestimonials() {
   } catch (error) {
     console.error("[Database] Error fetching testimonials:", error);
     return [];
+  }
+}
+
+export async function getAllTestimonials() {
+  const db = await getDb();
+  if (!db) return [];
+  try {
+    return await db
+      .select()
+      .from(testimonials)
+      .orderBy(asc(testimonials.displayOrder));
+  } catch (error) {
+    console.error("[Database] Error fetching all testimonials:", error);
+    return [];
+  }
+}
+
+export async function createTestimonial(data: {
+  parentName: string;
+  parentInitials: string;
+  parentRole?: string;
+  parentImage?: string;
+  content: string;
+  rating: number;
+  displayOrder: number;
+  isActive: boolean;
+}) {
+  const db = await getDb();
+  if (!db) return null;
+  try {
+    await db.insert(testimonials).values(data);
+    return true;
+  } catch (error) {
+    console.error("[Database] Error creating testimonial:", error);
+    return null;
+  }
+}
+
+export async function updateTestimonial(id: number, data: Partial<{
+  parentName: string;
+  parentInitials: string;
+  parentRole: string | null;
+  parentImage: string | null;
+  content: string;
+  rating: number;
+  displayOrder: number;
+  isActive: boolean;
+}>) {
+  const db = await getDb();
+  if (!db) return false;
+  try {
+    await db.update(testimonials).set(data).where(eq(testimonials.id, id));
+    return true;
+  } catch (error) {
+    console.error("[Database] Error updating testimonial:", error);
+    return false;
+  }
+}
+
+export async function deleteTestimonial(id: number) {
+  const db = await getDb();
+  if (!db) return false;
+  try {
+    await db.delete(testimonials).where(eq(testimonials.id, id));
+    return true;
+  } catch (error) {
+    console.error("[Database] Error deleting testimonial:", error);
+    return false;
   }
 }
 

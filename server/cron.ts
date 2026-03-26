@@ -27,7 +27,7 @@ export async function processUsageBilling() {
 
   console.log(`[Cron] Processing ${groups.size} billing group(s)`);
 
-  for (const [groupKey, groupItems] of groups) {
+  for (const [groupKey, groupItems] of Array.from(groups)) {
     try {
       // Collect billing lines for all subscriptions in this group that have sessions
       type BillingLine = {
@@ -110,7 +110,7 @@ export async function processUsageBilling() {
 
       // Fetch parent's Stripe customer ID (same for all in group)
       const parentUser = await db.getUserById(lines[0].subscriptionId
-        ? groupItems.find(i => i.subscription.id === lines[0].subscriptionId)!.subscription.parentId
+        ? groupItems.find((i: { subscription: any; course: any }) => i.subscription.id === lines[0].subscriptionId)!.subscription.parentId
         : groupItems[0].subscription.parentId
       );
       const firstSub = groupItems[0].subscription;

@@ -34,6 +34,7 @@ import {
   CheckCircle,
   Mail,
   User,
+  Sparkles,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { motion, type Variants } from "framer-motion";
@@ -248,6 +249,7 @@ export default function Home() {
     designation: t.parentRole ?? "Parent",
     initials: t.parentInitials,
     rating: t.rating ?? 5,
+    src: t.parentImage ?? undefined,
   }));
 
   const getDashboardLink = () => {
@@ -287,146 +289,154 @@ export default function Home() {
           <div className="absolute right-0 top-20 h-80 w-80 rounded-full bg-sky-200/20 blur-3xl" />
         </div>
 
-        <div className="container relative py-16 sm:py-20 lg:py-28">
-          <div className="grid items-center gap-12 lg:grid-cols-[minmax(0,1.02fr)_minmax(0,0.98fr)] lg:gap-20">
-            <div className="max-w-[39rem]">
-              <h1 className="max-w-[34rem] text-4xl font-extrabold tracking-tight text-slate-950 sm:text-5xl lg:text-[3.25rem] lg:leading-[1.2]">
-                Connect with Expert Tutors
-                <br />
-                <span className="text-primary">For Academic Excellence</span>
-              </h1>
+        <div className="container relative pt-8 pb-16 sm:pt-10 sm:pb-20 lg:pt-12 lg:pb-28">
+          {/* Search bar — full width at the top */}
+          <form onSubmit={handleHeroSearch} className="mb-10 w-full">
+            <label htmlFor="hero-search" className="sr-only">
+              Search by subject, grade, or need
+            </label>
 
-              <p className="mt-6 max-w-[30rem] text-base leading-7 text-slate-500 sm:text-lg">
-                <span className="inline-flex items-center gap-2">
-                  <span className="text-primary font-semibold">✦</span>
-                  1:1 Personalized Learning
-                </span>
-                <span className="mx-3 text-slate-300">|</span>
-                <span className="inline-flex items-center gap-2">
-                  <span className="text-primary font-semibold">✦</span>
-                  Rigorous Test Prep
-                </span>
-              </p>
+            <div ref={searchContainerRef} className="relative">
+              {/* Search pill */}
+              <div className="group flex items-center rounded-full border border-slate-200 bg-white pl-5 pr-2 py-2 shadow-[0_8px_40px_-12px_rgba(37,99,235,0.18)] ring-1 ring-transparent transition-all duration-200 focus-within:border-blue-400 focus-within:ring-blue-200 focus-within:shadow-[0_8px_48px_-10px_rgba(37,99,235,0.32)] hover:border-blue-300 hover:shadow-[0_8px_44px_-10px_rgba(37,99,235,0.24)]">
+                <Search className="mr-3 h-5 w-5 shrink-0 text-slate-400 transition-colors duration-200 group-focus-within:text-blue-500" />
+                <Input
+                  id="hero-search"
+                  type="text"
+                  autoComplete="off"
+                  value={heroSearchQuery}
+                  onChange={(e) => {
+                    setHeroSearchQuery(e.target.value);
+                    setSearchDropdownOpen(e.target.value.trim().length >= 2);
+                  }}
+                  onFocus={() => { if (heroSearchQuery.trim().length >= 2) setSearchDropdownOpen(true); }}
+                  placeholder="Search tutors or subjects..."
+                  className="h-10 flex-1 border-0 bg-transparent p-0 text-base text-slate-900 shadow-none placeholder:text-slate-400 focus-visible:ring-0"
+                />
+                <button
+                  type="submit"
+                  aria-label="Search"
+                  className="ml-3 flex h-10 items-center gap-2 rounded-full bg-blue-600 px-5 text-sm font-semibold text-white shadow-[0_4px_14px_-4px_rgba(37,99,235,0.6)] transition-all duration-200 hover:bg-blue-700 hover:shadow-[0_6px_18px_-4px_rgba(37,99,235,0.7)] active:scale-95"
+                >
+                  <Search className="h-4 w-4" />
+                  <span className="hidden sm:inline">Search</span>
+                </button>
+              </div>
 
-              <form onSubmit={handleHeroSearch} className="mt-9 max-w-[39rem]">
-                <label htmlFor="hero-search" className="sr-only">
-                  Search by subject, grade, or need
-                </label>
+              {/* Live dropdown */}
+              {searchDropdownOpen && hasResults && (
+                <div className="absolute left-0 right-0 top-[calc(100%+8px)] z-50 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_16px_48px_-12px_rgba(15,23,42,0.22)]">
+                  {matchedTutors.length > 0 && (
+                    <div>
+                      <p className="px-4 pt-3 pb-1 text-[11px] font-semibold uppercase tracking-widest text-slate-400">Tutors</p>
+                      {matchedTutors.map((tutor: any) => (
+                        <button
+                          key={tutor.userId}
+                          type="button"
+                          onMouseDown={() => {
+                            setSearchDropdownOpen(false);
+                            setLocation(`/tutor-profile/${tutor.userId}`);
+                          }}
+                          className="flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-blue-50"
+                        >
+                          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-100 text-blue-600">
+                            {tutor.profileImageUrl
+                              ? <img src={tutor.profileImageUrl} alt={tutor.userName} className="h-8 w-8 rounded-full object-cover" />
+                              : <User className="h-4 w-4" />}
+                          </div>
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-semibold text-slate-900">{tutor.userName}</p>
+                            <p className="truncate text-xs text-slate-500">
+                              {typeof tutor.subjects === "string"
+                                ? JSON.parse(tutor.subjects || "[]").slice(0, 3).join(", ")
+                                : (tutor.subjects ?? []).slice(0, 3).join(", ")}
+                            </p>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
 
-                <div ref={searchContainerRef} className="relative">
-                  {/* Search pill */}
-                  <div className="group flex items-center rounded-full border border-slate-200 bg-white pl-5 pr-2 py-2 shadow-[0_8px_40px_-12px_rgba(37,99,235,0.18)] ring-1 ring-transparent transition-all duration-200 focus-within:border-blue-400 focus-within:ring-blue-200 focus-within:shadow-[0_8px_48px_-10px_rgba(37,99,235,0.32)] hover:border-blue-300 hover:shadow-[0_8px_44px_-10px_rgba(37,99,235,0.24)]">
-                    <Search className="mr-3 h-5 w-5 shrink-0 text-slate-400 transition-colors duration-200 group-focus-within:text-blue-500" />
-                    <Input
-                      id="hero-search"
-                      type="text"
-                      autoComplete="off"
-                      value={heroSearchQuery}
-                      onChange={(e) => {
-                        setHeroSearchQuery(e.target.value);
-                        setSearchDropdownOpen(e.target.value.trim().length >= 2);
-                      }}
-                      onFocus={() => { if (heroSearchQuery.trim().length >= 2) setSearchDropdownOpen(true); }}
-                      placeholder="Search tutors or subjects..."
-                      className="h-10 flex-1 border-0 bg-transparent p-0 text-base text-slate-900 shadow-none placeholder:text-slate-400 focus-visible:ring-0"
-                    />
-                    <button
-                      type="submit"
-                      aria-label="Search"
-                      className="ml-3 flex h-10 items-center gap-2 rounded-full bg-blue-600 px-5 text-sm font-semibold text-white shadow-[0_4px_14px_-4px_rgba(37,99,235,0.6)] transition-all duration-200 hover:bg-blue-700 hover:shadow-[0_6px_18px_-4px_rgba(37,99,235,0.7)] active:scale-95"
-                    >
-                      <Search className="h-4 w-4" />
-                      <span className="hidden sm:inline">Search</span>
+                  {matchedCourses.length > 0 && (
+                    <div className={matchedTutors.length > 0 ? "border-t border-slate-100" : ""}>
+                      <p className="px-4 pt-3 pb-1 text-[11px] font-semibold uppercase tracking-widest text-slate-400">Courses</p>
+                      {matchedCourses.map((course: any) => (
+                        <button
+                          key={course.id}
+                          type="button"
+                          onMouseDown={() => {
+                            setSearchDropdownOpen(false);
+                            setLocation(`/course/${course.id}`);
+                          }}
+                          className="flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-blue-50"
+                        >
+                          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-indigo-100 text-indigo-600">
+                            <BookOpen className="h-4 w-4" />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-semibold text-slate-900">{course.title}</p>
+                            <p className="truncate text-xs text-slate-500">{course.subject}{course.gradeLevel ? ` · ${course.gradeLevel}` : ""}</p>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="border-t border-slate-100 px-4 py-2.5">
+                    <button type="submit" className="text-xs font-medium text-blue-600 hover:underline">
+                      See all results for "{heroSearchQuery.trim()}"
                     </button>
                   </div>
-
-                  {/* Live dropdown */}
-                  {searchDropdownOpen && hasResults && (
-                    <div className="absolute left-0 right-0 top-[calc(100%+8px)] z-50 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_16px_48px_-12px_rgba(15,23,42,0.22)]">
-                      {matchedTutors.length > 0 && (
-                        <div>
-                          <p className="px-4 pt-3 pb-1 text-[11px] font-semibold uppercase tracking-widest text-slate-400">Tutors</p>
-                          {matchedTutors.map((tutor: any) => (
-                            <button
-                              key={tutor.userId}
-                              type="button"
-                              onMouseDown={() => {
-                                setSearchDropdownOpen(false);
-                                setLocation(`/tutor-profile/${tutor.userId}`);
-                              }}
-                              className="flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-blue-50"
-                            >
-                              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-100 text-blue-600">
-                                {tutor.profileImageUrl
-                                  ? <img src={tutor.profileImageUrl} alt={tutor.userName} className="h-8 w-8 rounded-full object-cover" />
-                                  : <User className="h-4 w-4" />}
-                              </div>
-                              <div className="min-w-0">
-                                <p className="truncate text-sm font-semibold text-slate-900">{tutor.userName}</p>
-                                <p className="truncate text-xs text-slate-500">
-                                  {typeof tutor.subjects === "string"
-                                    ? JSON.parse(tutor.subjects || "[]").slice(0, 3).join(", ")
-                                    : (tutor.subjects ?? []).slice(0, 3).join(", ")}
-                                </p>
-                              </div>
-                            </button>
-                          ))}
-                        </div>
-                      )}
-
-                      {matchedCourses.length > 0 && (
-                        <div className={matchedTutors.length > 0 ? "border-t border-slate-100" : ""}>
-                          <p className="px-4 pt-3 pb-1 text-[11px] font-semibold uppercase tracking-widest text-slate-400">Courses</p>
-                          {matchedCourses.map((course: any) => (
-                            <button
-                              key={course.id}
-                              type="button"
-                              onMouseDown={() => {
-                                setSearchDropdownOpen(false);
-                                setLocation(`/course/${course.id}`);
-                              }}
-                              className="flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-blue-50"
-                            >
-                              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-indigo-100 text-indigo-600">
-                                <BookOpen className="h-4 w-4" />
-                              </div>
-                              <div className="min-w-0">
-                                <p className="truncate text-sm font-semibold text-slate-900">{course.title}</p>
-                                <p className="truncate text-xs text-slate-500">{course.subject}{course.gradeLevel ? ` · ${course.gradeLevel}` : ""}</p>
-                              </div>
-                            </button>
-                          ))}
-                        </div>
-                      )}
-
-                      <div className="border-t border-slate-100 px-4 py-2.5">
-                        <button
-                          type="submit"
-                          className="text-xs font-medium text-blue-600 hover:underline"
-                        >
-                          See all results for "{heroSearchQuery.trim()}"
-                        </button>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* No results hint */}
-                  {searchDropdownOpen && !hasResults && searchQuery.length >= 2 && (
-                    <div className="absolute left-0 right-0 top-[calc(100%+8px)] z-50 rounded-2xl border border-slate-200 bg-white px-4 py-4 text-center shadow-[0_16px_48px_-12px_rgba(15,23,42,0.22)]">
-                      <p className="text-sm text-slate-500">No tutors or courses found for <span className="font-semibold text-slate-700">"{heroSearchQuery.trim()}"</span></p>
-                      <button type="submit" className="mt-1 text-xs font-medium text-blue-600 hover:underline">Browse all tutors</button>
-                    </div>
-                  )}
                 </div>
-              </form>
+              )}
 
+              {/* No results hint */}
+              {searchDropdownOpen && !hasResults && searchQuery.length >= 2 && (
+                <div className="absolute left-0 right-0 top-[calc(100%+8px)] z-50 rounded-2xl border border-slate-200 bg-white px-4 py-4 text-center shadow-[0_16px_48px_-12px_rgba(15,23,42,0.22)]">
+                  <p className="text-sm text-slate-500">No tutors or courses found for <span className="font-semibold text-slate-700">"{heroSearchQuery.trim()}"</span></p>
+                  <button type="submit" className="mt-1 text-xs font-medium text-blue-600 hover:underline">Browse all tutors</button>
+                </div>
+              )}
+            </div>
+          </form>
+
+          {/* Heading + image side by side */}
+          <div className="grid items-center gap-12 lg:grid-cols-[minmax(0,1.02fr)_minmax(0,0.98fr)] lg:gap-20">
+            <div className="max-w-[39rem]">
+              <h1 className="max-w-[34rem]">
+                <span className="block text-xl font-bold tracking-tight text-slate-950 sm:text-2xl">
+                  Connect with Expert Tutors For
+                </span>
+                <span className="block text-5xl font-extrabold tracking-tight text-primary sm:text-6xl lg:text-[4.5rem] lg:leading-[1.1]">
+                  Academic Excellence & Rigorous Test Prep
+                </span>
+              </h1>
+
+              <p className="mt-5 max-w-[32rem] text-base leading-7 text-slate-600 sm:text-lg">
+                Expert tutors powered by smart AI — personalized, one-on-one learning that fits your schedule.
+              </p>
 
               <div className="mt-6 flex items-center gap-3 text-sm font-medium text-slate-600 sm:text-base">
                 <span className="flex h-9 w-9 items-center justify-center rounded-full bg-amber-50 text-amber-500 ring-1 ring-amber-200/70">
                   <Star className="h-4 w-4 fill-current" />
                 </span>
-                <span>Rated by parents {"\u2022"} 1000+ sessions completed</span>
+                <span>Rated by parents {"\u2022"} 100K+ sessions completed</span>
               </div>
+
+              {!isAuthenticated && (
+                <div className="mt-7 flex items-center gap-4">
+                  <Link href="/signup">
+                    <button className="flex h-11 items-center gap-2 rounded-full bg-blue-600 px-7 text-sm font-semibold text-white shadow-[0_4px_14px_-4px_rgba(37,99,235,0.6)] transition-all duration-200 hover:bg-blue-700 hover:shadow-[0_6px_18px_-4px_rgba(37,99,235,0.7)] active:scale-95">
+                      Get Started Free
+                    </button>
+                  </Link>
+                  <Link href="/login">
+                    <button className="flex h-11 items-center gap-2 rounded-full border border-slate-200 bg-white px-7 text-sm font-semibold text-slate-700 shadow-sm transition-all duration-200 hover:border-blue-300 hover:text-blue-600 active:scale-95">
+                      Sign In
+                    </button>
+                  </Link>
+                </div>
+              )}
             </div>
 
             <div className="relative">
@@ -440,14 +450,17 @@ export default function Home() {
                     className="h-[340px] w-full object-cover sm:h-[430px] lg:h-[520px]"
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-slate-950/10 via-transparent to-white/10" />
-                  <div className="absolute bottom-5 left-5 hidden max-w-[270px] items-start gap-3 rounded-2xl border border-white/70 bg-white/95 p-4 shadow-[0_24px_55px_-30px_rgba(15,23,42,0.45)] sm:flex">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-50 text-blue-600">
-                      <CheckCircle className="h-5 w-5" />
+                  <div className="absolute bottom-5 left-5 hidden max-w-[270px] items-start gap-3 rounded-2xl border border-violet-100 bg-white/95 p-4 shadow-[0_24px_55px_-30px_rgba(15,23,42,0.45)] sm:flex">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-violet-500 to-indigo-600 text-white shadow-md">
+                      <Sparkles className="h-5 w-5" />
                     </div>
                     <div>
-                      <p className="text-sm font-semibold text-slate-900">Weekly progress updates</p>
+                      <div className="flex items-center gap-1.5">
+                        <p className="text-sm font-semibold text-slate-900">✦ AI-Powered Courses</p>
+                        <span className="rounded-full bg-violet-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-600">New</span>
+                      </div>
                       <p className="mt-1 text-xs leading-5 text-slate-500">
-                        Stay aligned with tutor notes and next steps after every session.
+                        AI-generated quizzes, session insights & homework after every lesson.
                       </p>
                     </div>
                   </div>
@@ -455,6 +468,7 @@ export default function Home() {
               </div>
             </div>
           </div>
+
         </div>
       </section>
 

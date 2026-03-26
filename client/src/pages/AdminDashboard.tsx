@@ -26,6 +26,7 @@ import { Pagination } from "@/components/Pagination";
 import { CourseCreationForm } from "@/components/CourseCreationForm";
 import { CourseManagementTable } from "@/components/CourseManagementTable";
 import { TutorAssignmentDialog } from "@/components/TutorAssignmentDialog";
+import { TestimonialsManager } from "@/components/TestimonialsManager";
 import { toast } from "sonner";
 import Footer from "@/components/Footer";
 
@@ -487,6 +488,7 @@ export function AdminDashboard() {
               <TabsTrigger value="email">Email Settings</TabsTrigger>
               <TabsTrigger value="course-approval">Tutor Course Approval</TabsTrigger>
               <TabsTrigger value="referrals">Referrals</TabsTrigger>
+              <TabsTrigger value="testimonials">Testimonials</TabsTrigger>
             </TabsList>
           </div>
 
@@ -1469,6 +1471,11 @@ export function AdminDashboard() {
           {/* Referrals Tab */}
           <TabsContent value="referrals" forceMount className={tabContentClass}>
             <ReferralSettingsPanel />
+          </TabsContent>
+
+          {/* Testimonials Tab */}
+          <TabsContent value="testimonials" forceMount className={tabContentClass}>
+            <TestimonialsManager />
           </TabsContent>
         </Tabs>
       </div>

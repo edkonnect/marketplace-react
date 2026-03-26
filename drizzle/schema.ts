@@ -529,6 +529,7 @@ export const testimonials = mysqlTable("testimonials", {
   parentName: varchar("parentName", { length: 255 }).notNull(),
   parentInitials: varchar("parentInitials", { length: 5 }).notNull(),
   parentRole: varchar("parentRole", { length: 100 }), // e.g., "Parent of 8th grader"
+  parentImage: text("parentImage"), // URL to parent's photo (optional)
   content: text("content").notNull(),
   rating: int("rating").default(5).notNull(), // 1-5 stars
   displayOrder: int("displayOrder").default(0).notNull(),

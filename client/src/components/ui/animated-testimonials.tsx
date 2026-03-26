@@ -11,6 +11,7 @@ type Testimonial = {
   designation: string;
   initials: string; // e.g. "SB"
   rating: number; // 1-5
+  src?: string; // optional photo URL
 };
 
 export const AnimatedTestimonials = ({
@@ -27,6 +28,9 @@ export const AnimatedTestimonials = ({
   );
 
   const [active, setActive] = useState(0);
+  const [modalOpen, setModalOpen] = useState(false);
+
+  const WORD_LIMIT = 40;
 
   // ✅ Keep active index valid if data length changes
   useEffect(() => {
@@ -106,7 +110,7 @@ export const AnimatedTestimonials = ({
                   }}
                   className="absolute inset-0 origin-bottom"
                 >
-                  {/* ✅ Replace img with initials avatar card */}
+                  {/* Photo if available, else initials */}
                   <div
                     className="
   h-full w-full rounded-3xl
@@ -116,18 +120,27 @@ export const AnimatedTestimonials = ({
   ring-1 ring-black/5
   dark:ring-white/10
   flex items-center justify-center
+  overflow-hidden
 "
                   >
-                    <div className="flex flex-col items-center gap-3">
-                      <div className="h-30 w-40 rounded-full bg-primary/10 text-primary flex items-center justify-center text-4xl font-bold tracking-tight">
-                        {t.initials || "U"}
-                      </div>
-                      <div className="text-center">
-                        <div className="font-semibold text-foreground">
-                          {t.name}
+                    {t.src ? (
+                      <img
+                        src={t.src}
+                        alt={t.name}
+                        className="h-full w-full object-cover object-center rounded-3xl"
+                      />
+                    ) : (
+                      <div className="flex flex-col items-center gap-3">
+                        <div className="h-30 w-40 rounded-full bg-primary/10 text-primary flex items-center justify-center text-4xl font-bold tracking-tight">
+                          {t.initials || "U"}
+                        </div>
+                        <div className="text-center">
+                          <div className="font-semibold text-foreground">
+                            {t.name}
+                          </div>
                         </div>
                       </div>
-                    </div>
+                    )}
                   </div>
                 </motion.div>
               ))}
@@ -151,23 +164,43 @@ export const AnimatedTestimonials = ({
               {current.designation}
             </p>
 
-            <motion.p className="mt-4 text-lg text-white/90">
-              {current.quote.split(" ").map((word, index) => (
-                <motion.span
-                  key={`${word}-${index}`}
-                  initial={{ filter: "blur(10px)", opacity: 0, y: 6 }}
-                  animate={{ filter: "blur(0px)", opacity: 1, y: 0 }}
-                  transition={{
-                    duration: 0.22,
-                    ease: "easeInOut",
-                    delay: 0.02 * index,
-                  }}
-                  className="inline-block"
-                >
-                  {word}&nbsp;
-                </motion.span>
-              ))}
-            </motion.p>
+            {(() => {
+              const words = current.quote.split(" ");
+              const isTruncatable = words.length > WORD_LIMIT;
+              const visibleWords = isTruncatable ? words.slice(0, WORD_LIMIT) : words;
+              return (
+                <div className="mt-4">
+                  <motion.p className="text-lg text-white/90">
+                    {visibleWords.map((word, index) => (
+                      <motion.span
+                        key={`${word}-${index}`}
+                        initial={{ filter: "blur(10px)", opacity: 0, y: 6 }}
+                        animate={{ filter: "blur(0px)", opacity: 1, y: 0 }}
+                        transition={{
+                          duration: 0.22,
+                          ease: "easeInOut",
+                          delay: 0.02 * index,
+                        }}
+                        className="inline-block"
+                      >
+                        {word}&nbsp;
+                      </motion.span>
+                    ))}
+                    {isTruncatable && (
+                      <span className="inline-block text-white/50">…</span>
+                    )}
+                  </motion.p>
+                  {isTruncatable && (
+                    <button
+                      onClick={() => setModalOpen(true)}
+                      className="mt-2 text-sm font-medium text-white/60 hover:text-white/90 transition-colors underline underline-offset-2"
+                    >
+                      Show more
+                    </button>
+                  )}
+                </div>
+              );
+            })()}
 
             {/* ✅ Stars under quote */}
             <div className="mt-4 mb-2 flex items-center gap-1">
@@ -206,6 +239,48 @@ export const AnimatedTestimonials = ({
           </div>
         </div>
       </div>
+      {/* Full review modal */}
+      {modalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+          onClick={() => setModalOpen(false)}
+        >
+          <div
+            className="relative w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              onClick={() => setModalOpen(false)}
+              aria-label="Close"
+              className="absolute right-4 top-4 flex h-7 w-7 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition"
+            >
+              ✕
+            </button>
+            <div className="mb-4 flex items-center gap-3">
+              {current.src ? (
+                <img src={current.src} alt={current.name} className="h-12 w-12 rounded-full object-cover" />
+              ) : (
+                <div className="h-12 w-12 rounded-full bg-primary/10 text-primary flex items-center justify-center text-lg font-bold">
+                  {current.initials || "U"}
+                </div>
+              )}
+              <div>
+                <p className="font-semibold text-slate-900">{current.name}</p>
+                <p className="text-sm text-slate-500">{current.designation}</p>
+              </div>
+            </div>
+            <p className="text-base leading-7 text-slate-700">"{current.quote}"</p>
+            <div className="mt-4 flex items-center gap-1">
+              {Array.from({ length: clampedRating }).map((_, i) => (
+                <Star key={i} className="h-4 w-4 fill-yellow-400 text-yellow-400" />
+              ))}
+              {clampedRating < 5 && Array.from({ length: 5 - clampedRating }).map((_, i) => (
+                <Star key={`e-${i}`} className="h-4 w-4 text-slate-200" />
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
