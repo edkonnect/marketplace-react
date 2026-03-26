@@ -156,11 +156,20 @@ export default function Home() {
       ).slice(0, 4)
     : [];
   const matchedCourses = searchQuery.length >= 2
-    ? allCourses.filter((c: any) =>
-        c.title?.toLowerCase().includes(searchQuery) ||
-        c.subject?.toLowerCase().includes(searchQuery) ||
-        c.description?.toLowerCase().includes(searchQuery)
-      ).slice(0, 4)
+    ? allCourses
+        .filter((c: any) =>
+          c.title?.toLowerCase().includes(searchQuery) ||
+          c.subject?.toLowerCase().includes(searchQuery) ||
+          c.description?.toLowerCase().includes(searchQuery)
+        )
+        .sort((a: any, b: any) => {
+          const aTitle = a.title?.toLowerCase() ?? "";
+          const bTitle = b.title?.toLowerCase() ?? "";
+          const aStarts = aTitle.startsWith(searchQuery) ? 0 : aTitle.includes(searchQuery) ? 1 : 2;
+          const bStarts = bTitle.startsWith(searchQuery) ? 0 : bTitle.includes(searchQuery) ? 1 : 2;
+          return aStarts - bStarts;
+        })
+        .slice(0, 4)
     : [];
   const hasResults = matchedTutors.length > 0 || matchedCourses.length > 0;
 
