@@ -285,6 +285,62 @@ export async function handleStripeWebhook(req: Request, res: Response) {
               }
             }
           }
+        } else if (type === "usage_enrollment") {
+          // Tutor/homework upfront first-month payment completed
+          const subscriptionId = parseInt(session.metadata?.subscription_id || "0");
+          const userId = parseInt(session.metadata?.user_id || "0");
+
+          if (subscriptionId) {
+            try {
+              // Persist stripeCustomerId on parent user
+              const stripeCustomerId = session.customer as string | null;
+              if (stripeCustomerId && userId) {
+                const parentUser = await db.getUserById(userId);
+                if (!parentUser?.stripeCustomerId) {
+                  await db.updateUserStripeCustomerId(userId, stripeCustomerId);
+                }
+              }
+
+              // Activate subscription
+              await db.updateSubscription(subscriptionId, { paymentStatus: "paid", status: "active" });
+
+              // Record the upfront payment as the first billing cycle (pre-paid)
+              const localSub = await db.getSubscriptionById(subscriptionId);
+              if (localSub?.billingCycleStart && localSub?.billingCycleEnd) {
+                await db.createBillingCycle({
+                  subscriptionId,
+                  cycleStart: localSub.billingCycleStart as Date,
+                  cycleEnd: localSub.billingCycleEnd as Date,
+                  sessionsCount: 0,
+                  amountCents: session.amount_total ?? 0,
+                  status: "paid",
+                  stripeInvoiceId: session.payment_intent as string || null,
+                });
+              }
+
+              // Create payment record so it shows in billing history
+              const amountTotal = session.amount_total ?? 0;
+              if (amountTotal > 0 && userId && localSub?.preferredTutorId) {
+                await db.createPayment({
+                  parentId: userId,
+                  tutorId: localSub.preferredTutorId,
+                  subscriptionId,
+                  sessionId: null,
+                  amount: (amountTotal / 100).toFixed(2),
+                  currency: session.currency || "usd",
+                  status: "completed",
+                  stripePaymentIntentId: session.payment_intent as string || null,
+                  stripeInvoiceId: null,
+                  paymentType: "subscription",
+                });
+              }
+
+              if (userId) await processReferralReward(userId);
+              console.log(`[Webhook] ✓ Usage enrollment upfront paid: sub=${subscriptionId}, amount=${session.amount_total}`);
+            } catch (err: any) {
+              console.error("[Webhook] Failed to process usage_enrollment:", err?.message);
+            }
+          }
         } else if (type === "course_enrollment") {
 
           const userId = parseInt(session.metadata?.user_id || "0");

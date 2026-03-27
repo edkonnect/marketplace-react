@@ -3,12 +3,12 @@ import * as db from "./db";
 import { createCombinedUsageInvoice } from "./stripe";
 
 export function startBillingCron() {
-  // Run at 02:00 UTC on the 1st of every month
-  cron.schedule("0 2 1 * *", async () => {
-    console.log("[Cron] Starting monthly usage billing job...");
+  // Run daily at 02:00 UTC — picks up any subscription whose billingCycleEnd < now
+  cron.schedule("0 2 * * *", async () => {
+    console.log("[Cron] Starting daily usage billing job...");
     await processUsageBilling();
   });
-  console.log("[Cron] Monthly billing cron scheduled (02:00 UTC on 1st of month)");
+  console.log("[Cron] Daily billing cron scheduled (02:00 UTC every day)");
 }
 
 export async function processUsageBilling() {
@@ -49,7 +49,7 @@ export async function processUsageBilling() {
         const cycleStart = subscription.billingCycleStart as Date;
         const cycleEnd = subscription.billingCycleEnd as Date;
         const nextStart = new Date(cycleEnd);
-        const nextEnd = new Date(Date.UTC(cycleEnd.getUTCFullYear(), cycleEnd.getUTCMonth() + 1, 1));
+        const nextEnd = new Date(Date.UTC(cycleEnd.getUTCFullYear(), cycleEnd.getUTCMonth() + 1, cycleEnd.getUTCDate()));
 
         const sessionCount = await db.countCompletedSessionsInWindow(subscription.id, cycleStart, cycleEnd);
 

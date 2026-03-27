@@ -1275,20 +1275,25 @@ export const appRouter = router({
         }
 
         // For Tutor/Homework courses: compute usage billing fields.
-        // First billing cycle: enrollment date → 1st of next month (partial free month).
-        // Subsequent cycles: 1st of month → 1st of next month.
+        // First billing cycle: enrollment date → enrollment date + 1 month (rolling).
+        // Subsequent cycles charged by cron after billingCycleEnd passes.
         const isUsageBased = course.courseType === "tutor" || course.courseType === "homework";
         let billingCycleStart: Date | undefined;
         let billingCycleEnd: Date | undefined;
         let perSessionRateCents: number | undefined;
-        if (isUsageBased && course.totalSessions) {
+        let upfrontCents: number | undefined;
+        if (isUsageBased) {
           const now2 = new Date();
-          // Start = today (UTC midnight), End = 1st of next month UTC midnight
+          // Rolling window: today → exactly 1 month later
           billingCycleStart = new Date(Date.UTC(now2.getUTCFullYear(), now2.getUTCMonth(), now2.getUTCDate()));
-          billingCycleEnd = new Date(Date.UTC(now2.getUTCFullYear(), now2.getUTCMonth() + 1, 1));
-          // Apply sibling + promo discounts to the per-session rate (loyalty/pay-in-full not applicable for monthly)
+          billingCycleEnd = new Date(Date.UTC(now2.getUTCFullYear(), now2.getUTCMonth() + 1, now2.getUTCDate()));
+          // Apply sibling + promo discounts to the per-session rate
           const discountedCoursePrice = Math.max(0, coursePrice - discountAmount - promoDiscountUsd);
-          perSessionRateCents = Math.round((discountedCoursePrice / course.totalSessions) * 100);
+          const sessionsPerMonth = (course.sessionsPerWeek ?? 1) * 4;
+          const totalSessionsForRate = course.totalSessions ?? sessionsPerMonth;
+          perSessionRateCents = Math.round((discountedCoursePrice / totalSessionsForRate) * 100);
+          // Upfront charge = one full month of expected sessions
+          upfrontCents = sessionsPerMonth * perSessionRateCents;
         }
 
         // Create local subscription row (billing anchored to today)
@@ -1326,12 +1331,12 @@ export const appRouter = router({
           return { success: true, subscriptionId, setupUrl: null };
         }
 
-        // Create Stripe Customer + Setup Checkout to collect card.
-        // The Stripe Subscription is created in the webhook after the card is saved.
+        // For usage-based (tutor/homework): Stripe Checkout charges upfront first month.
+        // For non-usage-based courses using this path: Setup Checkout to collect card.
         let setupUrl: string | null = null;
         if (ctx.user.email) {
           try {
-            const { getOrCreateStripeCustomer, createSetupCheckoutSession } = await import("./stripe");
+            const { getOrCreateStripeCustomer, createSetupCheckoutSession, createUsageEnrollmentCheckout } = await import("./stripe");
             const parentUser = await db.getUserById(ctx.user.id);
             const stripeCustomerId = await getOrCreateStripeCustomer({
               userId: ctx.user.id,
@@ -1345,17 +1350,31 @@ export const appRouter = router({
               await db.updateUserStripeCustomerId(ctx.user.id, stripeCustomerId);
             }
 
-            // Create setup checkout so parent can save their card
-            const setupSession = await createSetupCheckoutSession({
-              stripeCustomerId,
-              origin: input.origin,
-              courseId: input.courseId,
-              subscriptionId,
-            });
-            setupUrl = setupSession.url;
+            if (isUsageBased && upfrontCents !== undefined) {
+              // Upfront payment checkout — charges first month immediately and saves card for future cron billing
+              const checkoutSession = await createUsageEnrollmentCheckout({
+                stripeCustomerId,
+                amountCents: upfrontCents,
+                courseName: course.title,
+                courseId: input.courseId,
+                userId: ctx.user.id,
+                subscriptionId,
+                origin: input.origin,
+              });
+              setupUrl = checkoutSession.url;
+            } else {
+              // Non-usage-based: Setup Checkout to collect card (Stripe Subscription created in webhook)
+              const setupSession = await createSetupCheckoutSession({
+                stripeCustomerId,
+                origin: input.origin,
+                courseId: input.courseId,
+                subscriptionId,
+              });
+              setupUrl = setupSession.url;
+            }
           } catch (err) {
             // Non-fatal — local enrollment still created
-            console.error('[enrollWithoutPayment] Failed to create Stripe setup:', err);
+            console.error('[enrollWithoutPayment] Failed to create Stripe checkout:', err);
           }
         }
 
@@ -3382,6 +3401,20 @@ export const appRouter = router({
                   }
                 }
 
+                // Fallback for standalone cron invoices — no subscription_item, use line metadata
+                if (!lineStudentName && !lineCourseTitle) {
+                  const meta = (line as any).metadata ?? {};
+                  const localSubId = meta.local_subscription_id ? parseInt(meta.local_subscription_id) : null;
+                  if (localSubId) {
+                    const cronSub = await db.getSubscriptionById(localSubId);
+                    if (cronSub) {
+                      lineStudentName = [cronSub.studentFirstName, cronSub.studentLastName].filter(Boolean).join(" ") || null;
+                      const cronCourse = await db.getCourseById(cronSub.courseId);
+                      if (cronCourse) lineCourseTitle = cronCourse.title;
+                    }
+                  }
+                }
+
                 if (stripeSubId) {
                   const sortedCreated = subInvoiceMap[stripeSubId] ?? [];
                   const idx = sortedCreated.indexOf(inv.created);
@@ -3417,6 +3450,7 @@ export const appRouter = router({
                 hostedInvoiceUrl: inv.hosted_invoice_url ?? null,
                 invoicePdf: inv.invoice_pdf ?? null,
                 source: "stripe",
+                stripeSubscriptionId: stripeSubId ?? null,
                 studentName: multiCourse ? null : (firstLine?.studentName ?? null),
                 courseTitle: multiCourse ? null : (firstLine?.courseTitle ?? null),
                 paymentNumber: multiCourse ? null : (firstLine?.paymentNumber ?? null),
@@ -3450,17 +3484,19 @@ export const appRouter = router({
 
               try {
                 const stripeSub = await stripe.subscriptions.retrieve(stripeSubId) as any;
+                // current_period_end moved to items in newer Stripe API versions
+                const currentPeriodEnd = stripeSub.current_period_end
+                  ?? stripeSub.items?.data?.[0]?.current_period_end
+                  ?? stripeSub.billing_cycle_anchor;
                 // For trialing subs the first charge is at trial_end; for active subs use current_period_end
                 const nextBillingTs = stripeSub.status === "trialing"
-                  ? (stripeSub.trial_end ?? stripeSub.current_period_end)
-                  : stripeSub.current_period_end;
+                  ? (stripeSub.trial_end ?? currentPeriodEnd)
+                  : currentPeriodEnd;
+                console.log(`[getStripeInvoices] stripeSub ${stripeSubId}: status=${stripeSub.status}, nextBillingTs=${nextBillingTs}, item_period_end=${stripeSub.items?.data?.[0]?.current_period_end}, cancel_at=${stripeSub.cancel_at}`);
                 if (!nextBillingTs) continue;
 
                 // Skip if the subscription is cancelled/incomplete
                 if (["canceled", "incomplete", "incomplete_expired", "past_due", "unpaid"].includes(stripeSub.status)) continue;
-
-                // Only show upcoming entry while no real charges have been taken yet
-                if (paidStripeSubIds.has(stripeSubId)) continue;
 
                 // Gather all local subscriptions sharing this stripe sub
                 const sharedSubs = monthlyActive.filter(
@@ -3470,7 +3506,7 @@ export const appRouter = router({
                 const lines = sharedSubs.map((s: any) => {
                   const item = stripeSub.items.data.find(
                     (i: any) => i.id === s.subscription.stripeItemId
-                  );
+                  ) ?? stripeSub.items.data[0];
                   const amount = item?.price?.unit_amount ?? 0;
                   const studentName = [s.subscription.studentFirstName, s.subscription.studentLastName]
                     .filter(Boolean).join(" ") || null;
@@ -3482,10 +3518,9 @@ export const appRouter = router({
                         const sessionsPerWeek = s.course?.sessionsPerWeek || 1;
                         return Math.max(1, Math.ceil(totalSessions / (sessionsPerWeek * 4)));
                       })();
-                  // Count how many invoices already paid for this stripe sub
+                  // Count how many invoices already paid for this stripe subscription
                   const paidCount = results.filter((r: any) =>
-                    r.source === "stripe" && r.status === "paid" &&
-                    r.lines?.some((l: any) => l.id?.includes(`_${s.subscription.id}`))
+                    r.source === "stripe" && r.status === "paid" && r.stripeSubscriptionId === stripeSubId
                   ).length;
                   return {
                     id: `upcoming_line_${s.subscription.id}`,
@@ -3518,7 +3553,7 @@ export const appRouter = router({
                   source: "stripe",
                   studentName: multiCourse ? null : (lines[0]?.studentName ?? null),
                   courseTitle: multiCourse ? null : (lines[0]?.courseTitle ?? null),
-                  paymentNumber: multiCourse ? null : 1,
+                  paymentNumber: multiCourse ? null : (lines[0]?.paymentNumber ?? null),
                   totalPayments: multiCourse ? null : lines[0]?.totalPayments ?? null,
                   lines,
                 });
@@ -3531,65 +3566,8 @@ export const appRouter = router({
           }
         }
 
-        // Add upcoming entries for usage-based (Tutor/Homework) subscriptions.
-        // These have no Stripe subscription — billing is driven by the cron job.
-        try {
-          const allSubs = await db.getSubscriptionsByParentId(ctx.user.id);
-          const usageActiveSubs = allSubs.filter((s: any) =>
-            s.subscription.paymentPlan === "monthly" &&
-            s.subscription.status === "active" &&
-            s.subscription.billingCycleEnd &&
-            (s.course?.courseType === "tutor" || s.course?.courseType === "homework")
-          );
-
-          for (const sub of usageActiveSubs) {
-            const cycleStart: Date = sub.subscription.billingCycleStart as Date;
-            const cycleEnd: Date = sub.subscription.billingCycleEnd as Date;
-            const perSessionRateCents: number = sub.subscription.perSessionRateCents ?? 0;
-            const sessionCount = await db.countCompletedSessionsInWindow(
-              sub.subscription.id,
-              cycleStart,
-              cycleEnd
-            );
-            const amountCents = sessionCount * perSessionRateCents;
-            const cycleEndTs = Math.floor(new Date(cycleEnd).getTime() / 1000);
-            const studentName = [sub.subscription.studentFirstName, sub.subscription.studentLastName]
-              .filter(Boolean).join(" ") || null;
-
-            results.push({
-              id: `usage_cycle_${sub.subscription.id}`,
-              number: null,
-              status: "upcoming",
-              amountPaid: 0,
-              amountDue: amountCents,
-              currency: "usd",
-              periodStart: Math.floor(new Date(cycleStart).getTime() / 1000),
-              periodEnd: cycleEndTs,
-              created: cycleEndTs,
-              hostedInvoiceUrl: null,
-              invoicePdf: null,
-              source: "local",
-              studentName,
-              courseTitle: sub.course?.title ?? null,
-              paymentNumber: null,
-              totalPayments: null,
-              lines: [{
-                id: `usage_cycle_line_${sub.subscription.id}`,
-                description: `${sessionCount} session${sessionCount !== 1 ? "s" : ""} × $${(perSessionRateCents / 100).toFixed(2)}/session`,
-                amount: amountCents,
-                currency: "usd",
-                studentName,
-                courseTitle: sub.course?.title ?? null,
-                paymentNumber: null,
-                totalPayments: null,
-                sessionCount,
-                perSessionRateCents,
-              }],
-            });
-          }
-        } catch (err) {
-          console.error("[getStripeInvoices] Failed to build usage-based upcoming entries:", err);
-        }
+        // Usage-based (tutor/homework) upcoming cycle is shown via CurrentCycleCard on the frontend.
+        // No duplicate entry needed here.
 
         // Also include local payment records that have no Stripe invoice
         // (pay-in-full via Stripe Checkout, or legacy payments)
@@ -5033,17 +5011,17 @@ export const appRouter = router({
     getSessionFilterOptions: adminProcedure
       .query(async () => {
         const allSessions = await db.getAllSessionsWithDetails();
-        const parentNames = [...new Set(allSessions.map(s => s.parentName).filter(Boolean))].sort() as string[];
-        const studentNames = [...new Set(
+        const parentNames = Array.from(new Set(allSessions.map(s => s.parentName).filter(Boolean))).sort() as string[];
+        const studentNames = Array.from(new Set(
           allSessions.map(s => [s.studentFirstName, s.studentLastName].filter(Boolean).join(" ").trim()).filter(Boolean)
-        )].sort();
-        const courseNames = [...new Set(allSessions.map(s => s.courseTitle).filter(Boolean))].sort() as string[];
-        const months = [...new Set(
+        )).sort();
+        const courseNames = Array.from(new Set(allSessions.map(s => s.courseTitle).filter(Boolean))).sort() as string[];
+        const months = Array.from(new Set(
           allSessions.map(s => {
             const d = new Date(s.scheduledAt);
             return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
           })
-        )].sort().reverse();
+        )).sort().reverse();
         return { parentNames, studentNames, courseNames, months };
       }),
   }),

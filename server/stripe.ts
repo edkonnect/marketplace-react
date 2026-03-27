@@ -368,6 +368,7 @@ export async function createCombinedUsageInvoice(params: {
 
   const finalized = await stripe.invoices.finalizeInvoice(invoice.id);
 
+
   if (finalized.status === "paid") {
     return finalized;
   }
@@ -383,4 +384,41 @@ export async function createCombinedUsageInvoice(params: {
     console.error(`[Stripe] Combined usage invoice ${invoice.id} pay() failed:`, err?.message);
     throw err;
   }
+}
+
+export async function createUsageEnrollmentCheckout(params: {
+  stripeCustomerId: string;
+  amountCents: number;
+  courseName: string;
+  courseId: number;
+  userId: number;
+  subscriptionId: number;
+  origin: string;
+}) {
+  const stripe = getStripe();
+  const session = await stripe.checkout.sessions.create({
+    customer: params.stripeCustomerId,
+    payment_method_types: ["card"],
+    line_items: [
+      {
+        price_data: {
+          currency: "usd",
+          product_data: { name: `${params.courseName} — First Month` },
+          unit_amount: params.amountCents,
+        },
+        quantity: 1,
+      },
+    ],
+    mode: "payment",
+    payment_intent_data: { setup_future_usage: "off_session" },
+    success_url: `${params.origin}/parent/dashboard?enrolled=success`,
+    cancel_url: `${params.origin}/course/${params.courseId}?enrolled=cancelled`,
+    metadata: {
+      type: "usage_enrollment",
+      subscription_id: params.subscriptionId.toString(),
+      user_id: params.userId.toString(),
+      course_id: params.courseId.toString(),
+    },
+  });
+  return session;
 }
