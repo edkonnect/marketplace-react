@@ -445,10 +445,10 @@ export default function Home() {
             <div className="max-w-[39rem]">
               <h1 className="max-w-[34rem]">
                 <span className="block text-xl font-bold tracking-tight text-slate-950 sm:text-3xl">
-                  Connect with Expert Tutors For
+                  Connect with expert tutors for
                 </span>
                 <span className="block text-4xl font-extrabold tracking-tight text-primary sm:text-3xl lg:text-[3.25rem] lg:leading-[1.1]">
-                  Academic Excellence &<br />Rigorous Test Prep
+                  Academic Excellence & Rigorous Test Prep
                 </span>
               </h1>
 
