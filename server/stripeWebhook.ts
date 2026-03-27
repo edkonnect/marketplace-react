@@ -3,7 +3,7 @@ import Stripe from "stripe";
 import { getStripe } from "./stripe";
 import { ENV } from "./_core/env";
 import * as db from "./db";
-import { sendCouponRewardEmail } from "./email-helpers";
+import { sendCouponRewardEmail, sendEnrollmentConfirmation, sendTutorEnrollmentNotification } from "./email-helpers";
 
 /**
  * Called after the referred user's first enrollment is confirmed.
@@ -138,6 +138,37 @@ export async function handleStripeWebhook(req: Request, res: Response) {
                   if (localSubForReferral?.parentId) {
                     await processReferralReward(localSubForReferral.parentId);
                   }
+                  // Send enrollment confirmation emails
+                  try {
+                    const parentUser = await db.getUserById(localSub.parentId);
+                    const tutorUser = localSub.preferredTutorId ? await db.getUserById(localSub.preferredTutorId) : null;
+                    const studentName = [localSub.studentFirstName, localSub.studentLastName].filter(Boolean).join(" ");
+                    const coursePrice = course.price ? `$${parseFloat(course.price).toFixed(2)}` : "";
+                    const tutorName = tutorUser ? [tutorUser.firstName, tutorUser.lastName].filter(Boolean).join(" ") : "Your tutor";
+                    if (parentUser?.email) {
+                      await sendEnrollmentConfirmation({
+                        userEmail: parentUser.email,
+                        userName: [parentUser.firstName, parentUser.lastName].filter(Boolean).join(" ") || parentUser.email,
+                        courseName: course.title,
+                        tutorName,
+                        studentName,
+                        coursePrice,
+                        courseId: course.id,
+                      });
+                    }
+                    if (tutorUser?.email) {
+                      await sendTutorEnrollmentNotification({
+                        tutorEmail: tutorUser.email,
+                        tutorName,
+                        courseName: course.title,
+                        studentName,
+                        parentName: [parentUser?.firstName, parentUser?.lastName].filter(Boolean).join(" "),
+                        coursePrice,
+                      });
+                    }
+                  } catch (emailErr: any) {
+                    console.error("[Webhook] Failed to send enrollment emails (usage-based card setup):", emailErr?.message);
+                  }
                   console.log(`[Webhook] ✓ Usage-based enrollment card saved: sub=${subscriptionId}, customer=${stripeCustomerId}`);
                 } catch (err: any) {
                   console.error("[Webhook] Failed to update usage-based subscription after card setup:", err?.message || err);
@@ -212,6 +243,37 @@ export async function handleStripeWebhook(req: Request, res: Response) {
                 if (localSubForReferral?.parentId) {
                   await processReferralReward(localSubForReferral.parentId);
                 }
+                // Send enrollment confirmation emails
+                try {
+                  const parentUser = await db.getUserById(localSub.parentId);
+                  const tutorUser = localSub.preferredTutorId ? await db.getUserById(localSub.preferredTutorId) : null;
+                  const studentName = [localSub.studentFirstName, localSub.studentLastName].filter(Boolean).join(" ");
+                  const coursePrice = course.price ? `$${parseFloat(course.price).toFixed(2)}` : "";
+                  const tutorName = tutorUser ? [tutorUser.firstName, tutorUser.lastName].filter(Boolean).join(" ") : "Your tutor";
+                  if (parentUser?.email) {
+                    await sendEnrollmentConfirmation({
+                      userEmail: parentUser.email,
+                      userName: [parentUser.firstName, parentUser.lastName].filter(Boolean).join(" ") || parentUser.email,
+                      courseName: course.title,
+                      tutorName,
+                      studentName,
+                      coursePrice,
+                      courseId: course.id,
+                    });
+                  }
+                  if (tutorUser?.email) {
+                    await sendTutorEnrollmentNotification({
+                      tutorEmail: tutorUser.email,
+                      tutorName,
+                      courseName: course.title,
+                      studentName,
+                      parentName: [parentUser?.firstName, parentUser?.lastName].filter(Boolean).join(" "),
+                      coursePrice,
+                    });
+                  }
+                } catch (emailErr: any) {
+                  console.error("[Webhook] Failed to send enrollment emails (payment_method_setup):", emailErr?.message);
+                }
                 console.log(`[Webhook] ✓ Enrollment setup: sub=${subscriptionId} → Stripe ${stripeSubId} (${existingStripeSub ? "combined" : "new"})`);
               } catch (err: any) {
                 console.error("[Webhook] Failed to create/update subscription after card setup:", err?.message || err);
@@ -279,6 +341,36 @@ export async function handleStripeWebhook(req: Request, res: Response) {
                   paymentStatus: "paid",
                 });
                 await processReferralReward(localSub.parentId);
+                // Send enrollment confirmation emails
+                try {
+                  const parentUser = await db.getUserById(localSub.parentId);
+                  const tutorUser = localSub.preferredTutorId ? await db.getUserById(localSub.preferredTutorId) : null;
+                  const coursePrice = course.price ? `$${parseFloat(course.price).toFixed(2)}` : "";
+                  const tutorName = tutorUser ? [tutorUser.firstName, tutorUser.lastName].filter(Boolean).join(" ") : "Your tutor";
+                  if (parentUser?.email) {
+                    await sendEnrollmentConfirmation({
+                      userEmail: parentUser.email,
+                      userName: [parentUser.firstName, parentUser.lastName].filter(Boolean).join(" ") || parentUser.email,
+                      courseName: course.title,
+                      tutorName,
+                      studentName,
+                      coursePrice,
+                      courseId: course.id,
+                    });
+                  }
+                  if (tutorUser?.email) {
+                    await sendTutorEnrollmentNotification({
+                      tutorEmail: tutorUser.email,
+                      tutorName,
+                      courseName: course.title,
+                      studentName,
+                      parentName: [parentUser?.firstName, parentUser?.lastName].filter(Boolean).join(" "),
+                      coursePrice,
+                    });
+                  }
+                } catch (emailErr: any) {
+                  console.error("[Webhook] Failed to send enrollment emails (installment_setup):", emailErr?.message);
+                }
                 console.log(`[Webhook] ✓ Installment setup: sub=${subscriptionId} → Stripe ${stripeSub.id} (${numberOfInstallments} installments)`);
               } catch (err: any) {
                 console.error("[Webhook] Failed to create installment subscription:", err?.message);
@@ -336,6 +428,39 @@ export async function handleStripeWebhook(req: Request, res: Response) {
               }
 
               if (userId) await processReferralReward(userId);
+              // Send enrollment confirmation emails
+              try {
+                const courseId = parseInt(session.metadata?.course_id || "0");
+                const course = courseId ? await db.getCourseById(courseId) : null;
+                const parentUser = userId ? await db.getUserById(userId) : null;
+                const tutorUser = localSub?.preferredTutorId ? await db.getUserById(localSub.preferredTutorId) : null;
+                if (course && parentUser?.email) {
+                  const studentName = localSub ? [localSub.studentFirstName, localSub.studentLastName].filter(Boolean).join(" ") : "";
+                  const coursePrice = course.price ? `$${parseFloat(course.price).toFixed(2)}` : "";
+                  const tutorName = tutorUser ? [tutorUser.firstName, tutorUser.lastName].filter(Boolean).join(" ") : "Your tutor";
+                  await sendEnrollmentConfirmation({
+                    userEmail: parentUser.email,
+                    userName: [parentUser.firstName, parentUser.lastName].filter(Boolean).join(" ") || parentUser.email,
+                    courseName: course.title,
+                    tutorName,
+                    studentName,
+                    coursePrice,
+                    courseId: course.id,
+                  });
+                  if (tutorUser?.email) {
+                    await sendTutorEnrollmentNotification({
+                      tutorEmail: tutorUser.email,
+                      tutorName,
+                      courseName: course.title,
+                      studentName,
+                      parentName: [parentUser.firstName, parentUser.lastName].filter(Boolean).join(" "),
+                      coursePrice,
+                    });
+                  }
+                }
+              } catch (emailErr: any) {
+                console.error("[Webhook] Failed to send enrollment emails (usage_enrollment):", emailErr?.message);
+              }
               console.log(`[Webhook] ✓ Usage enrollment upfront paid: sub=${subscriptionId}, amount=${session.amount_total}`);
             } catch (err: any) {
               console.error("[Webhook] Failed to process usage_enrollment:", err?.message);
@@ -357,7 +482,8 @@ export async function handleStripeWebhook(req: Request, res: Response) {
             // No invoice.payment_succeeded fires for one-time payments, so we
             // must create the payment record here so it shows in billing history.
             const amountTotal = session.amount_total || 0;
-            const resolvedTutorId = tutorId || (await db.getSubscriptionById(subscriptionId))?.preferredTutorId || 0;
+            const localSubForCourse = await db.getSubscriptionById(subscriptionId);
+            const resolvedTutorId = tutorId || localSubForCourse?.preferredTutorId || 0;
             if (amountTotal > 0 && userId && resolvedTutorId) {
               await db.createPayment({
                 parentId: userId,
@@ -371,6 +497,39 @@ export async function handleStripeWebhook(req: Request, res: Response) {
                 stripeInvoiceId: null,
                 paymentType: "subscription",
               });
+            }
+            // Send enrollment confirmation emails
+            try {
+              const courseId = parseInt(session.metadata?.course_id || "0");
+              const course = courseId ? await db.getCourseById(courseId) : null;
+              const parentUser = userId ? await db.getUserById(userId) : null;
+              const tutorUser = resolvedTutorId ? await db.getUserById(resolvedTutorId) : null;
+              if (course && parentUser?.email && localSubForCourse) {
+                const studentName = [localSubForCourse.studentFirstName, localSubForCourse.studentLastName].filter(Boolean).join(" ");
+                const coursePrice = course.price ? `$${parseFloat(course.price).toFixed(2)}` : "";
+                const tutorName = tutorUser ? [tutorUser.firstName, tutorUser.lastName].filter(Boolean).join(" ") : "Your tutor";
+                await sendEnrollmentConfirmation({
+                  userEmail: parentUser.email,
+                  userName: [parentUser.firstName, parentUser.lastName].filter(Boolean).join(" ") || parentUser.email,
+                  courseName: course.title,
+                  tutorName,
+                  studentName,
+                  coursePrice,
+                  courseId: course.id,
+                });
+                if (tutorUser?.email) {
+                  await sendTutorEnrollmentNotification({
+                    tutorEmail: tutorUser.email,
+                    tutorName,
+                    courseName: course.title,
+                    studentName,
+                    parentName: [parentUser.firstName, parentUser.lastName].filter(Boolean).join(" "),
+                    coursePrice,
+                  });
+                }
+              }
+            } catch (emailErr: any) {
+              console.error("[Webhook] Failed to send enrollment emails (course_enrollment):", emailErr?.message);
             }
           }
         } else if (type === "trial_lesson") {
