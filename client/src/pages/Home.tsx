@@ -1,6 +1,8 @@
 import React from "react";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { useFormatPrice } from "@/hooks/useFormatPrice";
+import { useIsIndianUser } from "@/hooks/useIsIndianUser";
+import { useExchangeRate } from "@/hooks/useExchangeRate";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
@@ -131,6 +133,35 @@ export default function Home() {
 
   const scrollPrev = React.useCallback(() => emblaApi?.scrollPrev(), [emblaApi]);
   const scrollNext = React.useCallback(() => emblaApi?.scrollNext(), [emblaApi]);
+
+  const isIndian = useIsIndianUser();
+  const exchangeRate = useExchangeRate();
+
+  // Convert a stat value string like "$2,000" to compact INR for Indian users
+  // e.g. $2,000 → ₹1.88L, $500 → ₹42K
+  const localizeStatValue = (value: string) => {
+    if (!isIndian) return value;
+    const m = value.trim().match(/^\$\s*([\d,]+)(\+?)$/);
+    if (!m) return value;
+    const usd = parseFloat(m[1].replace(/,/g, ""));
+    if (isNaN(usd)) return value;
+    const inr = Math.round(usd * exchangeRate);
+    const tail = m[2]; // "+" or ""
+    if (inr >= 10_00_000) {
+      // Crore
+      const cr = inr / 10_00_000;
+      return `₹${cr % 1 === 0 ? cr.toFixed(0) : cr.toFixed(1)}Cr${tail}`;
+    } else if (inr >= 1_00_000) {
+      // Lakh
+      const l = inr / 1_00_000;
+      return `₹${l % 1 === 0 ? l.toFixed(0) : l.toFixed(2)}L${tail}`;
+    } else if (inr >= 1_000) {
+      // Thousand
+      const k = inr / 1_000;
+      return `₹${k % 1 === 0 ? k.toFixed(0) : k.toFixed(1)}K${tail}`;
+    }
+    return `₹${inr}${tail}`;
+  };
 
   // Fetch home page data from database
   const { data: stats = [] } = trpc.home.stats.useQuery();
@@ -555,7 +586,7 @@ export default function Home() {
               <motion.div key={stat.id} variants={cardChild}>
                 <Card className="text-center p-8 hover:shadow-elegant transition-all duration-600 border-border/50">
                   <CardContent className="p-0">
-                    <StatNumber value={stat.value} />
+                    <StatNumber value={localizeStatValue(stat.value)} />
                     <div className="text-sm lg:text-base text-muted-foreground font-medium">{stat.label}</div>
                   </CardContent>
                 </Card>

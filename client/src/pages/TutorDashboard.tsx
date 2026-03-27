@@ -38,7 +38,7 @@ export default function TutorDashboard() {
   const tabFromUrl = urlParams.get('tab') || 'courses';
 
   const tabContentClass =
-    "space-y-6 absolute inset-0 w-full transition-all duration-300 data-[state=active]:opacity-100 data-[state=active]:translate-x-0 data-[state=inactive]:opacity-0 data-[state=inactive]:translate-x-4 data-[state=inactive]:pointer-events-none [&[hidden]]:block [&[hidden]]:opacity-0";
+    "space-y-6 w-full data-[state=inactive]:hidden";
 
   const { data: tutorProfile } = trpc.tutorProfile.getMy.useQuery(
     undefined,
@@ -85,6 +85,13 @@ export default function TutorDashboard() {
     (tutorGrades || []).forEach((g) => { if (g.sessionId) map.set(g.sessionId, g); });
     return map;
   }, [tutorGrades]);
+
+  const [expandedGrades, setExpandedGrades] = useState<Set<number>>(new Set());
+  const toggleGradeExpand = (id: number) => setExpandedGrades((prev) => {
+    const next = new Set(prev);
+    next.has(id) ? next.delete(id) : next.add(id);
+    return next;
+  });
 
   const [sessionNotes, setSessionNotes] = useState<Record<number, string>>({});
   const [summarizingSessionId, setSummarizingSessionId] = useState<number | null>(null);
@@ -234,12 +241,12 @@ export default function TutorDashboard() {
   useEffect(() => {
     const data = existingGradeQuery.data;
     if (!data) return;
-    const evidence = Array.isArray(data.rubricEvidence) ? data.rubricEvidence : [];
-    if (evidence.length > 0 && !transcriptModal?.grades) {
+    const evidence = data.rubricEvidence;
+    if (Array.isArray(evidence) && evidence.length > 0 && !transcriptModal?.grades) {
       setTranscriptModal((prev) => prev ? {
         ...prev,
-        grades: evidence as any,
-        overallScore: data.rubricOverallScore ?? undefined,
+        grades: evidence as { criterion: string; score: number; evidence: string }[],
+        overallScore: data.rubricOverallScore != null ? Number(data.rubricOverallScore) : undefined,
         transcriptQuality: data.rubricTranscriptQuality as "high" | "medium" | "low" | undefined,
         transcriptQualityReason: data.rubricTranscriptQualityReason ?? undefined,
       } : prev);
@@ -250,7 +257,7 @@ export default function TutorDashboard() {
     onSuccess: (data) => {
       setTranscriptModal((prev) => prev ? {
         ...prev,
-        grades: data.grades,
+        grades: data.grades as { criterion: string; score: number; evidence: string }[],
         overallScore: data.overallScore,
         overallNarrative: data.overallNarrative,
         transcriptQuality: data.transcriptQuality as "high" | "medium" | "low",
@@ -876,7 +883,7 @@ export default function TutorDashboard() {
               </TabsList>
                 </div>
 
-                <div className="relative min-h-[540px] pt-6">
+                <div className="pt-6">
                 {/* Courses Tab */}
                 <TabsContent value="courses" forceMount className={tabContentClass}>
                   <div className="flex items-center justify-between">
@@ -1384,12 +1391,13 @@ export default function TutorDashboard() {
                                     </Badge>
                                     {tutorGradeBySessionId.has(session.id) && (() => {
                                       const g = tutorGradeBySessionId.get(session.id)!;
-                                      const score = g.rubricOverallScore;
+                                      const score = g.rubricOverallScore != null ? Number(g.rubricOverallScore) : null;
+                                      const label = score == null ? "Graded" : score >= 3.5 ? "Excellent" : score >= 2.5 ? "Proficient" : score >= 1.5 ? "Developing" : "Needs Support";
                                       const color = score == null ? "bg-muted text-muted-foreground" : score >= 3.5 ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300" : score >= 2.5 ? "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300" : score >= 1.5 ? "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300" : "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300";
                                       return (
-                                        <span className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full ${color}`}>
-                                          <Sparkles className="w-2.5 h-2.5" />
-                                          {score != null ? `${score.toFixed(1)}/4` : "Graded"}
+                                        <span className={`inline-flex items-center gap-1.5 text-[10px] font-semibold px-2 py-0.5 rounded-full ${color}`}>
+                                          <Sparkles className="w-2.5 h-2.5 shrink-0" />
+                                          {score != null ? `${score.toFixed(1)}/4` : ""} {label}
                                         </span>
                                       );
                                     })()}
@@ -1570,6 +1578,108 @@ export default function TutorDashboard() {
                                     )}
                                   </div>
                                 )}
+
+                                {/* Rubric Grade Detail */}
+                                {tutorGradeBySessionId.has(session.id) && (() => {
+                                  const g = tutorGradeBySessionId.get(session.id)!;
+                                  const score = g.rubricOverallScore != null ? Number(g.rubricOverallScore) : null;
+                                  const isExpanded = expandedGrades.has(session.id);
+                                  const evidence: { criterion: string; score: number; evidence: string }[] = Array.isArray(g.rubricEvidence) ? g.rubricEvidence as any : [];
+                                  if (score == null && evidence.length === 0) return null;
+                                  const scoreLabel = score == null ? null : score >= 3.5 ? "Excellent" : score >= 2.5 ? "Proficient" : score >= 1.5 ? "Developing" : "Needs Support";
+                                  const scoreText = score == null ? "text-muted-foreground" : score >= 3.5 ? "text-emerald-600 dark:text-emerald-400" : score >= 2.5 ? "text-blue-600 dark:text-blue-400" : score >= 1.5 ? "text-amber-500 dark:text-amber-400" : "text-red-500 dark:text-red-400";
+                                  return (
+                                    <div className="mt-4 rounded-xl border border-border/60 overflow-hidden shadow-sm">
+                                      {/* Header */}
+                                      <div className="flex items-center justify-between px-4 py-2.5 bg-gradient-to-r from-violet-50 to-indigo-50 dark:from-violet-950/30 dark:to-indigo-950/30 border-b border-border/50">
+                                        <div className="flex items-center gap-2">
+                                          <Sparkles className="w-3.5 h-3.5 text-violet-500" />
+                                          <span className="text-xs font-semibold text-violet-700 dark:text-violet-300 uppercase tracking-wide">Session Grade</span>
+                                        </div>
+                                        <button
+                                          onClick={() => toggleGradeExpand(session.id)}
+                                          className="flex items-center gap-1 text-xs text-violet-600 dark:text-violet-400 hover:text-violet-800 dark:hover:text-violet-200 font-medium transition-colors"
+                                        >
+                                          {isExpanded ? "Hide details" : "View details"}
+                                          <svg className={`w-3 h-3 transition-transform ${isExpanded ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
+                                        </button>
+                                      </div>
+
+                                      <div className="px-4 py-3 space-y-3 bg-background">
+                                        {/* Overall score row */}
+                                        <div className="flex items-center gap-3">
+                                          <div className="flex items-center gap-2 flex-1">
+                                            <div className="relative w-10 h-10 shrink-0">
+                                              <svg viewBox="0 0 36 36" className="w-10 h-10 -rotate-90">
+                                                <circle cx="18" cy="18" r="15" fill="none" stroke="currentColor" strokeWidth="3" className="text-muted/40" />
+                                                <circle cx="18" cy="18" r="15" fill="none" stroke="currentColor" strokeWidth="3"
+                                                  strokeDasharray={`${((score ?? 0) / 4) * 94.2} 94.2`}
+                                                  strokeLinecap="round"
+                                                  className={score == null ? "text-muted" : score >= 3.5 ? "text-emerald-500" : score >= 2.5 ? "text-blue-500" : score >= 1.5 ? "text-amber-400" : "text-red-500"}
+                                                />
+                                              </svg>
+                                              <span className={`absolute inset-0 flex items-center justify-center text-[10px] font-bold ${scoreText}`}>
+                                                {score != null ? score.toFixed(1) : "—"}
+                                              </span>
+                                            </div>
+                                            <div>
+                                              <p className={`text-sm font-bold ${scoreText}`}>{scoreLabel ?? "—"}</p>
+                                              <p className="text-xs text-muted-foreground">out of 4.0</p>
+                                            </div>
+                                          </div>
+                                          {/* Mini pills */}
+                                          <div className="flex gap-1.5 flex-wrap justify-end">
+                                            {evidence.map((e) => {
+                                              const pill = e.score === 4 ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300" : e.score === 3 ? "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300" : e.score === 2 ? "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300" : "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300";
+                                              const short = e.criterion === "Academic Efficiency & Time Management" ? "Efficiency" : e.criterion === "Learning Engagement & Understanding" ? "Engagement" : e.criterion === "Strategy & Problem-Solving Skills" ? "Strategy" : "Takeaways";
+                                              return (
+                                                <span key={e.criterion} className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${pill}`} title={e.criterion}>
+                                                  {short} {e.score}/4
+                                                </span>
+                                              );
+                                            })}
+                                          </div>
+                                        </div>
+
+                                        {/* Expanded criterion detail */}
+                                        {isExpanded && evidence.length > 0 && (
+                                          <div className="space-y-2.5 pt-1 border-t border-border/40">
+                                            {evidence.map((e) => {
+                                              const bar = e.score === 4 ? "bg-emerald-500" : e.score === 3 ? "bg-blue-500" : e.score === 2 ? "bg-amber-400" : "bg-red-500";
+                                              const label = e.score === 4 ? "Exceeds" : e.score === 3 ? "Proficient" : e.score === 2 ? "Developing" : "Support";
+                                              return (
+                                                <div key={e.criterion} className="space-y-1">
+                                                  <div className="flex items-center justify-between gap-2">
+                                                    <span className="text-xs font-medium truncate flex-1">{e.criterion}</span>
+                                                    <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full shrink-0 ${e.score === 4 ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300" : e.score === 3 ? "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300" : e.score === 2 ? "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300" : "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300"}`}>{e.score}/4 · {label}</span>
+                                                  </div>
+                                                  <div className="w-full bg-muted rounded-full h-1.5 overflow-hidden">
+                                                    <div className={`h-1.5 rounded-full ${bar} transition-all`} style={{ width: `${(e.score / 4) * 100}%` }} />
+                                                  </div>
+                                                  {e.evidence && (
+                                                    <p className="text-xs text-muted-foreground italic border-l-2 border-muted pl-2 leading-relaxed">"{e.evidence}"</p>
+                                                  )}
+                                                </div>
+                                              );
+                                            })}
+                                          </div>
+                                        )}
+
+                                        {/* Transcript quality warning */}
+                                        {g.rubricTranscriptQuality === "low" && (
+                                          <div className="flex items-start gap-1.5 rounded-md bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 px-2.5 py-1.5">
+                                            <span className="text-amber-500 shrink-0 text-xs mt-0.5">⚠️</span>
+                                            <p className="text-xs text-amber-700 dark:text-amber-400">Grade may be inaccurate — {g.rubricTranscriptQualityReason || "transcript had audio gaps"}</p>
+                                          </div>
+                                        )}
+
+                                        <p className="text-[10px] text-muted-foreground/70 italic border-t border-border/30 pt-2">
+                                          AI-assisted quality signal based on session transcript.
+                                        </p>
+                                      </div>
+                                    </div>
+                                  );
+                                })()}
 
                                 {(session.status === "cancelled" || session.status === "completed" || session.status === "no_show") && (
                                   <div className="flex gap-2">
@@ -1886,7 +1996,7 @@ export default function TutorDashboard() {
                 {!transcriptModal.grades ? (
                   <div className="flex flex-col items-center justify-center py-8 gap-3">
                     <p className="text-sm text-muted-foreground text-center max-w-sm">
-                      Grade this session using the EdKonnect 4-criteria rubric. AI will analyze the transcript and score teaching quality (1–4 scale).
+                      Grade this session using the 4-criteria rubric based on the Zoom transcript.
                     </p>
                     <Button
                       onClick={() => {
@@ -1915,61 +2025,49 @@ export default function TutorDashboard() {
                     )}
 
                     {/* Overall score */}
-                    <div className="flex items-center justify-between rounded-xl bg-primary/5 border px-4 py-3">
-                      <div>
-                        <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Overall Score</p>
-                        <p className="text-2xl font-bold">{transcriptModal.overallScore?.toFixed(1)} <span className="text-sm font-normal text-muted-foreground">/ 4.0</span></p>
-                      </div>
-                      <div className={`px-3 py-1 rounded-full text-xs font-semibold ${
-                        (transcriptModal.overallScore ?? 0) >= 3.5 ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400" :
-                        (transcriptModal.overallScore ?? 0) >= 2.5 ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400" :
-                        (transcriptModal.overallScore ?? 0) >= 1.5 ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400" :
-                        "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
-                      }`}>
-                        {(transcriptModal.overallScore ?? 0) >= 3.5 ? "Exceeds" : (transcriptModal.overallScore ?? 0) >= 2.5 ? "Proficient" : (transcriptModal.overallScore ?? 0) >= 1.5 ? "Developing" : "Needs Support"}
-                      </div>
-                    </div>
-
-                    {/* Per-criterion scores */}
-                    <div className="space-y-3">
-                      {transcriptModal.grades.map((g) => {
-                        const scoreColor = g.score === 4 ? "bg-emerald-500" : g.score === 3 ? "bg-blue-500" : g.score === 2 ? "bg-amber-400" : "bg-red-500";
-                        const scoreLabel = g.score === 4 ? "Exceeds" : g.score === 3 ? "Proficient" : g.score === 2 ? "Developing" : "Support";
-                        return (
-                          <div key={g.criterion} className="rounded-lg border p-3 space-y-2">
-                            <div className="flex items-center justify-between">
-                              <p className="text-xs font-semibold">{g.criterion}</p>
-                              <span className={`text-xs text-white px-2 py-0.5 rounded-full font-medium ${scoreColor}`}>{g.score}/4 · {scoreLabel}</span>
-                            </div>
-                            <div className="w-full bg-muted rounded-full h-1.5">
-                              <div className={`h-1.5 rounded-full ${scoreColor} transition-all`} style={{ width: `${(g.score / 4) * 100}%` }} />
-                            </div>
-                            <p className="text-xs text-muted-foreground italic">"{g.evidence}"</p>
+                    {transcriptModal.overallScore != null && (() => {
+                      const score = transcriptModal.overallScore;
+                      const label = score >= 3.5 ? "Excellent" : score >= 2.5 ? "Proficient" : score >= 1.5 ? "Developing" : "Needs Support";
+                      const color = score >= 3.5 ? "text-emerald-600 dark:text-emerald-400" : score >= 2.5 ? "text-blue-600 dark:text-blue-400" : score >= 1.5 ? "text-amber-500" : "text-red-500";
+                      const bg = score >= 3.5 ? "bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800" : score >= 2.5 ? "bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800" : score >= 1.5 ? "bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800" : "bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-800";
+                      return (
+                        <div className={`rounded-xl border p-4 ${bg}`}>
+                          <div className="flex items-center justify-between mb-2">
+                            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Overall Score</p>
+                            <span className={`text-2xl font-bold ${color}`}>{score.toFixed(1)}<span className="text-sm font-normal text-muted-foreground"> / 4.0</span></span>
                           </div>
-                        );
-                      })}
-                    </div>
+                          <p className={`text-sm font-semibold ${color}`}>{label}</p>
+                          {transcriptModal.overallNarrative && (
+                            <p className="text-xs text-muted-foreground mt-1 leading-relaxed">{transcriptModal.overallNarrative}</p>
+                          )}
+                        </div>
+                      );
+                    })()}
 
-                    {/* Narrative */}
-                    {transcriptModal.overallNarrative && (
-                      <div className="rounded-lg border bg-muted/30 p-3">
-                        <p className="text-xs font-medium text-muted-foreground mb-1">AI Summary</p>
-                        <p className="text-sm">{transcriptModal.overallNarrative}</p>
-                      </div>
-                    )}
+                    {/* Per-criterion cards */}
+                    {transcriptModal.grades.map((g) => {
+                      const scoreColor = g.score === 4 ? "text-emerald-600 dark:text-emerald-400" : g.score === 3 ? "text-blue-600 dark:text-blue-400" : g.score === 2 ? "text-amber-500" : "text-red-500";
+                      const barColor = g.score === 4 ? "bg-emerald-500" : g.score === 3 ? "bg-blue-500" : g.score === 2 ? "bg-amber-400" : "bg-red-500";
+                      const scoreLabel = g.score === 4 ? "Exceeds" : g.score === 3 ? "Proficient" : g.score === 2 ? "Developing" : "Support";
+                      return (
+                        <div key={g.criterion} className="rounded-xl border bg-card p-4 space-y-2">
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="text-xs font-semibold">{g.criterion}</p>
+                            <span className={`text-xs font-bold shrink-0 ${scoreColor}`}>{g.score}/4 · {scoreLabel}</span>
+                          </div>
+                          <div className="w-full bg-muted rounded-full h-1.5 overflow-hidden">
+                            <div className={`h-1.5 rounded-full ${barColor} transition-all`} style={{ width: `${(g.score / 4) * 100}%` }} />
+                          </div>
+                          {g.evidence && (
+                            <p className="text-xs text-muted-foreground italic border-l-2 border-muted pl-2 leading-relaxed">"{g.evidence}"</p>
+                          )}
+                        </div>
+                      );
+                    })}
 
-                    {/* Disclaimer */}
-                    <p className="text-xs text-muted-foreground text-center border-t pt-3">
-                      AI-assisted quality signal based on session transcript. Scores reflect observable teaching behaviors.
-                    </p>
-
-                    {/* Regrade */}
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="self-start"
-                      disabled={gradingSession}
-                      onClick={() => {
+                    {/* Re-grade button */}
+                    <div className="flex justify-center pt-1">
+                      <Button variant="outline" size="sm" onClick={() => {
                         setGradingSession(true);
                         gradeSessionMutation.mutate({
                           transcript: transcriptModal.transcript,
@@ -1977,10 +2075,17 @@ export default function TutorDashboard() {
                           courseName: transcriptModal.courseTitle,
                           studentName: transcriptModal.studentName,
                         });
-                      }}
-                    >
-                      {gradingSession ? "Regrading..." : "Regrade"}
-                    </Button>
+                      }} disabled={gradingSession}>
+                        <Sparkles className="w-3.5 h-3.5 mr-1.5" />
+                        {gradingSession ? "Grading..." : "Re-grade"}
+                      </Button>
+                    </div>
+
+                    {/* Disclaimer */}
+                    <p className="text-xs text-muted-foreground text-center border-t pt-3">
+                      AI-assisted quality signal based on session transcript. Scores reflect observable teaching behaviors only.
+                    </p>
+
                   </div>
                 )}
               </TabsContent>

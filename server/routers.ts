@@ -1730,7 +1730,10 @@ export const appRouter = router({
 
         const now = Date.now();
         const windowEnd = now + input.windowDays * 24 * 60 * 60 * 1000;
-        const booked = await db.getTutorSessionsWithin(tutorId, now, windowEnd);
+        // Look back 24 hours to catch sessions that are scheduled but whose start time
+        // has just passed (still status='scheduled') — prevents them showing as available
+        const windowStart = now - 24 * 60 * 60 * 1000;
+        const booked = await db.getTutorSessionsWithin(tutorId, windowStart, windowEnd);
 
         return {
           tutorId,
@@ -4957,6 +4960,10 @@ export const appRouter = router({
         status: z.enum(["scheduled", "completed", "cancelled", "no_show"]).optional(),
         startDate: z.string().optional(),
         endDate: z.string().optional(),
+        parentName: z.string().optional(),
+        studentName: z.string().optional(),
+        courseName: z.string().optional(),
+        month: z.string().optional(), // format: "YYYY-MM"
       }))
       .query(async ({ input }) => {
         let allSessions = await db.getAllSessionsWithDetails();
@@ -4977,6 +4984,36 @@ export const appRouter = router({
           allSessions = allSessions.filter(s => new Date(s.scheduledAt) <= endDate);
         }
 
+        // Apply month filter (YYYY-MM)
+        if (input.month) {
+          const [year, month] = input.month.split("-").map(Number);
+          allSessions = allSessions.filter(s => {
+            const d = new Date(s.scheduledAt);
+            return d.getFullYear() === year && d.getMonth() + 1 === month;
+          });
+        }
+
+        // Apply parent name filter
+        if (input.parentName) {
+          const q = input.parentName.toLowerCase();
+          allSessions = allSessions.filter(s => s.parentName?.toLowerCase().includes(q));
+        }
+
+        // Apply student name filter
+        if (input.studentName) {
+          const q = input.studentName.toLowerCase();
+          allSessions = allSessions.filter(s => {
+            const full = [s.studentFirstName, s.studentLastName].filter(Boolean).join(" ").toLowerCase();
+            return full.includes(q);
+          });
+        }
+
+        // Apply course name filter
+        if (input.courseName) {
+          const q = input.courseName.toLowerCase();
+          allSessions = allSessions.filter(s => s.courseTitle?.toLowerCase().includes(q));
+        }
+
         // Sort by scheduled date (most recent first)
         const sortedSessions = allSessions.sort((a, b) => {
           const dateA = new Date(a.scheduledAt).getTime();
@@ -4991,6 +5028,23 @@ export const appRouter = router({
           sessions: paginatedSessions,
           total: allSessions.length,
         };
+      }),
+
+    getSessionFilterOptions: adminProcedure
+      .query(async () => {
+        const allSessions = await db.getAllSessionsWithDetails();
+        const parentNames = [...new Set(allSessions.map(s => s.parentName).filter(Boolean))].sort() as string[];
+        const studentNames = [...new Set(
+          allSessions.map(s => [s.studentFirstName, s.studentLastName].filter(Boolean).join(" ").trim()).filter(Boolean)
+        )].sort();
+        const courseNames = [...new Set(allSessions.map(s => s.courseTitle).filter(Boolean))].sort() as string[];
+        const months = [...new Set(
+          allSessions.map(s => {
+            const d = new Date(s.scheduledAt);
+            return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+          })
+        )].sort().reverse();
+        return { parentNames, studentNames, courseNames, months };
       }),
   }),
 
@@ -6609,54 +6663,54 @@ Return ONLY the JSON object.`;
         const genAI = new GoogleGenerativeAI(ENV.geminiApiKey);
         const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
 
-        const prompt = `You are an expert educational quality auditor for EdKonnect, an elite tutoring platform. Grade this tutoring session transcript on 4 criteria using a 1–4 rubric.
+        const prompt = `You are an expert educational quality assessor for EdKonnect tutoring. Grade this tutoring session transcript using the 4-criteria rubric below. Score each criterion 1–4.
 
-STUDENT: ${input.studentName || 'Student'}
+STUDENT NAME: ${input.studentName || 'Student'}
 COURSE: ${input.courseName || 'General'}
 
 TRANSCRIPT:
 ${input.transcript}
 
-RUBRIC CRITERIA:
+RUBRIC CRITERIA (score 1-4 each):
 
 1. Academic Efficiency & Time Management
-   4 (Exceeds) = Masterful Flow: student is working within 2 mins, 55+ mins of pure subject content, invisible transitions, no tech delays
-   3 (Proficient) = Solid Pacing: brief 3-5 min intro/setup then consistent focus, ~85% time-on-task, minor friction handled quickly
-   2 (Developing) = Fragmented: 10-15 mins lost to non-academic talk, long stories, or repetitive tech setup instructions
-   1 (Support) = Inefficient: less than 70% of time on subject, session feels unorganized, tutor seems unprepared
+   4 (Exceeds): Session starts smoothly and quickly. Student is actively working within minutes and stays focused almost the entire time.
+   3 (Proficient): Short setup at the beginning, then steady focus. Most of the session is productive.
+   2 (Developing): Noticeable time lost to setup, distractions, or off-topic conversation.
+   1 (Support): Large portion of session feels unstructured or unproductive.
 
-2. Instructional Quality (Socratic Audit)
-   4 (Exceeds) = Student-Led: student narrates logic and explains every step, tutor asks "Why?" instead of correcting, high rigor
-   3 (Proficient) = Balanced: good mix of "Tell" and "Do", tutor explains then student practices, corrective feedback is clear
-   2 (Developing) = Tutor-Led: too much lecturing, tutor solves most problems while student watches, limited student output
-   1 (Support) = Passive: student disengaged or copying, no check-for-understanding, tutor provides answers without explanation
+2. Learning Engagement & Understanding
+   4 (Exceeds): Student explains their thinking clearly and solves problems independently with guidance.
+   3 (Proficient): Student practices after explanations and shows understanding through solving.
+   2 (Developing): Student mostly watches or follows along without much independent thinking.
+   1 (Support): Student is disengaged or just copying answers without understanding.
 
-3. Strategy & Insider Insight
-   4 (Exceeds) = Strategic Edge: teaches specific test traps, shortcuts, or optimization (e.g. Vieta's Formulas, Desmos Regression, Memory Management logic)
-   3 (Proficient) = Curriculum Plus: teaches core concept plus 1-2 helpful tips or shortcuts
-   2 (Developing) = Basic Concepts: strictly follows textbook with no added value, rote memorization with no application strategy
-   1 (Support) = Weak Content: tutor struggles with material, provides incorrect formulas, confusion on syntax, no big picture explanation
+3. Strategy & Problem-Solving Skills
+   4 (Exceeds): Student learns smart techniques, shortcuts, and how to approach problems efficiently.
+   3 (Proficient): Student understands the concept and picks up a few helpful tips.
+   2 (Developing): Focus is mainly on basic steps without deeper strategy.
+   1 (Support): Student struggles to understand the concept or lacks clarity on how to apply it.
 
-4. Synthesis & Branding
-   4 (Exceeds) = Full Closure: student summarizes "3 Golden Rules", homework is highly specific, professional background, correct Zoom name, clear tailored exit plan
-   3 (Proficient) = Standard Closure: quick summary of what was covered, generic homework assigned, professional presence
-   2 (Developing) = Rushed Exit: session ends abruptly, no summary, no clear homework, messy technical setup or distracting background
-   1 (Support) = No Closure: tutor logs off without checking if student has questions, no homework assigned, unprofessional environment
+4. Session Value & Takeaways
+   4 (Exceeds): Student can clearly explain what they learned and leaves with a structured plan or homework.
+   3 (Proficient): Session ends with a quick recap and some practice assigned.
+   2 (Developing): Session ends without a clear summary or next steps.
+   1 (Support): No clear takeaway or direction after the session.
 
-Also assess transcript quality based on speaker attribution coverage, gap frequency, and dialogue completeness.
+Also assess transcript quality: "high" (clear speaker labels, complete), "medium" (some gaps), or "low" (poor attribution, many gaps).
 
-CRITICAL: Return ONLY valid JSON. No markdown, no explanations. Exactly this format:
+CRITICAL: Return ONLY valid JSON. No markdown, no explanations outside JSON. Exactly this format:
 {
   "grades": [
-    { "criterion": "Academic Efficiency & Time Management", "score": 3, "evidence": "Specific quote or observation from the transcript" },
-    { "criterion": "Instructional Quality", "score": 2, "evidence": "Specific quote or observation from the transcript" },
-    { "criterion": "Strategy & Insider Insight", "score": 4, "evidence": "Specific quote or observation from the transcript" },
-    { "criterion": "Synthesis & Branding", "score": 3, "evidence": "Specific quote or observation from the transcript" }
+    { "criterion": "Academic Efficiency & Time Management", "score": 3, "evidence": "One sentence of specific evidence from the transcript." },
+    { "criterion": "Learning Engagement & Understanding", "score": 4, "evidence": "One sentence of specific evidence from the transcript." },
+    { "criterion": "Strategy & Problem-Solving Skills", "score": 3, "evidence": "One sentence of specific evidence from the transcript." },
+    { "criterion": "Session Value & Takeaways", "score": 3, "evidence": "One sentence of specific evidence from the transcript." }
   ],
-  "overallScore": 3.0,
-  "overallNarrative": "2-3 sentence professional summary of this session's teaching quality.",
+  "overallScore": 3.25,
+  "overallNarrative": "2-3 sentence summary of overall session quality.",
   "transcriptQuality": "high",
-  "transcriptQualityReason": "Clear speaker attribution throughout with minimal gaps."
+  "transcriptQualityReason": "Clear speaker attribution throughout."
 }`;
 
         try {
@@ -6668,44 +6722,28 @@ CRITICAL: Return ONLY valid JSON. No markdown, no explanations. Exactly this for
             const jsonMatch = rawResponse.match(/\{[\s\S]*\}/);
             parsed = JSON.parse(jsonMatch ? jsonMatch[0] : rawResponse);
           } catch {
-            throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'AI returned invalid JSON for grading.' });
+            throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'AI returned invalid JSON. Try again.' });
           }
 
-          if (!parsed.grades || !Array.isArray(parsed.grades) || parsed.grades.length !== 4) {
+          if (!parsed.grades || parsed.grades.length !== 4) {
             throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'AI grading response was malformed.' });
           }
 
-          const criteriaMap: Record<string, keyof Pick<any, 'academicEfficiency' | 'instructionalQuality' | 'strategyInsight' | 'synthesisBranding'>> = {
-            'Academic Efficiency & Time Management': 'academicEfficiency',
-            'Instructional Quality': 'instructionalQuality',
-            'Strategy & Insider Insight': 'strategyInsight',
-            'Synthesis & Branding': 'synthesisBranding',
-          };
+          const [ae, lq, si, sv] = parsed.grades as { criterion: string; score: number; evidence: string }[];
+          const overallScore = parsed.overallScore ?? ((ae.score + lq.score + si.score + sv.score) / 4);
 
-          const scores: Record<string, number> = {};
-          for (const g of parsed.grades) {
-            const key = criteriaMap[g.criterion];
-            if (key) scores[key] = Math.min(4, Math.max(1, Math.round(g.score)));
-          }
-
-          const overallScore = parseFloat(parsed.overallScore) || (
-            (scores.academicEfficiency + scores.instructionalQuality + scores.strategyInsight + scores.synthesisBranding) / 4
-          );
-
-          // Find the recording id for this session if available
           const sessionRow = await db.getSessionById(input.sessionId);
           const recordingId = (sessionRow as any)?.zoomMeetingId ?? null;
 
           await db.saveSessionRubricGrades({
             sessionId: input.sessionId,
             recordingId,
-            academicEfficiency: scores.academicEfficiency,
-            instructionalQuality: scores.instructionalQuality,
-            strategyInsight: scores.strategyInsight,
-            synthesisBranding: scores.synthesisBranding,
+            academicEfficiency: ae.score,
+            instructionalQuality: lq.score,
+            strategyInsight: si.score,
+            synthesisBranding: sv.score,
             evidence: parsed.grades,
             overallScore,
-            overallNarrative: parsed.overallNarrative || '',
             transcriptQuality: parsed.transcriptQuality || 'medium',
             transcriptQualityReason: parsed.transcriptQualityReason || '',
           });

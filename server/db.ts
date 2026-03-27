@@ -5481,7 +5481,6 @@ export interface RubricGradePayload {
   synthesisBranding: number;
   evidence: RubricGradeEntry[];
   overallScore: number;
-  overallNarrative: string;
   transcriptQuality: "high" | "medium" | "low";
   transcriptQualityReason: string;
 }

@@ -124,27 +124,40 @@ export function AppointmentScheduler({ subscriptions, onScheduleComplete }: Appo
   }, [selectedSubscriptionId, selectedDate]);
 
   // Calculate available time slots with timezone conversion
-  const availableTimeSlots = useMemo(() => {
-    if (!selectedDate || !availabilityData) return [];
+  const availableTimeSlotsMap = useMemo(() => {
+    if (!selectedDate || !availabilityData) return new Map<string, number>();
 
-    const selectedDayStart = new Date(selectedDate);
-    selectedDayStart.setHours(0, 0, 0, 0);
-    const selectedDayEnd = new Date(selectedDate);
-    selectedDayEnd.setHours(23, 59, 59, 999);
+    // Compute day boundaries in UTC for the selected date in the parent's timezone.
+    // We use the calendar date values (year/month/day) directly rather than relying
+    // on browser-local setHours, which would be wrong when browser TZ != parentTimezone.
+    const selectedDayStartUTC = createTimestamp(
+      selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate(),
+      0, 0, parentTimezone
+    );
+    const selectedDayEndUTC = createTimestamp(
+      selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate(),
+      23, 59, parentTimezone
+    );
 
     const slotsMap = new Map<string, number>(); // time string -> UTC timestamp
     const booked = availabilityData.booked || [];
     const now = Date.now();
 
+    const selectedDateNoonUTC = createTimestamp(
+      selectedDate.getFullYear(),
+      selectedDate.getMonth(),
+      selectedDate.getDate(),
+      12, 0,
+      parentTimezone
+    );
+
     // Check adjacent days to handle timezone crossovers
     for (let dayOffset = -1; dayOffset <= 1; dayOffset++) {
-      const checkDate = new Date(selectedDate);
-      checkDate.setDate(checkDate.getDate() + dayOffset);
-      checkDate.setHours(12, 0, 0, 0);
+      // Build noon UTC for this offset day, entirely in the parent's timezone
+      const checkDateNoonUTC = selectedDateNoonUTC + dayOffset * 24 * 60 * 60 * 1000;
 
       // Convert to tutor's timezone to find day of week
-      const checkDateUTC = convertToUTC(checkDate, parentTimezone);
-      const checkDateInTutorTZ = convertFromUTC(checkDateUTC, tutorTimezone);
+      const checkDateInTutorTZ = convertFromUTC(checkDateNoonUTC, tutorTimezone);
       const tutorDayOfWeek = checkDateInTutorTZ.getDay();
 
       // Get tutor's availability for this day
@@ -179,7 +192,7 @@ export function AppointmentScheduler({ subscriptions, onScheduleComplete }: Appo
           const slotInParentTZ = convertFromUTC(slotTimestampUTC, parentTimezone);
 
           // Only include slots within selected day in parent's timezone
-          if (slotInParentTZ < selectedDayStart || slotInParentTZ > selectedDayEnd) {
+          if (slotTimestampUTC < selectedDayStartUTC || slotTimestampUTC > selectedDayEndUTC) {
             cursor += 30;
             continue;
           }
@@ -212,35 +225,33 @@ export function AppointmentScheduler({ subscriptions, onScheduleComplete }: Appo
       });
     }
 
-    // Return sorted array of time strings
-    return Array.from(slotsMap.keys()).sort((a, b) => {
-      const timeA = slotsMap.get(a)!;
-      const timeB = slotsMap.get(b)!;
-      return timeA - timeB;
-    });
+    // Return sorted map (display string -> UTC timestamp ms)
+    return new Map(
+      Array.from(slotsMap.entries()).sort((a, b) => a[1] - b[1])
+    );
   }, [availabilityData, selectedDate, duration, tutorTimezone, parentTimezone]);
+
+  const availableTimeSlots = useMemo(
+    () => Array.from(availableTimeSlotsMap.keys()),
+    [availableTimeSlotsMap]
+  );
 
   // Generate preview of recurring sessions
   const recurringPreview = useMemo(() => {
     if (!isRecurring || !selectedDate || !selectedTimeSlot) return [];
 
-    const sessions = [];
-    const intervalDays = frequency === "weekly" ? 7 : 14;
-    const baseDate = new Date(selectedDate);
-    const [hours, minutes] = selectedTimeSlot.match(/(\d+):(\d+)/)?.slice(1).map(Number) || [0, 0];
-    const isPM = selectedTimeSlot.toLowerCase().includes("pm") && hours !== 12;
-    const is12AM = selectedTimeSlot.toLowerCase().includes("am") && hours === 12;
+    const baseUTC = availableTimeSlotsMap.get(selectedTimeSlot);
+    if (!baseUTC) return [];
 
-    baseDate.setHours(isPM ? hours + 12 : is12AM ? 0 : hours, minutes, 0, 0);
+    const sessions = [];
+    const intervalMs = (frequency === "weekly" ? 7 : 14) * 24 * 60 * 60 * 1000;
 
     for (let i = 0; i < recurringCount; i++) {
-      const sessionDate = new Date(baseDate);
-      sessionDate.setDate(baseDate.getDate() + (i * intervalDays));
-      sessions.push(sessionDate);
+      sessions.push(new Date(baseUTC + i * intervalMs));
     }
 
     return sessions;
-  }, [isRecurring, selectedDate, selectedTimeSlot, recurringCount, frequency]);
+  }, [isRecurring, selectedDate, selectedTimeSlot, recurringCount, frequency, availableTimeSlotsMap]);
 
   // Helper function to book recurring sessions
   const bookRecurringSessions = async (sessionsToBook: Date[]) => {
@@ -302,12 +313,14 @@ export function AppointmentScheduler({ subscriptions, onScheduleComplete }: Appo
     }
 
     try {
-      const [hours, minutes] = selectedTimeSlot.match(/(\d+):(\d+)/)?.slice(1).map(Number) || [0, 0];
-      const isPM = selectedTimeSlot.toLowerCase().includes("pm") && hours !== 12;
-      const is12AM = selectedTimeSlot.toLowerCase().includes("am") && hours === 12;
-
-      const scheduledDate = new Date(selectedDate);
-      scheduledDate.setHours(isPM ? hours + 12 : is12AM ? 0 : hours, minutes, 0, 0);
+      // Use the pre-computed UTC timestamp from the slots map — do NOT reconstruct
+      // from the display string, which would use browser-local timezone and be wrong.
+      const scheduledAtUTC = availableTimeSlotsMap.get(selectedTimeSlot);
+      if (!scheduledAtUTC) {
+        toast.error("Invalid time slot selected. Please try again.");
+        return;
+      }
+      const scheduledDate = new Date(scheduledAtUTC);
 
       if (isRecurring && recurringCount > 1) {
         // Check for conflicts in recurring sessions

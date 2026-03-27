@@ -181,6 +181,10 @@ export function AdminDashboard() {
     status?: "scheduled" | "completed" | "cancelled" | "no_show";
     startDate?: string;
     endDate?: string;
+    parentName?: string;
+    studentName?: string;
+    courseName?: string;
+    month?: string;
   }>({});
 
   const [dateRange, setDateRange] = useState<{
@@ -188,7 +192,7 @@ export function AdminDashboard() {
     endDate?: string;
   }>({});
   const tabContentClass =
-    "space-y-6 data-[state=inactive]:hidden [&[hidden]]:block data-[state=inactive]:[&[hidden]]:hidden";
+    "space-y-6 w-full data-[state=inactive]:hidden";
 
   const [selectedTutorId, setSelectedTutorId] = useState<number | null>(null);
 
@@ -214,6 +218,11 @@ export function AdminDashboard() {
 
   const { data: sessionsData, isLoading: sessionsLoading } = trpc.admin.getAllSessions.useQuery(
     { limit: ITEMS_PER_PAGE, offset: (sessionsPage - 1) * ITEMS_PER_PAGE, ...sessionFilters },
+    { enabled: isAuthenticated && user?.role === "admin" }
+  );
+
+  const { data: sessionFilterOptions } = trpc.admin.getSessionFilterOptions.useQuery(
+    undefined,
     { enabled: isAuthenticated && user?.role === "admin" }
   );
 
@@ -1076,6 +1085,76 @@ export function AdminDashboard() {
                         <SelectItem value="completed">Completed</SelectItem>
                         <SelectItem value="cancelled">Cancelled</SelectItem>
                         <SelectItem value="no_show">No Show</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium mb-2 block">Month</label>
+                    <Select
+                      value={sessionFilters.month || 'all'}
+                      onValueChange={(value) => setSessionFilters({ ...sessionFilters, month: value === 'all' ? undefined : value })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="All months" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All months</SelectItem>
+                        {sessionFilterOptions?.months.map((m) => (
+                          <SelectItem key={m} value={m}>
+                            {new Date(m + "-01").toLocaleDateString(undefined, { year: "numeric", month: "long" })}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium mb-2 block">Parent Name</label>
+                    <Select
+                      value={sessionFilters.parentName || 'all'}
+                      onValueChange={(value) => setSessionFilters({ ...sessionFilters, parentName: value === 'all' ? undefined : value })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="All parents" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All parents</SelectItem>
+                        {sessionFilterOptions?.parentNames.map((name) => (
+                          <SelectItem key={name} value={name}>{name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium mb-2 block">Student Name</label>
+                    <Select
+                      value={sessionFilters.studentName || 'all'}
+                      onValueChange={(value) => setSessionFilters({ ...sessionFilters, studentName: value === 'all' ? undefined : value })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="All students" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All students</SelectItem>
+                        {sessionFilterOptions?.studentNames.map((name) => (
+                          <SelectItem key={name} value={name}>{name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium mb-2 block">Course Name</label>
+                    <Select
+                      value={sessionFilters.courseName || 'all'}
+                      onValueChange={(value) => setSessionFilters({ ...sessionFilters, courseName: value === 'all' ? undefined : value })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="All courses" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All courses</SelectItem>
+                        {sessionFilterOptions?.courseNames.map((name) => (
+                          <SelectItem key={name} value={name}>{name}</SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </div>

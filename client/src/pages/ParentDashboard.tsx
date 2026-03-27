@@ -14,7 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Link, useLocation } from "wouter";
-import { BookOpen, Calendar, MessageSquare, CreditCard, Clock, Users, Video, FileText, HelpCircle, CheckCircle, TrendingUp, BarChart2, LogIn, Sparkles, Search } from "lucide-react";
+import { BookOpen, Calendar, MessageSquare, CreditCard, Clock, Users, Video, FileText, HelpCircle, CheckCircle, TrendingUp, BarChart2, LogIn, Sparkles, Search, Target, Activity } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { LOGIN_PATH } from "@/const";
 import { NotificationCenter } from "@/components/NotificationCenter";
@@ -31,7 +31,7 @@ export default function ParentDashboard() {
   const [, setLocation] = useLocation();
   const formatPrice = useFormatPrice();
   const tabContentClass =
-    "space-y-6 w-full transition-all duration-300 data-[state=inactive]:hidden";
+    "space-y-6 w-full data-[state=inactive]:hidden";
 
   const { data: subscriptions, isLoading: subsLoading, refetch: refetchSubscriptions } = trpc.subscription.mySubscriptions.useQuery(
     undefined,
@@ -206,7 +206,16 @@ export default function ParentDashboard() {
   const [selectedHistoryStudent, setSelectedHistoryStudent] = useState<string>("all");
   const [selectedHistoryTime, setSelectedHistoryTime] = useState<string>("all");
   const [selectedHistoryCourse, setSelectedHistoryCourse] = useState<string>("all");
+
+  const [selectedSessionStudent, setSelectedSessionStudent] = useState<string>("all");
+  const [selectedSessionTime, setSelectedSessionTime] = useState<string>("all");
+  const [selectedSessionCourse, setSelectedSessionCourse] = useState<string>("all");
   const [subscriptionSearchQuery, setSubscriptionSearchQuery] = useState("");
+  const [activeStudentTab, setActiveStudentTab] = useState(0);
+  const [showSubsModal, setShowSubsModal] = useState(false);
+  const [showBillingModal, setShowBillingModal] = useState(false);
+  const [showProficiencyModal, setShowProficiencyModal] = useState(false);
+  const [showEngagementModal, setShowEngagementModal] = useState(false);
 
   const subscriptionStudentMap = useMemo(() => {
     const map = new Map<number, string>();
@@ -323,6 +332,55 @@ export default function ParentDashboard() {
         return matchesStudent && matchesCourse && matchesTime;
       });
   }, [sessionHistory, selectedHistoryStudent, selectedHistoryTime, selectedHistoryCourse]);
+
+  const sessionStudentOptions = useMemo(() => {
+    const set = new Set<string>();
+    (upcomingSessions || []).forEach((s) => {
+      const name = [s.studentFirstName, s.studentLastName].filter(Boolean).join(" ").trim();
+      if (name) set.add(name);
+    });
+    return Array.from(set);
+  }, [upcomingSessions]);
+
+  const sessionCourseOptions = useMemo(() => {
+    const set = new Set<string>();
+    (upcomingSessions || []).forEach((s) => {
+      if (s.courseTitle) set.add(s.courseTitle);
+    });
+    return Array.from(set);
+  }, [upcomingSessions]);
+
+  const filteredUpcomingSessions = useMemo(() => {
+    if (!upcomingSessions) return [];
+
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
+
+    return upcomingSessions.filter((session) => {
+      const studentName = [session.studentFirstName, session.studentLastName].filter(Boolean).join(" ").trim();
+      const courseName = session.courseTitle || "";
+
+      const matchesStudent = selectedSessionStudent === "all" || studentName === selectedSessionStudent;
+      const matchesCourse = selectedSessionCourse === "all" || courseName === selectedSessionCourse;
+
+      let matchesTime = true;
+      if (selectedSessionTime !== "all") {
+        const sessionDate = new Date(session.scheduledAt);
+        const sessionMonth = sessionDate.getMonth();
+        const sessionYear = sessionDate.getFullYear();
+        if (selectedSessionTime === "this_month") {
+          matchesTime = sessionMonth === currentMonth && sessionYear === currentYear;
+        } else if (selectedSessionTime === "last_month") {
+          const lastMonth = currentMonth === 0 ? 11 : currentMonth - 1;
+          const lastMonthYear = currentMonth === 0 ? currentYear - 1 : currentYear;
+          matchesTime = sessionMonth === lastMonth && sessionYear === lastMonthYear;
+        }
+      }
+
+      return matchesStudent && matchesCourse && matchesTime;
+    });
+  }, [upcomingSessions, selectedSessionStudent, selectedSessionTime, selectedSessionCourse]);
 
   const getStudentName = (subscription: any) =>
     [subscription.studentFirstName, subscription.studentLastName].filter(Boolean).join(" ").trim() || "Student";
@@ -552,6 +610,19 @@ export default function ParentDashboard() {
       ? Math.round(completedQuizzes.reduce((sum, q) => sum + (q.score ?? 0), 0) / completedQuizzes.length)
       : null;
 
+    // Avg rubric score from parentGrades
+    const gradedRows = (parentGrades || []).filter(g => g.rubricOverallScore != null);
+    const avgRubricScore = gradedRows.length > 0
+      ? Math.round((gradedRows.reduce((sum, g) => sum + Number(g.rubricOverallScore!), 0) / gradedRows.length) * 10) / 10
+      : null;
+
+    // Proficiency label based on quiz score + attendance
+    let proficiencyLabel: "Above Average" | "On Track" | "Needs Attention" = "On Track";
+    if (avgQuizScore != null && attendanceRate != null) {
+      if (avgQuizScore >= 70 && attendanceRate >= 80) proficiencyLabel = "Above Average";
+      else if (avgQuizScore < 50 || attendanceRate < 50) proficiencyLabel = "Needs Attention";
+    }
+
     return {
       totalCompleted: completed.length,
       noShowCount: noShows.length,
@@ -561,8 +632,10 @@ export default function ParentDashboard() {
       monthlyActivity: months,
       completedQuizzes: completedQuizzes.length,
       avgQuizScore,
+      avgRubricScore,
+      proficiencyLabel,
     };
-  }, [sessionHistory, parentQuizzes]);
+  }, [sessionHistory, parentQuizzes, parentGrades]);
 
   if (loading || !isAuthenticated) {
     return (
@@ -1033,11 +1106,60 @@ export default function ParentDashboard() {
 
             {/* Sessions Tab */}
             <TabsContent value="sessions" forceMount className={tabContentClass}>
-              <h2 className="text-2xl font-bold mb-6">Upcoming Sessions</h2>
-              <ParentSessionsManager
-                upcomingSessions={upcomingSessions || []}
-                sessionsLoading={sessionsLoading}
-              />
+              <h2 className="text-2xl font-bold">Upcoming Sessions</h2>
+
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 mt-4">
+                <div className="space-y-2">
+                  <Label htmlFor="session-student">Student</Label>
+                  <Select value={selectedSessionStudent} onValueChange={setSelectedSessionStudent}>
+                    <SelectTrigger id="session-student">
+                      <SelectValue placeholder="All students" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All students</SelectItem>
+                      {sessionStudentOptions.map((name) => (
+                        <SelectItem key={name} value={name}>{name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="session-time">Time Period</Label>
+                  <Select value={selectedSessionTime} onValueChange={setSelectedSessionTime}>
+                    <SelectTrigger id="session-time">
+                      <SelectValue placeholder="All time" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All time</SelectItem>
+                      <SelectItem value="this_month">This month</SelectItem>
+                      <SelectItem value="last_month">Last month</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="session-course">Course</Label>
+                  <Select value={selectedSessionCourse} onValueChange={setSelectedSessionCourse}>
+                    <SelectTrigger id="session-course">
+                      <SelectValue placeholder="All courses" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All courses</SelectItem>
+                      {sessionCourseOptions.map((name) => (
+                        <SelectItem key={name} value={name}>{name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="mt-6">
+                <ParentSessionsManager
+                  upcomingSessions={filteredUpcomingSessions}
+                  sessionsLoading={sessionsLoading}
+                />
+              </div>
             </TabsContent>
 
             {/* History Tab */}
@@ -1233,12 +1355,39 @@ export default function ParentDashboard() {
                           {/* Session Grade */}
                           {gradeBySessionId.has(session.id) && (() => {
                             const g = gradeBySessionId.get(session.id)!;
-                            const score = g.rubricOverallScore;
+                            const score = g.rubricOverallScore != null ? Number(g.rubricOverallScore) : null;
                             const isExpanded = expandedGrades.has(session.id);
                             const evidence: { criterion: string; score: number; evidence: string }[] = Array.isArray(g.rubricEvidence) ? g.rubricEvidence : [];
+                            if (score == null && evidence.length === 0) return null;
                             const scoreLabel = score == null ? null : score >= 3.5 ? "Excellent" : score >= 2.5 ? "Proficient" : score >= 1.5 ? "Developing" : "Needs Support";
-                            const scoreBg = score == null ? "bg-muted" : score >= 3.5 ? "bg-emerald-500" : score >= 2.5 ? "bg-blue-500" : score >= 1.5 ? "bg-amber-400" : "bg-red-500";
                             const scoreText = score == null ? "text-muted-foreground" : score >= 3.5 ? "text-emerald-600 dark:text-emerald-400" : score >= 2.5 ? "text-blue-600 dark:text-blue-400" : score >= 1.5 ? "text-amber-500 dark:text-amber-400" : "text-red-500 dark:text-red-400";
+                            // Parent-friendly descriptions per score level per criterion
+                            const criteriaDescriptions: Record<string, Record<number, string>> = {
+                              "Academic Efficiency & Time Management": {
+                                4: "Session starts smoothly and quickly. Your child is actively working within minutes and stays focused almost the entire time.",
+                                3: "Short setup at the beginning, then steady focus. Most of the session is productive.",
+                                2: "Noticeable time lost to setup, distractions, or off-topic conversation.",
+                                1: "Large portion of session feels unstructured or unproductive.",
+                              },
+                              "Learning Engagement & Understanding": {
+                                4: "Your child explains their thinking clearly and solves problems independently with guidance.",
+                                3: "Your child practices after explanations and shows understanding through solving.",
+                                2: "Your child mostly watches or follows along without much independent thinking.",
+                                1: "Your child is disengaged or just copying answers without understanding.",
+                              },
+                              "Strategy & Problem-Solving Skills": {
+                                4: "Your child learns smart techniques, shortcuts, and how to approach problems efficiently.",
+                                3: "Your child understands the concept and picks up a few helpful tips.",
+                                2: "Focus is mainly on basic steps without deeper strategy.",
+                                1: "Your child struggles to understand the concept or lacks clarity on how to apply it.",
+                              },
+                              "Session Value & Takeaways": {
+                                4: "Your child can clearly explain what they learned and leaves with a structured plan or homework.",
+                                3: "Session ends with a quick recap and some practice assigned.",
+                                2: "Session ends without a clear summary or next steps.",
+                                1: "No clear takeaway or direction after the session.",
+                              },
+                            };
                             return (
                               <div className="mt-4 rounded-xl border border-border/60 overflow-hidden shadow-sm">
                                 {/* Header bar */}
@@ -1282,7 +1431,7 @@ export default function ParentDashboard() {
                                     <div className="flex gap-1.5 flex-wrap justify-end">
                                       {evidence.map((e) => {
                                         const pill = e.score === 4 ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300" : e.score === 3 ? "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300" : e.score === 2 ? "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300" : "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300";
-                                        const short = e.criterion.split(" ")[0];
+                                        const short = e.criterion === "Academic Efficiency & Time Management" ? "Efficiency" : e.criterion === "Learning Engagement & Understanding" ? "Engagement" : e.criterion === "Strategy & Problem-Solving Skills" ? "Strategy" : "Takeaways";
                                         return (
                                           <span key={e.criterion} className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${pill}`} title={e.criterion}>
                                             {short} {e.score}/4
@@ -1297,7 +1446,8 @@ export default function ParentDashboard() {
                                     <div className="space-y-2.5 pt-1 border-t border-border/40">
                                       {evidence.map((e) => {
                                         const bar = e.score === 4 ? "bg-emerald-500" : e.score === 3 ? "bg-blue-500" : e.score === 2 ? "bg-amber-400" : "bg-red-500";
-                                        const label = e.score === 4 ? "Excellent" : e.score === 3 ? "Proficient" : e.score === 2 ? "Developing" : "Support";
+                                        const label = e.score === 4 ? "Exceeds" : e.score === 3 ? "Proficient" : e.score === 2 ? "Developing" : "Support";
+                                        const parentDesc = criteriaDescriptions[e.criterion]?.[e.score];
                                         return (
                                           <div key={e.criterion} className="space-y-1">
                                             <div className="flex items-center justify-between gap-2">
@@ -1307,8 +1457,8 @@ export default function ParentDashboard() {
                                             <div className="w-full bg-muted rounded-full h-1.5 overflow-hidden">
                                               <div className={`h-1.5 rounded-full ${bar} transition-all`} style={{ width: `${(e.score / 4) * 100}%` }} />
                                             </div>
-                                            {e.evidence && (
-                                              <p className="text-xs text-muted-foreground italic leading-relaxed border-l-2 border-muted pl-2">"{e.evidence}"</p>
+                                            {parentDesc && (
+                                              <p className="text-xs text-muted-foreground leading-relaxed border-l-2 border-muted pl-2">{parentDesc}</p>
                                             )}
                                           </div>
                                         );
@@ -1326,7 +1476,7 @@ export default function ParentDashboard() {
 
                                   {/* Footer note */}
                                   <p className="text-[10px] text-muted-foreground/70 italic border-t border-border/30 pt-2">
-                                    AI-assisted quality signal based on session transcript. Scores reflect observable teaching behaviors only.
+                                    AI-assisted quality signal based on session transcript. Scores reflect observable session quality.
                                   </p>
                                 </div>
                               </div>
@@ -1368,54 +1518,194 @@ export default function ParentDashboard() {
               </div>
 
               {/* Stat Cards */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-2">
-                {/* Sessions Completed */}
-                <div className="rounded-2xl bg-gradient-to-br from-blue-500 to-blue-600 p-5 text-white shadow-md">
-                  <div className="flex items-center justify-between mb-3">
-                    <p className="text-xs font-medium uppercase tracking-wider opacity-80">Sessions Done</p>
-                    <div className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center">
-                      <CheckCircle className="w-4 h-4" />
-                    </div>
-                  </div>
-                  <p className="text-4xl font-bold">{analyticsStats.totalCompleted}</p>
-                  <p className="text-xs opacity-70 mt-1">completed sessions</p>
-                </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mt-2">
 
-                {/* Attendance Rate */}
-                <div className={`rounded-2xl p-5 text-white shadow-md bg-gradient-to-br ${analyticsStats.attendanceRate >= 80 ? "from-emerald-500 to-emerald-600" : analyticsStats.attendanceRate >= 60 ? "from-orange-400 to-orange-500" : "from-red-500 to-red-600"}`}>
-                  <div className="flex items-center justify-between mb-3">
-                    <p className="text-xs font-medium uppercase tracking-wider opacity-80">Attendance</p>
-                    <div className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center">
-                      <TrendingUp className="w-4 h-4" />
+                {/* Card 1 — Subscription Details */}
+                {(() => {
+                  const studentGroups = Object.entries(
+                    (subscriptions || []).reduce((acc, item) => {
+                      const name = [item.subscription.studentFirstName, item.subscription.studentLastName].filter(Boolean).join(" ").trim() || "Student";
+                      if (!acc[name]) acc[name] = [];
+                      acc[name].push(item);
+                      return acc;
+                    }, {} as Record<string, NonNullable<typeof subscriptions>>)
+                  );
+                  const clampedTab = Math.min(activeStudentTab, Math.max(0, studentGroups.length - 1));
+                  const activeGroup = studentGroups[clampedTab];
+                  const firstItem = activeGroup?.[1]?.[0];
+                  const totalCourses = activeGroup?.[1]?.length ?? 0;
+                  const visibleTabs = studentGroups.slice(0, 3);
+                  const hiddenCount = studentGroups.length - 3;
+                  return (
+                    <div className="rounded-2xl bg-gradient-to-br from-blue-500 to-blue-600 p-5 text-white shadow-md flex flex-col gap-2 h-[220px]">
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs font-medium uppercase tracking-wider opacity-80">Subscriptions</p>
+                        <div className="flex items-center gap-2">
+                          <div className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center">
+                            <Users className="w-4 h-4" />
+                          </div>
+                          {studentGroups.length > 0 && (
+                            <button onClick={() => setShowSubsModal(true)} className="text-xs font-medium opacity-90 hover:opacity-100 underline underline-offset-2">Show more</button>
+                          )}
+                        </div>
+                      </div>
+                      {studentGroups.length === 0 ? (
+                        <p className="text-4xl font-bold">0</p>
+                      ) : (
+                        <>
+                          <p className="text-4xl font-bold">{studentGroups.length}</p>
+                          <p className="text-xs opacity-70 -mt-1">student{studentGroups.length !== 1 ? "s" : ""} enrolled</p>
+                          {/* Student tabs — max 3 visible */}
+                          <div className="flex gap-1.5 items-center flex-nowrap overflow-hidden">
+                            {visibleTabs.map(([name, items], idx) => {
+                              const grade = items[0]?.subscription.studentGrade;
+                              return (
+                                <button
+                                  key={name}
+                                  onClick={() => setActiveStudentTab(idx)}
+                                  className={`text-xs px-2.5 py-0.5 rounded-full font-medium transition-colors border shrink-0 ${clampedTab === idx ? "bg-white text-blue-600 border-white" : "bg-white/20 text-white border-white/30 hover:bg-white/30"}`}
+                                >
+                                  {name.split(" ")[0]}{grade ? ` G${grade}` : ""}
+                                </button>
+                              );
+                            })}
+                            {hiddenCount > 0 && (
+                              <button onClick={() => setShowSubsModal(true)} className="text-xs px-2 py-0.5 rounded-full bg-white/20 border border-white/30 font-medium shrink-0 hover:bg-white/30">
+                                +{hiddenCount}
+                              </button>
+                            )}
+                          </div>
+                          {/* Active student: show first course only */}
+                          {firstItem && (
+                            <div className="rounded-xl bg-white/15 px-3 py-2 space-y-0.5 mt-auto">
+                              <p className="text-sm font-semibold truncate">{firstItem.course?.title || "Course"}</p>
+                              <p className="text-xs opacity-75">{firstItem.sessionStats?.completedCount ?? 0} done · {firstItem.sessionStats?.scheduledCount ?? 0} upcoming</p>
+                              {totalCourses > 1 && <p className="text-[10px] opacity-60">+{totalCourses - 1} more course{totalCourses - 1 !== 1 ? "s" : ""}</p>}
+                            </div>
+                          )}
+                        </>
+                      )}
                     </div>
-                  </div>
-                  <p className="text-4xl font-bold">{analyticsStats.attendanceRate}%</p>
-                  <p className="text-xs opacity-70 mt-1">{analyticsStats.attendanceRate >= 80 ? "excellent" : analyticsStats.attendanceRate >= 60 ? "needs improvement" : "low attendance"}</p>
-                </div>
+                  );
+                })()}
 
-                {/* Total Hours */}
-                <div className="rounded-2xl bg-gradient-to-br from-violet-500 to-violet-600 p-5 text-white shadow-md">
-                  <div className="flex items-center justify-between mb-3">
-                    <p className="text-xs font-medium uppercase tracking-wider opacity-80">Total Hours</p>
-                    <div className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center">
-                      <Clock className="w-4 h-4" />
+                {/* Card 2 — Billing & Spend Analyzer */}
+                {(() => {
+                  const getSubAmount = (item: NonNullable<typeof subscriptions>[number]): number => {
+                    if (item.nextBillingAmount != null) return Number(item.nextBillingAmount);
+                    const s = item.subscription;
+                    if (s.paymentPlan === "installment" && s.firstInstallmentAmount != null) return Number(s.firstInstallmentAmount);
+                    const coursePrice = Number(item.course?.price ?? 0);
+                    const promo = Number(s.promoDiscountAmount ?? 0);
+                    const discount = Number(s.discountAmount ?? 0);
+                    return Math.max(0, coursePrice - promo - discount);
+                  };
+                  const activeSubs = (subscriptions || []).filter(s => s.subscription.status === "active");
+                  const totalSpend = activeSubs.reduce((sum, s) => sum + getSubAmount(s), 0);
+                  const totalSavings = (subscriptions || []).reduce((sum, s) => sum + Number(s.subscription.promoDiscountAmount ?? 0) + Number(s.subscription.discountAmount ?? 0), 0);
+                  const hasSiblingDiscount = (subscriptions || []).some(s => s.subscription.siblingDiscountApplied);
+                  return (
+                    <div className="rounded-2xl bg-gradient-to-br from-emerald-500 to-emerald-600 p-5 text-white shadow-md flex flex-col gap-2 h-[220px]">
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs font-medium uppercase tracking-wider opacity-80">Billing & Spend</p>
+                        <div className="flex items-center gap-2">
+                          <div className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center">
+                            <CreditCard className="w-4 h-4" />
+                          </div>
+                          <button onClick={() => setShowBillingModal(true)} className="text-xs font-medium opacity-90 hover:opacity-100 underline underline-offset-2">Show more</button>
+                        </div>
+                      </div>
+                      <p className="text-4xl font-bold">${totalSpend.toFixed(0)}</p>
+                      <p className="text-xs opacity-70 -mt-2">across {activeSubs.length} active enrollment{activeSubs.length !== 1 ? "s" : ""}</p>
+                      {totalSavings > 0 && (
+                        <p className="text-xs opacity-90">Saved <span className="font-bold">${totalSavings.toFixed(2)}</span> via discounts</p>
+                      )}
+                      {hasSiblingDiscount && (
+                        <span className="self-start text-[10px] bg-white/20 px-2 py-0.5 rounded-full font-medium">Sibling discount applied</span>
+                      )}
                     </div>
-                  </div>
-                  <p className="text-4xl font-bold">{analyticsStats.totalHours}</p>
-                  <p className="text-xs opacity-70 mt-1">hours of learning</p>
-                </div>
+                  );
+                })()}
 
-                {/* Avg Quiz Score */}
-                <div className={`rounded-2xl p-5 text-white shadow-md bg-gradient-to-br ${analyticsStats.avgQuizScore == null ? "from-slate-400 to-slate-500" : analyticsStats.avgQuizScore >= 70 ? "from-teal-500 to-teal-600" : analyticsStats.avgQuizScore >= 40 ? "from-amber-400 to-amber-500" : "from-rose-500 to-rose-600"}`}>
-                  <div className="flex items-center justify-between mb-3">
-                    <p className="text-xs font-medium uppercase tracking-wider opacity-80">Avg Quiz Score</p>
-                    <div className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center">
-                      <HelpCircle className="w-4 h-4" />
+                {/* Card 3 — Learning Proficiency */}
+                {(() => {
+                  const { avgQuizScore, attendanceRate, avgRubricScore, proficiencyLabel, completedQuizzes } = analyticsStats;
+                  const gradientClass = proficiencyLabel === "Above Average"
+                    ? "from-teal-500 to-teal-600"
+                    : proficiencyLabel === "On Track"
+                    ? "from-violet-500 to-violet-600"
+                    : "from-amber-400 to-amber-500";
+                  return (
+                    <div className={`rounded-2xl bg-gradient-to-br ${gradientClass} p-5 text-white shadow-md flex flex-col gap-2 h-[220px]`}>
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs font-medium uppercase tracking-wider opacity-80">Learning Proficiency</p>
+                        <div className="flex items-center gap-2">
+                          <div className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center">
+                            <Target className="w-4 h-4" />
+                          </div>
+                          <button onClick={() => setShowProficiencyModal(true)} className="text-xs font-medium opacity-90 hover:opacity-100 underline underline-offset-2">Show more</button>
+                        </div>
+                      </div>
+                      <p className="text-4xl font-bold">{avgQuizScore != null ? `${avgQuizScore}%` : "—"}</p>
+                      <p className="text-xs opacity-70 -mt-2">avg quiz score · {completedQuizzes} taken</p>
+                      <p className="text-xs opacity-90 font-medium">{proficiencyLabel}</p>
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between text-xs opacity-80">
+                          <span>Attendance</span><span className="font-semibold">{attendanceRate}%</span>
+                        </div>
+                        <div className="h-1.5 rounded-full bg-white/30 overflow-hidden">
+                          <div className="h-1.5 rounded-full bg-white/80" style={{ width: `${attendanceRate}%` }} />
+                        </div>
+                        {avgRubricScore != null && (
+                          <>
+                            <div className="flex items-center justify-between text-xs opacity-80">
+                              <span>Teaching Quality</span><span className="font-semibold">{avgRubricScore}/4</span>
+                            </div>
+                            <div className="h-1.5 rounded-full bg-white/30 overflow-hidden">
+                              <div className="h-1.5 rounded-full bg-white/80" style={{ width: `${(avgRubricScore / 4) * 100}%` }} />
+                            </div>
+                          </>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                  <p className="text-4xl font-bold">{analyticsStats.avgQuizScore != null ? `${analyticsStats.avgQuizScore}%` : "—"}</p>
-                  <p className="text-xs opacity-70 mt-1">{analyticsStats.avgQuizScore != null ? `${analyticsStats.completedQuizzes} quiz${analyticsStats.completedQuizzes !== 1 ? "zes" : ""} taken` : "no quizzes yet"}</p>
-                </div>
+                  );
+                })()}
+
+                {/* Card 4 — Engagement Breakdown */}
+                {(() => {
+                  const quizzesCompleted = analyticsStats.completedQuizzes;
+                  const sessionsAttended = analyticsStats.totalCompleted;
+                  const recentThreshold = Date.now() - 30 * 24 * 60 * 60 * 1000;
+                  const hasRecentFeedback = (sessionHistory || []).some(s => s.feedbackFromTutor && new Date(s.scheduledAt).getTime() > recentThreshold);
+                  return (
+                    <div className="rounded-2xl bg-gradient-to-br from-indigo-500 to-indigo-600 p-5 text-white shadow-md flex flex-col gap-2 h-[220px]">
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs font-medium uppercase tracking-wider opacity-80">Engagement</p>
+                        <div className="flex items-center gap-2">
+                          <div className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center">
+                            <Activity className="w-4 h-4" />
+                          </div>
+                          <button onClick={() => setShowEngagementModal(true)} className="text-xs font-medium opacity-90 hover:opacity-100 underline underline-offset-2">Show more</button>
+                        </div>
+                      </div>
+                      <p className="text-4xl font-bold">{sessionsAttended}</p>
+                      <p className="text-xs opacity-70 -mt-2">sessions attended</p>
+                      <div className="space-y-1.5 text-xs opacity-90">
+                        <div className="flex items-center justify-between">
+                          <span>Quizzes completed</span>
+                          <span className="font-bold">{quizzesCompleted}</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span>Messaging</span>
+                          <span className={`font-bold px-2 py-0.5 rounded-full text-[10px] ${hasRecentFeedback ? "bg-white/25" : "bg-white/10 opacity-60"}`}>
+                            {hasRecentFeedback ? "Active" : "Inactive"}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
+
               </div>
 
               <div className="grid md:grid-cols-2 gap-6">
@@ -1500,11 +1790,12 @@ export default function ParentDashboard() {
               {parentGrades && parentGrades.length > 0 && (() => {
                 const criteria = [
                   { key: "rubricAcademicEfficiency", label: "Academic Efficiency" },
-                  { key: "rubricInstructionalQuality", label: "Instructional Quality" },
-                  { key: "rubricStrategyInsight", label: "Strategy & Insight" },
-                  { key: "rubricSynthesisBranding", label: "Synthesis & Branding" },
+                  { key: "rubricInstructionalQuality", label: "Learning Engagement" },
+                  { key: "rubricStrategyInsight", label: "Strategy & Problem-Solving" },
+                  { key: "rubricSynthesisBranding", label: "Session Value & Takeaways" },
                 ] as const;
                 const gradedRows = parentGrades.filter(g => g.rubricOverallScore != null);
+                if (gradedRows.length === 0) return null;
                 const avgFor = (key: string) => {
                   const vals = gradedRows.map(g => (g as any)[key]).filter((v: any) => v != null) as number[];
                   return vals.length > 0 ? (vals.reduce((a, b) => a + b, 0) / vals.length) : null;
@@ -1525,7 +1816,7 @@ export default function ParentDashboard() {
                             const avg = avgFor(key);
                             return (
                               <div key={key} className="flex items-center gap-3">
-                                <span className="text-xs text-muted-foreground w-36 shrink-0">{label}</span>
+                                <span className="text-xs text-muted-foreground w-40 shrink-0">{label}</span>
                                 <div className="flex-1 bg-muted rounded-full h-2 overflow-hidden">
                                   <div className={`h-2 rounded-full ${scoreColor(avg)} transition-all`} style={{ width: avg ? `${(avg / 4) * 100}%` : "0%" }} />
                                 </div>
@@ -1545,7 +1836,7 @@ export default function ParentDashboard() {
                           ) : (
                             <div className="flex items-end gap-2 h-24 pt-2">
                               {gradedRows.slice().reverse().map((g, i) => {
-                                const score = g.rubricOverallScore ?? 0;
+                                const score = Number(g.rubricOverallScore ?? 0);
                                 const heightPct = (score / 4) * 100;
                                 const bar = score >= 3.5 ? "bg-emerald-500" : score >= 2.5 ? "bg-blue-500" : score >= 1.5 ? "bg-amber-400" : "bg-red-500";
                                 const dateLabel = g.scheduledAt ? new Date(g.scheduledAt).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : `#${i + 1}`;
@@ -1620,6 +1911,395 @@ export default function ParentDashboard() {
           </Tabs>
         </div>
       </div>
+
+      {/* Modal 1 — Subscription Details */}
+      <Dialog open={showSubsModal} onOpenChange={setShowSubsModal}>
+        <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col gap-0 p-0">
+          <div className="px-6 pt-6 pb-4 border-b shrink-0">
+            <DialogTitle className="flex items-center gap-2">
+              <Users className="w-5 h-5 text-blue-600 dark:text-blue-400" /> Subscription Details
+            </DialogTitle>
+            <DialogDescription className="mt-1">All enrollments across your students</DialogDescription>
+          </div>
+          <div className="overflow-y-auto flex-1 px-6 py-4 space-y-6">
+            {(subscriptions || []).length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-8">No enrollments found.</p>
+            ) : (
+              Object.entries(
+                (subscriptions || []).reduce((acc, item) => {
+                  const name = [item.subscription.studentFirstName, item.subscription.studentLastName].filter(Boolean).join(" ").trim() || "Student";
+                  if (!acc[name]) acc[name] = [];
+                  acc[name].push(item);
+                  return acc;
+                }, {} as Record<string, NonNullable<typeof subscriptions>>)
+              ).map(([studentName, items]) => (
+                <div key={studentName}>
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-violet-500 flex items-center justify-center text-white font-bold text-xs shrink-0">
+                      {studentName.split(" ").map((n: string) => n[0]).join("").slice(0, 2).toUpperCase()}
+                    </div>
+                    <div>
+                      <p className="font-semibold text-sm">{studentName}</p>
+                      {items[0]?.subscription.studentGrade && (
+                        <p className="text-xs text-muted-foreground">Grade {items[0].subscription.studentGrade}</p>
+                      )}
+                    </div>
+                  </div>
+                  <div className="space-y-3 ml-10">
+                    {items.map((item) => {
+                      const s = item.subscription;
+                      const statusColor = s.status === "active" ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400" : s.status === "paused" ? "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400" : "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400";
+                      return (
+                        <div key={s.id} className="rounded-xl border bg-card p-4 space-y-3">
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <p className="font-semibold text-sm">{item.course?.title || "Course"}</p>
+                              <p className="text-xs text-muted-foreground mt-0.5">{item.course?.subject || ""}</p>
+                            </div>
+                            <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0 capitalize ${statusColor}`}>{s.status}</span>
+                          </div>
+                          <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+                            <div>
+                              <p className="text-muted-foreground">Tutor</p>
+                              <p className="font-medium">{item.tutor?.name ?? "—"}</p>
+                            </div>
+                            <div>
+                              <p className="text-muted-foreground">Payment Plan</p>
+                              <p className="font-medium capitalize">{s.paymentPlan?.replace("_", " ") || "—"}</p>
+                            </div>
+                            <div>
+                              <p className="text-muted-foreground">Sessions Done</p>
+                              <p className="font-medium">{item.sessionStats?.completedCount ?? 0}</p>
+                            </div>
+                            <div>
+                              <p className="text-muted-foreground">Upcoming</p>
+                              <p className="font-medium">{item.sessionStats?.scheduledCount ?? 0}</p>
+                            </div>
+                            {item.nextBillingDate && (
+                              <div>
+                                <p className="text-muted-foreground">Next Billing</p>
+                                <p className="font-medium">{new Date(item.nextBillingDate).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}</p>
+                              </div>
+                            )}
+                            {item.nextBillingAmount != null && (
+                              <div>
+                                <p className="text-muted-foreground">Billing Amount</p>
+                                <p className="font-medium">${Number(item.nextBillingAmount).toFixed(2)}</p>
+                              </div>
+                            )}
+                            {s.startDate && (
+                              <div>
+                                <p className="text-muted-foreground">Enrolled Since</p>
+                                <p className="font-medium">{new Date(s.startDate).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}</p>
+                              </div>
+                            )}
+                            {s.paymentStatus && (
+                              <div>
+                                <p className="text-muted-foreground">Payment Status</p>
+                                <p className="font-medium capitalize">{s.paymentStatus}</p>
+                              </div>
+                            )}
+                          </div>
+                          {(s.siblingDiscountApplied || s.loyaltyDiscountApplied || Number(s.promoDiscountAmount ?? 0) > 0 || Number(s.discountAmount ?? 0) > 0) && (
+                            <div className="pt-2 border-t flex flex-wrap gap-1.5 items-center">
+                              <span className="text-[10px] text-muted-foreground">Discounts:</span>
+                              {s.siblingDiscountApplied && <span className="text-[10px] bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-400 px-2 py-0.5 rounded-full font-medium">Sibling</span>}
+                              {s.loyaltyDiscountApplied && <span className="text-[10px] bg-violet-100 dark:bg-violet-900/40 text-violet-700 dark:text-violet-400 px-2 py-0.5 rounded-full font-medium">Loyalty</span>}
+                              {Number(s.promoDiscountAmount ?? 0) > 0 && <span className="text-[10px] bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 px-2 py-0.5 rounded-full font-medium">Promo −${Number(s.promoDiscountAmount).toFixed(2)}</span>}
+                              {Number(s.discountAmount ?? 0) > 0 && <span className="text-[10px] bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400 px-2 py-0.5 rounded-full font-medium">Discount −${Number(s.discountAmount).toFixed(2)}</span>}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+          <DialogFooter className="px-6 py-4 border-t shrink-0">
+            <Button variant="outline" onClick={() => setShowSubsModal(false)}>Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal 2 — Billing & Spend */}
+      {(() => {
+        const getSubAmount = (item: NonNullable<typeof subscriptions>[number]): number => {
+          if (item.nextBillingAmount != null) return Number(item.nextBillingAmount);
+          const s = item.subscription;
+          if (s.paymentPlan === "installment" && s.firstInstallmentAmount != null) return Number(s.firstInstallmentAmount);
+          const coursePrice = Number(item.course?.price ?? 0);
+          const promo = Number(s.promoDiscountAmount ?? 0);
+          const discount = Number(s.discountAmount ?? 0);
+          return Math.max(0, coursePrice - promo - discount);
+        };
+        const activeSubs = (subscriptions || []).filter(s => s.subscription.status === "active");
+        const totalSpend = activeSubs.reduce((sum, s) => sum + getSubAmount(s), 0);
+        const totalSavings = (subscriptions || []).reduce((sum, s) => sum + Number(s.subscription.promoDiscountAmount ?? 0) + Number(s.subscription.discountAmount ?? 0), 0);
+        const planLabel = (plan: string) => plan === "monthly" ? "Monthly" : plan === "installment" ? "Installment" : "Full";
+        return (
+          <Dialog open={showBillingModal} onOpenChange={setShowBillingModal}>
+            <DialogContent className="max-w-xl max-h-[85vh] flex flex-col gap-0 p-0">
+              <div className="px-6 pt-6 pb-4 border-b shrink-0">
+                <DialogTitle className="flex items-center gap-2">
+                  <CreditCard className="w-5 h-5 text-emerald-600 dark:text-emerald-400" /> Billing &amp; Spend Analyzer
+                </DialogTitle>
+                <DialogDescription className="mt-1">Full breakdown of costs and savings across all enrollments</DialogDescription>
+              </div>
+              <div className="overflow-y-auto flex-1 px-6 py-4 space-y-4">
+                {/* Summary row */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="rounded-xl bg-emerald-50 dark:bg-emerald-950/40 p-4">
+                    <p className="text-xs text-muted-foreground">Total Spend</p>
+                    <p className="text-2xl font-bold text-emerald-700 dark:text-emerald-400 mt-1">${totalSpend.toFixed(2)}</p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">{activeSubs.length} active enrollment{activeSubs.length !== 1 ? "s" : ""}</p>
+                  </div>
+                  <div className="rounded-xl bg-blue-50 dark:bg-blue-950/40 p-4">
+                    <p className="text-xs text-muted-foreground">Total Saved</p>
+                    <p className="text-2xl font-bold text-blue-700 dark:text-blue-400 mt-1">${totalSavings.toFixed(2)}</p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">via discounts &amp; promos</p>
+                  </div>
+                </div>
+                {/* Per-enrollment breakdown */}
+                <div>
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Enrollment Breakdown</p>
+                  <div className="space-y-2">
+                    {activeSubs.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">No active enrollments.</p>
+                    ) : activeSubs.map((item) => {
+                      const s = item.subscription;
+                      const amount = getSubAmount(item);
+                      const savings = Number(s.promoDiscountAmount ?? 0) + Number(s.discountAmount ?? 0);
+                      return (
+                        <div key={s.id} className="rounded-xl border bg-card p-4 space-y-2">
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <p className="font-semibold text-sm">{item.course?.title || "Course"}</p>
+                              <p className="text-xs text-muted-foreground">{[s.studentFirstName, s.studentLastName].filter(Boolean).join(" ")} · {planLabel(s.paymentPlan)} plan</p>
+                            </div>
+                            <p className="font-bold text-base shrink-0">${amount.toFixed(2)}</p>
+                          </div>
+                          {item.nextBillingDate && (
+                            <p className="text-xs text-muted-foreground">Next billing: {new Date(item.nextBillingDate).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}</p>
+                          )}
+                          {savings > 0 && (
+                            <div className="flex flex-wrap gap-1.5 pt-1 border-t">
+                              {Number(s.promoDiscountAmount ?? 0) > 0 && <span className="text-[10px] bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 px-2 py-0.5 rounded-full font-medium">Promo −${Number(s.promoDiscountAmount).toFixed(2)}</span>}
+                              {Number(s.discountAmount ?? 0) > 0 && <span className="text-[10px] bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400 px-2 py-0.5 rounded-full font-medium">Discount −${Number(s.discountAmount).toFixed(2)}</span>}
+                              {s.siblingDiscountApplied && <span className="text-[10px] bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-400 px-2 py-0.5 rounded-full font-medium">Sibling discount</span>}
+                              {s.loyaltyDiscountApplied && <span className="text-[10px] bg-violet-100 dark:bg-violet-900/40 text-violet-700 dark:text-violet-400 px-2 py-0.5 rounded-full font-medium">Loyalty discount</span>}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+              <DialogFooter className="px-6 py-4 border-t shrink-0">
+                <Button variant="outline" onClick={() => setShowBillingModal(false)}>Close</Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        );
+      })()}
+
+      {/* Modal 3 — Learning Proficiency */}
+      <Dialog open={showProficiencyModal} onOpenChange={setShowProficiencyModal}>
+        <DialogContent className="max-w-xl max-h-[85vh] flex flex-col gap-0 p-0">
+          <div className="px-6 pt-6 pb-4 border-b shrink-0">
+            <DialogTitle className="flex items-center gap-2">
+              <Target className="w-5 h-5 text-violet-600 dark:text-violet-400" /> Learning Proficiency
+            </DialogTitle>
+            <DialogDescription className="mt-1">Detailed breakdown of quiz performance, attendance, and teaching quality</DialogDescription>
+          </div>
+          <div className="overflow-y-auto flex-1 px-6 py-4 space-y-5">
+            {/* Overall label */}
+            {(() => {
+              const { avgQuizScore, attendanceRate, avgRubricScore, proficiencyLabel, completedQuizzes, totalCompleted, noShowCount, studentBreakdown } = analyticsStats;
+              const profColor = proficiencyLabel === "Above Average" ? "text-emerald-600 dark:text-emerald-400" : proficiencyLabel === "On Track" ? "text-blue-600 dark:text-blue-400" : "text-amber-500";
+              const profBg = proficiencyLabel === "Above Average" ? "bg-emerald-50 dark:bg-emerald-950/40" : proficiencyLabel === "On Track" ? "bg-blue-50 dark:bg-blue-950/40" : "bg-amber-50 dark:bg-amber-950/40";
+              return (
+                <>
+                  <div className={`rounded-xl px-4 py-3 ${profBg}`}>
+                    <p className={`text-base font-bold ${profColor}`}>{proficiencyLabel}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">Overall assessment based on quiz score &amp; attendance</p>
+                  </div>
+                  {/* Metrics */}
+                  <div className="space-y-4">
+                    <div className="rounded-xl border bg-card p-4 space-y-3">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Quiz Performance</p>
+                      <div className="flex items-end justify-between">
+                        <p className="text-3xl font-bold">{avgQuizScore != null ? `${avgQuizScore}%` : "—"}</p>
+                        <p className="text-xs text-muted-foreground">{completedQuizzes} quiz{completedQuizzes !== 1 ? "zes" : ""} taken</p>
+                      </div>
+                      <div className="h-2 rounded-full bg-muted overflow-hidden">
+                        <div className="h-2 rounded-full bg-gradient-to-r from-violet-500 to-blue-500" style={{ width: `${avgQuizScore ?? 0}%` }} />
+                      </div>
+                      {/* Per-student quiz scores */}
+                      {studentBreakdown.filter(s => s.quizScores.length > 0).length > 0 && (
+                        <div className="pt-2 space-y-1.5">
+                          {studentBreakdown.filter(s => s.quizScores.length > 0).map(({ name, quizScores }) => {
+                            const avg = Math.round(quizScores.reduce((a, b) => a + b, 0) / quizScores.length);
+                            return (
+                              <div key={name} className="flex items-center gap-3 text-xs">
+                                <span className="w-24 text-muted-foreground truncate">{name}</span>
+                                <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
+                                  <div className="h-1.5 rounded-full bg-violet-400" style={{ width: `${avg}%` }} />
+                                </div>
+                                <span className="w-8 text-right font-semibold">{avg}%</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                    <div className="rounded-xl border bg-card p-4 space-y-3">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Attendance</p>
+                      <div className="flex items-end justify-between">
+                        <p className="text-3xl font-bold">{attendanceRate}%</p>
+                        <p className="text-xs text-muted-foreground">{totalCompleted} completed · {noShowCount} no-show</p>
+                      </div>
+                      <div className="h-2 rounded-full bg-muted overflow-hidden">
+                        <div className={`h-2 rounded-full bg-gradient-to-r from-emerald-500 to-teal-500`} style={{ width: `${attendanceRate}%` }} />
+                      </div>
+                    </div>
+                    {avgRubricScore != null && (
+                      <div className="rounded-xl border bg-card p-4 space-y-3">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Teaching Quality (Rubric)</p>
+                        <div className="flex items-end justify-between">
+                          <p className="text-3xl font-bold">{avgRubricScore}<span className="text-base font-normal text-muted-foreground">/4</span></p>
+                          <p className="text-xs text-muted-foreground">{(parentGrades || []).filter(g => g.rubricOverallScore != null).length} session{(parentGrades || []).filter(g => g.rubricOverallScore != null).length !== 1 ? "s" : ""} graded</p>
+                        </div>
+                        <div className="h-2 rounded-full bg-muted overflow-hidden">
+                          <div className="h-2 rounded-full bg-gradient-to-r from-amber-400 to-orange-500" style={{ width: `${(avgRubricScore / 4) * 100}%` }} />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </>
+              );
+            })()}
+          </div>
+          <DialogFooter className="px-6 py-4 border-t shrink-0">
+            <Button variant="outline" onClick={() => setShowProficiencyModal(false)}>Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal 4 — Engagement Breakdown */}
+      <Dialog open={showEngagementModal} onOpenChange={setShowEngagementModal}>
+        <DialogContent className="max-w-xl max-h-[85vh] flex flex-col gap-0 p-0">
+          <div className="px-6 pt-6 pb-4 border-b shrink-0">
+            <DialogTitle className="flex items-center gap-2">
+              <Activity className="w-5 h-5 text-indigo-600 dark:text-indigo-400" /> Engagement Breakdown
+            </DialogTitle>
+            <DialogDescription className="mt-1">Detailed view of platform activity across sessions, quizzes, and messaging</DialogDescription>
+          </div>
+          <div className="overflow-y-auto flex-1 px-6 py-4 space-y-4">
+            {(() => {
+              const { totalCompleted, noShowCount, completedQuizzes, studentBreakdown, monthlyActivity } = analyticsStats;
+              const recentThreshold = Date.now() - 30 * 24 * 60 * 60 * 1000;
+              const recentFeedbackSessions = (sessionHistory || []).filter(s => s.feedbackFromTutor && new Date(s.scheduledAt).getTime() > recentThreshold);
+              const hasRecentFeedback = recentFeedbackSessions.length > 0;
+              const totalScheduled = (upcomingSessions || []).length;
+              return (
+                <>
+                  {/* Summary cards */}
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="rounded-xl bg-emerald-50 dark:bg-emerald-950/40 p-3 text-center">
+                      <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">{totalCompleted}</p>
+                      <p className="text-[10px] text-muted-foreground mt-0.5">Sessions attended</p>
+                    </div>
+                    <div className="rounded-xl bg-violet-50 dark:bg-violet-950/40 p-3 text-center">
+                      <p className="text-2xl font-bold text-violet-600 dark:text-violet-400">{completedQuizzes}</p>
+                      <p className="text-[10px] text-muted-foreground mt-0.5">Quizzes done</p>
+                    </div>
+                    <div className="rounded-xl bg-red-50 dark:bg-red-950/40 p-3 text-center">
+                      <p className="text-2xl font-bold text-red-500">{noShowCount}</p>
+                      <p className="text-[10px] text-muted-foreground mt-0.5">No-shows</p>
+                    </div>
+                  </div>
+                  {/* Sessions detail */}
+                  <div className="rounded-xl border bg-card p-4 space-y-2">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Session Activity</p>
+                    <div className="divide-y">
+                      <div className="flex justify-between text-sm py-2">
+                        <span className="text-muted-foreground">Completed sessions</span>
+                        <span className="font-semibold text-emerald-600 dark:text-emerald-400">{totalCompleted}</span>
+                      </div>
+                      <div className="flex justify-between text-sm py-2">
+                        <span className="text-muted-foreground">Upcoming scheduled</span>
+                        <span className="font-semibold text-blue-600 dark:text-blue-400">{totalScheduled}</span>
+                      </div>
+                      <div className="flex justify-between text-sm py-2">
+                        <span className="text-muted-foreground">No-shows</span>
+                        <span className={`font-semibold ${noShowCount > 0 ? "text-red-500" : "text-muted-foreground"}`}>{noShowCount}</span>
+                      </div>
+                    </div>
+                  </div>
+                  {/* Per-student engagement */}
+                  {studentBreakdown.length > 0 && (
+                    <div className="rounded-xl border bg-card p-4 space-y-3">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Per-Student</p>
+                      {studentBreakdown.map(({ name, sessions, lastSession, quizScores }) => (
+                        <div key={name} className="flex items-center justify-between gap-3 text-sm">
+                          <div>
+                            <p className="font-medium">{name}</p>
+                            <p className="text-xs text-muted-foreground">{lastSession ? `Last session ${new Date(lastSession).toLocaleDateString()}` : "No sessions yet"}</p>
+                          </div>
+                          <div className="flex gap-3 text-right shrink-0">
+                            <div>
+                              <p className="font-semibold">{sessions}</p>
+                              <p className="text-[10px] text-muted-foreground">sessions</p>
+                            </div>
+                            <div>
+                              <p className="font-semibold">{quizScores.length}</p>
+                              <p className="text-[10px] text-muted-foreground">quizzes</p>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {/* Messaging */}
+                  <div className="rounded-xl border bg-card p-4 space-y-2">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Messaging Activity</p>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Tutor feedback (last 30 days)</span>
+                      <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${hasRecentFeedback ? "bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400" : "bg-muted text-muted-foreground"}`}>
+                        {hasRecentFeedback ? `Active (${recentFeedbackSessions.length} message${recentFeedbackSessions.length !== 1 ? "s" : ""})` : "No recent activity"}
+                      </span>
+                    </div>
+                  </div>
+                  {/* Monthly activity mini-chart */}
+                  {monthlyActivity.some(m => m.count > 0) && (
+                    <div className="rounded-xl border bg-card p-4 space-y-3">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Monthly Sessions</p>
+                      {(() => {
+                        const max = Math.max(...monthlyActivity.map(m => m.count), 1);
+                        return monthlyActivity.map(({ label, count }) => (
+                          <div key={label} className="flex items-center gap-3 text-xs">
+                            <span className="w-20 text-muted-foreground shrink-0">{label}</span>
+                            <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
+                              <div className="h-2 rounded-full bg-gradient-to-r from-indigo-500 to-blue-500" style={{ width: `${(count / max) * 100}%` }} />
+                            </div>
+                            <span className="w-4 text-right font-semibold">{count}</span>
+                          </div>
+                        ));
+                      })()}
+                    </div>
+                  )}
+                </>
+              );
+            })()}
+          </div>
+          <DialogFooter className="px-6 py-4 border-t shrink-0">
+            <Button variant="outline" onClick={() => setShowEngagementModal(false)}>Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Quiz Taking Modal */}
       {quizModal && (
