@@ -444,16 +444,16 @@ export default function Home() {
           <div className="grid items-center gap-12 lg:grid-cols-[minmax(0,1.02fr)_minmax(0,0.98fr)] lg:gap-20">
             <div className="max-w-[39rem]">
               <h1 className="max-w-[34rem]">
-                <span className="block text-xl font-bold tracking-tight text-slate-950 sm:text-2xl">
+                <span className="block text-xl font-bold tracking-tight text-slate-950 sm:text-3xl">
                   Connect with Expert Tutors For
                 </span>
-                <span className="block text-5xl font-extrabold tracking-tight text-primary sm:text-6xl lg:text-[4.5rem] lg:leading-[1.1]">
-                  Academic Excellence & Rigorous Test Prep
+                <span className="block text-4xl font-extrabold tracking-tight text-primary sm:text-3xl lg:text-[3.25rem] lg:leading-[1.1]">
+                  Academic Excellence &<br />Rigorous Test Prep
                 </span>
               </h1>
 
               <p className="mt-5 max-w-[32rem] text-base leading-7 text-slate-600 sm:text-lg">
-                Expert tutors powered by smart AI — personalized, one-on-one learning that fits your schedule.
+                Real human tutors powered by smart AI, provide personalized, one-on-one learning through zoom that fits your schedule and convenience.
               </p>
 
               <div className="mt-6 flex items-center gap-3 text-sm font-medium text-slate-600 sm:text-base">
@@ -490,17 +490,17 @@ export default function Home() {
                     className="h-[340px] w-full object-cover sm:h-[430px] lg:h-[520px]"
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-slate-950/10 via-transparent to-white/10" />
-                  <div className="absolute bottom-5 left-5 hidden max-w-[270px] items-start gap-3 rounded-2xl border border-violet-100 bg-white/95 p-4 shadow-[0_24px_55px_-30px_rgba(15,23,42,0.45)] sm:flex">
+                  <div className="absolute bottom-5 left-5 hidden max-w-[400px] items-start gap-3 rounded-2xl border border-violet-100 bg-white/95 p-4 shadow-[0_24px_55px_-30px_rgba(15,23,42,0.45)] sm:flex">
                     <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-violet-500 to-indigo-600 text-white shadow-md">
                       <Sparkles className="h-5 w-5" />
                     </div>
                     <div>
                       <div className="flex items-center gap-1.5">
-                        <p className="text-sm font-semibold text-slate-900">✦ AI-Powered Courses</p>
+                        <p className="text-sm font-semibold text-slate-900">✦ AI-Powered Session Management</p>
                         <span className="rounded-full bg-violet-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-600">New</span>
                       </div>
-                      <p className="mt-1 text-xs leading-5 text-slate-500">
-                        AI-generated quizzes, session insights & homework after every lesson.
+                      <p className="mt-1 text-xs leading-5 text-slate-700">
+                        Smart AI-powered session management provides complete transparency on session details and a holistic view of the students progress.
                       </p>
                     </div>
                   </div>
