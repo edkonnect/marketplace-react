@@ -439,7 +439,8 @@ interface TutorEnrollmentNotificationEmailProps {
   courseName: string;
   studentName?: string;
   parentName?: string;
-  coursePrice: string;
+  sessionsPerWeek?: number;
+  totalSessions?: number | null;
   dashboardUrl: string;
 }
 
@@ -520,7 +521,7 @@ export function getEnrollmentConfirmationEmail(props: EnrollmentConfirmationEmai
  * Notify tutor about a new course enrollment
  */
 export function getTutorEnrollmentNotificationEmail(props: TutorEnrollmentNotificationEmailProps): string {
-  const { tutorName, courseName, studentName, parentName, coursePrice, dashboardUrl } = props;
+  const { tutorName, courseName, studentName, parentName, sessionsPerWeek, totalSessions, dashboardUrl } = props;
 
   const content = `
     <h1>New Enrollment Assigned</h1>
@@ -545,10 +546,16 @@ export function getTutorEnrollmentNotificationEmail(props: TutorEnrollmentNotifi
           <td style="padding: 8px 0; font-weight: 600; color: #111827;">Parent:</td>
           <td style="padding: 8px 0; color: #374151;">${parentName}</td>
         </tr>` : ""}
+        ${sessionsPerWeek != null ? `
         <tr>
-          <td style="padding: 8px 0; font-weight: 600; color: #111827;">Price:</td>
-          <td style="padding: 8px 0; color: #374151;">${coursePrice}</td>
-        </tr>
+          <td style="padding: 8px 0; font-weight: 600; color: #111827;">Sessions/Week:</td>
+          <td style="padding: 8px 0; color: #374151;">${sessionsPerWeek} session${sessionsPerWeek !== 1 ? "s" : ""} per week</td>
+        </tr>` : ""}
+        ${totalSessions != null ? `
+        <tr>
+          <td style="padding: 8px 0; font-weight: 600; color: #111827;">Total Sessions:</td>
+          <td style="padding: 8px 0; color: #374151;">${totalSessions} sessions</td>
+        </tr>` : ""}
       </table>
     </div>
 

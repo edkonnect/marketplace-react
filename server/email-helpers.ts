@@ -160,7 +160,8 @@ interface SendTutorEnrollmentNotificationParams {
   courseName: string;
   studentName?: string;
   parentName?: string;
-  coursePrice: string;
+  sessionsPerWeek?: number;
+  totalSessions?: number | null;
 }
 
 /**
@@ -201,7 +202,7 @@ export async function sendEnrollmentConfirmation(params: SendEnrollmentConfirmat
  * Send notification to preferred tutor about a new enrollment
  */
 export async function sendTutorEnrollmentNotification(params: SendTutorEnrollmentNotificationParams): Promise<boolean> {
-  const { tutorEmail, tutorName, courseName, studentName, parentName, coursePrice } = params;
+  const { tutorEmail, tutorName, courseName, studentName, parentName, sessionsPerWeek, totalSessions } = params;
 
   const dashboardUrl = emailRedirect("/tutor/dashboard");
 
@@ -210,7 +211,8 @@ export async function sendTutorEnrollmentNotification(params: SendTutorEnrollmen
     courseName,
     studentName,
     parentName,
-    coursePrice,
+    sessionsPerWeek,
+    totalSessions,
     dashboardUrl,
   });
 

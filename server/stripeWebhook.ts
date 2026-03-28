@@ -163,7 +163,8 @@ export async function handleStripeWebhook(req: Request, res: Response) {
                         courseName: course.title,
                         studentName,
                         parentName: [parentUser?.firstName, parentUser?.lastName].filter(Boolean).join(" "),
-                        coursePrice,
+                        sessionsPerWeek: course.sessionsPerWeek ?? undefined,
+                        totalSessions: course.totalSessions ?? null,
                       });
                     }
                   } catch (emailErr: any) {
@@ -268,7 +269,8 @@ export async function handleStripeWebhook(req: Request, res: Response) {
                       courseName: course.title,
                       studentName,
                       parentName: [parentUser?.firstName, parentUser?.lastName].filter(Boolean).join(" "),
-                      coursePrice,
+                      sessionsPerWeek: course?.sessionsPerWeek ?? undefined,
+                      totalSessions: course?.totalSessions ?? null,
                     });
                   }
                 } catch (emailErr: any) {
@@ -365,7 +367,8 @@ export async function handleStripeWebhook(req: Request, res: Response) {
                       courseName: course.title,
                       studentName,
                       parentName: [parentUser?.firstName, parentUser?.lastName].filter(Boolean).join(" "),
-                      coursePrice,
+                      sessionsPerWeek: course?.sessionsPerWeek ?? undefined,
+                      totalSessions: course?.totalSessions ?? null,
                     });
                   }
                 } catch (emailErr: any) {
@@ -454,7 +457,8 @@ export async function handleStripeWebhook(req: Request, res: Response) {
                       courseName: course.title,
                       studentName,
                       parentName: [parentUser.firstName, parentUser.lastName].filter(Boolean).join(" "),
-                      coursePrice,
+                      sessionsPerWeek: course?.sessionsPerWeek ?? undefined,
+                      totalSessions: course?.totalSessions ?? null,
                     });
                   }
                 }
@@ -524,7 +528,8 @@ export async function handleStripeWebhook(req: Request, res: Response) {
                     courseName: course.title,
                     studentName,
                     parentName: [parentUser.firstName, parentUser.lastName].filter(Boolean).join(" "),
-                    coursePrice,
+                    sessionsPerWeek: course?.sessionsPerWeek ?? undefined,
+                    totalSessions: course?.totalSessions ?? null,
                   });
                 }
               }
