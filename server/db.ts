@@ -5483,6 +5483,7 @@ export interface RubricGradePayload {
   overallScore: number;
   transcriptQuality: "high" | "medium" | "low";
   transcriptQualityReason: string;
+  engagementData?: object | null;
 }
 
 export async function saveSessionRubricGrades(payload: RubricGradePayload) {
@@ -5499,6 +5500,8 @@ export async function saveSessionRubricGrades(payload: RubricGradePayload) {
       .where(eq(sessionAIInsights.sessionId, payload.sessionId))
       .limit(1);
 
+    const engagementJson = payload.engagementData ? JSON.stringify(payload.engagementData) : null;
+
     if (existing.length > 0) {
       await db.update(sessionAIInsights).set({
         rubricAcademicEfficiency: payload.academicEfficiency,
@@ -5510,6 +5513,7 @@ export async function saveSessionRubricGrades(payload: RubricGradePayload) {
         rubricGradedAt: now,
         rubricTranscriptQuality: payload.transcriptQuality,
         rubricTranscriptQualityReason: payload.transcriptQualityReason,
+        rubricEngagementData: engagementJson,
       }).where(eq(sessionAIInsights.sessionId, payload.sessionId));
       return existing[0].id;
     } else {
@@ -5525,6 +5529,7 @@ export async function saveSessionRubricGrades(payload: RubricGradePayload) {
         rubricGradedAt: now,
         rubricTranscriptQuality: payload.transcriptQuality,
         rubricTranscriptQualityReason: payload.transcriptQualityReason,
+        rubricEngagementData: engagementJson,
       });
       return (result as any).insertId ?? null;
     }
@@ -5548,6 +5553,7 @@ export async function getSessionRubricGrades(sessionId: number) {
       rubricGradedAt: sessionAIInsights.rubricGradedAt,
       rubricTranscriptQuality: sessionAIInsights.rubricTranscriptQuality,
       rubricTranscriptQualityReason: sessionAIInsights.rubricTranscriptQualityReason,
+      rubricEngagementData: sessionAIInsights.rubricEngagementData,
     })
     .from(sessionAIInsights)
     .where(and(eq(sessionAIInsights.sessionId, sessionId), isNotNull(sessionAIInsights.rubricGradedAt)))
@@ -5570,6 +5576,7 @@ export async function getRubricGradesByParentId(parentId: number) {
       rubricGradedAt: sessionAIInsights.rubricGradedAt,
       rubricTranscriptQuality: sessionAIInsights.rubricTranscriptQuality,
       rubricTranscriptQualityReason: sessionAIInsights.rubricTranscriptQualityReason,
+      rubricEngagementData: sessionAIInsights.rubricEngagementData,
       scheduledAt: sessions.scheduledAt,
     })
     .from(sessionAIInsights)
@@ -5593,6 +5600,7 @@ export async function getRubricGradesByTutorId(tutorId: number) {
       rubricGradedAt: sessionAIInsights.rubricGradedAt,
       rubricTranscriptQuality: sessionAIInsights.rubricTranscriptQuality,
       rubricTranscriptQualityReason: sessionAIInsights.rubricTranscriptQualityReason,
+      rubricEngagementData: sessionAIInsights.rubricEngagementData,
       scheduledAt: sessions.scheduledAt,
     })
     .from(sessionAIInsights)

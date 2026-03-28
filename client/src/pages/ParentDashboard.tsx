@@ -570,6 +570,16 @@ export default function ParentDashboard() {
     });
   };
 
+  // Track which engagement breakdown cards are expanded
+  const [expandedEngagement, setExpandedEngagement] = useState<Set<number>>(new Set());
+  const toggleEngagementExpand = (sessionId: number) => {
+    setExpandedEngagement((prev) => {
+      const next = new Set(prev);
+      if (next.has(sessionId)) next.delete(sessionId); else next.add(sessionId);
+      return next;
+    });
+  };
+
   // Analytics computations
   const analyticsStats = useMemo(() => {
     const allSessions = sessionHistory || [];
@@ -1304,6 +1314,133 @@ export default function ParentDashboard() {
                           )}
 
                           {/* Session Grade */}
+                          {gradeBySessionId.has(session.id) && (() => {
+                            const gEngagement = gradeBySessionId.get(session.id)!;
+                            const eng = (gEngagement as any).rubricEngagementData as {
+                              studentParticipationRate?: string;
+                              studentRole?: string;
+                              studentCriticalThinking?: string;
+                              tutorParticipationRate?: string;
+                              tutorRole?: string;
+                              tutorInstructionalStyle?: string;
+                            } | null;
+                            if (eng) {
+                              const isEngExpanded = expandedEngagement.has(session.id);
+                              const studentName = session.studentFirstName || "Student";
+                              const tutorName = (session as any).tutorName || "Tutor";
+                              const ctLevel = eng.studentCriticalThinking?.split(".")[0]?.trim() || "";
+                              const ctBadge = ctLevel === "High" ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300" : ctLevel === "Medium" ? "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300" : ctLevel === "Low" ? "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300" : "bg-muted text-muted-foreground";
+
+                              const parseParticipationPct = (rate?: string) => {
+                                const match = rate?.match(/(\d+(?:\.\d+)?)/);
+                                return match ? parseFloat(match[1]) : null;
+                              };
+                              const studentPct = parseParticipationPct(eng.studentParticipationRate);
+                              const tutorPct = parseParticipationPct(eng.tutorParticipationRate);
+                              // Extract just the percentage portion for collapsed display
+                              const extractPctDisplay = (rate?: string) => {
+                                const match = rate?.match(/~?\d+(?:\.\d+)?%/);
+                                return match ? match[0] : rate;
+                              };
+
+                              return (
+                                <div className="mt-3 rounded-xl border border-border/60 overflow-hidden shadow-sm">
+                                  {/* Header */}
+                                  <div className="flex items-center justify-between px-4 py-2.5 bg-gradient-to-r from-sky-50 to-blue-50 dark:from-sky-950/30 dark:to-blue-950/30 border-b border-border/50">
+                                    <div className="flex items-center gap-2">
+                                      <svg className="w-3.5 h-3.5 text-sky-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M17 8h2a2 2 0 012 2v6a2 2 0 01-2 2h-2v4l-4-4H9a1.994 1.994 0 01-1.414-.586m0 0L11 14h4a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2v4l.586-.586z" /></svg>
+                                      <span className="text-xs font-semibold text-sky-700 dark:text-sky-300 uppercase tracking-wide">Engagement Breakdown</span>
+                                    </div>
+                                    <button
+                                      onClick={() => toggleEngagementExpand(session.id)}
+                                      className="flex items-center gap-1 text-xs text-sky-600 dark:text-sky-400 hover:text-sky-800 dark:hover:text-sky-200 font-medium transition-colors"
+                                    >
+                                      {isEngExpanded ? "Hide" : "View"}
+                                      <svg className={`w-3 h-3 transition-transform ${isEngExpanded ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
+                                    </button>
+                                  </div>
+
+                                  {isEngExpanded && (
+                                    <div className="px-4 py-3 space-y-4 bg-background divide-y divide-border/40">
+                                      {/* Student Section */}
+                                      <div className="space-y-2.5">
+                                        <p className="text-xs font-semibold text-foreground">Student Engagement · {studentName}</p>
+                                        {eng.studentParticipationRate && (
+                                          <div className="space-y-1">
+                                            <div className="flex items-center justify-between">
+                                              <span className="text-xs text-muted-foreground">Participation</span>
+                                              <span className="text-xs font-medium">{eng.studentParticipationRate}</span>
+                                            </div>
+                                            {studentPct !== null && (
+                                              <div className="w-full bg-muted rounded-full h-1.5 overflow-hidden">
+                                                <div className="h-1.5 rounded-full bg-sky-400 transition-all" style={{ width: `${Math.min(studentPct, 100)}%` }} />
+                                              </div>
+                                            )}
+                                          </div>
+                                        )}
+                                        {eng.studentRole && (
+                                          <div>
+                                            <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-0.5">Role</p>
+                                            <p className="text-xs text-foreground/80 leading-relaxed">{eng.studentRole}</p>
+                                          </div>
+                                        )}
+                                        {eng.studentCriticalThinking && (
+                                          <div>
+                                            <div className="flex items-center gap-1.5 mb-0.5">
+                                              <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Critical Thinking</p>
+                                              {ctLevel && <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${ctBadge}`}>{ctLevel}</span>}
+                                            </div>
+                                            <p className="text-xs text-foreground/80 leading-relaxed">{eng.studentCriticalThinking}</p>
+                                          </div>
+                                        )}
+                                      </div>
+
+                                      {/* Tutor Section */}
+                                      <div className="space-y-2.5 pt-3">
+                                        <p className="text-xs font-semibold text-foreground">Tutor Engagement · {tutorName}</p>
+                                        {eng.tutorParticipationRate && (
+                                          <div className="space-y-1">
+                                            <div className="flex items-center justify-between">
+                                              <span className="text-xs text-muted-foreground">Participation</span>
+                                              <span className="text-xs font-medium">{eng.tutorParticipationRate}</span>
+                                            </div>
+                                            {tutorPct !== null && (
+                                              <div className="w-full bg-muted rounded-full h-1.5 overflow-hidden">
+                                                <div className="h-1.5 rounded-full bg-violet-400 transition-all" style={{ width: `${Math.min(tutorPct, 100)}%` }} />
+                                              </div>
+                                            )}
+                                          </div>
+                                        )}
+                                        {eng.tutorRole && (
+                                          <div>
+                                            <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-0.5">Role</p>
+                                            <p className="text-xs text-foreground/80 leading-relaxed">{eng.tutorRole}</p>
+                                          </div>
+                                        )}
+                                        {eng.tutorInstructionalStyle && (
+                                          <div>
+                                            <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-0.5">Instructional Style</p>
+                                            <p className="text-xs text-foreground/80 leading-relaxed">{eng.tutorInstructionalStyle}</p>
+                                          </div>
+                                        )}
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {!isEngExpanded && (
+                                    <div className="px-4 py-2.5 bg-background flex items-center gap-4">
+                                      {eng.studentParticipationRate && <span className="text-xs text-muted-foreground">{studentName}: <span className="font-medium text-sky-600 dark:text-sky-400">{extractPctDisplay(eng.studentParticipationRate)}</span></span>}
+                                      {eng.tutorParticipationRate && <span className="text-xs text-muted-foreground">{tutorName}: <span className="font-medium text-violet-600 dark:text-violet-400">{extractPctDisplay(eng.tutorParticipationRate)}</span></span>}
+                                      {ctLevel && <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ml-auto ${ctBadge}`}>{ctLevel} Critical Thinking</span>}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            }
+                            return null;
+                          })()}
+
+                          {/* Session Grade (rubric) */}
                           {gradeBySessionId.has(session.id) && (() => {
                             const g = gradeBySessionId.get(session.id)!;
                             const score = g.rubricOverallScore != null ? Number(g.rubricOverallScore) : null;

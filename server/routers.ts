@@ -6355,6 +6355,7 @@ export const appRouter = router({
       .input(z.object({
         text: z.string().min(1, "Text cannot be empty"),
         maxLength: z.number().optional().default(150),
+        sessionDate: z.string().optional(),
       }))
       .mutation(async ({ input }) => {
         const { ENV } = await import("./_core/env");
@@ -6374,7 +6375,15 @@ export const appRouter = router({
             model: "gemini-2.5-flash"
           });
 
+          const sessionDateStr = input.sessionDate
+            ? `Session date: ${input.sessionDate}`
+            : `Session date: ${new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}`;
+
           const prompt = `You are a helpful assistant that summarizes tutor session notes. Create concise, professional summaries that capture the key points while maintaining clarity. Focus on student progress, challenges, and next steps.
+
+${sessionDateStr}
+
+When referring to this session in the summary, use the actual date above (e.g. "In the March 28 session" or "During Friday's session on March 28"). Do NOT use vague references like "last class", "this session", or implicit date markers.
 
 Please summarize the following tutor session notes in approximately ${input.maxLength} words or less. Keep it professional and focused on the most important points:
 
@@ -6694,9 +6703,57 @@ Return ONLY the JSON object.`;
 
         const { GoogleGenerativeAI } = await import('@google/generative-ai');
         const genAI = new GoogleGenerativeAI(ENV.geminiApiKey);
-        const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+        const model = genAI.getGenerativeModel({
+          model: 'gemini-2.5-flash',
+          generationConfig: {
+            responseMimeType: 'application/json',
+            responseSchema: {
+              type: 'object' as any,
+              required: ['grades', 'overallScore', 'overallNarrative', 'transcriptQuality', 'transcriptQualityReason', 'engagementData'],
+              properties: {
+                grades: {
+                  type: 'array' as any,
+                  items: {
+                    type: 'object' as any,
+                    required: ['criterion', 'score', 'evidence'],
+                    properties: {
+                      criterion: { type: 'string' as any },
+                      score: { type: 'number' as any },
+                      evidence: { type: 'string' as any },
+                    },
+                  },
+                },
+                overallScore: { type: 'number' as any },
+                overallNarrative: { type: 'string' as any },
+                transcriptQuality: { type: 'string' as any },
+                transcriptQualityReason: { type: 'string' as any },
+                engagementData: {
+                  type: 'object' as any,
+                  properties: {
+                    studentParticipationRate: { type: 'string' as any },
+                    studentRole: { type: 'string' as any },
+                    studentCriticalThinking: { type: 'string' as any },
+                    tutorParticipationRate: { type: 'string' as any },
+                    tutorRole: { type: 'string' as any },
+                    tutorInstructionalStyle: { type: 'string' as any },
+                  },
+                },
+              },
+            } as any,
+          } as any,
+        });
 
-        const prompt = `You are an expert educational quality assessor for EdKonnect tutoring. Grade this tutoring session transcript using the 4-criteria rubric below. Score each criterion 1–4.
+        const prompt = `You are an educational analyst writing reports for parents about their child's learning session. Your job is to describe ONLY the student's experience, behavior, and outcomes — never the tutor.
+
+IMPORTANT RULES (MUST FOLLOW):
+- Do NOT evaluate, mention, or judge the tutor in any way.
+- Do NOT explain tutor decisions, teaching style, or session structure.
+- Focus ONLY on the student's experience, behavior, and outcomes.
+- Describe what the student did, understood, struggled with, or completed.
+- Avoid phrases like "the tutor did", "the session started with", "teaching style", or any tutor-related explanation.
+- Do NOT infer causes related to the tutor. Only describe observable student outcomes.
+- Keep language simple, clear, and parent-friendly.
+- Each section must reflect what the parent can understand about their child's learning.
 
 STUDENT NAME: ${input.studentName || 'Student'}
 COURSE: ${input.courseName || 'General'}
@@ -6704,56 +6761,48 @@ COURSE: ${input.courseName || 'General'}
 TRANSCRIPT:
 ${input.transcript}
 
-RUBRIC CRITERIA (score 1-4 each):
+RUBRIC CRITERIA — score each 1–4 based solely on observable student behavior:
 
 1. Academic Efficiency & Time Management
-   4 (Exceeds): Session starts smoothly and quickly. Student is actively working within minutes and stays focused almost the entire time.
-   3 (Proficient): Short setup at the beginning, then steady focus. Most of the session is productive.
-   2 (Developing): Noticeable time lost to setup, distractions, or off-topic conversation.
-   1 (Support): Large portion of session feels unstructured or unproductive.
+   4 (Exceeds): Student is actively working within minutes and stays focused almost the entire time.
+   3 (Proficient): Student settles in quickly and stays mostly focused throughout.
+   2 (Developing): Student loses focus, gets distracted, or spends noticeable time off-task.
+   1 (Support): Student is largely off-task or unproductive for much of the time.
 
 2. Learning Engagement & Understanding
-   4 (Exceeds): Student explains their thinking clearly and solves problems independently with guidance.
-   3 (Proficient): Student practices after explanations and shows understanding through solving.
-   2 (Developing): Student mostly watches or follows along without much independent thinking.
-   1 (Support): Student is disengaged or just copying answers without understanding.
+   4 (Exceeds): Student explains their thinking clearly and attempts problems independently.
+   3 (Proficient): Student practices concepts and shows understanding through their responses.
+   2 (Developing): Student mostly follows along without attempting problems independently.
+   1 (Support): Student is disengaged, gives minimal responses, or copies without understanding.
 
 3. Strategy & Problem-Solving Skills
-   4 (Exceeds): Student learns smart techniques, shortcuts, and how to approach problems efficiently.
-   3 (Proficient): Student understands the concept and picks up a few helpful tips.
-   2 (Developing): Focus is mainly on basic steps without deeper strategy.
-   1 (Support): Student struggles to understand the concept or lacks clarity on how to apply it.
+   4 (Exceeds): Student applies techniques and approaches problems efficiently on their own.
+   3 (Proficient): Student understands the concept and can apply basic steps with some prompting.
+   2 (Developing): Student follows steps when guided but cannot apply them independently.
+   1 (Support): Student struggles to understand or apply the concept even with guidance.
 
-4. Session Value & Takeaways
-   4 (Exceeds): Student can clearly explain what they learned and leaves with a structured plan or homework.
-   3 (Proficient): Session ends with a quick recap and some practice assigned.
-   2 (Developing): Session ends without a clear summary or next steps.
-   1 (Support): No clear takeaway or direction after the session.
+4. Learning Takeaways
+   4 (Exceeds): Student can clearly articulate what they learned and has a concrete next step.
+   3 (Proficient): Student shows understanding of the key concept and has some direction for practice.
+   2 (Developing): Student leaves without a clear sense of what was covered or what to practice.
+   1 (Support): Student shows no clear takeaway or direction from the session.
 
-Also assess transcript quality: "high" (clear speaker labels, complete), "medium" (some gaps), or "low" (poor attribution, many gaps).
+Assess transcript quality: "high" (clear speaker labels, complete), "medium" (some gaps), or "low" (poor attribution, many gaps).
 
-CRITICAL: Return ONLY valid JSON. No markdown, no explanations outside JSON. Exactly this format:
-{
-  "grades": [
-    { "criterion": "Academic Efficiency & Time Management", "score": 3, "evidence": "One sentence of specific evidence from the transcript." },
-    { "criterion": "Learning Engagement & Understanding", "score": 4, "evidence": "One sentence of specific evidence from the transcript." },
-    { "criterion": "Strategy & Problem-Solving Skills", "score": 3, "evidence": "One sentence of specific evidence from the transcript." },
-    { "criterion": "Session Value & Takeaways", "score": 3, "evidence": "One sentence of specific evidence from the transcript." }
-  ],
-  "overallScore": 3.25,
-  "overallNarrative": "2-3 sentence summary of overall session quality.",
-  "transcriptQuality": "high",
-  "transcriptQualityReason": "Clear speaker attribution throughout."
-}`;
+For engagementData, describe ONLY the student's participation and behavior. The tutor section is for participation rate only — do not describe or judge the tutor.
+- studentParticipationRate: estimate the percentage of total dialogue spoken by the student. Must be a percentage string like "~35%" or "~40% of the dialogue". Count approximate speaking turns. Do NOT use words like "High" or "Low" — only a percentage.
+- tutorParticipationRate: same format, e.g. "~65% of the dialogue". Must add up to ~100% with the student rate.
+- studentRole: 2–3 sentences describing HOW the student engaged — did they ask questions, give short answers, explain their reasoning, initiate topics? Use specific examples from the transcript. No mention of the tutor.
+- studentCriticalThinking: Start with "High", "Medium", or "Low", then 1–2 sentences of specific evidence from the student's own words or actions. No mention of the tutor.
+- tutorRole: leave this as an empty string "".
+- tutorInstructionalStyle: leave this as an empty string "".`;
 
         try {
           const result = await model.generateContent(prompt);
-          const rawResponse = result.response.text();
 
           let parsed: any;
           try {
-            const jsonMatch = rawResponse.match(/\{[\s\S]*\}/);
-            parsed = JSON.parse(jsonMatch ? jsonMatch[0] : rawResponse);
+            parsed = JSON.parse(result.response.text());
           } catch {
             throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'AI returned invalid JSON. Try again.' });
           }
@@ -6779,6 +6828,7 @@ CRITICAL: Return ONLY valid JSON. No markdown, no explanations outside JSON. Exa
             overallScore,
             transcriptQuality: parsed.transcriptQuality || 'medium',
             transcriptQualityReason: parsed.transcriptQualityReason || '',
+            engagementData: parsed.engagementData || null,
           });
 
           return {
@@ -6787,6 +6837,7 @@ CRITICAL: Return ONLY valid JSON. No markdown, no explanations outside JSON. Exa
             overallNarrative: parsed.overallNarrative || '',
             transcriptQuality: parsed.transcriptQuality || 'medium',
             transcriptQualityReason: parsed.transcriptQualityReason || '',
+            engagementData: parsed.engagementData || null,
           };
         } catch (error: any) {
           if (error instanceof TRPCError) throw error;
@@ -7163,6 +7214,7 @@ CRITICAL: Return ONLY valid JSON. No markdown, no explanations outside JSON. Exa
           ...r,
           rubricEvidence: r.rubricEvidence ? JSON.parse(r.rubricEvidence) : [],
           rubricOverallScore: r.rubricOverallScore ? parseFloat(r.rubricOverallScore as string) : null,
+          rubricEngagementData: r.rubricEngagementData ? JSON.parse(r.rubricEngagementData) : null,
         }));
       }),
 
@@ -7178,6 +7230,7 @@ CRITICAL: Return ONLY valid JSON. No markdown, no explanations outside JSON. Exa
           ...row,
           rubricEvidence: row.rubricEvidence ? JSON.parse(row.rubricEvidence) : [],
           rubricOverallScore: row.rubricOverallScore ? parseFloat(row.rubricOverallScore as string) : null,
+          rubricEngagementData: row.rubricEngagementData ? JSON.parse(row.rubricEngagementData) : null,
         };
       }),
 
@@ -7191,6 +7244,7 @@ CRITICAL: Return ONLY valid JSON. No markdown, no explanations outside JSON. Exa
           ...r,
           rubricEvidence: r.rubricEvidence ? JSON.parse(r.rubricEvidence) : [],
           rubricOverallScore: r.rubricOverallScore ? parseFloat(r.rubricOverallScore as string) : null,
+          rubricEngagementData: r.rubricEngagementData ? JSON.parse(r.rubricEngagementData) : null,
         }));
       }),
   }),

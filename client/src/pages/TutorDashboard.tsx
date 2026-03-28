@@ -76,7 +76,7 @@ export default function TutorDashboard() {
   );
 
   // Fetch all rubric grades for this tutor's sessions
-  const { data: tutorGrades } = trpc.grades.getByTutor.useQuery(
+  const { data: tutorGrades, refetch: refetchTutorGrades } = trpc.grades.getByTutor.useQuery(
     undefined,
     { enabled: isAuthenticated && user?.role === "tutor" }
   );
@@ -88,6 +88,13 @@ export default function TutorDashboard() {
 
   const [expandedGrades, setExpandedGrades] = useState<Set<number>>(new Set());
   const toggleGradeExpand = (id: number) => setExpandedGrades((prev) => {
+    const next = new Set(prev);
+    next.has(id) ? next.delete(id) : next.add(id);
+    return next;
+  });
+
+  const [expandedEngagement, setExpandedEngagement] = useState<Set<number>>(new Set());
+  const toggleEngagementExpand = (id: number) => setExpandedEngagement((prev) => {
     const next = new Set(prev);
     next.has(id) ? next.delete(id) : next.add(id);
     return next;
@@ -124,9 +131,10 @@ export default function TutorDashboard() {
     transcript: string;
     summary?: string;
     quizQuestions?: Array<{ id: string; question: string; options: string[]; correctAnswer: number }>;
-    activeTab: "transcript" | "quiz" | "grade";
+    activeTab: "transcript" | "quiz";
     courseTitle: string;
     studentName: string;
+    sessionDate?: string;
     courseId?: number;
     parentId?: number;
     quizEnabled?: boolean;
@@ -140,6 +148,7 @@ export default function TutorDashboard() {
   const [transcriptModal, setTranscriptModal] = useState<TranscriptModalState | null>(null);
   const [summarizingInModal, setSummarizingInModal] = useState(false);
   const summarizingInModalRef = useRef(false);
+  const pendingGradeContextRef = useRef<{ transcript: string; sessionId: number; courseTitle: string; studentName: string } | null>(null);
   const [generatingQuiz, setGeneratingQuiz] = useState(false);
   const [gradingSession, setGradingSession] = useState(false);
 
@@ -177,6 +186,7 @@ export default function TutorDashboard() {
         activeTab: "transcript",
         courseTitle: (session as any)?.courseTitle || (session as any)?.courseSubject || "Course",
         studentName,
+        sessionDate: session?.scheduledAt ? new Date(session.scheduledAt).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) : undefined,
         courseId: session?.courseId ?? undefined,
         parentId: session?.parentId ?? undefined,
         quizEnabled: ((session as any)?.courseQuizEnabled ?? false) && !((session as any)?.hasQuiz),
@@ -206,11 +216,23 @@ export default function TutorDashboard() {
         setSummarizingSessionId(null);
         toast.success("Notes summarized successfully!");
       } else if (summarizingInModalRef.current) {
-        // Modal summarize — store in modal state only
+        // Modal summarize — store in modal state and auto-grade in background
+        const gradeCtx = pendingGradeContextRef.current;
+        pendingGradeContextRef.current = null;
         summarizingInModalRef.current = false;
         setSummarizingInModal(false);
         setTranscriptModal((prev) => prev ? { ...prev, summary: data.summary } : prev);
         toast.success("Summary generated!");
+        // Auto-grade silently if transcript was long enough
+        if (gradeCtx) {
+          setGradingSession(true);
+          gradeSessionMutation.mutate({
+            transcript: gradeCtx.transcript,
+            sessionId: gradeCtx.sessionId,
+            courseName: gradeCtx.courseTitle,
+            studentName: gradeCtx.studentName,
+          });
+        }
       }
     },
     onError: (error) => {
@@ -262,14 +284,13 @@ export default function TutorDashboard() {
         overallNarrative: data.overallNarrative,
         transcriptQuality: data.transcriptQuality as "high" | "medium" | "low",
         transcriptQualityReason: data.transcriptQualityReason,
-        activeTab: "grade",
       } : prev);
       setGradingSession(false);
-      toast.success("Session graded successfully!");
+      refetchTutorGrades();
     },
     onError: (error) => {
       setGradingSession(false);
-      toast.error("Failed to grade session: " + error.message);
+      console.error("Auto-grading failed:", error.message);
     },
   });
 
@@ -645,6 +666,7 @@ export default function TutorDashboard() {
       activeTab: "transcript",
       courseTitle: (session as any)?.courseTitle || (session as any)?.courseSubject || "Course",
       studentName,
+      sessionDate: session?.scheduledAt ? new Date(session.scheduledAt).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) : undefined,
       courseId: session?.courseId ?? undefined,
       parentId: session?.parentId ?? undefined,
       quizEnabled: !!(session as any)?.courseQuizEnabled && !(session as any)?.hasQuiz,
@@ -656,7 +678,18 @@ export default function TutorDashboard() {
     if (!transcriptModal?.transcript) return;
     summarizingInModalRef.current = true;
     setSummarizingInModal(true);
-    summarizeMutation.mutate({ text: transcriptModal.transcript, maxLength: 200 });
+    // Capture grading context now (before async completes) so onSuccess can use it safely
+    if (transcriptModal.transcript.trim().length >= 300) {
+      pendingGradeContextRef.current = {
+        transcript: transcriptModal.transcript,
+        sessionId: transcriptModal.sessionId,
+        courseTitle: transcriptModal.courseTitle,
+        studentName: transcriptModal.studentName,
+      };
+    } else {
+      pendingGradeContextRef.current = null;
+    }
+    summarizeMutation.mutate({ text: transcriptModal.transcript, maxLength: 200, sessionDate: transcriptModal.sessionDate });
   };
 
   const handleUseThisSummary = () => {
@@ -666,6 +699,7 @@ export default function TutorDashboard() {
       ...prev,
       [sessionId]: summary,
     }));
+    setTranscriptModal(null);
     toast.success("Summary saved to session notes. Don't forget to save!");
   };
 
@@ -1579,6 +1613,90 @@ export default function TutorDashboard() {
                                   </div>
                                 )}
 
+                                {/* Engagement Breakdown */}
+                                {tutorGradeBySessionId.has(session.id) && (() => {
+                                  const gEng = tutorGradeBySessionId.get(session.id)!;
+                                  const eng = (gEng as any).rubricEngagementData as {
+                                    studentParticipationRate?: string;
+                                    studentRole?: string;
+                                    studentCriticalThinking?: string;
+                                    tutorParticipationRate?: string;
+                                    tutorRole?: string;
+                                    tutorInstructionalStyle?: string;
+                                  } | null;
+                                  if (!eng) return null;
+                                  const isEngExpanded = expandedEngagement.has(session.id);
+                                  const studentName = (session as any).studentFirstName || "Student";
+                                  const tutorNameLabel = (session as any).tutorName || "Tutor";
+                                  const ctLevel = eng.studentCriticalThinking?.split(".")[0]?.trim() || "";
+                                  const ctBadge = ctLevel === "High" ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300" : ctLevel === "Medium" ? "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300" : ctLevel === "Low" ? "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300" : "bg-muted text-muted-foreground";
+                                  const parseParticipationPct = (rate?: string) => { const match = rate?.match(/(\d+(?:\.\d+)?)/); return match ? parseFloat(match[1]) : null; };
+                                  const extractPctDisplay = (rate?: string) => { const match = rate?.match(/~?\d+(?:\.\d+)?%/); return match ? match[0] : rate; };
+                                  const studentPct = parseParticipationPct(eng.studentParticipationRate);
+                                  const tutorPct = parseParticipationPct(eng.tutorParticipationRate);
+                                  return (
+                                    <div className="mt-3 rounded-xl border border-border/60 overflow-hidden shadow-sm">
+                                      <div className="flex items-center justify-between px-4 py-2.5 bg-gradient-to-r from-sky-50 to-blue-50 dark:from-sky-950/30 dark:to-blue-950/30 border-b border-border/50">
+                                        <div className="flex items-center gap-2">
+                                          <svg className="w-3.5 h-3.5 text-sky-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M17 8h2a2 2 0 012 2v6a2 2 0 01-2 2h-2v4l-4-4H9a1.994 1.994 0 01-1.414-.586m0 0L11 14h4a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2v4l.586-.586z" /></svg>
+                                          <span className="text-xs font-semibold text-sky-700 dark:text-sky-300 uppercase tracking-wide">Engagement Breakdown</span>
+                                        </div>
+                                        <button onClick={() => toggleEngagementExpand(session.id)} className="flex items-center gap-1 text-xs text-sky-600 dark:text-sky-400 hover:text-sky-800 dark:hover:text-sky-200 font-medium transition-colors">
+                                          {isEngExpanded ? "Hide" : "View"}
+                                          <svg className={`w-3 h-3 transition-transform ${isEngExpanded ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
+                                        </button>
+                                      </div>
+                                      {isEngExpanded && (
+                                        <div className="px-4 py-3 space-y-4 bg-background divide-y divide-border/40">
+                                          <div className="space-y-2.5">
+                                            <p className="text-xs font-semibold text-foreground">Student Engagement · {studentName}</p>
+                                            {eng.studentParticipationRate && (
+                                              <div className="space-y-1">
+                                                <div className="flex items-center justify-between">
+                                                  <span className="text-xs text-muted-foreground">Participation</span>
+                                                  <span className="text-xs font-medium">{eng.studentParticipationRate}</span>
+                                                </div>
+                                                {studentPct !== null && <div className="w-full bg-muted rounded-full h-1.5 overflow-hidden"><div className="h-1.5 rounded-full bg-sky-400 transition-all" style={{ width: `${Math.min(studentPct, 100)}%` }} /></div>}
+                                              </div>
+                                            )}
+                                            {eng.studentRole && <div><p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-0.5">Role</p><p className="text-xs text-foreground/80 leading-relaxed">{eng.studentRole}</p></div>}
+                                            {eng.studentCriticalThinking && (
+                                              <div>
+                                                <div className="flex items-center gap-1.5 mb-0.5">
+                                                  <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Critical Thinking</p>
+                                                  {ctLevel && <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${ctBadge}`}>{ctLevel}</span>}
+                                                </div>
+                                                <p className="text-xs text-foreground/80 leading-relaxed">{eng.studentCriticalThinking}</p>
+                                              </div>
+                                            )}
+                                          </div>
+                                          <div className="space-y-2.5 pt-3">
+                                            <p className="text-xs font-semibold text-foreground">Tutor Engagement · {tutorNameLabel}</p>
+                                            {eng.tutorParticipationRate && (
+                                              <div className="space-y-1">
+                                                <div className="flex items-center justify-between">
+                                                  <span className="text-xs text-muted-foreground">Participation</span>
+                                                  <span className="text-xs font-medium">{eng.tutorParticipationRate}</span>
+                                                </div>
+                                                {tutorPct !== null && <div className="w-full bg-muted rounded-full h-1.5 overflow-hidden"><div className="h-1.5 rounded-full bg-violet-400 transition-all" style={{ width: `${Math.min(tutorPct, 100)}%` }} /></div>}
+                                              </div>
+                                            )}
+                                            {eng.tutorRole && <div><p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-0.5">Role</p><p className="text-xs text-foreground/80 leading-relaxed">{eng.tutorRole}</p></div>}
+                                            {eng.tutorInstructionalStyle && <div><p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-0.5">Instructional Style</p><p className="text-xs text-foreground/80 leading-relaxed">{eng.tutorInstructionalStyle}</p></div>}
+                                          </div>
+                                        </div>
+                                      )}
+                                      {!isEngExpanded && (
+                                        <div className="px-4 py-2.5 bg-background flex items-center gap-4">
+                                          {eng.studentParticipationRate && <span className="text-xs text-muted-foreground">{studentName}: <span className="font-medium text-sky-600 dark:text-sky-400">{extractPctDisplay(eng.studentParticipationRate)}</span></span>}
+                                          {eng.tutorParticipationRate && <span className="text-xs text-muted-foreground">{tutorNameLabel}: <span className="font-medium text-violet-600 dark:text-violet-400">{extractPctDisplay(eng.tutorParticipationRate)}</span></span>}
+                                          {ctLevel && <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ml-auto ${ctBadge}`}>{ctLevel} Critical Thinking</span>}
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                })()}
+
                                 {/* Rubric Grade Detail */}
                                 {tutorGradeBySessionId.has(session.id) && (() => {
                                   const g = tutorGradeBySessionId.get(session.id)!;
@@ -1818,7 +1936,7 @@ export default function TutorDashboard() {
             <Tabs
               value={transcriptModal.activeTab}
               onValueChange={(v) =>
-                setTranscriptModal((prev) => prev ? { ...prev, activeTab: v as "transcript" | "quiz" | "grade" } : prev)
+                setTranscriptModal((prev) => prev ? { ...prev, activeTab: v as "transcript" | "quiz" } : prev)
               }
               className="flex-1 flex flex-col min-h-0"
             >
@@ -1827,7 +1945,6 @@ export default function TutorDashboard() {
                 {transcriptModal.quizEnabled && (
                   <TabsTrigger value="quiz" className="flex-1 text-xs sm:text-sm py-1.5 min-w-0">Quiz</TabsTrigger>
                 )}
-                <TabsTrigger value="grade" className="flex-1 text-xs sm:text-sm py-1.5 min-w-0">Grade Session</TabsTrigger>
               </TabsList>
 
               {/* Transcript Tab */}
@@ -1991,104 +2108,6 @@ export default function TutorDashboard() {
                 </TabsContent>
               )}
 
-              {/* Grade Tab */}
-              <TabsContent value="grade" className="flex-1 flex flex-col gap-4 min-h-0 mt-4 overflow-y-auto">
-                {!transcriptModal.grades ? (
-                  <div className="flex flex-col items-center justify-center py-8 gap-3">
-                    <p className="text-sm text-muted-foreground text-center max-w-sm">
-                      Grade this session using the 4-criteria rubric based on the Zoom transcript.
-                    </p>
-                    <Button
-                      onClick={() => {
-                        setGradingSession(true);
-                        gradeSessionMutation.mutate({
-                          transcript: transcriptModal.transcript,
-                          sessionId: transcriptModal.sessionId,
-                          courseName: transcriptModal.courseTitle,
-                          studentName: transcriptModal.studentName,
-                        });
-                      }}
-                      disabled={gradingSession}
-                    >
-                      <Sparkles className="w-4 h-4 mr-2" />
-                      {gradingSession ? "Grading..." : "Grade Session"}
-                    </Button>
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    {/* Transcript quality warning */}
-                    {transcriptModal.transcriptQuality === "low" && (
-                      <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-950/20 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
-                        <span className="shrink-0">⚠️</span>
-                        <span><strong>Grade may be inaccurate</strong> — {transcriptModal.transcriptQualityReason || "transcript had audio gaps"}</span>
-                      </div>
-                    )}
-
-                    {/* Overall score */}
-                    {transcriptModal.overallScore != null && (() => {
-                      const score = transcriptModal.overallScore;
-                      const label = score >= 3.5 ? "Excellent" : score >= 2.5 ? "Proficient" : score >= 1.5 ? "Developing" : "Needs Support";
-                      const color = score >= 3.5 ? "text-emerald-600 dark:text-emerald-400" : score >= 2.5 ? "text-blue-600 dark:text-blue-400" : score >= 1.5 ? "text-amber-500" : "text-red-500";
-                      const bg = score >= 3.5 ? "bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800" : score >= 2.5 ? "bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800" : score >= 1.5 ? "bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800" : "bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-800";
-                      return (
-                        <div className={`rounded-xl border p-4 ${bg}`}>
-                          <div className="flex items-center justify-between mb-2">
-                            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Overall Score</p>
-                            <span className={`text-2xl font-bold ${color}`}>{score.toFixed(1)}<span className="text-sm font-normal text-muted-foreground"> / 4.0</span></span>
-                          </div>
-                          <p className={`text-sm font-semibold ${color}`}>{label}</p>
-                          {transcriptModal.overallNarrative && (
-                            <p className="text-xs text-muted-foreground mt-1 leading-relaxed">{transcriptModal.overallNarrative}</p>
-                          )}
-                        </div>
-                      );
-                    })()}
-
-                    {/* Per-criterion cards */}
-                    {transcriptModal.grades.map((g) => {
-                      const scoreColor = g.score === 4 ? "text-emerald-600 dark:text-emerald-400" : g.score === 3 ? "text-blue-600 dark:text-blue-400" : g.score === 2 ? "text-amber-500" : "text-red-500";
-                      const barColor = g.score === 4 ? "bg-emerald-500" : g.score === 3 ? "bg-blue-500" : g.score === 2 ? "bg-amber-400" : "bg-red-500";
-                      const scoreLabel = g.score === 4 ? "Exceeds" : g.score === 3 ? "Proficient" : g.score === 2 ? "Developing" : "Support";
-                      return (
-                        <div key={g.criterion} className="rounded-xl border bg-card p-4 space-y-2">
-                          <div className="flex items-center justify-between gap-2">
-                            <p className="text-xs font-semibold">{g.criterion}</p>
-                            <span className={`text-xs font-bold shrink-0 ${scoreColor}`}>{g.score}/4 · {scoreLabel}</span>
-                          </div>
-                          <div className="w-full bg-muted rounded-full h-1.5 overflow-hidden">
-                            <div className={`h-1.5 rounded-full ${barColor} transition-all`} style={{ width: `${(g.score / 4) * 100}%` }} />
-                          </div>
-                          {g.evidence && (
-                            <p className="text-xs text-muted-foreground italic border-l-2 border-muted pl-2 leading-relaxed">"{g.evidence}"</p>
-                          )}
-                        </div>
-                      );
-                    })}
-
-                    {/* Re-grade button */}
-                    <div className="flex justify-center pt-1">
-                      <Button variant="outline" size="sm" onClick={() => {
-                        setGradingSession(true);
-                        gradeSessionMutation.mutate({
-                          transcript: transcriptModal.transcript,
-                          sessionId: transcriptModal.sessionId,
-                          courseName: transcriptModal.courseTitle,
-                          studentName: transcriptModal.studentName,
-                        });
-                      }} disabled={gradingSession}>
-                        <Sparkles className="w-3.5 h-3.5 mr-1.5" />
-                        {gradingSession ? "Grading..." : "Re-grade"}
-                      </Button>
-                    </div>
-
-                    {/* Disclaimer */}
-                    <p className="text-xs text-muted-foreground text-center border-t pt-3">
-                      AI-assisted quality signal based on session transcript. Scores reflect observable teaching behaviors only.
-                    </p>
-
-                  </div>
-                )}
-              </TabsContent>
             </Tabs>
             </div>
 

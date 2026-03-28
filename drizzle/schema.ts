@@ -960,6 +960,7 @@ export const sessionAIInsights = mysqlTable("session_ai_insights", {
   rubricGradedAt: timestamp("rubricGradedAt"),
   rubricTranscriptQuality: varchar("rubricTranscriptQuality", { length: 10 }), // "high"|"medium"|"low"
   rubricTranscriptQualityReason: text("rubricTranscriptQualityReason"),
+  rubricEngagementData: text("rubricEngagementData"), // JSON: { studentParticipationRate, studentRole, studentCriticalThinking, tutorParticipationRate, tutorRole, tutorInstructionalStyle }
 }, (table) => ({
   recordingIdIdx: index("session_ai_insights_recordingId_idx").on(table.recordingId),
   sessionIdIdx: index("session_ai_insights_sessionId_idx").on(table.sessionId),
