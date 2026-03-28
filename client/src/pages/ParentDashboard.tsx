@@ -78,8 +78,11 @@ export default function ParentDashboard() {
 
   const setupBillingMutation = trpc.course.getSetupUrl.useMutation();
   const retryCheckoutMutation = trpc.course.retryCheckout.useMutation();
+  const retryInstallmentsMutation = trpc.course.retryInstallmentCheckout.useMutation();
   const [setupLoadingId, setSetupLoadingId] = useState<number | null>(null);
   const [retryLoadingId, setRetryLoadingId] = useState<number | null>(null);
+  const [retryInstallLoadingId, setRetryInstallLoadingId] = useState<number | null>(null);
+  const [paymentModalSub, setPaymentModalSub] = useState<{ subscription: any; course: any } | null>(null);
 
   const completeQuizMutation = trpc.quiz.complete.useMutation({
     onSuccess: (data) => {
@@ -945,41 +948,7 @@ export default function ParentDashboard() {
                                   </div>
                                 )}
 
-                                {subscription.paymentStatus === "pending" && subscription.paymentPlan === "monthly" && (
-                                  <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 dark:border-amber-900 dark:bg-amber-950/20">
-                                    <p className="mb-2 text-sm text-amber-900 dark:text-amber-200">
-                                      Add your payment method to activate monthly billing.
-                                    </p>
-                                    <Button
-                                      size="sm"
-                                      className="w-full"
-                                      disabled={setupLoadingId === subscription.id}
-                                      onClick={async () => {
-                                        try {
-                                          setSetupLoadingId(subscription.id);
-                                          const result = await setupBillingMutation.mutateAsync({
-                                            subscriptionId: subscription.id,
-                                            origin: window.location.origin,
-                                          });
-                                          if (result?.setupUrl) {
-                                            window.open(result.setupUrl, "_blank");
-                                          } else {
-                                            toast.error("Could not create billing setup. Please contact support.");
-                                          }
-                                        } catch (error) {
-                                          toast.error("Failed to set up billing");
-                                        } finally {
-                                          setSetupLoadingId(null);
-                                        }
-                                      }}
-                                    >
-                                      <CreditCard className="mr-2 h-4 w-4" />
-                                      {setupLoadingId === subscription.id ? "Setting up..." : "Set Up Monthly Billing"}
-                                    </Button>
-                                  </div>
-                                )}
-
-                                {subscription.paymentStatus === "pending" && (subscription.paymentPlan === "full" || subscription.paymentPlan === "installment") && (
+                                {subscription.paymentStatus === "pending" && (
                                   <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-3 dark:border-red-900 dark:bg-red-950/20">
                                     <p className="mb-2 text-sm text-red-900 dark:text-red-200">
                                       Payment is required to activate this enrollment.
@@ -987,28 +956,10 @@ export default function ParentDashboard() {
                                     <Button
                                       size="sm"
                                       className="w-full"
-                                      disabled={retryLoadingId === subscription.id}
-                                      onClick={async () => {
-                                        try {
-                                          setRetryLoadingId(subscription.id);
-                                          const result = await retryCheckoutMutation.mutateAsync({
-                                            subscriptionId: subscription.id,
-                                            origin: window.location.origin,
-                                          });
-                                          if (result?.checkoutUrl) {
-                                            window.open(result.checkoutUrl, "_blank");
-                                          } else {
-                                            toast.error("Could not create payment session. Please contact support.");
-                                          }
-                                        } catch (error: any) {
-                                          toast.error(error?.message || "Failed to initiate payment");
-                                        } finally {
-                                          setRetryLoadingId(null);
-                                        }
-                                      }}
+                                      onClick={() => setPaymentModalSub({ subscription, course })}
                                     >
                                       <CreditCard className="mr-2 h-4 w-4" />
-                                      {retryLoadingId === subscription.id ? "Redirecting..." : "Complete Payment"}
+                                      Complete Payment
                                     </Button>
                                   </div>
                                 )}
@@ -2300,6 +2251,199 @@ export default function ParentDashboard() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Complete Payment Modal */}
+      {paymentModalSub && (
+        <Dialog open={true} onOpenChange={() => setPaymentModalSub(null)}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Complete Your Payment</DialogTitle>
+              <DialogDescription>
+                Choose how you'd like to pay for <strong>{paymentModalSub.course.title}</strong>
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-3 py-2">
+              {/* Test Prep: Full OR Installments */}
+              {paymentModalSub.course.courseType === "test_prep" && (() => {
+                const price = parseFloat(paymentModalSub.course.price || "0");
+                const siblingPct = paymentModalSub.subscription.siblingDiscountApplied ? 5 : 0;
+                const promoAmt = parseFloat(paymentModalSub.subscription.promoDiscountAmount ?? "0");
+                // Loyalty discount always applies when paying in full (even if original plan was installment)
+                const loyaltyPct = 5;
+                const fullTotalPct = Math.min(100, siblingPct + loyaltyPct);
+                const discountedTotal = Math.max(0, price * (1 - fullTotalPct / 100) - promoAmt);
+                // Installment price: no loyalty discount, only sibling + promo
+                const installmentBase = Math.max(0, price * (1 - siblingPct / 100) - promoAmt);
+                const installmentAmt = installmentBase / 3;
+                return (
+                  <>
+                    <button
+                      className="w-full rounded-lg border-2 border-primary bg-primary/5 p-4 text-left hover:bg-primary/10 transition-colors disabled:opacity-60"
+                      disabled={retryLoadingId === paymentModalSub.subscription.id}
+                      onClick={async () => {
+                        try {
+                          setRetryLoadingId(paymentModalSub.subscription.id);
+                          const result = await retryCheckoutMutation.mutateAsync({
+                            subscriptionId: paymentModalSub.subscription.id,
+                            origin: window.location.origin,
+                          });
+                          if (result?.checkoutUrl) window.open(result.checkoutUrl, "_blank");
+                          else toast.error("Could not create payment session.");
+                          setPaymentModalSub(null);
+                        } catch (e: any) {
+                          toast.error(e?.message || "Failed to initiate payment");
+                        } finally {
+                          setRetryLoadingId(null);
+                        }
+                      }}
+                    >
+                      <div className="font-semibold text-sm">Pay in Full</div>
+                      <div className="text-primary font-bold text-lg">{formatPrice(discountedTotal)}
+                        {price > discountedTotal && <span className="ml-2 text-sm line-through text-muted-foreground">{formatPrice(price)}</span>}
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        {[loyaltyPct > 0 && `${loyaltyPct}% loyalty`, siblingPct > 0 && `${siblingPct}% sibling`, promoAmt > 0 && `$${promoAmt} promo`].filter(Boolean).join(" + ") || "One-time payment"}
+                      </div>
+                    </button>
+
+                    <button
+                      className="w-full rounded-lg border-2 border-border p-4 text-left hover:border-primary hover:bg-primary/5 transition-colors disabled:opacity-60"
+                      disabled={retryInstallLoadingId === paymentModalSub.subscription.id}
+                      onClick={async () => {
+                        try {
+                          setRetryInstallLoadingId(paymentModalSub.subscription.id);
+                          const result = await retryInstallmentsMutation.mutateAsync({
+                            subscriptionId: paymentModalSub.subscription.id,
+                            origin: window.location.origin,
+                          });
+                          if (result?.setupUrl) window.open(result.setupUrl, "_blank");
+                          else toast.error("Could not create installment session.");
+                          setPaymentModalSub(null);
+                        } catch (e: any) {
+                          toast.error(e?.message || "Failed to initiate installment payment");
+                        } finally {
+                          setRetryInstallLoadingId(null);
+                        }
+                      }}
+                    >
+                      <div className="font-semibold text-sm">Pay in 3 Installments</div>
+                      <div className="font-bold text-lg">{formatPrice(installmentAmt)}<span className="text-sm font-normal text-muted-foreground">/month × 3</span></div>
+                      <div className="text-xs text-muted-foreground">
+                        {[siblingPct > 0 && `${siblingPct}% sibling`, promoAmt > 0 && `$${promoAmt} promo`].filter(Boolean).join(" + ") || "Spread the cost over 3 months"}
+                      </div>
+                    </button>
+                  </>
+                );
+              })()}
+
+              {/* Tutor / Homework: Monthly usage billing + Pay in Full */}
+              {(paymentModalSub.course.courseType === "tutor" || paymentModalSub.course.courseType === "homework") && (() => {
+                const price = parseFloat(paymentModalSub.course.price || "0");
+                const siblingPct = paymentModalSub.subscription.siblingDiscountApplied ? 5 : 0;
+                const loyaltyPct = 5; // loyalty always applies when paying in full
+                const totalPct = Math.min(100, siblingPct + loyaltyPct);
+                const promoAmt = parseFloat(paymentModalSub.subscription.promoDiscountAmount ?? "0");
+                const discountedTotal = Math.max(0, price * (1 - totalPct / 100) - promoAmt);
+                return (
+                  <>
+                    <button
+                      className="w-full rounded-lg border-2 border-primary bg-primary/5 p-4 text-left hover:bg-primary/10 transition-colors disabled:opacity-60"
+                      disabled={setupLoadingId === paymentModalSub.subscription.id}
+                      onClick={async () => {
+                        try {
+                          setSetupLoadingId(paymentModalSub.subscription.id);
+                          const result = await setupBillingMutation.mutateAsync({
+                            subscriptionId: paymentModalSub.subscription.id,
+                            origin: window.location.origin,
+                          });
+                          if (result?.setupUrl) window.open(result.setupUrl, "_blank");
+                          else toast.error("Could not create billing setup.");
+                          setPaymentModalSub(null);
+                        } catch {
+                          toast.error("Failed to set up billing");
+                        } finally {
+                          setSetupLoadingId(null);
+                        }
+                      }}
+                    >
+                      <div className="font-semibold text-sm">Set Up Monthly Billing</div>
+                      {(siblingPct > 0 || promoAmt > 0) && (
+                        <div className="text-xs text-amber-700 mt-1">
+                          {[siblingPct > 0 && `${siblingPct}% sibling`, promoAmt > 0 && `$${promoAmt} promo`].filter(Boolean).join(" + ")} applied to monthly charges
+                        </div>
+                      )}
+                      <div className="text-xs text-muted-foreground mt-1">Save your card — billed monthly based on completed sessions</div>
+                    </button>
+
+                    <button
+                      className="w-full rounded-lg border-2 border-border p-4 text-left hover:border-primary hover:bg-primary/5 transition-colors disabled:opacity-60"
+                      disabled={retryLoadingId === paymentModalSub.subscription.id}
+                      onClick={async () => {
+                        try {
+                          setRetryLoadingId(paymentModalSub.subscription.id);
+                          const result = await retryCheckoutMutation.mutateAsync({
+                            subscriptionId: paymentModalSub.subscription.id,
+                            origin: window.location.origin,
+                          });
+                          if (result?.checkoutUrl) window.open(result.checkoutUrl, "_blank");
+                          else toast.error("Could not create payment session.");
+                          setPaymentModalSub(null);
+                        } catch (e: any) {
+                          toast.error(e?.message || "Failed to initiate payment");
+                        } finally {
+                          setRetryLoadingId(null);
+                        }
+                      }}
+                    >
+                      <div className="font-semibold text-sm">Pay in Full</div>
+                      <div className="font-bold text-lg">{formatPrice(discountedTotal)}
+                        {price > discountedTotal && <span className="ml-2 text-sm line-through text-muted-foreground font-normal">{formatPrice(price)}</span>}
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        {[loyaltyPct > 0 && `${loyaltyPct}% loyalty`, siblingPct > 0 && `${siblingPct}% sibling`, promoAmt > 0 && `$${promoAmt} promo`].filter(Boolean).join(" + ") || "One-time payment"}
+                      </div>
+                    </button>
+                  </>
+                );
+              })()}
+
+              {/* Academic / Other: Monthly subscription */}
+              {paymentModalSub.course.courseType !== "test_prep" &&
+               paymentModalSub.course.courseType !== "tutor" &&
+               paymentModalSub.course.courseType !== "homework" && (
+                <button
+                  className="w-full rounded-lg border-2 border-primary bg-primary/5 p-4 text-left hover:bg-primary/10 transition-colors disabled:opacity-60"
+                  disabled={setupLoadingId === paymentModalSub.subscription.id}
+                  onClick={async () => {
+                    try {
+                      setSetupLoadingId(paymentModalSub.subscription.id);
+                      const result = await setupBillingMutation.mutateAsync({
+                        subscriptionId: paymentModalSub.subscription.id,
+                        origin: window.location.origin,
+                      });
+                      if (result?.setupUrl) window.open(result.setupUrl, "_blank");
+                      else toast.error("Could not create billing setup.");
+                      setPaymentModalSub(null);
+                    } catch {
+                      toast.error("Failed to set up billing");
+                    } finally {
+                      setSetupLoadingId(null);
+                    }
+                  }}
+                >
+                  <div className="font-semibold text-sm">Set Up Monthly Billing</div>
+                  <div className="text-xs text-muted-foreground mt-1">Save your card — charged monthly on your billing date</div>
+                </button>
+              )}
+            </div>
+
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setPaymentModalSub(null)}>Cancel</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
 
       {/* Quiz Taking Modal */}
       {quizModal && (

@@ -1546,6 +1546,21 @@ export const appRouter = router({
           throw new TRPCError({ code: "NOT_FOUND", message: "Course not found" });
         }
 
+        const LOYALTY_DISCOUNT_PERCENT = 5;
+        const siblingPct = localSub.siblingDiscountApplied ? SIBLING_DISCOUNT_PERCENT : 0;
+        // Loyalty always applies on pay-in-full (even if original enrollment was installment plan)
+        const loyaltyPct = LOYALTY_DISCOUNT_PERCENT;
+        const totalPct = Math.min(100, siblingPct + loyaltyPct);
+        const promoUsd = parseFloat(localSub.promoDiscountAmount ?? "0");
+
+        const discountLabel = (() => {
+          const parts = [];
+          if (loyaltyPct > 0) parts.push(`${loyaltyPct}% loyalty`);
+          if (siblingPct > 0) parts.push(`${siblingPct}% sibling`);
+          if (promoUsd > 0) parts.push(`$${promoUsd} promo`);
+          return parts.length > 0 ? parts.join(" + ") : undefined;
+        })();
+
         const session = await stripeCheckout({
           priceAmount: parseFloat(course.price),
           courseName: course.title,
@@ -1556,22 +1571,62 @@ export const appRouter = router({
           origin: input.origin,
           subscriptionId: input.subscriptionId,
           tutorId: localSub.preferredTutorId ?? undefined,
-          discountPercent: localSub.siblingDiscountApplied ? SIBLING_DISCOUNT_PERCENT : undefined,
-          discountAmountUsd: (() => {
-            const p = parseFloat(localSub.promoDiscountAmount ?? "0");
-            return p > 0 ? p : undefined;
-          })(),
-          discountLabel: (() => {
-            const s = localSub.siblingDiscountApplied ? SIBLING_DISCOUNT_PERCENT : 0;
-            const p = parseFloat(localSub.promoDiscountAmount ?? "0");
-            if (s > 0 && p > 0) return `${s}% sibling + $${p} promo`;
-            if (s > 0) return `${s}% sibling`;
-            if (p > 0) return `$${p} promo`;
-            return undefined;
-          })(),
+          discountPercent: totalPct > 0 ? totalPct : undefined,
+          discountAmountUsd: promoUsd > 0 ? promoUsd : undefined,
+          discountLabel,
         });
 
         return { checkoutUrl: session.url };
+      }),
+
+    retryInstallmentCheckout: parentProcedure
+      .input(z.object({
+        subscriptionId: z.number(),
+        origin: z.string(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const localSub = await db.getSubscriptionById(input.subscriptionId);
+        if (!localSub || localSub.parentId !== ctx.user.id) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Subscription not found" });
+        }
+        if (localSub.paymentStatus !== "pending") {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Subscription is not pending" });
+        }
+
+        const course = await db.getCourseById(localSub.courseId);
+        if (!course) throw new TRPCError({ code: "NOT_FOUND", message: "Course not found" });
+
+        const { getOrCreateStripeCustomer, getStripe } = await import("./stripe");
+        const parentUser = await db.getUserById(ctx.user.id);
+        const stripeCustomerId = await getOrCreateStripeCustomer({
+          userId: ctx.user.id,
+          email: ctx.user.email,
+          name: ctx.user.name,
+          existingStripeCustomerId: parentUser?.stripeCustomerId,
+        });
+        const stripe = getStripe();
+
+        const rawPrice = parseFloat(course.price);
+        const siblingPct = localSub.siblingDiscountApplied ? SIBLING_DISCOUNT_PERCENT : 0;
+        const promoAmt = parseFloat(localSub.promoDiscountAmount ?? "0");
+        const discountedTotal = Math.max(0, rawPrice * (1 - siblingPct / 100) - promoAmt);
+        const installmentAmountCents = Math.round((discountedTotal / 3) * 100);
+
+        const session = await stripe.checkout.sessions.create({
+          mode: "setup",
+          customer: stripeCustomerId,
+          currency: "usd",
+          metadata: {
+            type: "installment_setup",
+            subscription_id: input.subscriptionId.toString(),
+            course_id: course.id.toString(),
+            installment_amount_cents: installmentAmountCents.toString(),
+          },
+          success_url: `${input.origin}/parent/dashboard?setup=success`,
+          cancel_url: `${input.origin}/parent/dashboard?setup=cancelled`,
+        });
+
+        return { setupUrl: session.url };
       }),
 
     getSetupUrl: parentProcedure
