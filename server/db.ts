@@ -32,7 +32,10 @@ import {
   referrals, InsertReferral, Referral,
   coupons, InsertCoupon, Coupon,
   referralSettings, ReferralSetting,
-  billingCycles, InsertBillingCycle, BillingCycle
+  billingCycles, InsertBillingCycle, BillingCycle,
+  courseFiles, InsertCourseFile, CourseFile,
+  courseFileAssignments,
+  tutorFileAssignments,
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
@@ -5607,5 +5610,203 @@ export async function getRubricGradesByTutorId(tutorId: number) {
     .innerJoin(sessions, eq(sessionAIInsights.sessionId, sessions.id))
     .where(and(eq(sessions.tutorId, tutorId), isNotNull(sessionAIInsights.rubricGradedAt)))
     .orderBy(desc(sessions.scheduledAt));
+}
+
+// ============ File Management ============
+
+export async function createCourseFile(data: InsertCourseFile): Promise<number | null> {
+  const db = await getDb();
+  if (!db) return null;
+  const result = await db.insert(courseFiles).values(data);
+  return (result[0] as any).insertId ?? null;
+}
+
+export async function getAllCourseFiles() {
+  const db = await getDb();
+  if (!db) return [];
+  const courseAlias = alias(courses, "course_alias");
+  return await db
+    .select({
+      file: courseFiles,
+      courseName: courseAlias.title,
+      tutorAssignmentCount: sql<number>`COUNT(DISTINCT ${courseFileAssignments.tutorId})`,
+    })
+    .from(courseFiles)
+    .leftJoin(courseAlias, eq(courseFiles.courseId, courseAlias.id))
+    .leftJoin(courseFileAssignments, eq(courseFileAssignments.fileId, courseFiles.id))
+    .groupBy(courseFiles.id, courseAlias.title)
+    .orderBy(desc(courseFiles.createdAt));
+}
+
+export async function getCourseFileById(fileId: number): Promise<CourseFile | null> {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db.select().from(courseFiles).where(eq(courseFiles.id, fileId)).limit(1);
+  return rows[0] ?? null;
+}
+
+export async function deleteCourseFile(fileId: number): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db.delete(courseFiles).where(eq(courseFiles.id, fileId));
+}
+
+export async function assignCourseFileToTutors(
+  fileId: number,
+  tutorIds: number[],
+  assignedBy: number
+): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db.delete(courseFileAssignments).where(eq(courseFileAssignments.fileId, fileId));
+  if (tutorIds.length === 0) return;
+  await db.insert(courseFileAssignments).values(
+    tutorIds.map((tutorId) => ({ fileId, tutorId, assignedBy }))
+  );
+}
+
+export async function getCourseFileAssignments(fileId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const tutorUser = alias(users, "tutor_user");
+  return await db
+    .select({ assignment: courseFileAssignments, tutor: tutorUser })
+    .from(courseFileAssignments)
+    .innerJoin(tutorUser, eq(courseFileAssignments.tutorId, tutorUser.id))
+    .where(eq(courseFileAssignments.fileId, fileId));
+}
+
+export async function getCourseFilesForTutor(tutorId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const courseAlias = alias(courses, "course_alias");
+  return await db
+    .select({
+      file: courseFiles,
+      assignment: courseFileAssignments,
+      courseName: courseAlias.title,
+    })
+    .from(courseFileAssignments)
+    .innerJoin(courseFiles, eq(courseFileAssignments.fileId, courseFiles.id))
+    .leftJoin(courseAlias, eq(courseFiles.courseId, courseAlias.id))
+    .where(eq(courseFileAssignments.tutorId, tutorId))
+    .orderBy(desc(courseFileAssignments.assignedAt));
+}
+
+export async function assignCourseFileToParents(
+  fileId: number,
+  tutorId: number,
+  subscriptions: { subscriptionId: number; parentId: number }[]
+): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db.delete(tutorFileAssignments).where(
+    and(
+      eq(tutorFileAssignments.fileId, fileId),
+      eq(tutorFileAssignments.tutorId, tutorId)
+    )
+  );
+  if (subscriptions.length === 0) return;
+  await db.insert(tutorFileAssignments).values(
+    subscriptions.map(({ subscriptionId, parentId }) => ({ fileId, tutorId, parentId, subscriptionId }))
+  );
+}
+
+export async function getFileParentAssignments(fileId: number, tutorId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const parentUser = alias(users, "parent_user");
+  return await db
+    .select({ assignment: tutorFileAssignments, parent: parentUser })
+    .from(tutorFileAssignments)
+    .innerJoin(parentUser, eq(tutorFileAssignments.parentId, parentUser.id))
+    .where(
+      and(
+        eq(tutorFileAssignments.fileId, fileId),
+        eq(tutorFileAssignments.tutorId, tutorId)
+      )
+    );
+}
+
+export async function getStudentsByTutorId(tutorId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const parentUser = alias(users, "parent_user");
+  const courseAlias = alias(courses, "course_alias");
+  return await db
+    .select({
+      subscriptionId: subscriptions.id,
+      parentId: subscriptions.parentId,
+      parentFirstName: parentUser.firstName,
+      parentLastName: parentUser.lastName,
+      parentEmail: parentUser.email,
+      studentFirstName: subscriptions.studentFirstName,
+      studentLastName: subscriptions.studentLastName,
+      courseName: courseAlias.title,
+      courseId: subscriptions.courseId,
+    })
+    .from(subscriptions)
+    .innerJoin(parentUser, eq(subscriptions.parentId, parentUser.id))
+    .innerJoin(courseAlias, eq(subscriptions.courseId, courseAlias.id))
+    .where(
+      and(
+        eq(subscriptions.preferredTutorId, tutorId),
+        ne(subscriptions.status, "cancelled"),
+        isNotNull(subscriptions.studentFirstName)
+      )
+    )
+    .orderBy(courseAlias.title, parentUser.firstName);
+}
+
+export async function getCourseFilesForParent(parentId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const tutorUser = alias(users, "tutor_user");
+  const courseAlias = alias(courses, "course_alias");
+  return await db
+    .select({
+      file: courseFiles,
+      assignment: tutorFileAssignments,
+      tutorFirstName: tutorUser.firstName,
+      tutorLastName: tutorUser.lastName,
+      courseName: courseAlias.title,
+      studentFirstName: subscriptions.studentFirstName,
+      studentLastName: subscriptions.studentLastName,
+    })
+    .from(tutorFileAssignments)
+    .innerJoin(courseFiles, eq(tutorFileAssignments.fileId, courseFiles.id))
+    .innerJoin(tutorUser, eq(tutorFileAssignments.tutorId, tutorUser.id))
+    .leftJoin(subscriptions, eq(subscriptions.id, tutorFileAssignments.subscriptionId))
+    .leftJoin(courseAlias, eq(subscriptions.courseId, courseAlias.id))
+    .where(eq(tutorFileAssignments.parentId, parentId))
+    .orderBy(courseAlias.title, subscriptions.studentFirstName, desc(tutorFileAssignments.assignedAt));
+}
+
+export async function getCourseFileByKey(fileKey: string) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db.select().from(courseFiles).where(eq(courseFiles.fileKey, fileKey)).limit(1);
+  return rows[0] ?? null;
+}
+
+export async function userHasAccessToCourseFile(userId: number, role: string, fileId: number): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return false;
+  if (role === "admin") return true;
+  if (role === "tutor") {
+    const rows = await db.select({ id: courseFileAssignments.id })
+      .from(courseFileAssignments)
+      .where(and(eq(courseFileAssignments.fileId, fileId), eq(courseFileAssignments.tutorId, userId)))
+      .limit(1);
+    return rows.length > 0;
+  }
+  if (role === "parent") {
+    const rows = await db.select({ id: tutorFileAssignments.id })
+      .from(tutorFileAssignments)
+      .where(and(eq(tutorFileAssignments.fileId, fileId), eq(tutorFileAssignments.parentId, userId)))
+      .limit(1);
+    return rows.length > 0;
+  }
+  return false;
 }
 

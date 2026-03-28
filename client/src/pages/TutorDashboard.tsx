@@ -15,7 +15,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Link, useLocation } from "wouter";
-import { BookOpen, Calendar, MessageSquare, DollarSign, Users, Edit, Clock, FileText, Plus, Filter, Search, X, Sparkles, Globe, ClipboardPaste, CheckCircle, HelpCircle } from "lucide-react";
+import { BookOpen, Calendar, MessageSquare, DollarSign, Users, Edit, Clock, FileText, Plus, Filter, Search, X, Sparkles, Globe, ClipboardPaste, CheckCircle, HelpCircle, Download } from "lucide-react";
 import { AvailabilityManager } from "@/components/AvailabilityManager";
 import { TimeBlockManager } from "@/components/TimeBlockManager";
 import { VideoUploadManager } from "@/components/VideoUploadManager";
@@ -27,6 +27,192 @@ import { LOGIN_PATH } from "@/const";
 import { toast } from "sonner";
 import { formatSessionTime, COMMON_TIMEZONES } from "@/../../shared/timezone-utils";
 import Footer from "@/components/Footer";
+
+function AssignStudentsDialogContent({
+  fileId, students, onClose, onSaved,
+}: {
+  fileId: number;
+  students: any[];
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const { data: existingAssignments = [], isLoading } = trpc.fileManagement.getFileParentAssignments.useQuery({ fileId });
+  const assignMutation = trpc.fileManagement.assignFileToParents.useMutation({
+    onSuccess: () => { toast.success("File assigned to students"); onSaved(); },
+  });
+
+  const [selectedSubscriptionIds, setSelectedSubscriptionIds] = useState<number[]>([]);
+  const [initialized, setInitialized] = useState(false);
+
+  // Once existing assignments load, pre-select them (runs exactly once per mount)
+  useEffect(() => {
+    if (isLoading || initialized) return;
+    const assignedSubscriptionIds = existingAssignments
+      .map((a: any) => a.assignment.subscriptionId)
+      .filter((id: any) => id !== null);
+    setSelectedSubscriptionIds(assignedSubscriptionIds);
+    setInitialized(true);
+  }, [isLoading, initialized]);
+
+  function toggle(subscriptionId: number) {
+    setSelectedSubscriptionIds(prev =>
+      prev.includes(subscriptionId) ? prev.filter(id => id !== subscriptionId) : [...prev, subscriptionId]
+    );
+  }
+
+  const selectedSubscriptions = students.filter((s: any) => selectedSubscriptionIds.includes(s.subscriptionId))
+    .map((s: any) => ({ subscriptionId: s.subscriptionId, parentId: s.parentId }));
+
+  const studentsByCourse = students.reduce((acc: Record<string, any[]>, s: any) => {
+    const key = s.courseName ?? "No Course";
+    if (!acc[key]) acc[key] = [];
+    acc[key].push(s);
+    return acc;
+  }, {});
+
+  return (
+    <DialogContent className="max-w-lg">
+      <DialogHeader>
+        <DialogTitle>Assign File to Students</DialogTitle>
+        <DialogDescription>Select students enrolled in your courses. The file will be sent to their parent's account.</DialogDescription>
+      </DialogHeader>
+      <div className="space-y-4 max-h-96 overflow-y-auto py-2 pr-1">
+        {isLoading ? (
+          <div className="space-y-2">{[1,2,3].map(i => <Skeleton key={i} className="h-8 w-full" />)}</div>
+        ) : students.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No enrolled students found. Only students with a name on their enrollment will appear here.</p>
+        ) : (
+          Object.entries(studentsByCourse).map(([courseName, courseStudents]: [string, any[]]) => (
+            <div key={courseName} className="space-y-2">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b pb-1">{courseName}</p>
+              {courseStudents.map((s: any) => (
+                <div key={s.subscriptionId} className="flex items-start gap-2 pl-1">
+                  <Checkbox
+                    id={`student-${s.subscriptionId}`}
+                    checked={selectedSubscriptionIds.includes(s.subscriptionId)}
+                    onCheckedChange={() => toggle(s.subscriptionId)}
+                    className="mt-0.5"
+                  />
+                  <Label htmlFor={`student-${s.subscriptionId}`} className="cursor-pointer leading-snug">
+                    <span className="font-medium">
+                      {s.studentFirstName && s.studentLastName
+                        ? `${s.studentFirstName} ${s.studentLastName}`
+                        : `${s.parentFirstName} ${s.parentLastName}`}
+                    </span>
+                    <span className="block text-xs text-muted-foreground">
+                      Parent: {s.parentFirstName} {s.parentLastName} · {s.parentEmail}
+                    </span>
+                  </Label>
+                </div>
+              ))}
+            </div>
+          ))
+        )}
+      </div>
+      <DialogFooter>
+        <Button variant="outline" onClick={onClose}>Cancel</Button>
+        <Button
+          disabled={assignMutation.isPending || isLoading}
+          onClick={() => assignMutation.mutate({ fileId, subscriptions: selectedSubscriptions })}
+        >
+          {assignMutation.isPending ? "Saving..." : `Assign to ${selectedSubscriptionIds.length} student${selectedSubscriptionIds.length !== 1 ? "s" : ""}`}
+        </Button>
+      </DialogFooter>
+    </DialogContent>
+  );
+}
+
+function TutorFilesPanel({ tutorId }: { tutorId: number }) {
+  const { data: files = [], isLoading } = trpc.fileManagement.getMyFiles.useQuery();
+  const { data: students = [] } = trpc.fileManagement.getMyStudents.useQuery();
+  const utils = trpc.useUtils();
+
+  const [assignDialogFileId, setAssignDialogFileId] = useState<number | null>(null);
+  const [dialogKey, setDialogKey] = useState(0);
+
+  function openPreview(fileId: number) {
+    window.open(`/api/files/proxy/${fileId}`, "_blank");
+  }
+
+  function openAssignDialog(fileId: number) {
+    setAssignDialogFileId(fileId);
+    setDialogKey(k => k + 1);
+  }
+
+  function formatFileSize(bytes: number) {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  }
+
+  return (
+    <div className="space-y-4">
+      <h2 className="text-2xl font-bold">My Files</h2>
+      <p className="text-muted-foreground text-sm">Files assigned to you by the admin. You can share them with your students.</p>
+      {isLoading ? (
+        <div className="space-y-3">{[1,2,3].map(i => <Skeleton key={i} className="h-20 w-full" />)}</div>
+      ) : files.length === 0 ? (
+        <Card>
+          <CardContent className="py-12 text-center">
+            <FileText className="w-12 h-12 text-muted-foreground mx-auto mb-3" />
+            <p className="text-muted-foreground">No files have been assigned to you yet.</p>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="grid gap-4 md:grid-cols-2">
+          {files.map((row: any) => (
+            <Card key={row.file.id} className="hover:shadow-md transition-shadow">
+              <CardContent className="pt-4 pb-4 space-y-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <FileText className="w-5 h-5 text-muted-foreground flex-shrink-0" />
+                    <div className="min-w-0">
+                      <p className="font-semibold truncate">{row.file.title}</p>
+                      {row.courseName && <p className="text-xs text-muted-foreground">{row.courseName}</p>}
+                    </div>
+                  </div>
+                  <Badge variant="outline" className="flex-shrink-0 text-xs">{row.file.fileType.includes("pdf") ? "PDF" : "Word"}</Badge>
+                </div>
+                {row.file.description && <p className="text-sm text-muted-foreground line-clamp-2">{row.file.description}</p>}
+                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                  <span>{formatFileSize(row.file.fileSize)}</span>
+                  <span>{new Date(row.assignment.assignedAt).toLocaleDateString()}</span>
+                </div>
+                <div className="flex gap-2 flex-wrap">
+                  <Button size="sm" variant="outline" className="flex-1" onClick={() => openPreview(row.file.id)}>
+                    Preview
+                  </Button>
+                  <Button size="sm" variant="outline" className="flex-1" onClick={() => openPreview(row.file.id)}>
+                    <Download className="w-4 h-4 mr-1" /> Download
+                  </Button>
+                  <Button size="sm" variant="default" className="w-full" onClick={() => openAssignDialog(row.file.id)}>
+                    Assign to Students
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      {/* Assign Students Dialog — keyed so state resets on every open */}
+      <Dialog open={assignDialogFileId !== null} onOpenChange={open => { if (!open) setAssignDialogFileId(null); }}>
+        {assignDialogFileId !== null && (
+          <AssignStudentsDialogContent
+            key={dialogKey}
+            fileId={assignDialogFileId}
+            students={students}
+            onClose={() => setAssignDialogFileId(null)}
+            onSaved={() => {
+              utils.fileManagement.getFileParentAssignments.invalidate({ fileId: assignDialogFileId });
+              setAssignDialogFileId(null);
+            }}
+          />
+        )}
+      </Dialog>
+    </div>
+  );
+}
 
 export default function TutorDashboard() {
   const { user, isAuthenticated, loading } = useAuth();
@@ -914,6 +1100,7 @@ export default function TutorDashboard() {
                 <TabsTrigger className="whitespace-nowrap" value="students">Students</TabsTrigger>
                 <TabsTrigger className="whitespace-nowrap" value="sessions">Sessions</TabsTrigger>
                 <TabsTrigger className="whitespace-nowrap" value="history">History</TabsTrigger>
+                <TabsTrigger className="whitespace-nowrap" value="my-files">My Files</TabsTrigger>
               </TabsList>
                 </div>
 
@@ -1837,6 +2024,11 @@ export default function TutorDashboard() {
                       </CardContent>
                     </Card>
                   )}
+                </TabsContent>
+
+                {/* My Files Tab */}
+                <TabsContent value="my-files" forceMount className={tabContentClass}>
+                  <TutorFilesPanel tutorId={tutorProfile?.userId ?? 0} />
                 </TabsContent>
 
                 </div>

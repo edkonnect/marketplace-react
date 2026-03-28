@@ -104,6 +104,10 @@ async function startServer() {
   const { pdfRouter } = await import("../pdfRoute");
   app.use("/api/pdf", pdfRouter);
 
+  // Course file proxy — streams S3 files without exposing S3 URLs
+  const { fileProxyRouter } = await import("./routes/fileProxy");
+  app.use("/api/files/proxy", fileProxyRouter);
+
   // tRPC API
   app.use(
     "/api/trpc",

@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Users, BookOpen, TrendingUp, UserCheck, GraduationCap, Download, X, BarChart3, Trash2 } from "lucide-react";
+import { Users, BookOpen, TrendingUp, UserCheck, GraduationCap, Download, X, BarChart3, Trash2, FolderOpen, FileText, Upload } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -29,6 +29,11 @@ import { TutorAssignmentDialog } from "@/components/TutorAssignmentDialog";
 import { TestimonialsManager } from "@/components/TestimonialsManager";
 import { toast } from "sonner";
 import Footer from "@/components/Footer";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { FileUpload } from "@/components/FileUpload";
 
 function ReferralSettingsPanel() {
   const { data: tiers = [], refetch: refetchTiers } = trpc.referral.getReferralSettings.useQuery();
@@ -136,6 +141,228 @@ function ReferralSettingsPanel() {
           )}
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+function CourseFilesAdminPanel() {
+  const { data: files = [], refetch: refetchFiles, isLoading: filesLoading } = trpc.fileManagement.getFiles.useQuery();
+  const { data: tutors = [] } = trpc.fileManagement.getTutorsForAssignment.useQuery();
+  const { data: coursesList = [] } = trpc.fileManagement.getCoursesList.useQuery();
+  const uploadFileMutation = trpc.fileManagement.uploadFile.useMutation({ onSuccess: () => { refetchFiles(); resetUpload(); toast.success("File uploaded successfully"); } });
+  const deleteFileMutation = trpc.fileManagement.deleteFile.useMutation({ onSuccess: () => { refetchFiles(); toast.success("File deleted"); } });
+  const assignTutorsMutation = trpc.fileManagement.assignFileToTutors.useMutation({ onSuccess: () => { refetchFiles(); setAssignDialogFileId(null); toast.success("Tutors assigned"); } });
+
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [uploadTitle, setUploadTitle] = useState("");
+  const [uploadDescription, setUploadDescription] = useState("");
+  const [uploadCourseId, setUploadCourseId] = useState<string>("");
+  const [assignDialogFileId, setAssignDialogFileId] = useState<number | null>(null);
+  const [selectedTutorIds, setSelectedTutorIds] = useState<number[]>([]);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
+
+  const { data: existingAssignments = [] } = trpc.fileManagement.getFileAssignments.useQuery(
+    { fileId: assignDialogFileId! },
+    { enabled: assignDialogFileId !== null }
+  );
+
+  function resetUpload() {
+    setSelectedFiles([]);
+    setUploadTitle("");
+    setUploadDescription("");
+    setUploadCourseId("");
+  }
+
+  function openAssignDialog(fileId: number) {
+    setAssignDialogFileId(fileId);
+    setSelectedTutorIds([]);
+  }
+
+  // Pre-select already assigned tutors when dialog opens
+  const prevAssignDialogFileId = assignDialogFileId;
+  if (assignDialogFileId !== null && existingAssignments.length > 0 && selectedTutorIds.length === 0) {
+    const assignedIds = existingAssignments.map((a: any) => a.assignment.tutorId);
+    if (assignedIds.length > 0) setSelectedTutorIds(assignedIds);
+  }
+
+  function toggleTutor(id: number) {
+    setSelectedTutorIds(prev => prev.includes(id) ? prev.filter(t => t !== id) : [...prev, id]);
+  }
+
+  async function handleUpload() {
+    if (!selectedFiles[0] || !uploadTitle.trim()) {
+      toast.error("Please provide a title and select a file");
+      return;
+    }
+    const file = selectedFiles[0];
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const dataUrl = e.target?.result as string;
+      const base64Data = dataUrl.split(",")[1];
+      uploadFileMutation.mutate({
+        title: uploadTitle.trim(),
+        description: uploadDescription.trim() || undefined,
+        courseId: uploadCourseId ? parseInt(uploadCourseId) : undefined,
+        fileName: file.name,
+        fileType: file.type as any,
+        fileSize: file.size,
+        base64Data,
+      });
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function formatFileSize(bytes: number) {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  }
+
+  return (
+    <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2"><Upload className="w-5 h-5" /> Upload Course File</CardTitle>
+          <CardDescription>Upload PDF or Word documents and assign them to tutors</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="file-title">Title <span className="text-destructive">*</span></Label>
+            <Input id="file-title" placeholder="e.g. Week 3 Worksheet" value={uploadTitle} onChange={e => setUploadTitle(e.target.value)} />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="file-description">Description (optional)</Label>
+            <Textarea id="file-description" placeholder="Brief description of the file..." value={uploadDescription} onChange={e => setUploadDescription(e.target.value)} rows={2} />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="file-course">Course (optional)</Label>
+            <select
+              id="file-course"
+              value={uploadCourseId}
+              onChange={e => setUploadCourseId(e.target.value)}
+              className="w-full border border-input rounded-md px-3 py-2 text-sm bg-background"
+            >
+              <option value="">— No course —</option>
+              {coursesList.map((c: any) => (
+                <option key={c.id} value={String(c.id)}>{c.name}</option>
+              ))}
+            </select>
+          </div>
+          <FileUpload
+            onFilesSelected={setSelectedFiles}
+            maxFiles={1}
+            maxSizeMB={20}
+            acceptedTypes={["application/pdf", ".doc", ".docx", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"]}
+          />
+          <Button onClick={handleUpload} disabled={uploadFileMutation.isPending || !selectedFiles[0] || !uploadTitle.trim()}>
+            {uploadFileMutation.isPending ? "Uploading..." : "Upload File"}
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2"><FolderOpen className="w-5 h-5" /> Uploaded Files</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {filesLoading ? (
+            <div className="space-y-2">{[1,2,3].map(i => <Skeleton key={i} className="h-12 w-full" />)}</div>
+          ) : files.length === 0 ? (
+            <p className="text-muted-foreground text-sm">No files uploaded yet.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b text-left">
+                    <th className="py-2 pr-4 font-medium">Title</th>
+                    <th className="py-2 pr-4 font-medium">Course</th>
+                    <th className="py-2 pr-4 font-medium">File</th>
+                    <th className="py-2 pr-4 font-medium">Size</th>
+                    <th className="py-2 pr-4 font-medium">Tutors</th>
+                    <th className="py-2 pr-4 font-medium">Uploaded</th>
+                    <th className="py-2 font-medium">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {files.map((row: any) => (
+                    <tr key={row.file.id} className="border-b last:border-0 hover:bg-muted/40">
+                      <td className="py-2 pr-4 font-medium">{row.file.title}</td>
+                      <td className="py-2 pr-4 text-muted-foreground">{row.courseName ?? "—"}</td>
+                      <td className="py-2 pr-4">
+                        <div className="flex items-center gap-1">
+                          <FileText className="w-4 h-4 text-muted-foreground" />
+                          <span className="truncate max-w-[160px]">{row.file.fileName}</span>
+                        </div>
+                      </td>
+                      <td className="py-2 pr-4 text-muted-foreground">{formatFileSize(row.file.fileSize)}</td>
+                      <td className="py-2 pr-4">
+                        <Badge variant="secondary">{row.tutorAssignmentCount} tutor{row.tutorAssignmentCount !== 1 ? "s" : ""}</Badge>
+                      </td>
+                      <td className="py-2 pr-4 text-muted-foreground">{new Date(row.file.createdAt).toLocaleDateString()}</td>
+                      <td className="py-2">
+                        <div className="flex gap-2">
+                          <Button size="sm" variant="outline" onClick={() => openAssignDialog(row.file.id)}>Assign Tutors</Button>
+                          <Button size="sm" variant="ghost" onClick={() => setDeleteConfirmId(row.file.id)}><Trash2 className="w-4 h-4 text-destructive" /></Button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Assign Tutors Dialog */}
+      <Dialog open={assignDialogFileId !== null} onOpenChange={open => { if (!open) setAssignDialogFileId(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Assign File to Tutors</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2 max-h-80 overflow-y-auto py-2">
+            {tutors.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No tutors found.</p>
+            ) : tutors.map((tutor: any) => (
+              <div key={tutor.id} className="flex items-center gap-2">
+                <Checkbox
+                  id={`tutor-${tutor.id}`}
+                  checked={selectedTutorIds.includes(tutor.id)}
+                  onCheckedChange={() => toggleTutor(tutor.id)}
+                />
+                <Label htmlFor={`tutor-${tutor.id}`} className="cursor-pointer">
+                  {tutor.firstName} {tutor.lastName} <span className="text-muted-foreground text-xs">({tutor.email})</span>
+                </Label>
+              </div>
+            ))}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAssignDialogFileId(null)}>Cancel</Button>
+            <Button
+              disabled={assignTutorsMutation.isPending}
+              onClick={() => assignTutorsMutation.mutate({ fileId: assignDialogFileId!, tutorIds: selectedTutorIds })}
+            >
+              {assignTutorsMutation.isPending ? "Saving..." : "Save Assignments"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirm Dialog */}
+      <Dialog open={deleteConfirmId !== null} onOpenChange={open => { if (!open) setDeleteConfirmId(null); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Delete File?</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">This will permanently delete the file and remove all tutor and parent assignments. This cannot be undone.</p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteConfirmId(null)}>Cancel</Button>
+            <Button variant="destructive" disabled={deleteFileMutation.isPending} onClick={() => { deleteFileMutation.mutate({ fileId: deleteConfirmId! }); setDeleteConfirmId(null); }}>
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -498,6 +725,7 @@ export function AdminDashboard() {
               <TabsTrigger value="course-approval">Tutor Course Approval</TabsTrigger>
               <TabsTrigger value="referrals">Referrals</TabsTrigger>
               <TabsTrigger value="testimonials">Testimonials</TabsTrigger>
+              <TabsTrigger value="course-files">Course Files</TabsTrigger>
             </TabsList>
           </div>
 
@@ -1555,6 +1783,9 @@ export function AdminDashboard() {
           {/* Testimonials Tab */}
           <TabsContent value="testimonials" forceMount className={tabContentClass}>
             <TestimonialsManager />
+          </TabsContent>
+          <TabsContent value="course-files" forceMount className={tabContentClass}>
+            <CourseFilesAdminPanel />
           </TabsContent>
         </Tabs>
       </div>

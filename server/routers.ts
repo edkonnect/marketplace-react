@@ -15,7 +15,7 @@ import { generateCurriculumPDF } from "./pdf-generator";
 import { sendSessionNotesEmail } from "./session-notes-email";
 import { emailService } from "./email-service";
 import { storagePut } from "./storage";
-import { uploadProfileImageToS3, deleteProfileImageFromS3 } from "./s3Storage";
+import { uploadProfileImageToS3, deleteProfileImageFromS3, uploadCourseFileToS3, deleteCourseFileFromS3, getCourseFilePresignedUrl } from "./s3Storage";
 import crypto from "crypto";
 import { and, eq } from "drizzle-orm";
 import { subscriptions as subscriptionsTable, tutorProfiles, users } from "../drizzle/schema";
@@ -3350,6 +3350,7 @@ export const appRouter = router({
           hostedInvoiceUrl: string | null;
           invoicePdf: string | null;
           source: "stripe" | "local";
+          stripeSubscriptionId: string | null;
           studentName: string | null;
           courseTitle: string | null;
           paymentNumber: number | null;
@@ -3606,6 +3607,7 @@ export const appRouter = router({
                   hostedInvoiceUrl: null,
                   invoicePdf: null,
                   source: "stripe",
+                  stripeSubscriptionId: stripeSubId ?? null,
                   studentName: multiCourse ? null : (lines[0]?.studentName ?? null),
                   courseTitle: multiCourse ? null : (lines[0]?.courseTitle ?? null),
                   paymentNumber: multiCourse ? null : (lines[0]?.paymentNumber ?? null),
@@ -3654,6 +3656,7 @@ export const appRouter = router({
             hostedInvoiceUrl: null,
             invoicePdf: null,
             source: "local",
+            stripeSubscriptionId: null,
             studentName: studentName || null,
             courseTitle: p.courseTitle || null,
             paymentNumber: null,
@@ -7575,6 +7578,157 @@ For engagementData, describe ONLY the student's participation and behavior. The 
           imageUrl = `${baseUrl}/uploads/${encodeURIComponent(safeFileName)}`;
         }
         return { imageUrl };
+      }),
+  }),
+
+  // ── File Management ──────────────────────────────────────────────────────────
+
+  fileManagement: router({
+
+    // ── Admin procedures ──────────────────────────────────────────────────────
+
+    uploadFile: adminProcedure
+      .input(z.object({
+        title: z.string().min(1).max(255),
+        description: z.string().max(2000).optional(),
+        courseId: z.number().int().optional(),
+        fileName: z.string().max(255),
+        fileType: z.enum([
+          "application/pdf",
+          "application/msword",
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        ]),
+        fileSize: z.number().int().max(20 * 1024 * 1024),
+        base64Data: z.string(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const stripped = input.base64Data.replace(/\s/g, "");
+        const byteLength = Math.floor((stripped.length * 3) / 4);
+        if (byteLength > 20 * 1024 * 1024) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "File exceeds 20 MB limit." });
+        }
+        const buffer = Buffer.from(stripped, "base64");
+        const { url, key } = await uploadCourseFileToS3(buffer, input.fileType, input.fileName);
+        const fileId = await db.createCourseFile({
+          title: input.title,
+          description: input.description ?? null,
+          courseId: input.courseId ?? null,
+          fileUrl: url,
+          fileKey: key,
+          fileType: input.fileType,
+          fileSize: byteLength,
+          fileName: input.fileName,
+          uploadedBy: ctx.user.id,
+        });
+        if (!fileId) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to save file." });
+        return { fileId, fileUrl: url };
+      }),
+
+    getFiles: adminProcedure
+      .query(async () => {
+        return await db.getAllCourseFiles();
+      }),
+
+    deleteFile: adminProcedure
+      .input(z.object({ fileId: z.number() }))
+      .mutation(async ({ input }) => {
+        const file = await db.getCourseFileById(input.fileId);
+        if (!file) throw new TRPCError({ code: "NOT_FOUND", message: "File not found." });
+        await deleteCourseFileFromS3(file.fileKey).catch(() => {});
+        await db.deleteCourseFile(input.fileId);
+        return { success: true };
+      }),
+
+    assignFileToTutors: adminProcedure
+      .input(z.object({
+        fileId: z.number(),
+        tutorIds: z.array(z.number()),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const file = await db.getCourseFileById(input.fileId);
+        if (!file) throw new TRPCError({ code: "NOT_FOUND", message: "File not found." });
+        await db.assignCourseFileToTutors(input.fileId, input.tutorIds, ctx.user.id);
+        return { success: true };
+      }),
+
+    getFileAssignments: adminProcedure
+      .input(z.object({ fileId: z.number() }))
+      .query(async ({ input }) => {
+        return await db.getCourseFileAssignments(input.fileId);
+      }),
+
+    getTutorsForAssignment: adminProcedure
+      .query(async () => {
+        const database = await db.getDb();
+        if (!database) return [];
+        const { users: usersTable } = await import("../drizzle/schema");
+        const { eq: eqOp, asc: ascOp } = await import("drizzle-orm");
+        return await database
+          .select({ id: usersTable.id, firstName: usersTable.firstName, lastName: usersTable.lastName, email: usersTable.email })
+          .from(usersTable)
+          .where(eqOp(usersTable.role, "tutor"))
+          .orderBy(ascOp(usersTable.firstName));
+      }),
+
+    getCoursesList: adminProcedure
+      .query(async () => {
+        const database = await db.getDb();
+        if (!database) return [];
+        const { courses: coursesTable } = await import("../drizzle/schema");
+        const { asc: ascOp } = await import("drizzle-orm");
+        return await database
+          .select({ id: coursesTable.id, name: coursesTable.title })
+          .from(coursesTable)
+          .orderBy(ascOp(coursesTable.title));
+      }),
+
+    // ── Tutor procedures ──────────────────────────────────────────────────────
+
+    getMyFiles: tutorProcedure
+      .query(async ({ ctx }) => {
+        return await db.getCourseFilesForTutor(ctx.user.id);
+      }),
+
+    assignFileToParents: tutorProcedure
+      .input(z.object({
+        fileId: z.number(),
+        subscriptions: z.array(z.object({ subscriptionId: z.number(), parentId: z.number() })),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const myFiles = await db.getCourseFilesForTutor(ctx.user.id);
+        const hasFile = myFiles.some((f) => f.file.id === input.fileId);
+        if (!hasFile) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "You do not have access to this file." });
+        }
+        await db.assignCourseFileToParents(input.fileId, ctx.user.id, input.subscriptions);
+        return { success: true };
+      }),
+
+    getMyStudents: tutorProcedure
+      .query(async ({ ctx }) => {
+        return await db.getStudentsByTutorId(ctx.user.id);
+      }),
+
+    getFileParentAssignments: tutorProcedure
+      .input(z.object({ fileId: z.number() }))
+      .query(async ({ ctx, input }) => {
+        return await db.getFileParentAssignments(input.fileId, ctx.user.id);
+      }),
+
+    // ── Shared: pre-signed URL for preview ────────────────────────────────────
+
+    getPresignedUrl: protectedProcedure
+      .input(z.object({ fileKey: z.string(), fileUrl: z.string() }))
+      .query(async ({ input }) => {
+        const url = await getCourseFilePresignedUrl(input.fileKey, input.fileUrl);
+        return { url };
+      }),
+
+    // ── Parent procedures ─────────────────────────────────────────────────────
+
+    getFilesForParent: parentProcedure
+      .query(async ({ ctx }) => {
+        return await db.getCourseFilesForParent(ctx.user.id);
       }),
   }),
 });

@@ -10,7 +10,9 @@ import {
   S3Client,
   PutObjectCommand,
   DeleteObjectCommand,
+  GetObjectCommand,
 } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { ENV } from "./_core/env";
 import path from "path";
 import fs from "fs";
@@ -129,4 +131,75 @@ export async function deleteProfileImageFromS3(
   } catch (err) {
     console.error("[s3Storage] Delete failed (non-fatal):", err);
   }
+}
+
+/**
+ * Upload a course file (PDF or Word doc) to S3.
+ * S3 only — the existing bucket is always available in all environments.
+ *
+ * @param buffer  Raw file bytes
+ * @param mimeType  e.g. "application/pdf"
+ * @param originalFileName  Original filename, used to derive the extension
+ * @returns  { url, key } — public S3 URL and the key needed for later deletion
+ */
+export async function uploadCourseFileToS3(
+  buffer: Buffer,
+  mimeType: string,
+  originalFileName: string
+): Promise<{ url: string; key: string }> {
+  const ext = originalFileName.split(".").pop()?.toLowerCase() ?? "bin";
+  const uuid = crypto.randomUUID();
+  const key = `course-files/${uuid}.${ext}`;
+
+  if (hasS3Credentials()) {
+    await getS3Client().send(
+      new PutObjectCommand({
+        Bucket: ENV.awsS3Bucket,
+        Key: key,
+        Body: buffer,
+        ContentType: mimeType,
+      })
+    );
+    return {
+      url: `https://${ENV.awsS3Bucket}.s3.${ENV.awsS3Region}.amazonaws.com/${key}`,
+      key,
+    };
+  }
+
+  // Local dev fallback
+  const url = saveLocally(key, buffer, mimeType);
+  return { url, key };
+}
+
+/**
+ * Delete a course file from S3 using its stored key.
+ * Silently ignores errors so a failed delete never blocks the user.
+ *
+ * @param fileKey  The S3 key previously returned by uploadCourseFileToS3
+ */
+export async function deleteCourseFileFromS3(fileKey: string): Promise<void> {
+  try {
+    if (hasS3Credentials()) {
+      await getS3Client().send(
+        new DeleteObjectCommand({ Bucket: ENV.awsS3Bucket, Key: fileKey })
+      );
+    } else {
+      deleteLocally(fileKey);
+    }
+  } catch (err) {
+    console.error("[s3Storage] Course file delete failed (non-fatal):", err);
+  }
+}
+
+/**
+ * Generate a pre-signed URL for a course file (valid for 1 hour).
+ * Falls back to the original URL in local dev.
+ */
+export async function getCourseFilePresignedUrl(fileKey: string, originalUrl: string): Promise<string> {
+  if (!hasS3Credentials()) return originalUrl;
+  return await getSignedUrl(
+    getS3Client(),
+    new GetObjectCommand({ Bucket: ENV.awsS3Bucket, Key: fileKey }),
+    { expiresIn: 3600 }
+  );
 }

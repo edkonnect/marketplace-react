@@ -14,7 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Link, useLocation } from "wouter";
-import { BookOpen, Calendar, MessageSquare, CreditCard, Clock, Users, Video, FileText, HelpCircle, CheckCircle, TrendingUp, BarChart2, LogIn, Sparkles, Search, Target, Activity } from "lucide-react";
+import { BookOpen, Calendar, MessageSquare, CreditCard, Clock, Users, Video, FileText, HelpCircle, CheckCircle, TrendingUp, BarChart2, LogIn, Sparkles, Search, Target, Activity, Download } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { LOGIN_PATH } from "@/const";
 import { NotificationCenter } from "@/components/NotificationCenter";
@@ -25,6 +25,147 @@ import { ReferralCouponPopup } from "@/components/ReferralCouponPopup";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import Footer from "@/components/Footer";
+
+function ParentFilesPanel() {
+  const { data: files = [], isLoading } = trpc.fileManagement.getFilesForParent.useQuery();
+  const [filterCourse, setFilterCourse] = useState<string>("all");
+  const [filterStudent, setFilterStudent] = useState<string>("all");
+
+  function formatFileSize(bytes: number) {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  }
+
+  type FileRow = any;
+
+  // Derive unique course and student options for dropdowns
+  const courseOptions = Array.from(new Set((files as FileRow[]).map((r) => r.courseName ?? "General"))).sort();
+  const studentOptions = Array.from(
+    new Set(
+      (files as FileRow[])
+        .filter((r) => filterCourse === "all" || (r.courseName ?? "General") === filterCourse)
+        .map((r) => r.studentFirstName ? `${r.studentFirstName} ${r.studentLastName ?? ""}`.trim() : "General")
+    )
+  ).sort();
+
+  // Reset student filter when course changes
+  function handleCourseChange(val: string) {
+    setFilterCourse(val);
+    setFilterStudent("all");
+  }
+
+  // Filter and group by course → student
+  const grouped: Record<string, Record<string, FileRow[]>> = {};
+  const seenKeys = new Set<string>();
+
+  for (const row of files as FileRow[]) {
+    const dedupeKey = `${row.file.id}-${row.assignment.id}`;
+    if (seenKeys.has(dedupeKey)) continue;
+    seenKeys.add(dedupeKey);
+
+    const course = row.courseName ?? "General";
+    const student = row.studentFirstName ? `${row.studentFirstName} ${row.studentLastName ?? ""}`.trim() : "General";
+
+    if (filterCourse !== "all" && course !== filterCourse) continue;
+    if (filterStudent !== "all" && student !== filterStudent) continue;
+
+    if (!grouped[course]) grouped[course] = {};
+    if (!grouped[course][student]) grouped[course][student] = [];
+    grouped[course][student].push(row);
+  }
+
+  const hasResults = Object.keys(grouped).length > 0;
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-2xl font-bold">My Files</h2>
+        <p className="text-muted-foreground text-sm">Files shared with you by your tutor.</p>
+      </div>
+
+      {!isLoading && files.length > 0 && (
+        <div className="flex gap-3 flex-wrap">
+          <Select value={filterCourse} onValueChange={handleCourseChange}>
+            <SelectTrigger className="w-52">
+              <SelectValue placeholder="All Courses" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Courses</SelectItem>
+              {courseOptions.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          <Select value={filterStudent} onValueChange={setFilterStudent}>
+            <SelectTrigger className="w-52">
+              <SelectValue placeholder="All Students" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Students</SelectItem>
+              {studentOptions.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+
+      {isLoading ? (
+        <div className="space-y-3">{[1,2,3].map(i => <Skeleton key={i} className="h-20 w-full" />)}</div>
+      ) : files.length === 0 ? (
+        <Card>
+          <CardContent className="py-12 text-center">
+            <FileText className="w-12 h-12 text-muted-foreground mx-auto mb-3" />
+            <p className="text-muted-foreground">Your tutor hasn't shared any files with you yet.</p>
+          </CardContent>
+        </Card>
+      ) : !hasResults ? (
+        <Card>
+          <CardContent className="py-12 text-center">
+            <FileText className="w-12 h-12 text-muted-foreground mx-auto mb-3" />
+            <p className="text-muted-foreground">No files match the selected filters.</p>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="space-y-8">
+          {Object.entries(grouped).map(([courseName, studentMap]) => (
+            <div key={courseName} className="space-y-4">
+              <h3 className="text-lg font-semibold border-b pb-2">{courseName}</h3>
+              {Object.entries(studentMap).map(([studentName, rows]) => (
+                <div key={studentName} className="space-y-3">
+                  <p className="text-sm font-medium text-muted-foreground uppercase tracking-wide pl-1">{studentName}</p>
+                  <div className="grid gap-3 md:grid-cols-2">
+                    {rows.map((row: any) => (
+                      <Card key={`${row.file.id}-${row.assignment.id}`} className="hover:shadow-md transition-shadow">
+                        <CardContent className="pt-4 pb-4 space-y-3">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <FileText className="w-5 h-5 text-muted-foreground flex-shrink-0" />
+                              <div className="min-w-0">
+                                <p className="font-semibold truncate">{row.file.title}</p>
+                                <p className="text-xs text-muted-foreground">From {row.tutorFirstName} {row.tutorLastName}</p>
+                              </div>
+                            </div>
+                            <Badge variant="outline" className="flex-shrink-0 text-xs">{row.file.fileType.includes("pdf") ? "PDF" : "Word"}</Badge>
+                          </div>
+                          {row.file.description && <p className="text-sm text-muted-foreground line-clamp-2">{row.file.description}</p>}
+                          <div className="flex items-center justify-between text-xs text-muted-foreground">
+                            <span>{formatFileSize(row.file.fileSize)}</span>
+                            <span>{new Date(row.assignment.assignedAt).toLocaleDateString()}</span>
+                          </div>
+                          <Button size="sm" variant="outline" className="w-full" onClick={() => window.open(`/api/files/proxy/${row.file.id}`, "_blank")}>
+                            <Download className="w-4 h-4 mr-1" /> Download / View
+                          </Button>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function ParentDashboard() {
   const { user, isAuthenticated, loading, previousLastSignedIn } = useAuth();
@@ -759,6 +900,7 @@ export default function ParentDashboard() {
                   History
                 </TabsTrigger>
                 <TabsTrigger className="whitespace-nowrap" value="analytics">Analytics</TabsTrigger>
+                <TabsTrigger className="whitespace-nowrap" value="my-files">My Files</TabsTrigger>
               </TabsList>
             </div>
 
@@ -1590,6 +1732,9 @@ export default function ParentDashboard() {
             </TabsContent>
 
             {/* Analytics Tab */}
+            <TabsContent value="my-files" forceMount className={tabContentClass}>
+              <ParentFilesPanel />
+            </TabsContent>
             <TabsContent value="analytics" forceMount className={tabContentClass}>
               {/* Header */}
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">

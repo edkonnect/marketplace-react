@@ -1083,3 +1083,105 @@ export const referralSettings = mysqlTable("referral_settings", {
 
 export type ReferralSetting = typeof referralSettings.$inferSelect;
 export type InsertReferralSetting = typeof referralSettings.$inferInsert;
+
+// ============ File Management ============
+
+export const courseFiles = mysqlTable("course_files", {
+  id: int("id").autoincrement().primaryKey(),
+  title: varchar("title", { length: 255 }).notNull(),
+  description: text("description"),
+  courseId: int("courseId").references(() => courses.id, { onDelete: "set null" }),
+  fileUrl: varchar("fileUrl", { length: 1000 }).notNull(),
+  fileKey: varchar("fileKey", { length: 500 }).notNull(),
+  fileType: varchar("fileType", { length: 100 }).notNull(),
+  fileSize: int("fileSize").notNull(),
+  fileName: varchar("fileName", { length: 255 }).notNull(),
+  uploadedBy: int("uploadedBy").notNull().references(() => users.id, { onDelete: "restrict" }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => ({
+  uploadedByIdx: index("course_files_uploadedBy_idx").on(table.uploadedBy),
+  courseIdIdx: index("course_files_courseId_idx").on(table.courseId),
+}));
+
+export type CourseFile = typeof courseFiles.$inferSelect;
+export type InsertCourseFile = typeof courseFiles.$inferInsert;
+
+export const courseFileAssignments = mysqlTable("course_file_assignments", {
+  id: int("id").autoincrement().primaryKey(),
+  fileId: int("fileId").notNull().references(() => courseFiles.id, { onDelete: "cascade" }),
+  tutorId: int("tutorId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  assignedBy: int("assignedBy").notNull().references(() => users.id, { onDelete: "restrict" }),
+  assignedAt: timestamp("assignedAt").defaultNow().notNull(),
+}, (table) => ({
+  fileIdIdx: index("cfa_fileId_idx").on(table.fileId),
+  tutorIdIdx: index("cfa_tutorId_idx").on(table.tutorId),
+  uniqueAssignment: uniqueIndex("cfa_unique").on(table.fileId, table.tutorId),
+}));
+
+export type CourseFileAssignment = typeof courseFileAssignments.$inferSelect;
+export type InsertCourseFileAssignment = typeof courseFileAssignments.$inferInsert;
+
+export const tutorFileAssignments = mysqlTable("tutor_file_assignments", {
+  id: int("id").autoincrement().primaryKey(),
+  fileId: int("fileId").notNull().references(() => courseFiles.id, { onDelete: "cascade" }),
+  parentId: int("parentId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  tutorId: int("tutorId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  subscriptionId: int("subscriptionId").references(() => subscriptions.id, { onDelete: "cascade" }),
+  assignedAt: timestamp("assignedAt").defaultNow().notNull(),
+}, (table) => ({
+  fileIdIdx: index("tfa_fileId_idx").on(table.fileId),
+  parentIdIdx: index("tfa_parentId_idx").on(table.parentId),
+  tutorIdIdx: index("tfa_tutorId_idx").on(table.tutorId),
+  uniqueAssignment: uniqueIndex("tfa_unique").on(table.fileId, table.subscriptionId, table.tutorId),
+}));
+
+export type TutorFileAssignment = typeof tutorFileAssignments.$inferSelect;
+export type InsertTutorFileAssignment = typeof tutorFileAssignments.$inferInsert;
+
+export const courseFilesRelations = relations(courseFiles, ({ one, many }) => ({
+  uploadedByUser: one(users, {
+    fields: [courseFiles.uploadedBy],
+    references: [users.id],
+  }),
+  course: one(courses, {
+    fields: [courseFiles.courseId],
+    references: [courses.id],
+  }),
+  tutorAssignments: many(courseFileAssignments),
+  parentAssignments: many(tutorFileAssignments),
+}));
+
+export const courseFileAssignmentsRelations = relations(courseFileAssignments, ({ one }) => ({
+  file: one(courseFiles, {
+    fields: [courseFileAssignments.fileId],
+    references: [courseFiles.id],
+  }),
+  tutor: one(users, {
+    fields: [courseFileAssignments.tutorId],
+    references: [users.id],
+    relationName: "fileAssignmentTutor",
+  }),
+  assignedByUser: one(users, {
+    fields: [courseFileAssignments.assignedBy],
+    references: [users.id],
+    relationName: "fileAssignmentAdmin",
+  }),
+}));
+
+export const tutorFileAssignmentsRelations = relations(tutorFileAssignments, ({ one }) => ({
+  file: one(courseFiles, {
+    fields: [tutorFileAssignments.fileId],
+    references: [courseFiles.id],
+  }),
+  parent: one(users, {
+    fields: [tutorFileAssignments.parentId],
+    references: [users.id],
+    relationName: "tutorFileAssignmentParent",
+  }),
+  tutor: one(users, {
+    fields: [tutorFileAssignments.tutorId],
+    references: [users.id],
+    relationName: "tutorFileAssignmentTutor",
+  }),
+}));
