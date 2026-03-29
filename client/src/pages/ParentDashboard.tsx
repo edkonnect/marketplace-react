@@ -1701,13 +1701,6 @@ export default function ParentDashboard() {
                                     </div>
                                   )}
 
-                                  {/* Quality warning */}
-                                  {g.rubricTranscriptQuality === "low" && (
-                                    <div className="flex items-start gap-1.5 rounded-md bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 px-2.5 py-1.5">
-                                      <span className="text-amber-500 shrink-0 text-xs mt-0.5">⚠️</span>
-                                      <p className="text-xs text-amber-700 dark:text-amber-400">Grade may be inaccurate — {g.rubricTranscriptQualityReason || "transcript had audio gaps"}</p>
-                                    </div>
-                                  )}
 
                                   {/* Footer note */}
                                   <p className="text-[10px] text-muted-foreground/70 italic border-t border-border/30 pt-2">

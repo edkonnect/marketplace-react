@@ -1581,12 +1581,13 @@ export default function TutorDashboard() {
                         .filter(s => s.scheduledAt <= Date.now())
                         .sort((a, b) => b.scheduledAt - a.scheduledAt)
                         .map((session) => {
-                          const noteValue =
+                          const noteRaw =
                             sessionNotes[session.id] ?? session.feedbackFromTutor ?? "";
+                          const noteValue = noteRaw.replace(/\*\*(.+?)\*\*/g, '$1');
                           const markComplete = () =>
                             updateSessionMutation.mutate({ id: session.id, status: "completed" });
                           const saveNotes = () =>
-                            updateSessionMutation.mutate({ id: session.id, feedbackFromTutor: noteValue });
+                            updateSessionMutation.mutate({ id: session.id, feedbackFromTutor: noteRaw });
 
                           return (
                             <Card key={session.id}>
