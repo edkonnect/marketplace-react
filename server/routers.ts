@@ -6382,13 +6382,34 @@ export const appRouter = router({
             ? `Session date: ${input.sessionDate}`
             : `Session date: ${new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}`;
 
-          const prompt = `You are a helpful assistant that summarizes tutor session notes. Create concise, professional summaries that capture the key points while maintaining clarity. Focus on student progress, challenges, and next steps.
+          const prompt = `You are an assistant that generates structured, parent-facing session summaries for 1-on-1 tutoring sessions.
 
 ${sessionDateStr}
 
-When referring to this session in the summary, use the actual date above (e.g. "In the March 28 session" or "During Friday's session on March 28"). Do NOT use vague references like "last class", "this session", or implicit date markers.
+STRICT OUTPUT FORMAT — follow exactly, no deviations:
 
-Please summarize the following tutor session notes in approximately ${input.maxLength} words or less. Keep it professional and focused on the most important points:
+**Student Progress:**
+2–3 sentences describing what the student understood, accomplished, or improved during this session.
+
+**Challenges:**
+2–3 sentences describing specific areas where the student struggled or made errors.
+
+**Topics Covered:**
+Topic 1, Topic 2, Topic 3 (3–6 comma-separated topics, no bullet points)
+
+**Next Steps:**
+2–3 sentences describing what the student should focus on or practice before the next session.
+
+RULES:
+- Use the exact bold headers above (**Student Progress:**, **Challenges:**, **Topics Covered:**, **Next Steps:**).
+- Do NOT write any introduction, opening line, or closing sentence.
+- Do NOT mention the tutor, tutor actions, or tutor decisions in any section.
+- Do NOT use bullet points, dashes, or numbered lists.
+- Write plain paragraph text under each section except Topics Covered (which is comma-separated).
+- This is a 1-on-1 session with a single student — do not reference multiple students.
+- Do not refer to the session date unless directly relevant to a topic.
+
+Summarize the following session notes:
 
 ${input.text}`;
 

@@ -28,6 +28,11 @@ import { toast } from "sonner";
 import { formatSessionTime, COMMON_TIMEZONES } from "@/../../shared/timezone-utils";
 import Footer from "@/components/Footer";
 
+function renderBoldMarkdown(text: string) {
+  const html = text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  return <span dangerouslySetInnerHTML={{ __html: html }} />;
+}
+
 function AssignStudentsDialogContent({
   fileId, students, onClose, onSaved,
 }: {
@@ -477,6 +482,9 @@ export default function TutorDashboard() {
     onError: (error) => {
       setGradingSession(false);
       console.error("Auto-grading failed:", error.message);
+      if (!error.message.includes("too short")) {
+        toast.error("Session grading failed: " + error.message);
+      }
     },
   });
 
@@ -865,7 +873,8 @@ export default function TutorDashboard() {
     summarizingInModalRef.current = true;
     setSummarizingInModal(true);
     // Capture grading context now (before async completes) so onSuccess can use it safely
-    if (transcriptModal.transcript.trim().length >= 300) {
+    const wordCount = transcriptModal.transcript.trim().split(/\s+/).filter(Boolean).length;
+    if (wordCount >= 300) {
       pendingGradeContextRef.current = {
         transcript: transcriptModal.transcript,
         sessionId: transcriptModal.sessionId,
@@ -2117,13 +2126,15 @@ export default function TutorDashboard() {
       {transcriptModal && (
         <Dialog open={true} onOpenChange={() => setTranscriptModal(null)}>
           <DialogContent className="w-full max-w-2xl max-h-[92vh] sm:max-h-[90vh] flex flex-col overflow-hidden p-0 mx-2 sm:mx-auto">
-            <div className="flex flex-col min-h-0 flex-1 overflow-hidden px-4 sm:px-6 pt-5 sm:pt-6 pb-0">
+            <div className="shrink-0 px-4 sm:px-6 pt-5 sm:pt-6 pb-0">
             <DialogHeader className="mb-1">
               <DialogTitle className="text-lg sm:text-xl leading-tight">Session Transcript</DialogTitle>
             </DialogHeader>
             <p className="text-sm text-muted-foreground mt-1 mb-4 leading-snug">
               {transcriptModal.courseTitle} &bull; {transcriptModal.studentName}
             </p>
+            </div>
+            <div className="flex flex-col min-h-0 flex-1 overflow-hidden px-4 sm:px-6 pb-0">
 
             <Tabs
               value={transcriptModal.activeTab}
@@ -2168,8 +2179,8 @@ export default function TutorDashboard() {
                   <div className="space-y-3 shrink-0">
                     <div>
                       <Label className="text-xs font-medium text-muted-foreground mb-1 block">Summary</Label>
-                      <div className="overflow-y-auto rounded-md border bg-primary/5 p-3 text-sm max-h-48">
-                        {transcriptModal.summary}
+                      <div className="overflow-y-auto rounded-md border bg-primary/5 p-3 text-sm max-h-48 whitespace-pre-wrap">
+                        {renderBoldMarkdown(transcriptModal.summary)}
                       </div>
                     </div>
                     <div className="flex gap-2">

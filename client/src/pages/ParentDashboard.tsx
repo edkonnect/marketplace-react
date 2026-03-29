@@ -26,6 +26,11 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import Footer from "@/components/Footer";
 
+function renderBoldMarkdown(text: string) {
+  const html = text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  return <span dangerouslySetInnerHTML={{ __html: html }} />;
+}
+
 function ParentFilesPanel() {
   const { data: files = [], isLoading } = trpc.fileManagement.getFilesForParent.useQuery();
   const [filterCourse, setFilterCourse] = useState<string>("all");
@@ -1372,7 +1377,7 @@ export default function ParentDashboard() {
                                   </div>
                                   <div className="pl-4 border-l-2 border-blue-300 dark:border-blue-700">
                                     <p className="text-sm text-blue-900 dark:text-blue-50 leading-relaxed whitespace-pre-wrap break-words">
-                                      {session.feedbackFromTutor}
+                                      {renderBoldMarkdown(session.feedbackFromTutor)}
                                     </p>
                                   </div>
                                 </div>
