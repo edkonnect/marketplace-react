@@ -2346,7 +2346,7 @@ export const appRouter = router({
         sessions: z.array(z.object({
           scheduledAt: z.number(), // Unix timestamp in milliseconds
         })),
-        duration: z.number(),
+        duration: z.number().min(15).max(480),
         notes: z.string().optional(),
       }))
       .mutation(async ({ ctx, input }) => {
@@ -2541,7 +2541,7 @@ export const appRouter = router({
         courseId: z.number(),
         tutorId: z.number(),
         scheduledAt: z.number(), // Unix timestamp in milliseconds
-        duration: z.number(),
+        duration: z.number().min(15).max(480),
         notes: z.string().optional(),
       }))
       .mutation(async ({ ctx, input }) => {
@@ -3821,9 +3821,9 @@ export const appRouter = router({
         courseId: z.number(),
         tutorId: z.number(),
         scheduledAt: z.number(),
-        duration: z.number().default(60),
-        studentFirstName: z.string(),
-        studentLastName: z.string(),
+        duration: z.number().min(15).max(480).default(60),
+        studentFirstName: z.string().min(1),
+        studentLastName: z.string().min(1),
         studentGrade: z.string().optional(),
         origin: z.string().optional(),
       }))
@@ -3893,9 +3893,9 @@ export const appRouter = router({
         courseId: z.number(),
         tutorId: z.number(),
         scheduledAt: z.number(), // Unix timestamp in milliseconds
-        duration: z.number().default(60),
-        studentFirstName: z.string(),
-        studentLastName: z.string(),
+        duration: z.number().min(15).max(480).default(60),
+        studentFirstName: z.string().min(1),
+        studentLastName: z.string().min(1),
         studentGrade: z.string().optional(),
       }))
       .mutation(async ({ ctx, input }) => {

@@ -548,6 +548,26 @@ export async function handleStripeWebhook(req: Request, res: Response) {
           const scheduledAt = parseInt(session.metadata?.scheduledAt || "0");
           const duration = parseInt(session.metadata?.duration || "60");
 
+          // BUG 2: Validate all critical metadata fields before proceeding
+          // Prevents garbage sessions with parentId=0, scheduledAt=1970, etc.
+          if (!userId || !tutorId || !courseId || !scheduledAt) {
+            console.error("[Webhook] Invalid trial_lesson metadata — missing critical fields:", session.metadata);
+            return res.status(400).send("Invalid trial lesson metadata");
+          }
+
+          // BUG 6: Reject if the scheduled time is too far in the past (>6 hours)
+          // Stripe webhook can be delayed; anything more than 6h past is unrecoverable
+          if (scheduledAt < Date.now() - 6 * 60 * 60 * 1000) {
+            console.error("[Webhook] Trial session scheduled in the past:", new Date(scheduledAt).toISOString(), "parentId:", userId);
+            return res.status(400).send("Trial session time has already passed");
+          }
+
+          // BUG 7: Validate duration is a sane number (15 min to 8 hours)
+          if (duration < 15 || duration > 480) {
+            console.error("[Webhook] Invalid trial session duration:", duration, "parentId:", userId);
+            return res.status(400).send("Invalid session duration");
+          }
+
           // Verify eligibility again
           const trialSessions = await db.getTrialSessionsByParentId(userId);
           if (trialSessions.length >= 2) {
@@ -555,17 +575,34 @@ export async function handleStripeWebhook(req: Request, res: Response) {
             return res.status(400).send("Trial lesson limit exceeded");
           }
 
-          // Create trial session
-          const sessionId = await db.createTrialSession({
-            subscriptionId: null,
-            tutorId,
-            parentId: userId,
-            scheduledAt,
-            duration,
-            isTrial: true,
-            status: 'scheduled',
-            notes: `Trial lesson for ${studentFirstName} ${studentLastName}${studentGrade ? ` (${studentGrade})` : ''}`,
-          });
+          // BUG 4: Wrap session creation in try/catch for SESSION_CONFLICT
+          // Without this, if two parents race for the same slot, the second parent
+          // gets charged $1 but no session is created (money lost, no session).
+          let sessionId: number | null = null;
+          try {
+            sessionId = await db.createTrialSession({
+              subscriptionId: null,
+              tutorId,
+              parentId: userId,
+              scheduledAt,
+              duration,
+              isTrial: true,
+              status: 'scheduled',
+              studentFirstName,
+              studentLastName,
+              studentGrade,
+              courseId,
+              notes: `Trial lesson for ${studentFirstName} ${studentLastName}${studentGrade ? ` (${studentGrade})` : ''}`,
+            });
+          } catch (err: any) {
+            if (err?.message === 'SESSION_CONFLICT') {
+              console.error("[Webhook] Trial slot conflict — slot already taken. parentId:", userId, "scheduledAt:", new Date(scheduledAt).toISOString());
+              // The parent was charged $1 but the slot is taken. Log for manual refund review.
+              // In production: trigger stripe.refunds.create({ payment_intent: session.payment_intent })
+              return res.status(409).send("Session slot conflict — slot already booked");
+            }
+            throw err;
+          }
 
           if (sessionId) {
 
