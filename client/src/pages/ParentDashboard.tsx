@@ -14,7 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Link, useLocation } from "wouter";
-import { BookOpen, Calendar, MessageSquare, CreditCard, Clock, Users, Video, FileText, HelpCircle, CheckCircle, TrendingUp, BarChart2, LogIn, Sparkles, Search, Target, Activity, Download } from "lucide-react";
+import { BookOpen, Calendar, MessageSquare, CreditCard, Clock, Users, Video, FileText, HelpCircle, CheckCircle, TrendingUp, BarChart2, LogIn, Sparkles, Search, Target, Activity, Download, ChevronLeft, ChevronRight } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { LOGIN_PATH } from "@/const";
 import { NotificationCenter } from "@/components/NotificationCenter";
@@ -364,7 +364,12 @@ export default function ParentDashboard() {
   const [showSubsModal, setShowSubsModal] = useState(false);
   const [showBillingModal, setShowBillingModal] = useState(false);
   const [showProficiencyModal, setShowProficiencyModal] = useState(false);
+  const [proficiencyStudentTab, setProficiencyStudentTab] = useState(0);
   const [showEngagementModal, setShowEngagementModal] = useState(false);
+  const [selectedAnalyticsMonth, setSelectedAnalyticsMonth] = useState<string>(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  });
 
   const subscriptionStudentMap = useMemo(() => {
     const map = new Map<number, string>();
@@ -726,9 +731,82 @@ export default function ParentDashboard() {
     });
   };
 
+  // Analytics month options (derived from session history + current month)
+  const analyticsMonthOptions = useMemo(() => {
+    const monthSet = new Set<string>();
+    const now = new Date();
+    const thisMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+    monthSet.add(thisMonth);
+    const addDate = (val: string | number | Date | null | undefined) => {
+      if (!val) return;
+      const d = new Date(val);
+      if (isNaN(d.getTime())) return;
+      monthSet.add(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
+    };
+    (sessionHistory || []).forEach(s => addDate(s.scheduledAt));
+    (subscriptions || []).forEach(s => {
+      addDate(s.subscription.startDate);
+      addDate(s.subscription.createdAt);
+    });
+    (parentQuizzes || []).forEach(q => addDate(q.completedAt));
+    (parentGrades || []).forEach(g => addDate(g.rubricGradedAt));
+    const sorted = Array.from(monthSet).sort((a, b) => b.localeCompare(a));
+    const options = sorted.map(key => {
+      const [y, m] = key.split("-");
+      const d = new Date(Number(y), Number(m) - 1, 1);
+      return { value: key, label: d.toLocaleDateString(undefined, { month: "short", year: "numeric" }) };
+    });
+    return [{ value: "all", label: "All" }, ...options];
+  }, [sessionHistory, subscriptions, parentQuizzes, parentGrades]);
+
+  // Shared subscription month filter — used by Cards 1, 2 and Session Summary
+  const analyticsFilteredSubscriptions = useMemo(() => {
+    if (selectedAnalyticsMonth === "all") return subscriptions || [];
+    const [y, m] = selectedAnalyticsMonth.split("-").map(Number);
+    const startOfMonth = new Date(y, m - 1, 1);
+    const endOfMonth = new Date(y, m, 0, 23, 59, 59);
+    return (subscriptions || []).filter(item => {
+      const subStart = item.subscription.startDate
+        ? new Date(item.subscription.startDate)
+        : new Date(item.subscription.createdAt);
+      const subEnd = item.subscription.endDate ? new Date(item.subscription.endDate) : null;
+      return subStart <= endOfMonth && (subEnd === null || subEnd >= startOfMonth);
+    });
+  }, [subscriptions, selectedAnalyticsMonth]);
+
+  // Analytics filtered data based on selected month
+  const analyticsFilteredSessions = useMemo(() => {
+    if (selectedAnalyticsMonth === "all") return sessionHistory || [];
+    const [y, m] = selectedAnalyticsMonth.split("-").map(Number);
+    return (sessionHistory || []).filter(s => {
+      const d = new Date(s.scheduledAt);
+      return d.getFullYear() === y && d.getMonth() + 1 === m;
+    });
+  }, [sessionHistory, selectedAnalyticsMonth]);
+
+  const analyticsFilteredQuizzes = useMemo(() => {
+    if (selectedAnalyticsMonth === "all") return parentQuizzes || [];
+    const [y, m] = selectedAnalyticsMonth.split("-").map(Number);
+    return (parentQuizzes || []).filter(q => {
+      if (!q.completedAt) return false;
+      const d = new Date(q.completedAt);
+      return d.getFullYear() === y && d.getMonth() + 1 === m;
+    });
+  }, [parentQuizzes, selectedAnalyticsMonth]);
+
+  const analyticsFilteredGrades = useMemo(() => {
+    if (selectedAnalyticsMonth === "all") return parentGrades || [];
+    const [y, m] = selectedAnalyticsMonth.split("-").map(Number);
+    return (parentGrades || []).filter(g => {
+      if (!g.rubricGradedAt) return false;
+      const d = new Date(g.rubricGradedAt);
+      return d.getFullYear() === y && d.getMonth() + 1 === m;
+    });
+  }, [parentGrades, selectedAnalyticsMonth]);
+
   // Analytics computations
   const analyticsStats = useMemo(() => {
-    const allSessions = sessionHistory || [];
+    const allSessions = analyticsFilteredSessions;
     const completed = allSessions.filter(s => s.status === "completed");
     const noShows = allSessions.filter(s => s.status === "no_show");
     const totalScheduled = allSessions.filter(s => s.status === "completed" || s.status === "no_show" || s.status === "scheduled");
@@ -744,33 +822,40 @@ export default function ParentDashboard() {
       entry.sessions += 1;
       if (entry.lastSession === null || s.scheduledAt > entry.lastSession) entry.lastSession = s.scheduledAt;
     });
-    (parentQuizzes || []).filter(q => q.status === "completed" && q.score != null).forEach((q) => {
+    analyticsFilteredQuizzes.filter(q => q.status === "completed" && q.score != null).forEach((q) => {
       const session = allSessions.find(s => s.id === q.sessionId);
       if (!session) return;
       const name = [session.studentFirstName, session.studentLastName].filter(Boolean).join(" ").trim() || "Student";
       if (studentMap.has(name)) studentMap.get(name)!.quizScores.push(q.score!);
     });
 
-    // Monthly sessions (last 6 months)
+    // Monthly activity: last 6 months when "all", otherwise single selected month
     const now = new Date();
     const months: { label: string; count: number }[] = [];
-    for (let i = 5; i >= 0; i--) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    if (selectedAnalyticsMonth === "all") {
+      for (let i = 5; i >= 0; i--) {
+        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        const label = d.toLocaleDateString(undefined, { month: "short", year: "numeric" });
+        const count = completed.filter(s => {
+          const sd = new Date(s.scheduledAt);
+          return sd.getMonth() === d.getMonth() && sd.getFullYear() === d.getFullYear();
+        }).length;
+        months.push({ label, count });
+      }
+    } else {
+      const [y, m] = selectedAnalyticsMonth.split("-").map(Number);
+      const d = new Date(y, m - 1, 1);
       const label = d.toLocaleDateString(undefined, { month: "short", year: "numeric" });
-      const count = completed.filter(s => {
-        const sd = new Date(s.scheduledAt);
-        return sd.getMonth() === d.getMonth() && sd.getFullYear() === d.getFullYear();
-      }).length;
-      months.push({ label, count });
+      months.push({ label, count: completed.length });
     }
 
-    const completedQuizzes = (parentQuizzes || []).filter(q => q.status === "completed");
+    const completedQuizzes = analyticsFilteredQuizzes.filter(q => q.status === "completed");
     const avgQuizScore = completedQuizzes.length > 0
       ? Math.round(completedQuizzes.reduce((sum, q) => sum + (q.score ?? 0), 0) / completedQuizzes.length)
       : null;
 
     // Avg rubric score from parentGrades
-    const gradedRows = (parentGrades || []).filter(g => g.rubricOverallScore != null);
+    const gradedRows = analyticsFilteredGrades.filter(g => g.rubricOverallScore != null);
     const avgRubricScore = gradedRows.length > 0
       ? Math.round((gradedRows.reduce((sum, g) => sum + Number(g.rubricOverallScore!), 0) / gradedRows.length) * 10) / 10
       : null;
@@ -794,7 +879,7 @@ export default function ParentDashboard() {
       avgRubricScore,
       proficiencyLabel,
     };
-  }, [sessionHistory, parentQuizzes, parentGrades]);
+  }, [analyticsFilteredSessions, analyticsFilteredQuizzes, analyticsFilteredGrades, selectedAnalyticsMonth]);
 
   if (loading || !isAuthenticated) {
     return (
@@ -1745,12 +1830,24 @@ export default function ParentDashboard() {
                   <h2 className="text-2xl font-bold">Learning Analytics</h2>
                   <p className="text-sm text-muted-foreground mt-0.5">Overview of your child's progress and activity</p>
                 </div>
-                {previousLastSignedIn && (
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/60 rounded-lg px-3 py-2 self-start sm:self-auto">
-                    <LogIn className="w-3.5 h-3.5 shrink-0" />
-                    <span>Last login: <span className="font-medium text-foreground">{new Date(previousLastSignedIn).toLocaleString()}</span></span>
-                  </div>
-                )}
+                <div className="flex flex-col items-start sm:items-end gap-1.5 self-start sm:self-auto">
+                  <Select value={selectedAnalyticsMonth} onValueChange={(v) => { setSelectedAnalyticsMonth(v); setActiveStudentTab(0); }}>
+                    <SelectTrigger className="h-8 text-xs w-36">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {analyticsMonthOptions.map(opt => (
+                        <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {(previousLastSignedIn || user?.lastSignedIn) && (
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/60 rounded-lg px-3 py-2">
+                      <LogIn className="w-3.5 h-3.5 shrink-0" />
+                      <span>Last login: <span className="font-medium text-foreground">{new Date(previousLastSignedIn ?? user!.lastSignedIn!).toLocaleString()}</span></span>
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* Stat Cards */}
@@ -1758,8 +1855,10 @@ export default function ParentDashboard() {
 
                 {/* Card 1 — Subscription Details */}
                 {(() => {
+                  const visibleSubscriptions = analyticsFilteredSubscriptions;
+
                   const studentGroups = Object.entries(
-                    (subscriptions || []).reduce((acc, item) => {
+                    visibleSubscriptions.reduce((acc, item) => {
                       const name = [item.subscription.studentFirstName, item.subscription.studentLastName].filter(Boolean).join(" ").trim() || "Student";
                       if (!acc[name]) acc[name] = [];
                       acc[name].push(item);
@@ -1768,10 +1867,17 @@ export default function ParentDashboard() {
                   );
                   const clampedTab = Math.min(activeStudentTab, Math.max(0, studentGroups.length - 1));
                   const activeGroup = studentGroups[clampedTab];
+                  const activeStudentName = activeGroup?.[0] ?? "";
                   const firstItem = activeGroup?.[1]?.[0];
                   const totalCourses = activeGroup?.[1]?.length ?? 0;
-                  const visibleTabs = studentGroups.slice(0, 3);
-                  const hiddenCount = studentGroups.length - 3;
+
+                  const completedForStudent = analyticsFilteredSessions.filter(s =>
+                    ([s.studentFirstName, s.studentLastName].filter(Boolean).join(" ").trim() || "Student") === activeStudentName && s.status === "completed"
+                  ).length;
+                  const scheduledForStudent = analyticsFilteredSessions.filter(s =>
+                    ([s.studentFirstName, s.studentLastName].filter(Boolean).join(" ").trim() || "Student") === activeStudentName && s.status === "scheduled"
+                  ).length;
+
                   return (
                     <div className="rounded-2xl bg-gradient-to-br from-blue-500 to-blue-600 p-5 text-white shadow-md flex flex-col gap-2 h-[220px]">
                       <div className="flex items-center justify-between">
@@ -1786,36 +1892,55 @@ export default function ParentDashboard() {
                         </div>
                       </div>
                       {studentGroups.length === 0 ? (
-                        <p className="text-4xl font-bold">0</p>
+                        <>
+                          <p className="text-4xl font-bold">0</p>
+                          <p className="text-xs opacity-70 -mt-1">no enrollments this month</p>
+                        </>
                       ) : (
                         <>
                           <p className="text-4xl font-bold">{studentGroups.length}</p>
                           <p className="text-xs opacity-70 -mt-1">student{studentGroups.length !== 1 ? "s" : ""} enrolled</p>
-                          {/* Student tabs — max 3 visible */}
-                          <div className="flex gap-1.5 items-center flex-nowrap overflow-hidden">
-                            {visibleTabs.map(([name, items], idx) => {
-                              const grade = items[0]?.subscription.studentGrade;
-                              return (
-                                <button
-                                  key={name}
-                                  onClick={() => setActiveStudentTab(idx)}
-                                  className={`text-xs px-2.5 py-0.5 rounded-full font-medium transition-colors border shrink-0 ${clampedTab === idx ? "bg-white text-blue-600 border-white" : "bg-white/20 text-white border-white/30 hover:bg-white/30"}`}
-                                >
-                                  {name.split(" ")[0]}{grade ? ` G${grade}` : ""}
-                                </button>
-                              );
-                            })}
-                            {hiddenCount > 0 && (
-                              <button onClick={() => setShowSubsModal(true)} className="text-xs px-2 py-0.5 rounded-full bg-white/20 border border-white/30 font-medium shrink-0 hover:bg-white/30">
-                                +{hiddenCount}
+                          {/* Segmented student selector — only shown for multiple students */}
+                          {studentGroups.length > 1 ? (
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => setActiveStudentTab((clampedTab - 1 + studentGroups.length) % studentGroups.length)}
+                                className="w-6 h-6 rounded-full bg-white/20 hover:bg-white/35 flex items-center justify-center shrink-0 transition-colors"
+                              >
+                                <ChevronLeft className="w-3.5 h-3.5" />
                               </button>
-                            )}
-                          </div>
-                          {/* Active student: show first course only */}
+                              <div className="flex-1 text-center">
+                                <p className="text-xs font-semibold truncate">
+                                  {activeStudentName}
+                                  {(() => {
+                                    const grade = activeGroup?.[1]?.[0]?.subscription.studentGrade;
+                                    return grade && grade !== "Not specified" && String(grade).length <= 4 ? ` · G${grade}` : "";
+                                  })()}
+                                  {" "}<span className="opacity-50 font-normal">({clampedTab + 1}/{studentGroups.length})</span>
+                                </p>
+                              </div>
+                              <button
+                                onClick={() => setActiveStudentTab((clampedTab + 1) % studentGroups.length)}
+                                className="w-6 h-6 rounded-full bg-white/20 hover:bg-white/35 flex items-center justify-center shrink-0 transition-colors"
+                              >
+                                <ChevronRight className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          ) : (
+                            // Single student — show name clearly
+                            <p className="text-xs font-semibold opacity-90 truncate">
+                              {activeStudentName}
+                              {(() => {
+                                const grade = firstItem?.subscription.studentGrade;
+                                return grade && grade !== "Not specified" && String(grade).length <= 4 ? ` · G${grade}` : "";
+                              })()}
+                            </p>
+                          )}
+                          {/* Active student course box */}
                           {firstItem && (
                             <div className="rounded-xl bg-white/15 px-3 py-2 space-y-0.5 mt-auto">
                               <p className="text-sm font-semibold truncate">{firstItem.course?.title || "Course"}</p>
-                              <p className="text-xs opacity-75">{firstItem.sessionStats?.completedCount ?? 0} done · {firstItem.sessionStats?.scheduledCount ?? 0} upcoming</p>
+                              <p className="text-xs opacity-75">{completedForStudent} done · {scheduledForStudent} upcoming</p>
                               {totalCourses > 1 && <p className="text-[10px] opacity-60">+{totalCourses - 1} more course{totalCourses - 1 !== 1 ? "s" : ""}</p>}
                             </div>
                           )}
@@ -1836,10 +1961,10 @@ export default function ParentDashboard() {
                     const discount = Number(s.discountAmount ?? 0);
                     return Math.max(0, coursePrice - promo - discount);
                   };
-                  const activeSubs = (subscriptions || []).filter(s => s.subscription.status === "active");
+                  const activeSubs = analyticsFilteredSubscriptions.filter(s => s.subscription.status === "active");
                   const totalSpend = activeSubs.reduce((sum, s) => sum + getSubAmount(s), 0);
-                  const totalSavings = (subscriptions || []).reduce((sum, s) => sum + Number(s.subscription.promoDiscountAmount ?? 0) + Number(s.subscription.discountAmount ?? 0), 0);
-                  const hasSiblingDiscount = (subscriptions || []).some(s => s.subscription.siblingDiscountApplied);
+                  const totalSavings = analyticsFilteredSubscriptions.reduce((sum, s) => sum + Number(s.subscription.promoDiscountAmount ?? 0) + Number(s.subscription.discountAmount ?? 0), 0);
+                  const hasSiblingDiscount = analyticsFilteredSubscriptions.some(s => s.subscription.siblingDiscountApplied);
                   return (
                     <div className="rounded-2xl bg-gradient-to-br from-emerald-500 to-emerald-600 p-5 text-white shadow-md flex flex-col gap-2 h-[220px]">
                       <div className="flex items-center justify-between">
@@ -1884,7 +2009,7 @@ export default function ParentDashboard() {
                       </div>
                       <p className="text-4xl font-bold">{avgQuizScore != null ? `${avgQuizScore}%` : "—"}</p>
                       <p className="text-xs opacity-70 -mt-2">avg quiz score · {completedQuizzes} taken</p>
-                      <p className="text-xs opacity-90 font-medium">{proficiencyLabel}</p>
+                      {analyticsFilteredSessions.length > 0 && <p className="text-xs opacity-90 font-medium">{proficiencyLabel}</p>}
                       <div className="space-y-1.5">
                         <div className="flex items-center justify-between text-xs opacity-80">
                           <span>Attendance</span><span className="font-semibold">{attendanceRate}%</span>
@@ -1892,16 +2017,6 @@ export default function ParentDashboard() {
                         <div className="h-1.5 rounded-full bg-white/30 overflow-hidden">
                           <div className="h-1.5 rounded-full bg-white/80" style={{ width: `${attendanceRate}%` }} />
                         </div>
-                        {avgRubricScore != null && (
-                          <>
-                            <div className="flex items-center justify-between text-xs opacity-80">
-                              <span>Teaching Quality</span><span className="font-semibold">{avgRubricScore}/4</span>
-                            </div>
-                            <div className="h-1.5 rounded-full bg-white/30 overflow-hidden">
-                              <div className="h-1.5 rounded-full bg-white/80" style={{ width: `${(avgRubricScore / 4) * 100}%` }} />
-                            </div>
-                          </>
-                        )}
                       </div>
                     </div>
                   );
@@ -1912,7 +2027,7 @@ export default function ParentDashboard() {
                   const quizzesCompleted = analyticsStats.completedQuizzes;
                   const sessionsAttended = analyticsStats.totalCompleted;
                   const recentThreshold = Date.now() - 30 * 24 * 60 * 60 * 1000;
-                  const hasRecentFeedback = (sessionHistory || []).some(s => s.feedbackFromTutor && new Date(s.scheduledAt).getTime() > recentThreshold);
+                  const hasRecentFeedback = analyticsFilteredSessions.some(s => s.feedbackFromTutor && new Date(s.scheduledAt).getTime() > recentThreshold);
                   return (
                     <div className="rounded-2xl bg-gradient-to-br from-indigo-500 to-indigo-600 p-5 text-white shadow-md flex flex-col gap-2 h-[220px]">
                       <div className="flex items-center justify-between">
@@ -1997,7 +2112,9 @@ export default function ParentDashboard() {
                         Scheduled
                       </div>
                       <span className="font-semibold text-blue-600 dark:text-blue-400">
-                        {(subscriptions || []).reduce((sum, s) => sum + (s.sessionStats?.scheduledCount ?? 0), 0)}
+                        {selectedAnalyticsMonth === "all"
+                          ? (subscriptions || []).reduce((sum, s) => sum + (s.sessionStats?.scheduledCount ?? 0), 0)
+                          : analyticsFilteredSessions.filter(s => s.status === "scheduled").length}
                       </span>
                     </div>
                     <div className="flex items-center justify-between px-5 py-3.5">
@@ -2015,85 +2132,13 @@ export default function ParentDashboard() {
                         Active Enrollments
                       </div>
                       <span className="font-semibold text-violet-600 dark:text-violet-400">
-                        {(subscriptions || []).filter(s => s.subscription.status === "active").length}
+                        {analyticsFilteredSubscriptions.filter(s => s.subscription.status === "active").length}
                       </span>
                     </div>
                   </div>
                 </div>
               </div>
 
-              {/* Teaching Quality */}
-              {parentGrades && parentGrades.length > 0 && (() => {
-                const criteria = [
-                  { key: "rubricAcademicEfficiency", label: "Academic Efficiency" },
-                  { key: "rubricInstructionalQuality", label: "Learning Engagement" },
-                  { key: "rubricStrategyInsight", label: "Strategy & Problem-Solving" },
-                  { key: "rubricSynthesisBranding", label: "Session Value & Takeaways" },
-                ] as const;
-                const gradedRows = parentGrades.filter(g => g.rubricOverallScore != null);
-                if (gradedRows.length === 0) return null;
-                const avgFor = (key: string) => {
-                  const vals = gradedRows.map(g => (g as any)[key]).filter((v: any) => v != null) as number[];
-                  return vals.length > 0 ? (vals.reduce((a, b) => a + b, 0) / vals.length) : null;
-                };
-                const scoreColor = (v: number | null) => v == null ? "bg-muted" : v >= 3.5 ? "bg-emerald-500" : v >= 2.5 ? "bg-blue-500" : v >= 1.5 ? "bg-amber-400" : "bg-red-500";
-                const scoreText = (v: number | null) => v == null ? "text-muted-foreground" : v >= 3.5 ? "text-emerald-600 dark:text-emerald-400" : v >= 2.5 ? "text-blue-600 dark:text-blue-400" : v >= 1.5 ? "text-amber-500" : "text-red-600 dark:text-red-400";
-                return (
-                  <div>
-                    <h3 className="text-base font-semibold flex items-center gap-2 mb-3">
-                      <Sparkles className="w-4 h-4 text-primary" /> Teaching Quality
-                    </h3>
-                    <div className="grid md:grid-cols-2 gap-6">
-                      {/* Avg scores card */}
-                      <div className="rounded-xl border bg-card shadow-sm flex-1">
-                        <div className="px-5 pt-4 pb-5 space-y-3">
-                          <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Avg Rubric Scores ({gradedRows.length} session{gradedRows.length !== 1 ? "s" : ""} graded)</p>
-                          {criteria.map(({ key, label }) => {
-                            const avg = avgFor(key);
-                            return (
-                              <div key={key} className="flex items-center gap-3">
-                                <span className="text-xs text-muted-foreground w-40 shrink-0">{label}</span>
-                                <div className="flex-1 bg-muted rounded-full h-2 overflow-hidden">
-                                  <div className={`h-2 rounded-full ${scoreColor(avg)} transition-all`} style={{ width: avg ? `${(avg / 4) * 100}%` : "0%" }} />
-                                </div>
-                                <span className={`text-xs font-semibold w-8 text-right ${scoreText(avg)}`}>{avg != null ? avg.toFixed(1) : "—"}</span>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-
-                      {/* Score trend card */}
-                      <div className="rounded-xl border bg-card shadow-sm flex-1">
-                        <div className="px-5 pt-4 pb-5 space-y-3">
-                          <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Score Trend (per session)</p>
-                          {gradedRows.length < 2 ? (
-                            <p className="text-sm text-muted-foreground py-4 text-center">Grade more sessions to see a trend.</p>
-                          ) : (
-                            <div className="flex items-end gap-2 h-24 pt-2">
-                              {gradedRows.slice().reverse().map((g, i) => {
-                                const score = Number(g.rubricOverallScore ?? 0);
-                                const heightPct = (score / 4) * 100;
-                                const bar = score >= 3.5 ? "bg-emerald-500" : score >= 2.5 ? "bg-blue-500" : score >= 1.5 ? "bg-amber-400" : "bg-red-500";
-                                const dateLabel = g.scheduledAt ? new Date(g.scheduledAt).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : `#${i + 1}`;
-                                return (
-                                  <div key={i} className="flex flex-col items-center gap-1 flex-1" title={`${dateLabel}: ${score.toFixed(1)}/4`}>
-                                    <span className="text-xs font-semibold text-muted-foreground">{score.toFixed(1)}</span>
-                                    <div className="w-full flex items-end justify-center h-16">
-                                      <div className={`w-full rounded-t ${bar} transition-all`} style={{ height: `${heightPct}%` }} />
-                                    </div>
-                                    <span className="text-xs text-muted-foreground truncate w-full text-center">{dateLabel}</span>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })()}
 
               {/* Per-Student Breakdown */}
               {analyticsStats.studentBreakdown.length > 0 && (
@@ -2342,7 +2387,7 @@ export default function ParentDashboard() {
       })()}
 
       {/* Modal 3 — Learning Proficiency */}
-      <Dialog open={showProficiencyModal} onOpenChange={setShowProficiencyModal}>
+      <Dialog open={showProficiencyModal} onOpenChange={(open) => { setShowProficiencyModal(open); if (!open) setProficiencyStudentTab(0); }}>
         <DialogContent className="max-w-xl max-h-[85vh] flex flex-col gap-0 p-0">
           <div className="px-6 pt-6 pb-4 border-b shrink-0">
             <DialogTitle className="flex items-center gap-2">
@@ -2350,71 +2395,195 @@ export default function ParentDashboard() {
             </DialogTitle>
             <DialogDescription className="mt-1">Detailed breakdown of quiz performance, attendance, and teaching quality</DialogDescription>
           </div>
-          <div className="overflow-y-auto flex-1 px-6 py-4 space-y-5">
-            {/* Overall label */}
+          <div className="overflow-y-auto flex-1 px-6 py-4 space-y-4">
             {(() => {
-              const { avgQuizScore, attendanceRate, avgRubricScore, proficiencyLabel, completedQuizzes, totalCompleted, noShowCount, studentBreakdown } = analyticsStats;
-              const profColor = proficiencyLabel === "Above Average" ? "text-emerald-600 dark:text-emerald-400" : proficiencyLabel === "On Track" ? "text-blue-600 dark:text-blue-400" : "text-amber-500";
-              const profBg = proficiencyLabel === "Above Average" ? "bg-emerald-50 dark:bg-emerald-950/40" : proficiencyLabel === "On Track" ? "bg-blue-50 dark:bg-blue-950/40" : "bg-amber-50 dark:bg-amber-950/40";
-              return (
-                <>
-                  <div className={`rounded-xl px-4 py-3 ${profBg}`}>
-                    <p className={`text-base font-bold ${profColor}`}>{proficiencyLabel}</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">Overall assessment based on quiz score &amp; attendance</p>
+              // Build per-student data from filtered sessions
+              const sessionMap = new Map<number, { studentName: string; status: string }>();
+              analyticsFilteredSessions.forEach(s => {
+                const name = [s.studentFirstName, s.studentLastName].filter(Boolean).join(" ").trim() || "Student";
+                sessionMap.set(s.id, { studentName: name, status: s.status });
+              });
+
+              const studentNames = Array.from(
+                new Set(analyticsFilteredSessions.map(s => [s.studentFirstName, s.studentLastName].filter(Boolean).join(" ").trim() || "Student"))
+              );
+
+              const perStudent = studentNames.map(name => {
+                const studentSessions = analyticsFilteredSessions.filter(s =>
+                  ([s.studentFirstName, s.studentLastName].filter(Boolean).join(" ").trim() || "Student") === name
+                );
+                const completed = studentSessions.filter(s => s.status === "completed").length;
+                const noShows = studentSessions.filter(s => s.status === "no_show").length;
+                const totalScheduled = studentSessions.filter(s => s.status === "completed" || s.status === "no_show" || s.status === "scheduled").length;
+                const attendance = totalScheduled > 0 ? Math.round((completed / totalScheduled) * 100) : 0;
+
+                const studentQuizzes = analyticsFilteredQuizzes.filter(q => {
+                  const sess = q.sessionId != null ? sessionMap.get(q.sessionId) : undefined;
+                  return sess?.studentName === name && q.status === "completed" && q.score != null;
+                });
+                const avgQuiz = studentQuizzes.length > 0
+                  ? Math.round(studentQuizzes.reduce((sum, q) => sum + (q.score ?? 0), 0) / studentQuizzes.length)
+                  : null;
+
+                const studentGrades = analyticsFilteredGrades.filter(g => {
+                  const sess = g.sessionId != null ? sessionMap.get(g.sessionId) : undefined;
+                  return sess?.studentName === name && g.rubricOverallScore != null;
+                });
+                const avgRubric = studentGrades.length > 0
+                  ? Math.round((studentGrades.reduce((sum, g) => sum + Number(g.rubricOverallScore!), 0) / studentGrades.length) * 10) / 10
+                  : null;
+
+                let proficiency: "Above Average" | "On Track" | "Needs Attention" = "On Track";
+                if (avgQuiz != null) {
+                  if (avgQuiz >= 70 && attendance >= 80) proficiency = "Above Average";
+                  else if (avgQuiz < 50 || attendance < 50) proficiency = "Needs Attention";
+                } else if (attendance < 50 && totalScheduled > 0) {
+                  proficiency = "Needs Attention";
+                }
+
+                return { name, completed, noShows, attendance, totalScheduled, avgQuiz, avgRubric, quizCount: studentQuizzes.length, gradeCount: studentGrades.length, proficiency };
+              });
+
+              if (perStudent.length === 0) {
+                return (
+                  <div className="flex flex-col items-center justify-center py-12 text-muted-foreground gap-2">
+                    <Target className="w-8 h-8 opacity-30" />
+                    <p className="text-sm">No data for this period</p>
                   </div>
-                  {/* Metrics */}
-                  <div className="space-y-4">
-                    <div className="rounded-xl border bg-card p-4 space-y-3">
-                      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Quiz Performance</p>
-                      <div className="flex items-end justify-between">
-                        <p className="text-3xl font-bold">{avgQuizScore != null ? `${avgQuizScore}%` : "—"}</p>
-                        <p className="text-xs text-muted-foreground">{completedQuizzes} quiz{completedQuizzes !== 1 ? "zes" : ""} taken</p>
-                      </div>
-                      <div className="h-2 rounded-full bg-muted overflow-hidden">
-                        <div className="h-2 rounded-full bg-gradient-to-r from-violet-500 to-blue-500" style={{ width: `${avgQuizScore ?? 0}%` }} />
-                      </div>
-                      {/* Per-student quiz scores */}
-                      {studentBreakdown.filter(s => s.quizScores.length > 0).length > 0 && (
-                        <div className="pt-2 space-y-1.5">
-                          {studentBreakdown.filter(s => s.quizScores.length > 0).map(({ name, quizScores }) => {
-                            const avg = Math.round(quizScores.reduce((a, b) => a + b, 0) / quizScores.length);
+                );
+              }
+
+              const clampedTab = Math.min(proficiencyStudentTab, Math.max(0, perStudent.length - 1));
+              const student = perStudent[clampedTab];
+              const { name, completed, noShows, attendance, avgQuiz, avgRubric, quizCount, gradeCount, proficiency } = student;
+              const profColor = proficiency === "Above Average" ? "text-emerald-600 dark:text-emerald-400" : proficiency === "On Track" ? "text-blue-600 dark:text-blue-400" : "text-amber-500";
+              const profBg = proficiency === "Above Average" ? "bg-emerald-50 dark:bg-emerald-950/40" : proficiency === "On Track" ? "bg-blue-50 dark:bg-blue-950/40" : "bg-amber-50 dark:bg-amber-950/40";
+
+              return (
+                <div className="space-y-4">
+                  {/* Student tabs — only shown when multiple students */}
+                  {perStudent.length > 1 && (
+                    <div className="flex flex-wrap gap-2">
+                      {perStudent.map(({ name: n, proficiency: p }, idx) => {
+                        const isActive = clampedTab === idx;
+                        const dotColor = p === "Above Average" ? "bg-emerald-500" : p === "On Track" ? "bg-blue-500" : "bg-amber-400";
+                        return (
+                          <button
+                            key={n}
+                            onClick={() => setProficiencyStudentTab(idx)}
+                            className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full font-medium border transition-colors ${
+                              isActive
+                                ? "bg-violet-600 text-white border-violet-600"
+                                : "bg-muted text-muted-foreground border-border hover:bg-muted/80"
+                            }`}
+                          >
+                            <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isActive ? "bg-white/70" : dotColor}`} />
+                            {n.split(" ")[0]}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* Proficiency label */}
+                  <div className={`rounded-xl px-4 py-3 ${profBg}`}>
+                    <p className={`text-base font-bold ${profColor}`}>{proficiency}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">{name} · Overall assessment based on quiz score &amp; attendance</p>
+                  </div>
+
+                  {/* Quiz Performance */}
+                  <div className="rounded-xl border bg-card p-4 space-y-3">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Quiz Performance</p>
+                    <div className="flex items-end justify-between">
+                      <p className="text-3xl font-bold">{avgQuiz != null ? `${avgQuiz}%` : "—"}</p>
+                      <p className="text-xs text-muted-foreground">{quizCount} quiz{quizCount !== 1 ? "zes" : ""} taken</p>
+                    </div>
+                    <div className="h-2 rounded-full bg-muted overflow-hidden">
+                      <div className="h-2 rounded-full bg-gradient-to-r from-violet-500 to-blue-500" style={{ width: `${avgQuiz ?? 0}%` }} />
+                    </div>
+                  </div>
+
+                  {/* Attendance */}
+                  <div className="rounded-xl border bg-card p-4 space-y-3">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Attendance</p>
+                    <div className="flex items-end justify-between">
+                      <p className="text-3xl font-bold">{attendance}%</p>
+                      <p className="text-xs text-muted-foreground">{completed} completed · {noShows} no-show</p>
+                    </div>
+                    <div className="h-2 rounded-full bg-muted overflow-hidden">
+                      <div className="h-2 rounded-full bg-gradient-to-r from-emerald-500 to-teal-500" style={{ width: `${attendance}%` }} />
+                    </div>
+                  </div>
+
+                  {/* Session Grading */}
+                  {avgRubric != null && (() => {
+                    const studentGradesModal = analyticsFilteredGrades.filter(g => {
+                      const sess = g.sessionId != null ? sessionMap.get(g.sessionId) : undefined;
+                      return sess?.studentName === name && g.rubricOverallScore != null;
+                    });
+                    const criteriaModal = [
+                      { key: "rubricAcademicEfficiency", label: "Academic Focus" },
+                      { key: "rubricInstructionalQuality", label: "Engagement" },
+                      { key: "rubricStrategyInsight", label: "Problem Solving" },
+                      { key: "rubricSynthesisBranding", label: "Takeaways" },
+                    ] as const;
+                    const avgForModal = (key: string) => {
+                      const vals = studentGradesModal.map(g => (g as any)[key]).filter((v: any) => v != null) as number[];
+                      return vals.length > 0 ? Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 10) / 10 : null;
+                    };
+                    const scoreColorModal = (v: number | null) =>
+                      v == null ? "bg-muted" : v >= 3.5 ? "bg-emerald-500" : v >= 2.5 ? "bg-blue-500" : v >= 1.5 ? "bg-amber-400" : "bg-red-500";
+                    const scoreTextModal = (v: number | null) =>
+                      v == null ? "text-muted-foreground" : v >= 3.5 ? "text-emerald-600 dark:text-emerald-400" : v >= 2.5 ? "text-blue-600 dark:text-blue-400" : v >= 1.5 ? "text-amber-500" : "text-red-600 dark:text-red-400";
+                    const engagements = studentGradesModal
+                      .map(g => (g as any).rubricEngagementData)
+                      .filter(Boolean)
+                      .map((e: any) => (typeof e === "string" ? JSON.parse(e) : e));
+                    const latestParticipation = engagements.map((e: any) => e?.studentParticipationRate).filter(Boolean).slice(-1)[0] ?? null;
+                    const rawCT = engagements.map((e: any) => e?.studentCriticalThinking).filter(Boolean).slice(-1)[0];
+                    const latestCT = rawCT ? String(rawCT).split("|")[0]?.trim() : null;
+                    return (
+                      <div className="rounded-xl border bg-card p-4 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Session Grading</p>
+                          <p className="text-xs text-muted-foreground">{gradeCount} session{gradeCount !== 1 ? "s" : ""} graded</p>
+                        </div>
+                        <div className="flex items-end gap-2">
+                          <p className="text-3xl font-bold">{avgRubric}</p>
+                          <span className="text-base font-normal text-muted-foreground mb-0.5">/4</span>
+                        </div>
+                        <div className="space-y-2">
+                          {criteriaModal.map(({ key, label }) => {
+                            const avg = avgForModal(key);
                             return (
-                              <div key={name} className="flex items-center gap-3 text-xs">
-                                <span className="w-24 text-muted-foreground truncate">{name}</span>
-                                <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
-                                  <div className="h-1.5 rounded-full bg-violet-400" style={{ width: `${avg}%` }} />
+                              <div key={key} className="flex items-center gap-3">
+                                <span className="text-xs text-muted-foreground w-32 shrink-0">{label}</span>
+                                <div className="flex-1 bg-muted rounded-full h-1.5 overflow-hidden">
+                                  <div className={`h-1.5 rounded-full ${scoreColorModal(avg)} transition-all`} style={{ width: avg ? `${(avg / 4) * 100}%` : "0%" }} />
                                 </div>
-                                <span className="w-8 text-right font-semibold">{avg}%</span>
+                                <span className={`text-xs font-semibold w-8 text-right ${scoreTextModal(avg)}`}>{avg != null ? avg.toFixed(1) : "—"}</span>
                               </div>
                             );
                           })}
                         </div>
-                      )}
-                    </div>
-                    <div className="rounded-xl border bg-card p-4 space-y-3">
-                      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Attendance</p>
-                      <div className="flex items-end justify-between">
-                        <p className="text-3xl font-bold">{attendanceRate}%</p>
-                        <p className="text-xs text-muted-foreground">{totalCompleted} completed · {noShowCount} no-show</p>
+                        {(latestParticipation || latestCT) && (
+                          <div className="flex flex-wrap gap-2 pt-1">
+                            {latestParticipation && (
+                              <span className="text-xs bg-muted px-2 py-1 rounded-md text-muted-foreground">
+                                Participation: <span className="font-medium text-foreground">{latestParticipation}</span>
+                              </span>
+                            )}
+                            {latestCT && (
+                              <span className="text-xs bg-muted px-2 py-1 rounded-md text-muted-foreground">
+                                Critical Thinking: <span className="font-medium text-foreground">{latestCT}</span>
+                              </span>
+                            )}
+                          </div>
+                        )}
                       </div>
-                      <div className="h-2 rounded-full bg-muted overflow-hidden">
-                        <div className={`h-2 rounded-full bg-gradient-to-r from-emerald-500 to-teal-500`} style={{ width: `${attendanceRate}%` }} />
-                      </div>
-                    </div>
-                    {avgRubricScore != null && (
-                      <div className="rounded-xl border bg-card p-4 space-y-3">
-                        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Teaching Quality (Rubric)</p>
-                        <div className="flex items-end justify-between">
-                          <p className="text-3xl font-bold">{avgRubricScore}<span className="text-base font-normal text-muted-foreground">/4</span></p>
-                          <p className="text-xs text-muted-foreground">{(parentGrades || []).filter(g => g.rubricOverallScore != null).length} session{(parentGrades || []).filter(g => g.rubricOverallScore != null).length !== 1 ? "s" : ""} graded</p>
-                        </div>
-                        <div className="h-2 rounded-full bg-muted overflow-hidden">
-                          <div className="h-2 rounded-full bg-gradient-to-r from-amber-400 to-orange-500" style={{ width: `${(avgRubricScore / 4) * 100}%` }} />
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </>
+                    );
+                  })()}
+                </div>
               );
             })()}
           </div>
@@ -2437,9 +2606,11 @@ export default function ParentDashboard() {
             {(() => {
               const { totalCompleted, noShowCount, completedQuizzes, studentBreakdown, monthlyActivity } = analyticsStats;
               const recentThreshold = Date.now() - 30 * 24 * 60 * 60 * 1000;
-              const recentFeedbackSessions = (sessionHistory || []).filter(s => s.feedbackFromTutor && new Date(s.scheduledAt).getTime() > recentThreshold);
+              const recentFeedbackSessions = analyticsFilteredSessions.filter(s => s.feedbackFromTutor && new Date(s.scheduledAt).getTime() > recentThreshold);
               const hasRecentFeedback = recentFeedbackSessions.length > 0;
-              const totalScheduled = (upcomingSessions || []).length;
+              const totalScheduled = selectedAnalyticsMonth === "all"
+                ? (upcomingSessions || []).length
+                : analyticsFilteredSessions.filter(s => s.status === "scheduled").length;
               return (
                 <>
                   {/* Summary cards */}
