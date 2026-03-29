@@ -480,6 +480,11 @@ function SessionCard({
             <CalendarIcon className="w-4 h-4 text-muted-foreground flex-shrink-0" />
             <span className="font-medium">{formatDate(session.scheduledAt)}</span>
             {getStatusBadge(session.status)}
+            {session.isTrial && (
+              <Badge variant="outline" className="text-xs border-blue-500 text-blue-700 bg-blue-50 dark:bg-blue-950/20">
+                Trial Lesson
+              </Badge>
+            )}
           </div>
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Clock className="w-4 h-4 flex-shrink-0" />

@@ -1620,6 +1620,11 @@ export default function TutorDashboard() {
                                     <Badge variant={statusVariant(session.status)} className="text-xs">
                                       {session.status === "no_show" ? "No Show" : session.status}
                                     </Badge>
+                                    {session.isTrial && (
+                                      <Badge variant="outline" className="text-xs border-blue-500 text-blue-700 bg-blue-50 dark:bg-blue-950/20">
+                                        Trial Lesson
+                                      </Badge>
+                                    )}
                                     {tutorGradeBySessionId.has(session.id) && (() => {
                                       const g = tutorGradeBySessionId.get(session.id)!;
                                       const score = g.rubricOverallScore != null ? Number(g.rubricOverallScore) : null;

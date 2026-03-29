@@ -1352,6 +1352,11 @@ export default function ParentDashboard() {
                             >
                               {session.status === "no_show" ? "Completed (No Show)" : session.status}
                             </Badge>
+                            {session.isTrial && (
+                              <Badge variant="outline" className="text-xs border-blue-500 text-blue-700 bg-blue-50 dark:bg-blue-950/20">
+                                Trial Lesson
+                              </Badge>
+                            )}
                           </div>
                           <p className="text-sm text-muted-foreground mb-2">
                             {session.duration} minutes • Tutor: {session.tutorName || "Tutor"}

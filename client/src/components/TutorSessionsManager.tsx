@@ -246,13 +246,12 @@ export function TutorSessionsManager({
                         <div className="flex flex-wrap items-center gap-2">
                           <Calendar className="w-4 h-4 text-muted-foreground flex-shrink-0" />
                           <span className="font-medium">{formatDate(session.scheduledAt)}</span>
-                          {session.isTrial ? (
+                          <Badge variant={statusVariant(session.status)} className="text-xs">
+                            {session.status === "no_show" ? "Completed (No Show)" : session.status}
+                          </Badge>
+                          {session.isTrial && (
                             <Badge variant="outline" className="text-xs border-blue-500 text-blue-700 bg-blue-50 dark:bg-blue-950/20">
                               Trial Lesson
-                            </Badge>
-                          ) : (
-                            <Badge variant={statusVariant(session.status)} className="text-xs">
-                              {session.status === "no_show" ? "Completed (No Show)" : session.status}
                             </Badge>
                           )}
                         </div>
