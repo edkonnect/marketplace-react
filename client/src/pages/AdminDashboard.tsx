@@ -149,7 +149,16 @@ function CourseFilesAdminPanel() {
   const { data: files = [], refetch: refetchFiles, isLoading: filesLoading } = trpc.fileManagement.getFiles.useQuery();
   const { data: tutors = [] } = trpc.fileManagement.getTutorsForAssignment.useQuery();
   const { data: coursesList = [] } = trpc.fileManagement.getCoursesList.useQuery();
-  const uploadFileMutation = trpc.fileManagement.uploadFile.useMutation({ onSuccess: () => { refetchFiles(); resetUpload(); toast.success("File uploaded successfully"); } });
+  const uploadFileMutation = trpc.fileManagement.uploadFile.useMutation({
+    onSuccess: () => { refetchFiles(); resetUpload(); toast.success("File uploaded successfully"); },
+    onError: (err) => {
+      if (err.data?.code === "CONFLICT" || err.data?.httpStatus === 409) {
+        toast.error(err.message, { duration: 6000 });
+      } else {
+        toast.error("Upload failed: " + err.message);
+      }
+    },
+  });
   const deleteFileMutation = trpc.fileManagement.deleteFile.useMutation({ onSuccess: () => { refetchFiles(); toast.success("File deleted"); } });
   const assignTutorsMutation = trpc.fileManagement.assignFileToTutors.useMutation({ onSuccess: () => { refetchFiles(); setAssignDialogFileId(null); toast.success("Tutors assigned"); } });
 

@@ -7629,6 +7629,19 @@ For engagementData, describe ONLY the student's participation and behavior. The 
           throw new TRPCError({ code: "BAD_REQUEST", message: "File exceeds 20 MB limit." });
         }
         const buffer = Buffer.from(stripped, "base64");
+
+        // Duplicate check — same fileName + same course (or both null)
+        const existing = await db.getCourseFileByNameAndCourse(
+          input.fileName,
+          input.courseId ?? null
+        );
+        if (existing) {
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: `A file named "${input.fileName}" already exists${input.courseId ? " for this course" : ""}. Delete the existing file first or rename this one.`,
+          });
+        }
+
         const { url, key } = await uploadCourseFileToS3(buffer, input.fileType, input.fileName);
         const fileId = await db.createCourseFile({
           title: input.title,

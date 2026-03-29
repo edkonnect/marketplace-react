@@ -1,4 +1,4 @@
-import { eq, and, or, like, desc, asc, sql, gte, lte, lt, gt, inArray, isNotNull, ne } from "drizzle-orm";
+import { eq, and, or, like, desc, asc, sql, gte, lte, lt, gt, inArray, isNotNull, isNull, ne } from "drizzle-orm";
 import { alias } from "drizzle-orm/mysql-core";
 import { drizzle } from "drizzle-orm/mysql2";
 import crypto from "crypto";
@@ -5786,6 +5786,24 @@ export async function getCourseFileByKey(fileKey: string) {
   const db = await getDb();
   if (!db) return null;
   const rows = await db.select().from(courseFiles).where(eq(courseFiles.fileKey, fileKey)).limit(1);
+  return rows[0] ?? null;
+}
+
+export async function getCourseFileByNameAndCourse(
+  fileName: string,
+  courseId: number | null
+): Promise<{ id: number; title: string } | null> {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db
+    .select({ id: courseFiles.id, title: courseFiles.title })
+    .from(courseFiles)
+    .where(
+      courseId != null
+        ? and(eq(courseFiles.fileName, fileName), eq(courseFiles.courseId, courseId))
+        : and(eq(courseFiles.fileName, fileName), isNull(courseFiles.courseId))
+    )
+    .limit(1);
   return rows[0] ?? null;
 }
 
