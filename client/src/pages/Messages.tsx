@@ -453,8 +453,10 @@ export default function Messages() {
   const filteredTutorListForUI = tutorListForUI
     .filter((item) => {
       if (!searchTerm) {
-        // Default view: only show existing conversations within 19 days
+        // Default view: only show existing conversations within recency window,
+        // but always show conversations with unread messages
         if (!item.hasConversation) return false;
+        if (item.unreadCount > 0) return true;
         if (!item.lastMessageAt || Number.isNaN(item.lastMessageAt)) return false;
         return Date.now() - item.lastMessageAt <= RECENCY_MS;
       }
@@ -670,7 +672,7 @@ export default function Messages() {
           ) : isParent ? (
             <>
               {/* Students List */}
-              <Card className={`lg:col-span-1 ${selectedStudentId && !selectedConversationId ? 'hidden lg:block' : selectedConversationId ? 'hidden lg:block' : ''}`}>
+              <Card className={`lg:col-span-1 flex flex-col h-[calc(100vh-12rem)] sm:h-[70vh] ${selectedStudentId && !selectedConversationId ? 'hidden lg:block' : selectedConversationId ? 'hidden lg:block' : ''}`}>
                 <CardHeader className="py-3 sm:py-4">
                   <CardTitle className="text-base sm:text-lg flex items-center gap-2">
                     <User className="w-4 h-4 sm:w-5 sm:h-5" />
@@ -678,7 +680,7 @@ export default function Messages() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="p-0">
-                  <ScrollArea className="h-[calc(100vh-16rem)] sm:h-[calc(100vh-20rem)]">
+                  <ScrollArea className="h-[calc(100vh-18rem)] sm:h-[calc(70vh-4rem)]">
                     {studentsLoading ? (
                       <div className="p-4 space-y-4">
                         {[1, 2, 3].map(i => (
@@ -737,7 +739,7 @@ export default function Messages() {
               </Card>
 
               {/* Tutors List */}
-              <Card className={`lg:col-span-1 ${!selectedStudentId ? 'hidden lg:block' : selectedConversationId ? 'hidden lg:block' : ''}`}>
+              <Card className={`lg:col-span-1 flex flex-col h-[calc(100vh-12rem)] sm:h-[70vh] ${!selectedStudentId ? 'hidden lg:block' : selectedConversationId ? 'hidden lg:block' : ''}`}>
                 <CardHeader className="py-3 sm:py-4 flex flex-row items-center justify-between space-y-0">
                   <CardTitle className="text-base sm:text-lg flex items-center gap-2">
                     <GraduationCap className="w-4 h-4 sm:w-5 sm:h-5" />
@@ -756,7 +758,7 @@ export default function Messages() {
                   </Button>
                 </CardHeader>
                 <CardContent className="p-0">
-                  <ScrollArea className="h-[calc(100vh-16rem)] sm:h-[calc(100vh-20rem)]">
+                  <ScrollArea className="h-[calc(100vh-18rem)] sm:h-[calc(70vh-4rem)]">
                     {selectedStudent ? (
                       filteredTutors.length > 0 ? (
                         <div>
@@ -805,7 +807,7 @@ export default function Messages() {
             </>
           ) : (
             /* Tutor view: list conversations (parents/students) */
-            <Card className={`lg:col-span-1 ${selectedConversationId ? 'hidden lg:block' : ''}`}>
+            <Card className={`lg:col-span-2 ${selectedConversationId ? 'hidden lg:block' : ''}`}>
               <CardHeader className="py-3 sm:py-4">
                 <CardTitle className="text-base sm:text-lg flex items-center gap-2">
                   <User className="w-4 h-4 sm:w-5 sm:h-5" />
@@ -849,11 +851,11 @@ export default function Messages() {
                               }
                             }
                           }}
-                          className={`w-full p-3 sm:p-4 text-left hover:bg-muted/50 transition-colors border-b border-border ${
+                          className={`w-full p-3 sm:p-4 text-left hover:bg-muted/50 transition-colors border-b border-border overflow-hidden ${
                             selectedConversationId === item.conversationId ? "bg-muted" : ""
                           }`}
                         >
-                          <div className="flex items-center gap-3">
+                          <div className="flex items-center justify-between gap-2">
                             <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-sm font-semibold text-primary flex-shrink-0">
                               {item.studentName?.charAt(0) || "S"}
                             </div>
