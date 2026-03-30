@@ -147,27 +147,94 @@ export function generatePaymentReceipt(data: PaymentReceiptData): Readable {
   return doc as unknown as Readable;
 }
 
-/** Convert rgb(r, g, b) or #hex to a hex string PDFKit accepts */
-function normalizeColor(color: string): string {
-  const rgb = color.match(/rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)/i);
+/** Convert rgb(r, g, b) or #hex to a hex string PDFKit accepts. Returns null for unsupported formats (e.g. oklch). */
+function normalizeColor(color: string): string | null {
+  if (color.startsWith('#')) return color;
+  const rgb = color.match(/^rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)/i);
   if (rgb) {
     return '#' + [rgb[1], rgb[2], rgb[3]].map(n => parseInt(n).toString(16).padStart(2, '0')).join('');
   }
-  return color; // already hex
+  // oklch, hsl, and other modern formats — PDFKit can't handle them, ignore
+  return null;
 }
 
 /**
  * Parse HTML produced by the Tiptap rich text editor and render it into a PDFKit doc.
  * Handles: p, h2, h3, ul, ol, li, strong, em, u, s, br, span (with inline color).
  */
-function renderHtmlToPdf(doc: PDFKit.PDFDocument, html: string) {
-  // Normalise: collapse whitespace between tags, trim
-  const cleaned = html.replace(/\s*\n\s*/g, '').trim();
+/** Extract top-level block elements robustly, handling nested tags (e.g. ul > li > p) */
+function extractBlocks(html: string): { tag: string; inner: string }[] {
+  const blocks: { tag: string; inner: string }[] = [];
+  const blockTags = new Set(['h1', 'h2', 'h3', 'h4', 'p', 'ul', 'ol', 'blockquote']);
+  let i = 0;
+  while (i < html.length) {
+    // Find next opening block tag
+    const openMatch = html.slice(i).match(/^<(h[1-4]|p|ul|ol|blockquote)(\s[^>]*)?>/i);
+    if (!openMatch) {
+      i++;
+      continue;
+    }
+    const tag = openMatch[1].toLowerCase();
+    i += openMatch[0].length;
+    // Find matching close tag, tracking nesting depth
+    let depth = 1;
+    let inner = '';
+    while (i < html.length && depth > 0) {
+      const openNext = html.slice(i).match(new RegExp(`^<${tag}(\\s[^>]*)?>`, 'i'));
+      const closeNext = html.slice(i).match(new RegExp(`^<\\/${tag}>`, 'i'));
+      if (openNext) {
+        depth++;
+        inner += openNext[0];
+        i += openNext[0].length;
+      } else if (closeNext) {
+        depth--;
+        if (depth > 0) inner += closeNext[0];
+        i += closeNext[0].length;
+      } else {
+        inner += html[i];
+        i++;
+      }
+    }
+    if (blockTags.has(tag)) {
+      blocks.push({ tag, inner });
+    }
+  }
+  return blocks;
+}
 
-  // Split into top-level block elements
-  const blockRe = /<(h2|h3|p|ul|ol|blockquote)((?:\s[^>]*)?)>([\s\S]*?)<\/\1>/gi;
-  let lastIndex = 0;
-  let match: RegExpExecArray | null;
+/**
+ * Pre-process HTML: if the curriculum is stored as a single <p> with <br> line separators
+ * (legacy format), explode it into proper <p> blocks so each line renders separately.
+ */
+function normalizeHtml(html: string): string {
+  // Collapse whitespace
+  let h = html.replace(/\s*\n\s*/g, '').trim();
+
+  // If there's only one top-level <p> block AND it contains <br> tags, split it up
+  const singleP = h.match(/^<p([^>]*)>([\s\S]+)<\/p>$/i);
+  if (singleP) {
+    // Split on <br> (single or double)
+    const inner = singleP[2];
+    // Double <br> = paragraph gap, single <br> = new line (still separate <p>)
+    const lines = inner.split(/<br\s*\/?>\s*<br\s*\/?>/gi);
+    h = lines.map(segment => {
+      // Further split each segment on remaining single <br>
+      const subLines = segment.split(/<br\s*\/?>/gi);
+      return subLines.map(s => s.trim()).filter(s => s.length > 0).map(s => `<p>${s}</p>`).join('');
+    }).join('<p></p>'); // empty <p> = paragraph gap between groups
+  }
+
+  return h;
+}
+
+function renderHtmlToPdf(doc: PDFKit.PDFDocument, html: string) {
+  // Strip emojis first (PDFKit built-in fonts can't render them — produces garbage chars)
+  const emojiStripped = stripEmoji(html);
+  // Normalise: collapse whitespace between tags, then explode br-based content into proper blocks
+  const cleaned = normalizeHtml(emojiStripped);
+
+  const blocks = extractBlocks(cleaned);
+  const lastIndex = blocks.length > 0 ? 1 : 0;
 
   const processInline = (inner: string): { text: string; bold: boolean; italic: boolean; underline: boolean; strike: boolean; color: string | null }[] => {
     const segments: { text: string; bold: boolean; italic: boolean; underline: boolean; strike: boolean; color: string | null }[] = [];
@@ -207,8 +274,13 @@ function renderHtmlToPdf(doc: PDFKit.PDFDocument, html: string) {
     return segments;
   };
 
+  const LEFT = 50; // consistent left margin matching page margin
+
   const renderInlineSegments = (segments: ReturnType<typeof processInline>, opts: Record<string, unknown> = {}) => {
-    // PDFKit doesn't support per-character styling in one call; we split by style changes
+    if (segments.length === 0) {
+      doc.text('', { ...opts } as any);
+      return;
+    }
     let i = 0;
     while (i < segments.length) {
       const seg = segments[i];
@@ -219,37 +291,58 @@ function renderHtmlToPdf(doc: PDFKit.PDFDocument, html: string) {
         .text(seg.text, { ...opts, continued, underline: seg.underline, strike: seg.strike } as any);
       i++;
     }
-    if (segments.length === 0) doc.text('', opts as any);
-    // Reset color
     doc.fillColor('black').font('Helvetica');
   };
 
   const renderBlock = (tag: string, inner: string) => {
     if (tag === 'h2') {
-      doc.moveDown(0.4);
-      const segs = processInline(inner);
-      doc.fontSize(13).font('Helvetica-Bold').fillColor('black');
-      renderInlineSegments(segs);
-      doc.fontSize(10).font('Helvetica');
-      doc.moveDown(0.2);
+      doc.moveDown(0.5);
+      doc.fontSize(12).font('Helvetica-Bold').fillColor('#1e40af');
+      renderInlineSegments(processInline(inner), { align: 'left' });
+      doc.fontSize(10).font('Helvetica').fillColor('black');
+      doc.moveDown(0.15);
     } else if (tag === 'h3') {
       doc.moveDown(0.3);
-      doc.fontSize(11).font('Helvetica-Bold').fillColor('black');
-      renderInlineSegments(processInline(inner));
-      doc.fontSize(10).font('Helvetica');
-      doc.moveDown(0.15);
+      doc.fontSize(11).font('Helvetica-Bold').fillColor('#374151');
+      renderInlineSegments(processInline(inner), { align: 'left' });
+      doc.fontSize(10).font('Helvetica').fillColor('black');
+      doc.moveDown(0.1);
     } else if (tag === 'ul' || tag === 'ol') {
-      // Extract list items
-      const liRe = /<li(?:\s[^>]*)?>([\s\S]*?)<\/li>/gi;
-      let li: RegExpExecArray | null;
+      // Simple li extractor that handles <li><p>text</p></li>
+      const liBlocks: string[] = [];
+      let j = 0;
+      while (j < inner.length) {
+        const liOpen = inner.slice(j).match(/^<li(\s[^>]*)?>/i);
+        if (!liOpen) { j++; continue; }
+        j += liOpen[0].length;
+        let liDepth = 1, liInner = '';
+        while (j < inner.length && liDepth > 0) {
+          if (inner.slice(j).match(/^<li(\s[^>]*)?>/i)) {
+            const m = inner.slice(j).match(/^<li(\s[^>]*)?>/i)!;
+            liDepth++; liInner += m[0]; j += m[0].length;
+          } else if (inner.slice(j).match(/^<\/li>/i)) {
+            liDepth--; if (liDepth > 0) liInner += '</li>'; j += 5;
+          } else {
+            liInner += inner[j]; j++;
+          }
+        }
+        liBlocks.push(liInner);
+      }
+
       let idx = 1;
-      while ((li = liRe.exec(inner)) !== null) {
-        const bullet = tag === 'ol' ? `${idx}.  ` : '•  ';
+      for (const liContent of liBlocks) {
+        const bullet = tag === 'ol' ? `${idx}.` : '\u2022';
         doc.font('Helvetica').fillColor('black').fontSize(10);
-        const segs = processInline(li[1]);
-        // Prepend bullet as plain segment
-        segs.unshift({ text: bullet, bold: false, italic: false, underline: false, strike: false, color: null });
-        renderInlineSegments(segs, { indent: 15 });
+        // Strip wrapping <p> tags that Tiptap v3 adds inside <li>
+        const strippedLi = liContent.replace(/^<p[^>]*>([\s\S]*?)<\/p>$/i, '$1')
+          .replace(/<p[^>]*>([\s\S]*?)<\/p>/gi, '$1 ');
+        const bulletX = LEFT + 2;
+        const textX = LEFT + 14;
+        const savedY = doc.y;
+        doc.text(bullet, bulletX, savedY, { lineBreak: false, width: 12 });
+        doc.y = savedY;
+        const segs = processInline(strippedLi);
+        renderInlineSegments(segs, { align: 'left', x: textX } as any);
         idx++;
       }
       doc.moveDown(0.2);
@@ -257,77 +350,158 @@ function renderHtmlToPdf(doc: PDFKit.PDFDocument, html: string) {
       // p or blockquote
       const segs = processInline(inner);
       if (segs.length === 0 || segs.every(s => s.text.trim() === '')) {
-        doc.moveDown(0.4);
+        doc.moveDown(0.35);
       } else {
-        doc.fontSize(10);
-        renderInlineSegments(segs);
-        doc.moveDown(0.15);
+        doc.fontSize(10).font('Helvetica').fillColor('black');
+        renderInlineSegments(segs, { align: 'left', lineGap: 2 });
+        doc.moveDown(0.3);
       }
     }
   };
 
-  while ((match = blockRe.exec(cleaned)) !== null) {
-    lastIndex = match.index + match[0].length;
-    renderBlock(match[1].toLowerCase(), match[3]);
+  for (const block of blocks) {
+    renderBlock(block.tag, block.inner);
   }
 
   // Fallback: if no block tags matched (plain text stored before rich editor), render as-is
   if (lastIndex === 0 && cleaned.length > 0) {
-    const plain = cleaned.replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').trim();
+    const plain = stripEmoji(cleaned.replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').trim());
     doc.fontSize(10).font('Helvetica').fillColor('black').text(plain);
   }
+}
+
+/** Replace emoji with PDF-safe text equivalents that preserve meaning. */
+function stripEmoji(text: string): string {
+  return text
+    // Common bullet/diamond/arrow emoji used in curriculum → bullet point
+    .replace(/[\uD83D][\uDD39\uDD38\uDD37\uDD36\uDD35\uDD34]/g, '\u2022')  // small squares
+    .replace(/\u25C6|\u25C7|\u25A0|\u25A1|\u25B6|\u25CF|\u25AA|\u25AB/g, '\u2022') // geometric shapes
+    .replace(/\u2794|\u27A4|\u2192|\u21D2/g, '>')                           // arrows → >
+    .replace(/\u2714|\u2713/g, '[x]')                                       // checkmarks
+    .replace(/\u2716|\u2717/g, '[!]')                                       // x marks
+    // All remaining surrogate-pair emoji (color emoji) → strip
+    .replace(/[\uD83C-\uDBFF][\uDC00-\uDFFF]/g, '')
+    .replace(/[\u2600-\u26FF]/g, '')   // Misc symbols
+    .replace(/[\u2700-\u27BF]/g, '')   // Dingbats
+    .replace(/[\uFE00-\uFEFF]/g, '')   // Variation selectors, BOM
+    .replace(/\s{2,}/g, ' ')
+    .trimStart();
+}
+
+function drawGraduationCap(doc: PDFKit.PDFDocument, x: number, y: number, size: number) {
+  // Scale the lucide graduation cap paths (viewBox 0 0 24 24) to `size` px
+  const s = size / 24;
+  const tx = (n: number) => x + n * s;
+  const ty = (n: number) => y + n * s;
+
+  doc.save();
+  doc.lineWidth(1.5 * s).strokeColor('#1e40af').fillColor('#1e40af');
+
+  // Hat brim: M2 10 l10 -5 l10 5 l-10 5 z
+  doc
+    .moveTo(tx(2), ty(10))
+    .lineTo(tx(12), ty(5))
+    .lineTo(tx(22), ty(10))
+    .lineTo(tx(12), ty(15))
+    .closePath()
+    .fillAndStroke('#1e40af', '#1e40af');
+
+  // Right tassel pole: M22 10 v6
+  doc.moveTo(tx(22), ty(10)).lineTo(tx(22), ty(16)).stroke();
+
+  // Mortarboard sides: M6 12 v5 c3 3 9 3 12 0 v-5
+  doc
+    .moveTo(tx(6), ty(12))
+    .lineTo(tx(6), ty(17))
+    .bezierCurveTo(tx(9), ty(20), tx(15), ty(20), tx(18), ty(17))
+    .lineTo(tx(18), ty(12))
+    .stroke();
+
+  doc.restore();
+}
+
+function drawPageHeader(doc: PDFKit.PDFDocument) {
+  // Draw graduation cap icon
+  drawGraduationCap(doc, 50, 12, 20);
+  // Brand name next to icon
+  doc.fontSize(13).font('Helvetica-Bold').fillColor('#1e40af')
+    .text('EdKonnect Academy', 76, 16, { lineBreak: false });
+  // Divider below header
+  doc.moveTo(50, 38).lineTo(545, 38).lineWidth(0.5).strokeColor('#1e40af').stroke();
+  doc.lineWidth(1).strokeColor('black').fillColor('black');
 }
 
 export function generateCurriculumPDF(data: CurriculumPDFData): Readable {
   const doc = new PDFDocument({
     size: 'A4',
-    margins: { top: 50, bottom: 50, left: 50, right: 50 },
+    margins: { top: 55, bottom: 55, left: 50, right: 50 },
+    autoFirstPage: true,
   });
 
-  // Header
-  doc.fontSize(24).font('Helvetica-Bold').text('Course Curriculum', { align: 'center' });
-  doc.moveDown(0.5);
-  doc.fontSize(18).font('Helvetica').text(data.courseTitle, { align: 'center' });
-  doc.moveDown(1.5);
+  // Draw header on first page — positioned absolutely at top
+  drawPageHeader(doc);
+
+  // Re-draw header on every subsequent page
+  doc.on('pageAdded', () => {
+    drawPageHeader(doc);
+    doc.y = 50;
+    // Reset font state so content on new page starts clean
+    doc.font('Helvetica').fontSize(10).fillColor('black');
+  });
+
+  // Start content below header divider
+  doc.y = 50;
+
+  // Course title
+  doc.fontSize(20).font('Helvetica-Bold').fillColor('#1e40af')
+    .text(data.courseTitle, 50, doc.y, { align: 'center' });
+  doc.fontSize(11).font('Helvetica').fillColor('#6b7280')
+    .text('Course Curriculum', 50, doc.y, { align: 'center' });
+  doc.fillColor('black');
+  doc.moveDown(1);
+
+  // Divider
+  doc.moveTo(50, doc.y).lineTo(545, doc.y).lineWidth(0.5).strokeColor('#e5e7eb').stroke();
+  doc.lineWidth(1).strokeColor('black');
+  doc.moveDown(0.7);
 
   // Course Information
-  doc.fontSize(12).font('Helvetica-Bold').text('Course Information', { underline: true });
-  doc.moveDown(0.5);
-  
+  doc.fontSize(11).font('Helvetica-Bold').fillColor('#1e40af')
+    .text('Course Information', 50, doc.y);
+  doc.fillColor('black').moveDown(0.4);
+
   doc.fontSize(10).font('Helvetica');
-  doc.text(`Subject: ${data.subject}`);
-  if (data.gradeLevel) {
-    doc.text(`Grade Level: ${data.gradeLevel}`);
-  }
-  doc.text(`Instructor: ${data.tutorName}`);
-  doc.text(`Price: $${data.price}`);
-  
-  if (data.duration) {
-    doc.text(`Session Duration: ${data.duration} minutes`);
-  }
-  if (data.sessionsPerWeek) {
-    doc.text(`Sessions Per Week: ${data.sessionsPerWeek}`);
-  }
-  if (data.totalSessions) {
-    doc.text(`Total Sessions: ${data.totalSessions}`);
-  }
-  
-  doc.moveDown(1.5);
+  doc.text(`Subject: ${data.subject}`, 50, doc.y);
+  if (data.gradeLevel) doc.text(`Grade Level: ${data.gradeLevel}`, 50, doc.y);
+  doc.text(`Instructor: ${data.tutorName}`, 50, doc.y);
+  if (data.sessionsPerWeek) doc.text(`Sessions Per Week: ${data.sessionsPerWeek}`, 50, doc.y);
 
-  // Curriculum Content
-  doc.fontSize(12).font('Helvetica-Bold').text('Curriculum Details', { underline: true });
-  doc.moveDown(0.5);
+  doc.moveDown(1);
 
-  // Render HTML curriculum with basic formatting
+  // Divider
+  doc.moveTo(50, doc.y).lineTo(545, doc.y).lineWidth(0.5).strokeColor('#e5e7eb').stroke();
+  doc.lineWidth(1).strokeColor('black');
+  doc.moveDown(0.7);
+
+  // Curriculum Details heading
+  doc.fontSize(11).font('Helvetica-Bold').fillColor('#1e40af')
+    .text('Curriculum Details', 50, doc.y);
+  doc.fillColor('black').moveDown(0.5);
+
+  // Render HTML curriculum content
   renderHtmlToPdf(doc, data.curriculum);
 
-  // Footer
-  doc.moveDown(2);
-  doc.fontSize(8).font('Helvetica').fillColor('gray')
-    .text('Generated by EdKonnect Academy', { align: 'center' });
-  doc.text(new Date().toLocaleDateString(), { align: 'center' });
+  // Footer on last page
+  const footerY = doc.page.height - 40;
+  doc.moveTo(50, footerY).lineTo(545, footerY).lineWidth(0.5).strokeColor('#e5e7eb').stroke();
+  doc.fontSize(8).font('Helvetica').fillColor('#9ca3af')
+    .text(
+      `EdKonnect Academy  |  Generated ${new Date().toLocaleDateString()}`,
+      50, footerY + 6,
+      { align: 'center', lineBreak: false }
+    );
 
   doc.end();
-  
+
   return doc as unknown as Readable;
 }
