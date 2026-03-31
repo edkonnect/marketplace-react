@@ -654,7 +654,7 @@ export default function ParentDashboard() {
       .sort((a, b) => a.studentName.localeCompare(b.studentName))
       .map((group) => ({
         ...group,
-        gradeLabel: group.grades.size === 1 ? Array.from(group.grades)[0] : null,
+        gradeLabel: group.grades.size === 1 ? `Grade ${Array.from(group.grades)[0]}` : null,
         items: [...group.items].sort((a, b) => {
           const priorityDiff = getStatusPriority(a.subscription) - getStatusPriority(b.subscription);
           if (priorityDiff !== 0) return priorityDiff;
