@@ -927,6 +927,41 @@ export default function TutorDashboard() {
     }
   }, [hiddenStorageKey]);
 
+  const [historyTimePeriod, setHistoryTimePeriod] = useState<string>("all");
+  const [historyPage, setHistoryPage] = useState(1);
+  const HISTORY_PAGE_SIZE = 8;
+
+  const historyMonthOptions = useMemo(() => {
+    const monthSet = new Set<string>();
+    (historySessions || []).forEach((s) => {
+      const d = new Date(s.scheduledAt);
+      if (!isNaN(d.getTime())) {
+        monthSet.add(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
+      }
+    });
+    const options = Array.from(monthSet)
+      .sort((a, b) => b.localeCompare(a))
+      .map((key) => {
+        const [y, m] = key.split("-").map(Number);
+        const d = new Date(y, m - 1, 1);
+        return { value: key, label: d.toLocaleDateString(undefined, { month: "long", year: "numeric" }) };
+      });
+    return [{ value: "all", label: "All time" }, ...options];
+  }, [historySessions]);
+
+  const filteredHistorySessions = useMemo(() => {
+    const base = (historySessions || [])
+      .filter((s) => !hiddenHistory.has(s.id))
+      .filter((s) => s.scheduledAt <= Date.now())
+      .sort((a, b) => b.scheduledAt - a.scheduledAt);
+    if (historyTimePeriod === "all") return base;
+    const [y, m] = historyTimePeriod.split("-").map(Number);
+    return base.filter((s) => {
+      const d = new Date(s.scheduledAt);
+      return d.getFullYear() === y && d.getMonth() + 1 === m;
+    });
+  }, [historySessions, hiddenHistory, historyTimePeriod]);
+
   useEffect(() => {
     if (!availableCourses) return;
     const mapped: Record<number, PreferenceState> = {};
@@ -1554,18 +1589,31 @@ export default function TutorDashboard() {
 
                 {/* History Tab */}
                 <TabsContent value="history" forceMount className={tabContentClass}>
-                  <h2 className="text-2xl font-bold mb-6">Session History</h2>
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
+                    <h2 className="text-2xl font-bold">Session History</h2>
+                    <div className="flex items-center gap-2">
+                      <Label htmlFor="tutor-history-time" className="text-sm whitespace-nowrap">Time Period</Label>
+                      <Select value={historyTimePeriod} onValueChange={(v) => { setHistoryTimePeriod(v); setHistoryPage(1); }}>
+                        <SelectTrigger id="tutor-history-time" className="w-44">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {historyMonthOptions.map((opt) => (
+                            <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
 
                   {historyLoading ? (
                     <div className="space-y-4">
                       {[1, 2, 3].map(i => <Skeleton key={i} className="h-32 w-full" />)}
                     </div>
-                  ) : historySessions && historySessions.length > 0 ? (
+                  ) : filteredHistorySessions.length > 0 ? (
                     <div className="space-y-4">
-                      {historySessions
-                        .filter((s) => !hiddenHistory.has(s.id))
-                        .filter(s => s.scheduledAt <= Date.now())
-                        .sort((a, b) => b.scheduledAt - a.scheduledAt)
+                      {filteredHistorySessions
+                        .slice((historyPage - 1) * HISTORY_PAGE_SIZE, historyPage * HISTORY_PAGE_SIZE)
                         .map((session) => {
                           const noteRaw =
                             sessionNotes[session.id] ?? session.feedbackFromTutor ?? "";
@@ -2013,6 +2061,35 @@ export default function TutorDashboard() {
                             </Card>
                           );
                         })}
+                      {/* Pagination */}
+                      {filteredHistorySessions.length > HISTORY_PAGE_SIZE && (
+                        <div className="flex items-center justify-between pt-2">
+                          <p className="text-sm text-muted-foreground">
+                            Showing {(historyPage - 1) * HISTORY_PAGE_SIZE + 1}–{Math.min(historyPage * HISTORY_PAGE_SIZE, filteredHistorySessions.length)} of {filteredHistorySessions.length} sessions
+                          </p>
+                          <div className="flex items-center gap-2">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => setHistoryPage((p) => Math.max(1, p - 1))}
+                              disabled={historyPage === 1}
+                            >
+                              Previous
+                            </Button>
+                            <span className="text-sm text-muted-foreground">
+                              Page {historyPage} of {Math.ceil(filteredHistorySessions.length / HISTORY_PAGE_SIZE)}
+                            </span>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => setHistoryPage((p) => Math.min(Math.ceil(filteredHistorySessions.length / HISTORY_PAGE_SIZE), p + 1))}
+                              disabled={historyPage === Math.ceil(filteredHistorySessions.length / HISTORY_PAGE_SIZE)}
+                            >
+                              Next
+                            </Button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   ) : (
                     <Card>

@@ -355,6 +355,8 @@ export default function ParentDashboard() {
   const [selectedHistoryStudent, setSelectedHistoryStudent] = useState<string>("all");
   const [selectedHistoryTime, setSelectedHistoryTime] = useState<string>("all");
   const [selectedHistoryCourse, setSelectedHistoryCourse] = useState<string>("all");
+  const [historyPage, setHistoryPage] = useState(1);
+  const HISTORY_PAGE_SIZE = 8;
 
   const [selectedSessionStudent, setSelectedSessionStudent] = useState<string>("all");
   const [selectedSessionTime, setSelectedSessionTime] = useState<string>("all");
@@ -450,13 +452,28 @@ export default function ParentDashboard() {
     return Array.from(set);
   }, [combinedNotes, activeSubscriptions]);
 
+  // Month options derived from session history
+  const historyMonthOptions = useMemo(() => {
+    const monthSet = new Set<string>();
+    (sessionHistory || []).forEach((s) => {
+      const d = new Date(s.scheduledAt);
+      if (!isNaN(d.getTime())) {
+        monthSet.add(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
+      }
+    });
+    const options = Array.from(monthSet)
+      .sort((a, b) => b.localeCompare(a))
+      .map((key) => {
+        const [y, m] = key.split("-").map(Number);
+        const d = new Date(y, m - 1, 1);
+        return { value: key, label: d.toLocaleDateString(undefined, { month: "long", year: "numeric" }) };
+      });
+    return [{ value: "all", label: "All time" }, ...options];
+  }, [sessionHistory]);
+
   // Filtered history sessions
   const filteredHistorySessions = useMemo(() => {
     if (!sessionHistory) return [];
-
-    const now = new Date();
-    const currentMonth = now.getMonth();
-    const currentYear = now.getFullYear();
 
     return sessionHistory
       .filter((s) => s.status === "scheduled" || s.status === "completed" || s.status === "no_show")
@@ -467,24 +484,16 @@ export default function ParentDashboard() {
         const matchesStudent = selectedHistoryStudent === "all" || studentName === selectedHistoryStudent;
         const matchesCourse = selectedHistoryCourse === "all" || courseName === selectedHistoryCourse;
 
-        // Time filter logic
         let matchesTime = true;
         if (selectedHistoryTime !== "all") {
+          const [y, m] = selectedHistoryTime.split("-").map(Number);
           const sessionDate = new Date(session.scheduledAt);
-          const sessionMonth = sessionDate.getMonth();
-          const sessionYear = sessionDate.getFullYear();
-
-          if (selectedHistoryTime === "this_month") {
-            matchesTime = sessionMonth === currentMonth && sessionYear === currentYear;
-          } else if (selectedHistoryTime === "last_month") {
-            const lastMonth = currentMonth === 0 ? 11 : currentMonth - 1;
-            const lastMonthYear = currentMonth === 0 ? currentYear - 1 : currentYear;
-            matchesTime = sessionMonth === lastMonth && sessionYear === lastMonthYear;
-          }
+          matchesTime = sessionDate.getFullYear() === y && sessionDate.getMonth() + 1 === m;
         }
 
         return matchesStudent && matchesCourse && matchesTime;
-      });
+      })
+      .sort((a, b) => b.scheduledAt - a.scheduledAt);
   }, [sessionHistory, selectedHistoryStudent, selectedHistoryTime, selectedHistoryCourse]);
 
   const sessionStudentOptions = useMemo(() => {
@@ -1362,7 +1371,7 @@ export default function ParentDashboard() {
               <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 mt-4">
                 <div className="space-y-2">
                   <Label htmlFor="history-student">Student</Label>
-                  <Select value={selectedHistoryStudent} onValueChange={setSelectedHistoryStudent}>
+                  <Select value={selectedHistoryStudent} onValueChange={(v) => { setSelectedHistoryStudent(v); setHistoryPage(1); }}>
                     <SelectTrigger id="history-student">
                       <SelectValue placeholder="All students" />
                     </SelectTrigger>
@@ -1377,21 +1386,21 @@ export default function ParentDashboard() {
 
                 <div className="space-y-2">
                   <Label htmlFor="history-time">Time Period</Label>
-                  <Select value={selectedHistoryTime} onValueChange={setSelectedHistoryTime}>
+                  <Select value={selectedHistoryTime} onValueChange={(v) => { setSelectedHistoryTime(v); setHistoryPage(1); }}>
                     <SelectTrigger id="history-time">
                       <SelectValue placeholder="All time" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="all">All time</SelectItem>
-                      <SelectItem value="this_month">This month</SelectItem>
-                      <SelectItem value="last_month">Last month</SelectItem>
+                      {historyMonthOptions.map((opt) => (
+                        <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
 
                 <div className="space-y-2">
                   <Label htmlFor="history-course">Course</Label>
-                  <Select value={selectedHistoryCourse} onValueChange={setSelectedHistoryCourse}>
+                  <Select value={selectedHistoryCourse} onValueChange={(v) => { setSelectedHistoryCourse(v); setHistoryPage(1); }}>
                     <SelectTrigger id="history-course">
                       <SelectValue placeholder="All courses" />
                     </SelectTrigger>
@@ -1412,7 +1421,7 @@ export default function ParentDashboard() {
               ) : filteredHistorySessions.length > 0 ? (
                 <div className="space-y-4 mt-6">
                   {filteredHistorySessions
-                    .slice(0, 10)
+                    .slice((historyPage - 1) * HISTORY_PAGE_SIZE, historyPage * HISTORY_PAGE_SIZE)
                     .map((session) => (
                     <Card key={session.id}>
                       <CardContent className="pt-6">
@@ -1805,6 +1814,37 @@ export default function ParentDashboard() {
                       </CardContent>
                     </Card>
                   ))}
+                  {/* Pagination */}
+                  {filteredHistorySessions.length > HISTORY_PAGE_SIZE && (
+                    <div className="flex items-center justify-between pt-2">
+                      <p className="text-sm text-muted-foreground">
+                        Showing {(historyPage - 1) * HISTORY_PAGE_SIZE + 1}–{Math.min(historyPage * HISTORY_PAGE_SIZE, filteredHistorySessions.length)} of {filteredHistorySessions.length} sessions
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setHistoryPage((p) => Math.max(1, p - 1))}
+                          disabled={historyPage === 1}
+                        >
+                          <ChevronLeft className="w-4 h-4" />
+                          Previous
+                        </Button>
+                        <span className="text-sm text-muted-foreground">
+                          Page {historyPage} of {Math.ceil(filteredHistorySessions.length / HISTORY_PAGE_SIZE)}
+                        </span>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setHistoryPage((p) => Math.min(Math.ceil(filteredHistorySessions.length / HISTORY_PAGE_SIZE), p + 1))}
+                          disabled={historyPage === Math.ceil(filteredHistorySessions.length / HISTORY_PAGE_SIZE)}
+                        >
+                          Next
+                          <ChevronRight className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <Card>
