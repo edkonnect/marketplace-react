@@ -1047,6 +1047,37 @@ export const appRouter = router({
         return { success: true };
       }),
 
+    requestTutorAssignment: parentProcedure
+      .input(z.object({
+        courseId: z.number(),
+        message: z.string().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const course = await db.getCourseById(input.courseId);
+        if (!course) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'Course not found' });
+        }
+        const parent = ctx.user;
+        const html = `
+          <h2>Tutor Assignment Request</h2>
+          <p>A parent has requested a tutor for a course that currently has no assigned tutor.</p>
+          <table style="border-collapse:collapse;width:100%">
+            <tr><td style="padding:6px 12px;font-weight:bold">Course</td><td style="padding:6px 12px">${course.title} (ID: ${course.id})</td></tr>
+            <tr><td style="padding:6px 12px;font-weight:bold">Subject</td><td style="padding:6px 12px">${course.subject ?? 'N/A'}</td></tr>
+            <tr><td style="padding:6px 12px;font-weight:bold">Parent Name</td><td style="padding:6px 12px">${parent.name ?? 'N/A'}</td></tr>
+            <tr><td style="padding:6px 12px;font-weight:bold">Parent Email</td><td style="padding:6px 12px">${parent.email}</td></tr>
+            ${input.message ? `<tr><td style="padding:6px 12px;font-weight:bold">Message</td><td style="padding:6px 12px">${input.message}</td></tr>` : ''}
+          </table>
+          <p style="margin-top:16px">Please assign a tutor to this course as soon as possible.</p>
+        `;
+        await emailService.sendEmail({
+          to: 'support@edkonnect-academy.com',
+          subject: `Tutor Assignment Request: ${course.title}`,
+          html,
+        });
+        return { success: true };
+      }),
+
     createCheckoutSession: parentProcedure
       .input(z.object({
         courseId: z.number(),
