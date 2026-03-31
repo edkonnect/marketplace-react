@@ -772,6 +772,19 @@ export const inAppNotifications = mysqlTable("in_app_notifications", {
 export type InAppNotification = typeof inAppNotifications.$inferSelect;
 export type InsertInAppNotification = typeof inAppNotifications.$inferInsert;
 
+export const tutorAssignmentRequests = mysqlTable("tutor_assignment_requests", {
+  id: int("id").autoincrement().primaryKey(),
+  parentId: int("parentId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  courseId: int("courseId").notNull().references(() => courses.id, { onDelete: "cascade" }),
+  message: text("message"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => ({
+  uniquePerCourse: uniqueIndex("tutor_request_parent_course_unique").on(table.parentId, table.courseId),
+}));
+
+export type TutorAssignmentRequest = typeof tutorAssignmentRequests.$inferSelect;
+export type InsertTutorAssignmentRequest = typeof tutorAssignmentRequests.$inferInsert;
+
 // Relations
 export const usersRelations = relations(users, ({ one, many }) => ({
   tutorProfile: one(tutorProfiles, {

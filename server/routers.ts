@@ -1057,6 +1057,22 @@ export const appRouter = router({
         if (!course) {
           throw new TRPCError({ code: 'NOT_FOUND', message: 'Course not found' });
         }
+        const { tutorAssignmentRequests } = await import('../drizzle/schema');
+        const drizzleDb = await db.getDb();
+        if (!drizzleDb) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Database unavailable' });
+        const existing = await drizzleDb
+          .select()
+          .from(tutorAssignmentRequests)
+          .where(and(eq(tutorAssignmentRequests.parentId, ctx.user.id), eq(tutorAssignmentRequests.courseId, input.courseId)))
+          .limit(1);
+        if (existing.length > 0) {
+          throw new TRPCError({ code: 'CONFLICT', message: 'You have already requested a tutor for this course.' });
+        }
+        await drizzleDb.insert(tutorAssignmentRequests).values({
+          parentId: ctx.user.id,
+          courseId: input.courseId,
+          message: input.message ?? null,
+        });
         const parent = ctx.user;
         const html = `
           <h2>Tutor Assignment Request</h2>
@@ -1076,6 +1092,20 @@ export const appRouter = router({
           html,
         });
         return { success: true };
+      }),
+
+    checkTutorRequest: parentProcedure
+      .input(z.object({ courseId: z.number() }))
+      .query(async ({ ctx, input }) => {
+        const { tutorAssignmentRequests } = await import('../drizzle/schema');
+        const drizzleDb = await db.getDb();
+        if (!drizzleDb) return { requested: false };
+        const existing = await drizzleDb
+          .select()
+          .from(tutorAssignmentRequests)
+          .where(and(eq(tutorAssignmentRequests.parentId, ctx.user.id), eq(tutorAssignmentRequests.courseId, input.courseId)))
+          .limit(1);
+        return { requested: existing.length > 0 };
       }),
 
     createCheckoutSession: parentProcedure

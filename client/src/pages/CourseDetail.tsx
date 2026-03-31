@@ -88,6 +88,11 @@ export default function CourseDetail() {
   const [isTutorRequestOpen, setIsTutorRequestOpen] = React.useState(false);
   const [tutorRequestMessage, setTutorRequestMessage] = React.useState("");
   const requestTutorMutation = trpc.course.requestTutorAssignment.useMutation();
+  const { data: tutorRequestStatus, refetch: refetchTutorRequestStatus } = trpc.course.checkTutorRequest.useQuery(
+    { courseId },
+    { enabled: isAuthenticated && user?.role === "parent" && courseId > 0 }
+  );
+  const alreadyRequestedTutor = tutorRequestStatus?.requested ?? false;
 
   // Trial lesson state
   const [isTrialDialogOpen, setIsTrialDialogOpen] = React.useState(false);
@@ -816,56 +821,63 @@ export default function CourseDetail() {
                   </CardHeader>
                   <CardContent>
                     <p className="text-sm text-muted-foreground mb-4">
-                      A tutor hasn't been assigned to this course yet. Request one and our team will get back to you shortly.
+                      {alreadyRequestedTutor
+                        ? "Your tutor request has been received. Our team will be in touch shortly."
+                        : "A tutor hasn't been assigned to this course yet. Request one and our team will get back to you shortly."}
                     </p>
-                    <Dialog open={isTutorRequestOpen} onOpenChange={setIsTutorRequestOpen}>
-                      <DialogTrigger asChild>
-                        <Button className="w-full">Request a Tutor</Button>
-                      </DialogTrigger>
-                      <DialogContent className="sm:max-w-[480px]">
-                        <DialogHeader>
-                          <DialogTitle>Request a Tutor</DialogTitle>
-                          <DialogDescription>
-                            Submit a request and our team will assign a tutor to this course for you.
-                          </DialogDescription>
-                        </DialogHeader>
-                        <div className="space-y-4 py-4">
-                          <div className="space-y-2">
-                            <Label htmlFor="tutor-request-message">Additional Message (Optional)</Label>
-                            <textarea
-                              id="tutor-request-message"
-                              className="w-full min-h-[100px] rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                              placeholder="Any specific requirements or preferences for the tutor..."
-                              value={tutorRequestMessage}
-                              onChange={(e) => setTutorRequestMessage(e.target.value)}
-                            />
+                    {alreadyRequestedTutor ? (
+                      <Button className="w-full" disabled>Request Sent</Button>
+                    ) : (
+                      <Dialog open={isTutorRequestOpen} onOpenChange={setIsTutorRequestOpen}>
+                        <DialogTrigger asChild>
+                          <Button className="w-full">Request a Tutor</Button>
+                        </DialogTrigger>
+                        <DialogContent className="sm:max-w-[480px]">
+                          <DialogHeader>
+                            <DialogTitle>Request a Tutor</DialogTitle>
+                            <DialogDescription>
+                              Submit a request and our team will assign a tutor to this course for you.
+                            </DialogDescription>
+                          </DialogHeader>
+                          <div className="space-y-4 py-4">
+                            <div className="space-y-2">
+                              <Label htmlFor="tutor-request-message">Additional Message (Optional)</Label>
+                              <textarea
+                                id="tutor-request-message"
+                                className="w-full min-h-[100px] rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                                placeholder="Any specific requirements or preferences for the tutor..."
+                                value={tutorRequestMessage}
+                                onChange={(e) => setTutorRequestMessage(e.target.value)}
+                              />
+                            </div>
                           </div>
-                        </div>
-                        <div className="flex justify-end gap-2">
-                          <Button variant="outline" onClick={() => setIsTutorRequestOpen(false)}>
-                            Cancel
-                          </Button>
-                          <Button
-                            disabled={requestTutorMutation.isPending}
-                            onClick={async () => {
-                              try {
-                                await requestTutorMutation.mutateAsync({
-                                  courseId,
-                                  message: tutorRequestMessage || undefined,
-                                });
-                                toast.success("Tutor request sent! Our team will be in touch shortly.");
-                                setIsTutorRequestOpen(false);
-                                setTutorRequestMessage("");
-                              } catch {
-                                toast.error("Failed to send request. Please try again.");
-                              }
-                            }}
-                          >
-                            {requestTutorMutation.isPending ? "Sending..." : "Send Request"}
-                          </Button>
-                        </div>
-                      </DialogContent>
-                    </Dialog>
+                          <div className="flex justify-end gap-2">
+                            <Button variant="outline" onClick={() => setIsTutorRequestOpen(false)}>
+                              Cancel
+                            </Button>
+                            <Button
+                              disabled={requestTutorMutation.isPending}
+                              onClick={async () => {
+                                try {
+                                  await requestTutorMutation.mutateAsync({
+                                    courseId,
+                                    message: tutorRequestMessage || undefined,
+                                  });
+                                  toast.success("Tutor request sent! Our team will be in touch shortly.");
+                                  setIsTutorRequestOpen(false);
+                                  setTutorRequestMessage("");
+                                  refetchTutorRequestStatus();
+                                } catch {
+                                  toast.error("Failed to send request. Please try again.");
+                                }
+                              }}
+                            >
+                              {requestTutorMutation.isPending ? "Sending..." : "Send Request"}
+                            </Button>
+                          </div>
+                        </DialogContent>
+                      </Dialog>
+                    )}
                   </CardContent>
                 </Card>
               )}
