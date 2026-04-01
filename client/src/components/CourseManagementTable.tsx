@@ -137,11 +137,11 @@ export function CourseManagementTable({ onAssignTutors }: CourseManagementTableP
       </div>
 
       {/* Table */}
-      <div className="border rounded-lg">
+      <div className="border rounded-lg overflow-x-auto">
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Course</TableHead>
+              <TableHead className="sticky left-0 z-10 bg-background">Course</TableHead>
               <TableHead>Subject</TableHead>
               <TableHead>Grade</TableHead>
               <TableHead>Price</TableHead>
@@ -155,7 +155,7 @@ export function CourseManagementTable({ onAssignTutors }: CourseManagementTableP
             {courses && courses.length > 0 ? (
               courses.map((course) => (
                 <TableRow key={course.id}>
-                  <TableCell>
+                  <TableCell className="sticky left-0 z-10 bg-background">
                     <div>
                       <div className="font-medium">{course.title}</div>
                       <div className="text-sm text-muted-foreground line-clamp-1 max-w-xs">

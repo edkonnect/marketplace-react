@@ -55,6 +55,7 @@ export function CourseCreationForm({ onSuccess, editingCourse }: CourseCreationF
     title: required("Course title is required"),
     subject: required("Subject is required"),
     price: [required("Price is required"), positiveNumber("Price must be greater than 0")],
+    totalSessions: [required("Total sessions is required"), positiveNumber("Total sessions must be greater than 0")],
   });
 
   const { values, register, validateForm, reset } = form;
@@ -107,7 +108,7 @@ export function CourseCreationForm({ onSuccess, editingCourse }: CourseCreationF
       subject: values.subject,
       duration: values.duration ? parseInt(values.duration) : undefined,
       sessionsPerWeek: parseInt(values.sessionsPerWeek),
-      totalSessions: values.totalSessions ? parseInt(values.totalSessions) : undefined,
+      totalSessions: parseInt(values.totalSessions),
       price: values.price,
       displayOrder: parseInt(values.displayOrder) || 0,
       aiPowered,
@@ -223,6 +224,7 @@ export function CourseCreationForm({ onSuccess, editingCourse }: CourseCreationF
             <FormInput
               field={register("totalSessions")}
               label="Total Sessions"
+              required
               type="number"
               placeholder="12"
             />
