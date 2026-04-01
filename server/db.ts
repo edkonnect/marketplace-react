@@ -1855,6 +1855,72 @@ export async function getSessionById(id: number) {
   return result.length > 0 ? result[0] : null;
 }
 
+/**
+ * Fetches all data needed to send booking confirmation emails in a single JOIN query,
+ * replacing 6-7 sequential round-trips with one.
+ */
+export async function getSessionEmailData(sessionId: number) {
+  const db = await getDb();
+  if (!db) return null;
+
+  const tutorUser = alias(users, 'tutorUser');
+  const parentUser = alias(users, 'parentUser');
+  const subscriptionCourses = alias(courses, 'subscriptionCourse');
+  const sessionCourses = alias(courses, 'sessionCourse');
+
+  const results = await db
+    .select({
+      session: sessions,
+      courseId: sql<number>`COALESCE(${subscriptionCourses.id}, ${sessionCourses.id})`.as('courseId'),
+      courseTitle: sql<string>`COALESCE(${subscriptionCourses.title}, ${sessionCourses.title})`.as('courseTitle'),
+      coursePrice: sql<string>`COALESCE(${subscriptionCourses.price}, ${sessionCourses.price})`.as('coursePrice'),
+      tutorUser: tutorUser,
+      parentUser: parentUser,
+      tutorProfile: tutorProfiles,
+      parentProfile: parentProfiles,
+      subscription: subscriptions,
+    })
+    .from(sessions)
+    .innerJoin(tutorUser, eq(sessions.tutorId, tutorUser.id))
+    .innerJoin(parentUser, eq(sessions.parentId, parentUser.id))
+    .leftJoin(subscriptions, eq(sessions.subscriptionId, subscriptions.id))
+    .leftJoin(subscriptionCourses, eq(subscriptions.courseId, subscriptionCourses.id))
+    .leftJoin(sessionCourses, eq(sessions.courseId, sessionCourses.id))
+    .leftJoin(tutorProfiles, eq(sessions.tutorId, tutorProfiles.userId))
+    .leftJoin(parentProfiles, eq(sessions.parentId, parentProfiles.userId))
+    .where(eq(sessions.id, sessionId))
+    .limit(1);
+
+  return results.length > 0 ? results[0] : null;
+}
+
+/**
+ * Read-only conflict check — no transaction, no writes.
+ * Returns true if the proposed slot overlaps any existing non-cancelled session for the same tutor.
+ */
+export async function checkSessionConflict(
+  tutorId: number,
+  scheduledAt: number,
+  duration: number,
+): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return false; // fail open: let createSession catch it with its FOR UPDATE lock
+
+  const endMs = scheduledAt + duration * 60000;
+
+  const results = await db.execute(sql`
+    SELECT id FROM sessions
+    WHERE tutorId = ${tutorId}
+      AND status != 'cancelled'
+      AND ${scheduledAt} < (scheduledAt + duration * 60000)
+      AND ${endMs} > scheduledAt
+    LIMIT 1
+  `);
+
+  const rows = Array.isArray(results?.[0]) ? results[0] : [];
+  return (rows as unknown[]).length > 0;
+}
+
 export async function getSessionByTutorAndTime(tutorId: number, scheduledAt: number) {
   const db = await getDb();
   if (!db) return null;
@@ -1945,12 +2011,24 @@ export async function createTrialSession(session: Omit<InsertSession, 'subscript
   return await createSession(session as InsertSession);
 }
 
-export async function getSessionsByTutorId(tutorId: number) {
+export async function getSessionsByTutorId(
+  tutorId: number,
+  options?: { upcomingOnly?: boolean; limit?: number },
+) {
   const db = await getDb();
   if (!db) return [];
 
   const subscriptionCourses = alias(courses, "subscriptionCourse");
   const sessionCourses = alias(courses, "sessionCourse");
+
+  const now = Date.now();
+  const whereClause = options?.upcomingOnly
+    ? and(
+        eq(sessions.tutorId, tutorId),
+        eq(sessions.status, 'scheduled'),
+        gte(sessions.scheduledAt, now),
+      )
+    : eq(sessions.tutorId, tutorId);
 
   return await db
     .select({
@@ -1966,8 +2044,9 @@ export async function getSessionsByTutorId(tutorId: number) {
     .leftJoin(subscriptionCourses, eq(subscriptions.courseId, subscriptionCourses.id))
     .leftJoin(sessionCourses, eq(sessions.courseId, sessionCourses.id))
     .leftJoin(users, eq(sessions.tutorId, users.id))
-    .where(eq(sessions.tutorId, tutorId))
-    .orderBy(desc(sessions.scheduledAt));
+    .where(whereClause)
+    .orderBy(desc(sessions.scheduledAt))
+    .limit(options?.limit ?? 500);
 }
 
 // Completed sessions (for history views)

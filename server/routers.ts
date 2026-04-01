@@ -7,7 +7,7 @@ import { z } from "zod";
 import * as db from "./db";
 import { TRPCError } from "@trpc/server";
 import { searchFaq, logUnansweredQuestion, logQuery } from "./faq-search";
-import { checkChatbotRateLimit } from "./chatbot-rate-limiter";
+import { checkChatbotRateLimit, bookingRateLimiter } from "./chatbot-rate-limiter";
 import { sendWelcomeEmail, sendBookingConfirmation, sendEnrollmentConfirmation, sendTutorEnrollmentNotification, sendNoShowNotification, formatEmailDate, formatEmailTime, formatEmailPrice, sendTutorApplicationReceivedEmail, sendReferralInviteEmail, sendCouponRewardEmail } from "./email-helpers";
 import { generateBookingToken, isValidBookingToken } from "./booking-management";
 import { sendCancellationConfirmationEmail } from "./cancellation-email";
@@ -2143,17 +2143,13 @@ export const appRouter = router({
     getUpcomingByTutorId: publicProcedure
       .input(z.object({ tutorId: z.number() }))
       .query(async ({ input }) => {
-        const rows = await db.getSessionsByTutorId(input.tutorId);
-        const now = Date.now();
-        // Filter for upcoming scheduled sessions only
-        return rows
-          .filter((row: any) => row.session.scheduledAt >= now && row.session.status === 'scheduled')
-          .map((row: any) => ({
-            id: row.session.id,
-            scheduledAt: row.session.scheduledAt,
-            duration: row.session.duration,
-            status: row.session.status,
-          }));
+        const rows = await db.getSessionsByTutorId(input.tutorId, { upcomingOnly: true, limit: 200 });
+        return rows.map((row: any) => ({
+          id: row.session.id,
+          scheduledAt: row.session.scheduledAt,
+          duration: row.session.duration,
+          status: row.session.status,
+        }));
       }),
 
     myBookings: parentProcedure.query(async ({ ctx }) => {
@@ -2411,6 +2407,10 @@ export const appRouter = router({
         notes: z.string().optional(),
       }))
       .mutation(async ({ ctx, input }) => {
+        if (!bookingRateLimiter.check(String(ctx.user.id))) {
+          throw new TRPCError({ code: 'TOO_MANY_REQUESTS', message: 'Too many booking requests. Please wait a few minutes and try again.' });
+        }
+
         console.log('[quickBookRecurring] Starting with input:', JSON.stringify(input, null, 2));
 
         // Use provided subscriptionId if available, otherwise find/create one
@@ -2448,6 +2448,24 @@ export const appRouter = router({
           }
         }
         
+        // Pre-validation: check ALL slots for conflicts before writing anything.
+        // This prevents partial state where some sessions are created and others aren't.
+        const conflictedSlots: number[] = [];
+        for (let i = 0; i < input.sessions.length; i++) {
+          const hasConflict = await db.checkSessionConflict(
+            input.tutorId,
+            input.sessions[i].scheduledAt,
+            input.duration,
+          );
+          if (hasConflict) conflictedSlots.push(i + 1);
+        }
+        if (conflictedSlots.length > 0) {
+          throw new TRPCError({
+            code: 'CONFLICT',
+            message: `Scheduling conflicts on session slots: ${conflictedSlots.join(', ')}. No sessions were created. Please choose different times.`,
+          });
+        }
+
         // Create all sessions
         const sessionIds: number[] = [];
         const failedSessions: number[] = [];
@@ -2495,28 +2513,17 @@ export const appRouter = router({
           }
         }
         
-        // Send confirmation email for the first session
+        // Send confirmation email for the first session (single JOIN query instead of 7 sequential calls)
         if (sessionIds.length > 0) {
-          const firstSession = await db.getSessionById(sessionIds[0]);
-          if (firstSession) {
+          const emailData = await db.getSessionEmailData(sessionIds[0]);
+          if (emailData) {
+            const { session: firstSession, courseTitle, coursePrice, tutorUser: tutor, parentUser: parent, tutorProfile, parentProfile, subscription } = emailData;
             const sessionDate = new Date(firstSession.scheduledAt);
-            const course = await db.getCourseById(input.courseId);
-            const tutor = await db.getUserById(input.tutorId);
-            const parent = await db.getUserById(ctx.user.id);
-
-            // Get tutor profile for timezone
-            const tutorProfile = await db.getTutorProfileByUserId(input.tutorId);
-
-            // Get parent profile for timezone
-            const parentProfile = await db.getParentProfileByUserId(ctx.user.id);
-
-            // Get subscription to get student name
-            const subscription = await db.getSubscriptionById(subscriptionId);
             const studentName = subscription
               ? [subscription.studentFirstName, subscription.studentLastName].filter(Boolean).join(' ').trim()
               : undefined;
 
-            if (course && tutor && parent && tutor.name && parent.name && tutor.email && parent.email) {
+            if (tutor.name && parent.name && tutor.email && parent.email) {
               // Build additional sessions list (all sessions after the first)
               const additionalSessionsForParent = sessionIds.slice(1).map(id => {
                 const ts = input.sessions[sessionIds.indexOf(id)]?.scheduledAt ?? 0;
@@ -2540,13 +2547,13 @@ export const appRouter = router({
                 userEmail: parent.email,
                 userName: parent.name,
                 userRole: 'parent',
-                courseName: course.title,
+                courseName: courseTitle,
                 tutorName: tutor.name,
                 studentName: studentName,
                 sessionDate: formatEmailDate(sessionDate, parentProfile?.timezone || undefined),
                 sessionTime: formatEmailTime(sessionDate, parentProfile?.timezone || undefined),
                 sessionDuration: `${firstSession.duration} minutes`,
-                sessionPrice: formatEmailPrice(parseInt(course.price) * 100),
+                sessionPrice: formatEmailPrice(parseInt(coursePrice) * 100),
                 additionalSessions: additionalSessionsForParent.length > 0 ? additionalSessionsForParent : undefined,
               }).catch(err => console.error('[Email] Failed to send booking confirmation to parent:', err));
 
@@ -2555,12 +2562,11 @@ export const appRouter = router({
                 userEmail: tutor.email,
                 userName: tutor.name,
                 userRole: 'tutor',
-                courseName: course.title,
+                courseName: courseTitle,
                 studentName: studentName || parent.name,
                 sessionDate: formatEmailDate(sessionDate, tutorProfile?.timezone || undefined),
                 sessionTime: formatEmailTime(sessionDate, tutorProfile?.timezone || undefined),
                 sessionDuration: `${firstSession.duration} minutes`,
-                sessionPrice: formatEmailPrice(parseInt(course.price) * 100),
                 additionalSessions: additionalSessionsForTutor.length > 0 ? additionalSessionsForTutor : undefined,
               }).catch(err => console.error('[Email] Failed to send booking confirmation to tutor:', err));
 
@@ -2580,7 +2586,7 @@ export const appRouter = router({
               await db.createInAppNotification({
                 userId: input.tutorId,
                 title: 'New Session Booking',
-                message: `${parent.name} booked ${sessionIds.length} ${course.title} session${sessionIds.length > 1 ? 's' : ''}. First session: ${formattedDate} at ${formattedTime}`,
+                message: `${parent.name} booked ${sessionIds.length} ${courseTitle} session${sessionIds.length > 1 ? 's' : ''}. First session: ${formattedDate} at ${formattedTime}`,
                 type: 'new_booking',
                 relatedId: sessionIds[0],
               });
@@ -2606,6 +2612,10 @@ export const appRouter = router({
         notes: z.string().optional(),
       }))
       .mutation(async ({ ctx, input }) => {
+        if (!bookingRateLimiter.check(String(ctx.user.id))) {
+          throw new TRPCError({ code: 'TOO_MANY_REQUESTS', message: 'Too many booking requests. Please wait a few minutes and try again.' });
+        }
+
         // Get or create subscription for this course
         const existingSubscriptions = await db.getSubscriptionsByParentId(ctx.user.id);
         let subscriptionId = existingSubscriptions.find(s => s.subscription.courseId === input.courseId)?.subscription.id;
@@ -2646,39 +2656,28 @@ export const appRouter = router({
           throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to create session' });
         }
         
-        // Get session details for email
-        const session = await db.getSessionById(sessionId);
-        if (session) {
+        // Get all email data in a single JOIN query
+        const emailData = await db.getSessionEmailData(sessionId);
+        if (emailData) {
+          const { session, courseTitle, coursePrice, tutorUser: tutor, parentUser: parent, tutorProfile, parentProfile, subscription } = emailData;
           const sessionDate = new Date(session.scheduledAt);
-          const course = await db.getCourseById(input.courseId);
-          const tutor = await db.getUserById(session.tutorId);
-          const parent = await db.getUserById(ctx.user.id);
-
-          // Get tutor profile for timezone
-          const tutorProfile = await db.getTutorProfileByUserId(session.tutorId);
-
-          // Get parent profile for timezone
-          const parentProfile = await db.getParentProfileByUserId(ctx.user.id);
-
-          // Get subscription to get student name
-          const subscription = await db.getSubscriptionById(subscriptionId);
           const studentName = subscription
             ? [subscription.studentFirstName, subscription.studentLastName].filter(Boolean).join(' ').trim()
             : undefined;
 
-          if (course && tutor && parent && tutor.name && parent.name && tutor.email && parent.email) {
+          if (tutor.name && parent.name && tutor.email && parent.email) {
             // Send email to parent
             sendBookingConfirmation({
               userEmail: parent.email,
               userName: parent.name,
               userRole: 'parent',
-              courseName: course.title,
+              courseName: courseTitle,
               tutorName: tutor.name,
               studentName: studentName,
               sessionDate: formatEmailDate(sessionDate, parentProfile?.timezone || undefined),
               sessionTime: formatEmailTime(sessionDate, parentProfile?.timezone || undefined),
               sessionDuration: `${session.duration} minutes`,
-              sessionPrice: formatEmailPrice(parseInt(course.price) * 100),
+              sessionPrice: formatEmailPrice(parseInt(coursePrice) * 100),
             }).catch(err => console.error('[Email] Failed to send booking confirmation to parent:', err));
 
             // Send email to tutor
@@ -2686,12 +2685,11 @@ export const appRouter = router({
               userEmail: tutor.email,
               userName: tutor.name,
               userRole: 'tutor',
-              courseName: course.title,
+              courseName: courseTitle,
               studentName: studentName || parent.name,
               sessionDate: formatEmailDate(sessionDate, tutorProfile?.timezone || undefined),
               sessionTime: formatEmailTime(sessionDate, tutorProfile?.timezone || undefined),
               sessionDuration: `${session.duration} minutes`,
-              sessionPrice: formatEmailPrice(parseInt(course.price) * 100),
             }).catch(err => console.error('[Email] Failed to send booking confirmation to tutor:', err));
 
             // Create in-app notification for tutor
@@ -2709,7 +2707,7 @@ export const appRouter = router({
             await db.createInAppNotification({
               userId: session.tutorId,
               title: 'New Session Booking',
-              message: `${parent.name} booked a ${course.title} session for ${formattedDate} at ${formattedTime}`,
+              message: `${parent.name} booked a ${courseTitle} session for ${formattedDate} at ${formattedTime}`,
               type: 'new_booking',
               relatedId: sessionId,
             });
@@ -2812,7 +2810,6 @@ export const appRouter = router({
                 sessionDate: formatEmailDate(sessionDate, tutorProfile?.timezone || undefined),
                 sessionTime: formatEmailTime(sessionDate, tutorProfile?.timezone || undefined),
                 sessionDuration: `${session.duration} minutes`,
-                sessionPrice: formatEmailPrice(parseInt(course.price) * 100),
               }).catch(err => console.error('[Email] Failed to send booking confirmation to tutor:', err));
 
               // Create in-app notification for tutor
@@ -4043,7 +4040,6 @@ export const appRouter = router({
               sessionDate: formatEmailDate(sessionDate, tutorProfile?.timezone || undefined),
               sessionTime: formatEmailTime(sessionDate, tutorProfile?.timezone || undefined),
               sessionDuration: `${session.duration} minutes`,
-              sessionPrice: 'FREE - Trial Lesson',
             });
 
             console.log('[Trial Booking] Confirmation emails sent for session', sessionId);

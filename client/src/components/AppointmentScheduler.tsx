@@ -8,20 +8,10 @@ import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { useAuth } from "@/_core/hooks/useAuth";
-import { Calendar as CalendarIcon, Clock, AlertCircle, Globe } from "lucide-react";
+import { Calendar as CalendarIcon, AlertCircle, Globe, CheckCircle, XCircle } from "lucide-react";
 import { format } from "date-fns";
 import crypto from "crypto-js";
 import {
@@ -50,12 +40,6 @@ export function AppointmentScheduler({ subscriptions, onScheduleComplete }: Appo
   const [recurringCount, setRecurringCount] = useState<number>(1);
   const [frequency, setFrequency] = useState<"weekly" | "biweekly">("weekly");
   const [smsOptIn, setSmsOptIn] = useState<boolean>(false);
-  const [showPreview, setShowPreview] = useState<boolean>(false);
-  const [showConflictDialog, setShowConflictDialog] = useState<boolean>(false);
-  const [conflictInfo, setConflictInfo] = useState<{
-    conflicts: Date[];
-    validSessions: Date[];
-  } | null>(null);
 
   const utils = trpc.useUtils();
 
@@ -253,6 +237,20 @@ export function AppointmentScheduler({ subscriptions, onScheduleComplete }: Appo
     return sessions;
   }, [isRecurring, selectedDate, selectedTimeSlot, recurringCount, frequency, availableTimeSlotsMap]);
 
+  // Compute which recurring preview dates conflict with existing bookings
+  const recurringConflicts = useMemo(() => {
+    if (!recurringPreview.length) return new Set<number>();
+    const booked = availabilityData?.booked || [];
+    const conflicted = new Set<number>();
+    recurringPreview.forEach((sessionDate, i) => {
+      const start = sessionDate.getTime();
+      const end = start + duration * 60000;
+      const hasConflict = booked.some((b: any) => start < b.scheduledAt + b.duration * 60000 && end > b.scheduledAt);
+      if (hasConflict) conflicted.add(i);
+    });
+    return conflicted;
+  }, [recurringPreview, availabilityData, duration]);
+
   // Helper function to book recurring sessions
   const bookRecurringSessions = async (sessionsToBook: Date[]) => {
     if (!selectedSubscription) return;
@@ -270,14 +268,18 @@ export function AppointmentScheduler({ subscriptions, onScheduleComplete }: Appo
       notes: `Recurring series (${frequency})`,
     });
 
-    toast.success(`${sessions.length} session${sessions.length > 1 ? 's' : ''} scheduled successfully!`);
+    const skipped = recurringCount - sessions.length;
+    if (skipped > 0) {
+      toast.success(`${sessions.length} session${sessions.length > 1 ? 's' : ''} scheduled. ${skipped} conflicting slot${skipped > 1 ? 's were' : ' was'} skipped.`);
+    } else {
+      toast.success(`${sessions.length} session${sessions.length > 1 ? 's' : ''} scheduled successfully!`);
+    }
 
     // Reset form
     setSelectedDate(undefined);
     setSelectedTimeSlot("");
     setIsRecurring(false);
     setRecurringCount(1);
-    setShowPreview(false);
 
     // Refresh data
     await utils.session.myUpcoming.invalidate();
@@ -285,20 +287,6 @@ export function AppointmentScheduler({ subscriptions, onScheduleComplete }: Appo
     await utils.subscription.getAvailability.invalidate();
 
     onScheduleComplete?.();
-  };
-
-  const handleConfirmPartialBooking = async () => {
-    if (!conflictInfo) return;
-
-    setShowConflictDialog(false);
-
-    try {
-      await bookRecurringSessions(conflictInfo.validSessions);
-    } catch (error: any) {
-      toast.error(error.message || "Failed to schedule sessions");
-    }
-
-    setConflictInfo(null);
   };
 
   const handleSchedule = async () => {
@@ -323,37 +311,15 @@ export function AppointmentScheduler({ subscriptions, onScheduleComplete }: Appo
       const scheduledDate = new Date(scheduledAtUTC);
 
       if (isRecurring && recurringCount > 1) {
-        // Check for conflicts in recurring sessions
-        const booked = availabilityData?.booked || [];
-        const conflicts = recurringPreview.filter((sessionDate) => {
-          const sessionStart = sessionDate.getTime();
-          const sessionEnd = sessionStart + duration * 60000;
+        // Book only the non-conflicted slots; conflicted ones are shown inline and skipped
+        const availableSlots = recurringPreview.filter((_, i) => !recurringConflicts.has(i));
 
-          return booked.some((b: any) => {
-            const bookedStart = b.scheduledAt;
-            const bookedEnd = bookedStart + b.duration * 60000;
-            return sessionStart < bookedEnd && sessionEnd > bookedStart;
-          });
-        });
-
-        if (conflicts.length > 0) {
-          // Show conflict dialog instead of blocking
-          const validSessions = recurringPreview.filter(date => !conflicts.includes(date));
-
-          if (validSessions.length === 0) {
-            // All sessions conflict - block completely
-            toast.error("All sessions in this series conflict with existing bookings. Please choose a different time.");
-            return;
-          }
-
-          // Some conflicts - show confirmation dialog
-          setConflictInfo({ conflicts, validSessions });
-          setShowConflictDialog(true);
+        if (availableSlots.length === 0) {
+          toast.error("All selected sessions are already booked. Please choose a different date or time.");
           return;
         }
 
-        // No conflicts - proceed with booking
-        await bookRecurringSessions(recurringPreview);
+        await bookRecurringSessions(availableSlots);
       } else {
         // Create single session
         await createSessionMutation.mutateAsync({
@@ -372,7 +338,6 @@ export function AppointmentScheduler({ subscriptions, onScheduleComplete }: Appo
       setSelectedTimeSlot("");
       setIsRecurring(false);
       setRecurringCount(1);
-      setShowPreview(false);
 
       // Refresh data
       await utils.session.myUpcoming.invalidate();
@@ -568,20 +533,38 @@ export function AppointmentScheduler({ subscriptions, onScheduleComplete }: Appo
 
                     {recurringPreview.length > 0 && (
                       <div className="mt-3 space-y-1">
-                        <button
-                          onClick={() => setShowPreview(!showPreview)}
-                          className="text-sm text-primary hover:underline"
-                        >
-                          {showPreview ? "Hide" : "Show"} session dates
-                        </button>
-                        {showPreview && (
-                          <div className="mt-2 space-y-1 max-h-32 overflow-y-auto">
-                            {recurringPreview.map((date, index) => (
-                              <p key={index} className="text-xs text-muted-foreground">
-                                Session {index + 1}: {format(date, "EEEE, MMMM d, yyyy 'at' h:mm a")}
-                              </p>
-                            ))}
-                          </div>
+                        <p className="text-xs font-medium text-muted-foreground mb-2">Session dates:</p>
+                        <div className="space-y-1 max-h-48 overflow-y-auto pr-1">
+                          {recurringPreview.map((date, index) => {
+                            const isConflict = recurringConflicts.has(index);
+                            return (
+                              <div
+                                key={index}
+                                className={`flex items-center justify-between rounded-md px-3 py-1.5 text-xs ${
+                                  isConflict
+                                    ? "bg-red-50 border border-red-200 text-red-800"
+                                    : "bg-green-50 border border-green-200 text-green-800"
+                                }`}
+                              >
+                                <span className="flex items-center gap-1.5">
+                                  {isConflict
+                                    ? <XCircle className="w-3.5 h-3.5 text-red-500 flex-shrink-0" />
+                                    : <CheckCircle className="w-3.5 h-3.5 text-green-500 flex-shrink-0" />
+                                  }
+                                  Session {index + 1}: {format(date, "EEE, MMM d, yyyy 'at' h:mm a")}
+                                </span>
+                                {isConflict && (
+                                  <span className="ml-2 font-semibold text-red-600 whitespace-nowrap">Already booked</span>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                        {recurringConflicts.size > 0 && (
+                          <p className="text-xs text-amber-600 flex items-center gap-1 mt-2">
+                            <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
+                            {recurringConflicts.size} conflicting slot{recurringConflicts.size > 1 ? 's' : ''} will be skipped. {recurringCount - recurringConflicts.size} session{(recurringCount - recurringConflicts.size) !== 1 ? 's' : ''} will be booked.
+                          </p>
                         )}
                       </div>
                     )}
@@ -671,6 +654,7 @@ export function AppointmentScheduler({ subscriptions, onScheduleComplete }: Appo
                 !selectedSubscriptionId ||
                 !selectedDate ||
                 !selectedTimeSlot ||
+                (isRecurring && recurringCount > 1 && recurringConflicts.size === recurringCount) ||
                 createSessionMutation.isPending ||
                 quickBookRecurringMutation.isPending
               }
@@ -678,80 +662,13 @@ export function AppointmentScheduler({ subscriptions, onScheduleComplete }: Appo
               {createSessionMutation.isPending || quickBookRecurringMutation.isPending
                 ? "Scheduling..."
                 : isRecurring && recurringCount > 1
-                ? `Add ${recurringCount} Sessions`
+                ? `Add ${recurringCount - recurringConflicts.size} Session${(recurringCount - recurringConflicts.size) !== 1 ? 's' : ''}${recurringConflicts.size > 0 ? ` (skip ${recurringConflicts.size} conflict${recurringConflicts.size > 1 ? 's' : ''})` : ''}`
                 : "Schedule Session"}
             </Button>
           </div>
         </>
       )}
 
-      {/* Conflict Confirmation Dialog */}
-      <AlertDialog open={showConflictDialog} onOpenChange={setShowConflictDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle className="flex items-center gap-2">
-              <AlertCircle className="h-5 w-5 text-amber-500" />
-              Booking Conflicts Detected
-            </AlertDialogTitle>
-            <AlertDialogDescription className="space-y-4">
-              <p>
-                {conflictInfo && (
-                  <>
-                    <strong>{conflictInfo.conflicts.length}</strong> out of{" "}
-                    <strong>{recurringCount}</strong> session{recurringCount > 1 ? 's' : ''} conflict with existing bookings:
-                  </>
-                )}
-              </p>
-
-              {conflictInfo && conflictInfo.conflicts.length > 0 && (
-                <div className="bg-amber-50 border border-amber-200 rounded-md p-3">
-                  <p className="text-sm font-medium text-amber-900 mb-2">Conflicting Dates:</p>
-                  <ul className="text-sm text-amber-800 space-y-1">
-                    {conflictInfo.conflicts.map((date, idx) => (
-                      <li key={idx}>
-                        • {date.toLocaleDateString('en-US', {
-                          weekday: 'long',
-                          month: 'long',
-                          day: 'numeric',
-                          year: 'numeric',
-                        })}{' '}
-                        at {date.toLocaleTimeString('en-US', {
-                          hour: 'numeric',
-                          minute: '2-digit',
-                          hour12: true,
-                        })}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              <p className="text-sm">
-                {conflictInfo && (
-                  <>
-                    These sessions will be <strong>skipped</strong>. Would you like to continue and book the remaining{" "}
-                    <strong className="text-green-600">{conflictInfo.validSessions.length}</strong> session{conflictInfo.validSessions.length > 1 ? 's' : ''}?
-                  </>
-                )}
-              </p>
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => {
-              setShowConflictDialog(false);
-              setConflictInfo(null);
-            }}>
-              Cancel
-            </AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleConfirmPartialBooking}
-              className="bg-green-600 hover:bg-green-700"
-            >
-              Book {conflictInfo?.validSessions.length} Session{conflictInfo && conflictInfo.validSessions.length > 1 ? 's' : ''}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   );
 }

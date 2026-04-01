@@ -92,7 +92,7 @@ interface SendBookingConfirmationParams {
   sessionDate: string;
   sessionTime: string;
   sessionDuration: string;
-  sessionPrice: string;
+  sessionPrice?: string;
   additionalSessions?: { date: string; time: string }[];
 }
 

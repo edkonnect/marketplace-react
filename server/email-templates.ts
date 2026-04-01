@@ -311,7 +311,7 @@ interface BookingConfirmationEmailProps {
   sessionDate: string;
   sessionTime: string;
   sessionDuration: string;
-  sessionPrice: string;
+  sessionPrice?: string;
   dashboardUrl: string;
   messagesUrl: string;
   // For recurring bookings — all session dates/times after the first
@@ -383,10 +383,11 @@ export function getBookingConfirmationEmail(props: BookingConfirmationEmailProps
           <td style="padding: 8px 0; font-weight: 600; color: #111827;">Duration:</td>
           <td style="padding: 8px 0; color: #374151;">${sessionDuration}</td>
         </tr>
+        ${isParent && sessionPrice ? `
         <tr>
           <td style="padding: 8px 0; font-weight: 600; color: #111827;">Price:</td>
           <td style="padding: 8px 0; color: #374151;">${sessionPrice}</td>
-        </tr>
+        </tr>` : ''}
       </table>
     </div>
     
