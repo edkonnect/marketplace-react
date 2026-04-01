@@ -10,11 +10,30 @@ import { AuthProvider } from "./contexts/AuthContext";
 
 const queryClient = new QueryClient();
 
-const redirectToLoginIfUnauthorized = (error: unknown) => {
+let isRefreshing = false;
+
+const redirectToLoginIfUnauthorized = async (error: unknown) => {
   if (!(error instanceof TRPCClientError)) return;
   if (typeof window === "undefined") return;
   const isUnauthorized = error.message === UNAUTHED_ERR_MSG;
   if (!isUnauthorized) return;
+
+  // Attempt one silent token refresh before giving up and redirecting
+  if (isRefreshing) return; // already attempting refresh, don't stack calls
+  isRefreshing = true;
+  try {
+    const res = await fetch("/api/auth/refresh-token", { method: "POST", credentials: "include" });
+    if (res.ok) {
+      // Token refreshed — invalidate all cached queries so they re-fetch with the new token
+      queryClient.invalidateQueries();
+      return;
+    }
+  } catch {
+    // refresh request itself failed (network error etc.)
+  } finally {
+    isRefreshing = false;
+  }
+
   window.location.href = "/login";
 };
 

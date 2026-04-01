@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 
 type User = {
   id: number;
@@ -38,35 +38,83 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+// Refresh access token ~1 min before it expires (access token = 15 min, so refresh every 13 min)
+const TOKEN_REFRESH_INTERVAL_MS = 13 * 60 * 1000;
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [previousLastSignedIn, setPreviousLastSignedIn] = useState<string | null>(null);
+  const refreshIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const silentRefresh = useCallback(async () => {
+    try {
+      await request("/api/auth/refresh-token", { method: "POST" });
+    } catch {
+      // Refresh failed — user's session has fully expired; clear state
+      setUser(null);
+      if (refreshIntervalRef.current) {
+        clearInterval(refreshIntervalRef.current);
+        refreshIntervalRef.current = null;
+      }
+    }
+  }, []);
+
+  const startRefreshInterval = useCallback(() => {
+    if (refreshIntervalRef.current) clearInterval(refreshIntervalRef.current);
+    refreshIntervalRef.current = setInterval(silentRefresh, TOKEN_REFRESH_INTERVAL_MS);
+  }, [silentRefresh]);
+
+  const stopRefreshInterval = useCallback(() => {
+    if (refreshIntervalRef.current) {
+      clearInterval(refreshIntervalRef.current);
+      refreshIntervalRef.current = null;
+    }
+  }, []);
 
   const fetchProfile = useCallback(async () => {
     setLoading(true);
     try {
       const data = await request<{ user: User }>("/api/users/profile", { method: "GET" });
       setUser(data.user);
+      startRefreshInterval();
       return data.user;
     } catch (error) {
       try {
         await request("/api/auth/refresh-token", { method: "POST" });
         const data = await request<{ user: User }>("/api/users/profile", { method: "GET" });
         setUser(data.user);
+        startRefreshInterval();
         return data.user;
       } catch {
         setUser(null);
+        stopRefreshInterval();
       }
     } finally {
       setLoading(false);
     }
     return null;
-  }, []);
+  }, [startRefreshInterval, stopRefreshInterval]);
 
   useEffect(() => {
     fetchProfile();
   }, [fetchProfile]);
+
+  // Refresh token when tab becomes visible again after being hidden
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible" && user) {
+        silentRefresh();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, [user, silentRefresh]);
+
+  // Cleanup interval on unmount
+  useEffect(() => {
+    return () => stopRefreshInterval();
+  }, [stopRefreshInterval]);
 
   const login = useCallback(async (email: string, password: string) => {
     const timezone = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { return undefined; } })();
@@ -89,10 +137,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const logout = useCallback(async () => {
+    stopRefreshInterval();
     await request<{ success: boolean }>("/api/auth/logout", { method: "POST" }).catch(() => {});
     setUser(null);
     setPreviousLastSignedIn(null);
-  }, []);
+  }, [stopRefreshInterval]);
 
   const refreshProfile = useCallback(async () => { await fetchProfile(); }, [fetchProfile]);
 
