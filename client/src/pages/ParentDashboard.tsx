@@ -452,15 +452,21 @@ export default function ParentDashboard() {
     return Array.from(set);
   }, [combinedNotes, activeSubscriptions]);
 
-  // Month options derived from session history
+  // Month options derived from session history, filtered by selected student
   const historyMonthOptions = useMemo(() => {
     const monthSet = new Set<string>();
-    (sessionHistory || []).forEach((s) => {
-      const d = new Date(s.scheduledAt);
-      if (!isNaN(d.getTime())) {
-        monthSet.add(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
-      }
-    });
+    (sessionHistory || [])
+      .filter((s) => {
+        if (selectedHistoryStudent === "all") return true;
+        const name = [s.studentFirstName, s.studentLastName].filter(Boolean).join(" ").trim();
+        return name === selectedHistoryStudent;
+      })
+      .forEach((s) => {
+        const d = new Date(s.scheduledAt);
+        if (!isNaN(d.getTime())) {
+          monthSet.add(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
+        }
+      });
     const options = Array.from(monthSet)
       .sort((a, b) => b.localeCompare(a))
       .map((key) => {
@@ -469,7 +475,22 @@ export default function ParentDashboard() {
         return { value: key, label: d.toLocaleDateString(undefined, { month: "long", year: "numeric" }) };
       });
     return [{ value: "all", label: "All time" }, ...options];
-  }, [sessionHistory]);
+  }, [sessionHistory, selectedHistoryStudent]);
+
+  // Course options derived from session history, filtered by selected student
+  const historyCourseOptions = useMemo(() => {
+    const set = new Set<string>();
+    (sessionHistory || [])
+      .filter((s) => {
+        if (selectedHistoryStudent === "all") return true;
+        const name = [s.studentFirstName, s.studentLastName].filter(Boolean).join(" ").trim();
+        return name === selectedHistoryStudent;
+      })
+      .forEach((s) => {
+        if (s.courseTitle) set.add(s.courseTitle);
+      });
+    return Array.from(set);
+  }, [sessionHistory, selectedHistoryStudent]);
 
   // Filtered history sessions
   const filteredHistorySessions = useMemo(() => {
@@ -507,11 +528,17 @@ export default function ParentDashboard() {
 
   const sessionCourseOptions = useMemo(() => {
     const set = new Set<string>();
-    (upcomingSessions || []).forEach((s) => {
-      if (s.courseTitle) set.add(s.courseTitle);
-    });
+    (upcomingSessions || [])
+      .filter((s) => {
+        if (selectedSessionStudent === "all") return true;
+        const name = [s.studentFirstName, s.studentLastName].filter(Boolean).join(" ").trim();
+        return name === selectedSessionStudent;
+      })
+      .forEach((s) => {
+        if (s.courseTitle) set.add(s.courseTitle);
+      });
     return Array.from(set);
-  }, [upcomingSessions]);
+  }, [upcomingSessions, selectedSessionStudent]);
 
   const filteredUpcomingSessions = useMemo(() => {
     if (!upcomingSessions) return [];
@@ -1313,7 +1340,7 @@ export default function ParentDashboard() {
               <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 mt-4">
                 <div className="space-y-2">
                   <Label htmlFor="session-student">Student</Label>
-                  <Select value={selectedSessionStudent} onValueChange={setSelectedSessionStudent}>
+                  <Select value={selectedSessionStudent} onValueChange={(v) => { setSelectedSessionStudent(v); setSelectedSessionCourse("all"); }}>
                     <SelectTrigger id="session-student">
                       <SelectValue placeholder="All students" />
                     </SelectTrigger>
@@ -1371,7 +1398,7 @@ export default function ParentDashboard() {
               <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 mt-4">
                 <div className="space-y-2">
                   <Label htmlFor="history-student">Student</Label>
-                  <Select value={selectedHistoryStudent} onValueChange={(v) => { setSelectedHistoryStudent(v); setHistoryPage(1); }}>
+                  <Select value={selectedHistoryStudent} onValueChange={(v) => { setSelectedHistoryStudent(v); setSelectedHistoryTime("all"); setSelectedHistoryCourse("all"); setHistoryPage(1); }}>
                     <SelectTrigger id="history-student">
                       <SelectValue placeholder="All students" />
                     </SelectTrigger>
@@ -1406,7 +1433,7 @@ export default function ParentDashboard() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">All courses</SelectItem>
-                      {subjectOptions.map((subject) => (
+                      {historyCourseOptions.map((subject) => (
                         <SelectItem key={subject} value={subject}>{subject}</SelectItem>
                       ))}
                     </SelectContent>
