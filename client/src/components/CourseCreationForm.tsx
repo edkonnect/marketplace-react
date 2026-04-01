@@ -20,12 +20,12 @@ export function CourseCreationForm({ onSuccess, editingCourse }: CourseCreationF
   const [aiPowered, setAiPowered] = useState<boolean>(false);
   const [region, setRegion] = useState<"global" | "us" | "india">("global");
   const [courseType, setCourseType] = useState<"tutor" | "homework" | "test_prep">("tutor");
+  const [selectedGradeLevels, setSelectedGradeLevels] = useState<string[]>([]);
 
   const emptyValues = {
     title: "",
     description: "",
     subject: "",
-    gradeLevel: "",
     price: "",
     duration: "",
     sessionsPerWeek: "1",
@@ -40,7 +40,6 @@ export function CourseCreationForm({ onSuccess, editingCourse }: CourseCreationF
         title: editingCourse?.title || "",
         description: editingCourse?.description || "",
         subject: editingCourse?.subject || "",
-        gradeLevel: editingCourse?.gradeLevel || "",
         price: editingCourse?.price?.toString() || "",
         duration: editingCourse?.duration?.toString() || "",
         sessionsPerWeek: editingCourse?.sessionsPerWeek?.toString() || "1",
@@ -65,6 +64,11 @@ export function CourseCreationForm({ onSuccess, editingCourse }: CourseCreationF
     setAiPowered(editingCourse?.aiPowered ?? false);
     setRegion(editingCourse?.region ?? "global");
     setCourseType(editingCourse?.courseType ?? "tutor");
+    setSelectedGradeLevels(
+      editingCourse?.gradeLevel
+        ? editingCourse.gradeLevel.split(",").map((g: string) => g.trim()).filter(Boolean)
+        : []
+    );
   }, [editingCourse, reset]);
 
   const createMutation = trpc.adminCourses.createCourse.useMutation({
@@ -93,6 +97,13 @@ export function CourseCreationForm({ onSuccess, editingCourse }: CourseCreationF
     setAiPowered(false);
     setRegion("global");
     setCourseType("tutor");
+    setSelectedGradeLevels([]);
+  };
+
+  const toggleGradeLevel = (grade: string) => {
+    setSelectedGradeLevels(prev =>
+      prev.includes(grade) ? prev.filter(g => g !== grade) : [...prev, grade]
+    );
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -106,6 +117,7 @@ export function CourseCreationForm({ onSuccess, editingCourse }: CourseCreationF
     const courseData = {
       ...values,
       subject: values.subject,
+      gradeLevel: selectedGradeLevels.length > 0 ? selectedGradeLevels.join(",") : undefined,
       duration: values.duration ? parseInt(values.duration) : undefined,
       sessionsPerWeek: parseInt(values.sessionsPerWeek),
       totalSessions: parseInt(values.totalSessions),
@@ -184,17 +196,23 @@ export function CourseCreationForm({ onSuccess, editingCourse }: CourseCreationF
           />
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <FormSelect
-              field={register("gradeLevel")}
-              label="Grade Level"
-              placeholder="Select grade"
-            >
-              {gradeLevels.map((grade) => (
-                <SelectItem key={grade} value={grade}>
-                  {grade}
-                </SelectItem>
-              ))}
-            </FormSelect>
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Grade Level</Label>
+              <div className="flex flex-wrap gap-x-4 gap-y-2">
+                {gradeLevels.map((grade) => (
+                  <div key={grade} className="flex items-center gap-1.5">
+                    <Checkbox
+                      id={`grade-${grade}`}
+                      checked={selectedGradeLevels.includes(grade)}
+                      onCheckedChange={() => toggleGradeLevel(grade)}
+                    />
+                    <Label htmlFor={`grade-${grade}`} className="cursor-pointer font-normal text-sm">
+                      {grade}
+                    </Label>
+                  </div>
+                ))}
+              </div>
+            </div>
 
             <FormInput
               field={register("price")}

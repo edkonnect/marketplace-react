@@ -43,7 +43,8 @@ export default function CourseListing() {
         if (g.startsWith("High School")) return "High School (9-12)";
         return g;
       };
-      const matchesGradeLevel = gradeLevelFilter === "all" || normalizeGradeLevel(course.gradeLevel) === gradeLevelFilter;
+      const matchesGradeLevel = gradeLevelFilter === "all" ||
+        course.gradeLevel?.split(",").some((g: string) => normalizeGradeLevel(g.trim()) === gradeLevelFilter);
 
       return matchesSearch && matchesSubject && matchesGradeLevel;
     })

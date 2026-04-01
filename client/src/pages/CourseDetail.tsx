@@ -367,9 +367,9 @@ export default function CourseDetail() {
             <div className="max-w-4xl">
               <div className="flex gap-2 mb-4">
                 <Badge variant="secondary">{course.subject}</Badge>
-                {course.gradeLevel && (
-                  <Badge variant="outline">{course.gradeLevel}</Badge>
-                )}
+                {course.gradeLevel && course.gradeLevel.split(",").map((g: string) => (
+                  <Badge key={g} variant="outline">{g.trim()}</Badge>
+                ))}
               </div>
               <h1 className="text-4xl font-bold mb-4">{course.title}</h1>
               {course.description && (
