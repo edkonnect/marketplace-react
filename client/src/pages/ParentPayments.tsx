@@ -162,6 +162,7 @@ export default function ParentPayments() {
             }).map(inv => {
               const isPaid = inv.status === "paid";
               const isUpcoming = inv.status === "upcoming";
+              const isCancelled = inv.status === "void" || inv.status === "uncollectible";
               const isOpen = expanded[inv.id] ?? false;
               const invoiceDate = inv.created ? new Date(inv.created * 1000) : new Date();
               const periodStartDate = inv.periodStart ? new Date(inv.periodStart * 1000) : invoiceDate;
@@ -171,7 +172,7 @@ export default function ParentPayments() {
                 <div
                   key={inv.id}
                   className={`rounded-xl border bg-card overflow-hidden border-l-4 ${
-                    isPaid ? "border-l-green-500" : isUpcoming ? "border-l-blue-400" : "border-l-amber-400"
+                    isPaid ? "border-l-green-500" : isUpcoming ? "border-l-blue-400" : isCancelled ? "border-l-gray-400" : "border-l-amber-400"
                   }`}
                 >
                   {/* Invoice Header */}
@@ -261,11 +262,13 @@ export default function ParentPayments() {
                               ? "bg-green-100 text-green-800 border-green-200 dark:bg-green-950 dark:text-green-200"
                               : isUpcoming
                               ? "bg-blue-100 text-blue-800 border-blue-200 dark:bg-blue-950 dark:text-blue-200"
+                              : isCancelled
+                              ? "bg-gray-100 text-gray-600 border-gray-200 dark:bg-gray-800 dark:text-gray-400"
                               : "bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-950 dark:text-amber-200"
                           }
                           variant="outline"
                         >
-                          {isPaid ? "● Paid" : isUpcoming ? "● Upcoming" : "● Pending"}
+                          {isPaid ? "● Paid" : isUpcoming ? "● Upcoming" : isCancelled ? "● Cancelled" : "● Pending"}
                         </Badge>
                         <Button
                           variant="outline"
