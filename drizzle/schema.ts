@@ -203,7 +203,7 @@ export const courses = mysqlTable("courses", {
   title: varchar("title", { length: 255 }).notNull(),
   description: text("description"),
   subject: varchar("subject", { length: 100 }).notNull(),
-  gradeLevel: varchar("gradeLevel", { length: 50 }),
+  gradeLevel: text("gradeLevel"),
   price: decimal("price", { precision: 10, scale: 2 }).notNull(),
   duration: int("duration"), // Duration in minutes per session
   sessionsPerWeek: int("sessionsPerWeek").default(1),
