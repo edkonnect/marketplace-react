@@ -1,6 +1,15 @@
 import cron from "node-cron";
 import * as db from "./db";
 import { createCombinedUsageInvoice } from "./stripe";
+import { sendSessionReminders } from "./notification-service";
+
+export function startReminderCron() {
+  // Run every 5 minutes — matches the ±5 min window in getUpcomingSessionsForNotifications()
+  cron.schedule("*/5 * * * *", async () => {
+    await sendSessionReminders();
+  });
+  console.log("[Cron] Session reminder cron scheduled (every 5 minutes)");
+}
 
 export function startBillingCron() {
   // Run daily at 02:00 UTC — picks up any subscription whose billingCycleEnd < now

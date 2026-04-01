@@ -140,8 +140,11 @@ async function startServer() {
   });
 
   // Start monthly usage billing cron
-  const { startBillingCron, processUsageBilling } = await import("../cron");
+  const { startBillingCron, processUsageBilling, startReminderCron } = await import("../cron");
   startBillingCron();
+
+  // Start session reminder cron (24h, 1h, 15min before sessions)
+  startReminderCron();
 
   // Catch-up: if any billing cycles were missed (e.g. server was down on the 1st), run immediately
   const { getUsageBasedSubscriptionsDue } = await import("../db");
