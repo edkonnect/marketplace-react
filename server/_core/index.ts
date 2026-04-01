@@ -116,6 +116,11 @@ async function startServer() {
       createContext,
     })
   );
+  // Promote app redirect
+  app.get("/promote", (_req, res) => {
+    res.redirect(301, "https://promote.edkonnect-academy.com");
+  });
+
   // development mode uses Vite, production mode uses static files
   if (process.env.NODE_ENV === "development") {
     await setupVite(app, server);

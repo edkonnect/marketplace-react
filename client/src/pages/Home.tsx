@@ -1100,6 +1100,11 @@ export default function Home() {
                     Privacy Policy
                   </Link>
                 </li>
+                <li>
+                  <a href="/promote" className="hover:text-primary transition-colors">
+                    Promote with us
+                  </a>
+                </li>
               </ul>
             </div>
           </div>
