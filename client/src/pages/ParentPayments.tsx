@@ -156,6 +156,10 @@ export default function ParentPayments() {
         ) : (
           <div className="space-y-4">
             {invoices.filter(inv => {
+              // Hide cancelled invoices
+              if (inv.status === "void" || inv.status === "uncollectible") return false;
+              // Hide past $0 invoices (non-upcoming)
+              if (inv.status !== "upcoming" && (inv.amountDue === 0 || inv.amountDue == null) && (inv.amountPaid === 0 || inv.amountPaid == null)) return false;
               // Hide $0 upcoming invoices for usage-based subs — CurrentCycleCard already shows this info
               if (inv.status === "upcoming" && (inv.amountDue === 0 || inv.amountDue == null) && usageActiveSubs.length > 0) return false;
               return true;
