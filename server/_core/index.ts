@@ -144,7 +144,7 @@ async function startServer() {
   startBillingCron();
 
   // Start session reminder cron (24h, 1h, 15min before sessions)
-  startReminderCron();
+  // startReminderCron(); // DISABLED — re-enable when ready to send reminders
 
   // Catch-up: if any billing cycles were missed (e.g. server was down on the 1st), run immediately
   const { getUsageBasedSubscriptionsDue } = await import("../db");
