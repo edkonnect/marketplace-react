@@ -2920,22 +2920,22 @@ export default function ParentDashboard() {
                             origin: window.location.origin,
                           });
                           if (result?.setupUrl) window.open(result.setupUrl, "_blank");
-                          else toast.error("Could not create billing setup.");
+                          else toast.error("Could not create payment session.");
                           setPaymentModalSub(null);
                         } catch {
-                          toast.error("Failed to set up billing");
+                          toast.error("Failed to start monthly payment");
                         } finally {
                           setSetupLoadingId(null);
                         }
                       }}
                     >
-                      <div className="font-semibold text-sm">Set Up Monthly Billing</div>
+                      <div className="font-semibold text-sm">Pay First Month & Set Up Billing</div>
                       {(siblingPct > 0 || promoAmt > 0) && (
                         <div className="text-xs text-amber-700 mt-1">
                           {[siblingPct > 0 && `${siblingPct}% sibling`, promoAmt > 0 && `$${promoAmt} promo`].filter(Boolean).join(" + ")} applied to monthly charges
                         </div>
                       )}
-                      <div className="text-xs text-muted-foreground mt-1">Save your card — billed monthly based on completed sessions</div>
+                      <div className="text-xs text-muted-foreground mt-1">Charges the first month now and saves your card for future billing based on completed sessions</div>
                     </button>
 
                     <button

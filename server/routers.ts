@@ -1696,7 +1696,7 @@ export const appRouter = router({
         origin: z.string(),
       }))
       .mutation(async ({ ctx, input }) => {
-        const { getOrCreateStripeCustomer, createSetupCheckoutSession } = await import("./stripe");
+        const { getOrCreateStripeCustomer, createSetupCheckoutSession, createUsageEnrollmentCheckout } = await import("./stripe");
 
         const localSub = await db.getSubscriptionById(input.subscriptionId);
         if (!localSub || localSub.parentId !== ctx.user.id) {
@@ -1717,6 +1717,33 @@ export const appRouter = router({
 
         if (stripeCustomerId !== parentUser?.stripeCustomerId) {
           await db.updateUserStripeCustomerId(ctx.user.id, stripeCustomerId);
+        }
+
+        const course = await db.getCourseById(localSub.courseId);
+        if (!course) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Course not found" });
+        }
+
+        const isPendingUsageEnrollment = (
+          localSub.paymentPlan === "monthly" &&
+          localSub.paymentStatus === "pending" &&
+          localSub.perSessionRateCents != null &&
+          (course.courseType === "tutor" || course.courseType === "homework")
+        );
+
+        if (isPendingUsageEnrollment) {
+          const sessionsPerMonth = (course.sessionsPerWeek ?? 1) * 4;
+          const checkoutSession = await createUsageEnrollmentCheckout({
+            stripeCustomerId,
+            amountCents: sessionsPerMonth * localSub.perSessionRateCents,
+            courseName: course.title,
+            courseId: localSub.courseId,
+            userId: ctx.user.id,
+            subscriptionId: input.subscriptionId,
+            origin: input.origin,
+          });
+
+          return { setupUrl: checkoutSession.url };
         }
 
         const setupSession = await createSetupCheckoutSession({
