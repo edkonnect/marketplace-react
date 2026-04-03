@@ -516,13 +516,13 @@ export default function CourseDetail() {
                             {/* Tutor Selection */}
                             {tutorsWithAvailability.length > 0 && (
                               <div className="space-y-3">
-                                <Label>Select Preferred Tutor (Optional)</Label>
+                                <Label>Select Preferred Tutor</Label>
                                 <p className="text-sm text-muted-foreground mb-2">
                                   Choose your preferred tutor. You can schedule sessions after enrollment.
                                 </p>
                                 <Select value={selectedTutorId?.toString() || ""} onValueChange={(value) => setSelectedTutorId(value ? parseInt(value) : null)}>
                                   <SelectTrigger>
-                                    <SelectValue placeholder="Choose a tutor (optional)" />
+                                    <SelectValue placeholder="Choose a tutor" />
                                   </SelectTrigger>
                                   <SelectContent>
                                     {tutorsWithAvailability.map((tutor: any) => (
