@@ -1,9 +1,7 @@
-import Navigation from "@/components/Navigation";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { LOGIN_PATH } from "@/const";
 import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Users, BookOpen, TrendingUp, UserCheck, GraduationCap, Download, X, BarChart3, Trash2, FolderOpen, FileText, Upload } from "lucide-react";
@@ -28,12 +26,12 @@ import { CourseManagementTable } from "@/components/CourseManagementTable";
 import { TutorAssignmentDialog } from "@/components/TutorAssignmentDialog";
 import { TestimonialsManager } from "@/components/TestimonialsManager";
 import { toast } from "sonner";
-import Footer from "@/components/Footer";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { FileUpload } from "@/components/FileUpload";
+import DashboardLayout, { AdminSection } from "@/components/DashboardLayout";
 
 function ReferralSettingsPanel() {
   const { data: tiers = [], refetch: refetchTiers } = trpc.referral.getReferralSettings.useQuery();
@@ -187,8 +185,6 @@ function CourseFilesAdminPanel() {
     setSelectedTutorIds([]);
   }
 
-  // Pre-select already assigned tutors when dialog opens
-  const prevAssignDialogFileId = assignDialogFileId;
   if (assignDialogFileId !== null && existingAssignments.length > 0 && selectedTutorIds.length === 0) {
     const assignedIds = existingAssignments.map((a: any) => a.assignment.tutorId);
     if (assignedIds.length > 0) setSelectedTutorIds(assignedIds);
@@ -323,7 +319,6 @@ function CourseFilesAdminPanel() {
         </CardContent>
       </Card>
 
-      {/* Assign Tutors Dialog */}
       <Dialog open={assignDialogFileId !== null} onOpenChange={open => { if (!open) setAssignDialogFileId(null); }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
@@ -357,7 +352,6 @@ function CourseFilesAdminPanel() {
         </DialogContent>
       </Dialog>
 
-      {/* Delete Confirm Dialog */}
       <Dialog open={deleteConfirmId !== null} onOpenChange={open => { if (!open) setDeleteConfirmId(null); }}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
@@ -378,6 +372,7 @@ function CourseFilesAdminPanel() {
 
 export function AdminDashboard() {
   const { user, isAuthenticated, loading } = useAuth();
+  const [activeSection, setActiveSection] = useState<AdminSection>("analytics");
 
   // Course management state
   const [selectedCourseId, setSelectedCourseId] = useState<number | null>(null);
@@ -388,7 +383,6 @@ export function AdminDashboard() {
   const [usersPage, setUsersPage] = useState(1);
   const [enrollmentsPage, setEnrollmentsPage] = useState(1);
   const [paymentsPage, setPaymentsPage] = useState(1);
-  const [tutorsPage, setTutorsPage] = useState(1);
   const [sessionsPage, setSessionsPage] = useState(1);
   const ITEMS_PER_PAGE = 10;
 
@@ -423,13 +417,7 @@ export function AdminDashboard() {
     month?: string;
   }>({});
 
-  const [dateRange, setDateRange] = useState<{
-    startDate?: string;
-    endDate?: string;
-  }>({});
-  const tabContentClass =
-    "space-y-6 w-full data-[state=inactive]:hidden";
-
+  const [dateRange, setDateRange] = useState<{ startDate?: string; endDate?: string }>({});
   const [selectedTutorId, setSelectedTutorId] = useState<number | null>(null);
 
   const { data: stats, isLoading: statsLoading } = trpc.admin.getOverviewStats.useQuery(
@@ -476,23 +464,10 @@ export function AdminDashboard() {
     },
   });
 
-  // CSV export queries
-  const { data: usersCSVData, refetch: refetchUsersCSV } = trpc.admin.exportUsersCSV.useQuery(
-    userFilters,
-    { enabled: false }
-  );
+  const { data: usersCSVData, refetch: refetchUsersCSV } = trpc.admin.exportUsersCSV.useQuery(userFilters, { enabled: false });
+  const { data: enrollmentsCSVData, refetch: refetchEnrollmentsCSV } = trpc.admin.exportEnrollmentsCSV.useQuery(enrollmentFilters, { enabled: false });
+  const { data: paymentsCSVData, refetch: refetchPaymentsCSV } = trpc.admin.exportPaymentsCSV.useQuery(paymentFilters, { enabled: false });
 
-  const { data: enrollmentsCSVData, refetch: refetchEnrollmentsCSV } = trpc.admin.exportEnrollmentsCSV.useQuery(
-    enrollmentFilters,
-    { enabled: false }
-  );
-
-  const { data: paymentsCSVData, refetch: refetchPaymentsCSV } = trpc.admin.exportPaymentsCSV.useQuery(
-    paymentFilters,
-    { enabled: false }
-  );
-
-  // Analytics query with date range
   const { data: analyticsData, isLoading: analyticsLoading } = trpc.admin.getAnalytics.useQuery(
     dateRange,
     { enabled: isAuthenticated && user?.role === "admin" }
@@ -503,20 +478,14 @@ export function AdminDashboard() {
     { enabled: isAuthenticated && user?.role === "admin" }
   );
 
-  const {
-    data: tutorPreferenceData,
-    isLoading: tutorPreferencesLoading,
-    refetch: refetchTutorPreferences,
-  } = trpc.admin.getTutorCoursePreferences.useQuery(
-    { tutorId: selectedTutorId ?? 0 },
-    { enabled: isAuthenticated && user?.role === "admin" && !!selectedTutorId }
-  );
+  const { data: tutorPreferenceData, isLoading: tutorPreferencesLoading, refetch: refetchTutorPreferences } =
+    trpc.admin.getTutorCoursePreferences.useQuery(
+      { tutorId: selectedTutorId ?? 0 },
+      { enabled: isAuthenticated && user?.role === "admin" && !!selectedTutorId }
+    );
 
   const updatePreferenceStatus = trpc.admin.updateTutorCoursePreferenceStatus.useMutation({
-    onSuccess: () => {
-      toast.success("Preference updated");
-      refetchTutorPreferences();
-    },
+    onSuccess: () => { toast.success("Preference updated"); refetchTutorPreferences(); },
     onError: (err) => toast.error(err.message || "Failed to update preference"),
   });
 
@@ -546,42 +515,27 @@ export function AdminDashboard() {
   });
 
   useEffect(() => {
-    if (!loading && !isAuthenticated) {
-      window.location.href = LOGIN_PATH;
-    }
+    if (!loading && !isAuthenticated) window.location.href = LOGIN_PATH;
   }, [loading, isAuthenticated]);
 
-  // Reset pagination when filters change
-  useEffect(() => {
-    setUsersPage(1);
-  }, [userFilters]);
+  useEffect(() => { setUsersPage(1); }, [userFilters]);
+  useEffect(() => { setEnrollmentsPage(1); }, [enrollmentFilters]);
+  useEffect(() => { setPaymentsPage(1); }, [paymentFilters]);
+  useEffect(() => { setSessionsPage(1); }, [sessionFilters]);
 
   useEffect(() => {
-    setEnrollmentsPage(1);
-  }, [enrollmentFilters]);
-
-  useEffect(() => {
-    setPaymentsPage(1);
-  }, [paymentFilters]);
-
-  useEffect(() => {
-    setSessionsPage(1);
-  }, [sessionFilters]);
-
-  useEffect(() => {
-    if (!loading && isAuthenticated && user?.role !== 'admin') {
-      window.location.href = '/';
+    if (!loading && isAuthenticated && user?.role !== "admin") {
+      window.location.href = "/";
     }
   }, [loading, isAuthenticated, user]);
 
-  // CSV export handlers
   const downloadCSV = (data: string, filename: string) => {
-    const blob = new Blob([data], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
+    const blob = new Blob([data], { type: "text/csv;charset=utf-8;" });
+    const link = document.createElement("a");
     const url = URL.createObjectURL(blob);
-    link.setAttribute('href', url);
-    link.setAttribute('download', filename);
-    link.style.visibility = 'hidden';
+    link.setAttribute("href", url);
+    link.setAttribute("download", filename);
+    link.style.visibility = "hidden";
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -591,8 +545,8 @@ export function AdminDashboard() {
     const result = await refetchUsersCSV();
     if (result.data) {
       const formatted = formatUsersForCSV(result.data);
-      const csv = convertToCSV(formatted, ['id', 'name', 'email', 'role', 'createdAt']);
-      downloadCSV(csv, `users-export-${new Date().toISOString().split('T')[0]}.csv`);
+      const csv = convertToCSV(formatted, ["id", "name", "email", "role", "createdAt"]);
+      downloadCSV(csv, `users-export-${new Date().toISOString().split("T")[0]}.csv`);
     }
   };
 
@@ -600,8 +554,8 @@ export function AdminDashboard() {
     const result = await refetchEnrollmentsCSV();
     if (result.data) {
       const formatted = formatEnrollmentsForCSV(result.data);
-      const csv = convertToCSV(formatted, ['id', 'courseName', 'studentName', 'parentName', 'parentEmail', 'tutorName', 'status', 'paymentStatus', 'paymentPlan', 'createdAt']);
-      downloadCSV(csv, `enrollments-export-${new Date().toISOString().split('T')[0]}.csv`);
+      const csv = convertToCSV(formatted, ["id", "courseName", "studentName", "parentName", "parentEmail", "tutorName", "status", "paymentStatus", "paymentPlan", "createdAt"]);
+      downloadCSV(csv, `enrollments-export-${new Date().toISOString().split("T")[0]}.csv`);
     }
   };
 
@@ -609,8 +563,8 @@ export function AdminDashboard() {
     const result = await refetchPaymentsCSV();
     if (result.data) {
       const formatted = formatPaymentsForCSV(result.data);
-      const csv = convertToCSV(formatted, ['id', 'amount', 'currency', 'status', 'paymentType', 'courseName', 'studentName', 'parentName', 'parentEmail', 'tutorName', 'stripePaymentIntentId', 'createdAt']);
-      downloadCSV(csv, `payments-export-${new Date().toISOString().split('T')[0]}.csv`);
+      const csv = convertToCSV(formatted, ["id", "amount", "currency", "status", "paymentType", "courseName", "studentName", "parentName", "parentEmail", "tutorName", "stripePaymentIntentId", "createdAt"]);
+      downloadCSV(csv, `payments-export-${new Date().toISOString().split("T")[0]}.csv`);
     }
   };
 
@@ -619,905 +573,520 @@ export function AdminDashboard() {
   const resetPaymentFilters = () => setPaymentFilters({});
   const resetSessionFilters = () => setSessionFilters({});
 
-  if (loading || !isAuthenticated || user?.role !== 'admin') {
+  if (loading || !isAuthenticated || user?.role !== "admin") {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 flex items-center justify-center">
+      <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
-          <p className="mt-4 text-muted-foreground">Loading...</p>
+          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary mx-auto" />
+          <p className="mt-4 text-sm text-muted-foreground">Loading...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 flex flex-col">
-      <Navigation />
-      <div className="container py-8 mt-20 flex-1">
-        <div className="mb-8">
-          <h1 className="text-4xl font-bold mb-2">Admin Dashboard</h1>
-          <p className="text-muted-foreground">
-            Monitor platform activity, users, enrollments, and billing
-          </p>
-        </div>
+    <div className="flex h-screen overflow-hidden bg-background">
+      <DashboardLayout activeSection={activeSection} onSectionChange={setActiveSection}>
+        <div className="space-y-6">
+          {/* KPI Cards — shown on all sections */}
+          <div className="grid md:grid-cols-3 gap-4">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground">Total Users</CardTitle>
+                <Users className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                {statsLoading ? <Skeleton className="h-8 w-20" /> : (
+                  <>
+                    <div className="text-2xl font-bold">{stats?.totalUsers || 0}</div>
+                    <div className="flex gap-3 mt-1 text-xs text-muted-foreground">
+                      <span className="flex items-center gap-1"><UserCheck className="h-3 w-3" />{stats?.totalParents || 0} Parents</span>
+                      <span className="flex items-center gap-1"><GraduationCap className="h-3 w-3" />{stats?.totalTutors || 0} Tutors</span>
+                    </div>
+                  </>
+                )}
+              </CardContent>
+            </Card>
 
-        {/* Overview Stats */}
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
-          <Card className="hover:shadow-elegant transition-all">
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                Total Users
-              </CardTitle>
-              <Users className="h-5 w-5 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              {statsLoading ? (
-                <Skeleton className="h-10 w-24" />
-              ) : (
-                <>
-                  <div className="text-3xl font-bold">{stats?.totalUsers || 0}</div>
-                  <div className="flex gap-4 mt-2 text-sm text-muted-foreground">
-                    <span className="flex items-center gap-1">
-                      <UserCheck className="h-4 w-4" />
-                      {stats?.totalParents || 0} Parents
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <GraduationCap className="h-4 w-4" />
-                      {stats?.totalTutors || 0} Tutors
-                    </span>
-                  </div>
-                </>
-              )}
-            </CardContent>
-          </Card>
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground">Enrollments</CardTitle>
+                <BookOpen className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                {statsLoading ? <Skeleton className="h-8 w-20" /> : (
+                  <>
+                    <div className="text-2xl font-bold">{stats?.totalEnrollments || 0}</div>
+                    <p className="text-xs text-muted-foreground mt-1">{stats?.activeEnrollments || 0} active</p>
+                  </>
+                )}
+              </CardContent>
+            </Card>
 
-          <Card className="hover:shadow-elegant transition-all">
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                Course Enrollments
-              </CardTitle>
-              <BookOpen className="h-5 w-5 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              {statsLoading ? (
-                <Skeleton className="h-10 w-24" />
-              ) : (
-                <>
-                  <div className="text-3xl font-bold">{stats?.totalEnrollments || 0}</div>
-                  <p className="text-sm text-muted-foreground mt-2">
-                    {stats?.activeEnrollments || 0} active enrollments
-                  </p>
-                </>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card className="hover:shadow-elegant transition-all">
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                Total Revenue
-              </CardTitle>
-              <TrendingUp className="h-5 w-5 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              {statsLoading ? (
-                <Skeleton className="h-10 w-24" />
-              ) : (
-                <>
-                  <div className="text-3xl font-bold">${stats?.totalRevenue || '0.00'}</div>
-                  <p className="text-sm text-muted-foreground mt-2">
-                    {stats?.totalPayments || 0} transactions
-                  </p>
-                </>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Data Tables */}
-        <Tabs defaultValue="analytics" className="space-y-6">
-          <div className="overflow-x-auto">
-            <TabsList className="inline-flex min-w-max gap-2 sm:w-full sm:flex-wrap">
-              <TabsTrigger value="analytics">Analytics</TabsTrigger>
-              <TabsTrigger value="users">Users</TabsTrigger>
-              <TabsTrigger value="enrollments">Enrollments</TabsTrigger>
-              <TabsTrigger value="payments">Billing</TabsTrigger>
-              <TabsTrigger value="sessions">Sessions</TabsTrigger>
-              <TabsTrigger value="payout-requests">Payout Requests</TabsTrigger>
-              <TabsTrigger value="courses">Courses</TabsTrigger>
-              <TabsTrigger value="registered-tutors">Registered Tutors</TabsTrigger>
-              <TabsTrigger value="coordinators">Coordinators</TabsTrigger>
-              <TabsTrigger value="availability">Tutor Availability</TabsTrigger>
-              {/* <TabsTrigger value="acuity">Acuity Mapping</TabsTrigger>
-              <TabsTrigger value="quicksetup">Quick Setup</TabsTrigger> */}
-              <TabsTrigger value="email">Email Settings</TabsTrigger>
-              <TabsTrigger value="course-approval">Tutor Course Approval</TabsTrigger>
-              <TabsTrigger value="referrals">Referrals</TabsTrigger>
-              <TabsTrigger value="testimonials">Testimonials</TabsTrigger>
-              <TabsTrigger value="course-files">Course Files</TabsTrigger>
-            </TabsList>
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground">Total Revenue</CardTitle>
+                <TrendingUp className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                {statsLoading ? <Skeleton className="h-8 w-20" /> : (
+                  <>
+                    <div className="text-2xl font-bold">${stats?.totalRevenue || "0.00"}</div>
+                    <p className="text-xs text-muted-foreground mt-1">{stats?.totalPayments || 0} transactions</p>
+                  </>
+                )}
+              </CardContent>
+            </Card>
           </div>
 
-          {/* Analytics Tab */}
-          <TabsContent value="analytics" forceMount className={tabContentClass}>
-            {/* Date Range Selector */}
-            <DateRangeSelector
-              onDateRangeChange={(startDate, endDate) => {
-                setDateRange({ startDate, endDate });
-              }}
-            />
-
-            {analyticsLoading ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {[1, 2, 3, 4, 5].map(i => (
-                  <Card key={i}>
+          {/* Section content */}
+          {activeSection === "analytics" && (
+            <div className="space-y-6">
+              <DateRangeSelector onDateRangeChange={(startDate, endDate) => setDateRange({ startDate, endDate })} />
+              {analyticsLoading ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {[1, 2, 3, 4, 5].map(i => (
+                    <Card key={i}>
+                      <CardHeader><Skeleton className="h-6 w-40" /></CardHeader>
+                      <CardContent><Skeleton className="h-[300px] w-full" /></CardContent>
+                    </Card>
+                  ))}
+                </div>
+              ) : analyticsData ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <Card className="md:col-span-2">
                     <CardHeader>
-                      <Skeleton className="h-6 w-40" />
+                      <CardTitle className="flex items-center gap-2"><TrendingUp className="h-5 w-5 text-blue-500" />User Growth Trends</CardTitle>
+                      <CardDescription>New user registrations over the last 12 months</CardDescription>
                     </CardHeader>
-                    <CardContent>
-                      <Skeleton className="h-[300px] w-full" />
-                    </CardContent>
+                    <CardContent><UserGrowthChart data={analyticsData.userGrowth} /></CardContent>
                   </Card>
-                ))}
-              </div>
-            ) : analyticsData ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* User Growth Chart */}
-                <Card className="md:col-span-2">
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <TrendingUp className="h-5 w-5 text-blue-500" />
-                      User Growth Trends
-                    </CardTitle>
-                    <CardDescription>
-                      New user registrations over the last 12 months
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <UserGrowthChart data={analyticsData.userGrowth} />
-                  </CardContent>
-                </Card>
-
-                {/* Enrollment Patterns Chart */}
-                <Card className="md:col-span-2">
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <BookOpen className="h-5 w-5 text-green-500" />
-                      Monthly Enrollment Patterns
-                    </CardTitle>
-                    <CardDescription>
-                      Course enrollments by month for the past year
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <EnrollmentPatternsChart data={analyticsData.enrollmentPatterns} />
-                  </CardContent>
-                </Card>
-
-                {/* Revenue Trends Chart */}
-                <Card className="md:col-span-2">
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <TrendingUp className="h-5 w-5 text-purple-500" />
-                      Revenue Trends
-                    </CardTitle>
-                    <CardDescription>
-                      Monthly revenue from completed payments
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <RevenueTrendsChart data={analyticsData.revenueData} />
-                  </CardContent>
-                </Card>
-
-                {/* User Distribution Chart */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <Users className="h-5 w-5 text-blue-500" />
-                      User Distribution
-                    </CardTitle>
-                    <CardDescription>
-                      Breakdown of users by role
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <UserDistributionChart data={analyticsData.userDistribution} />
-                  </CardContent>
-                </Card>
-
-                {/* Billing Status Chart */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <BarChart3 className="h-5 w-5 text-green-500" />
-                      Billing Status
-                    </CardTitle>
-                    <CardDescription>
-                      Billing completion rates
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <PaymentStatusChart data={analyticsData.paymentStatus} />
-                  </CardContent>
-                </Card>
-              </div>
-            ) : (
-              <p className="text-center text-muted-foreground py-8">No analytics data available</p>
-            )}
-          </TabsContent>
-
-          {/* Users Tab */}
-          <TabsContent value="users" forceMount className={tabContentClass}>
-            {/* Filters */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Filters</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                  <div>
-                    <label className="text-sm font-medium mb-2 block">Search</label>
-                    <Input
-                      placeholder="Name or email..."
-                      value={userFilters.search || ''}
-                      onChange={(e) => setUserFilters({ ...userFilters, search: e.target.value || undefined })}
-                    />
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium mb-2 block">Role</label>
-                    <Select
-                      value={userFilters.role || 'all'}
-                      onValueChange={(value) => setUserFilters({ ...userFilters, role: value === 'all' ? undefined : value as any })}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="All roles" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All roles</SelectItem>
-                        <SelectItem value="admin">Admin</SelectItem>
-                        <SelectItem value="parent">Parent</SelectItem>
-                        <SelectItem value="tutor">Tutor</SelectItem>
-                        <SelectItem value="coordinator">Coordinator</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium mb-2 block">Start Date</label>
-                    <Input
-                      type="date"
-                      value={userFilters.startDate || ''}
-                      onChange={(e) => setUserFilters({ ...userFilters, startDate: e.target.value || undefined })}
-                    />
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium mb-2 block">End Date</label>
-                    <Input
-                      type="date"
-                      value={userFilters.endDate || ''}
-                      onChange={(e) => setUserFilters({ ...userFilters, endDate: e.target.value || undefined })}
-                    />
-                  </div>
+                  <Card className="md:col-span-2">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2"><BookOpen className="h-5 w-5 text-green-500" />Monthly Enrollment Patterns</CardTitle>
+                      <CardDescription>Course enrollments by month for the past year</CardDescription>
+                    </CardHeader>
+                    <CardContent><EnrollmentPatternsChart data={analyticsData.enrollmentPatterns} /></CardContent>
+                  </Card>
+                  <Card className="md:col-span-2">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2"><TrendingUp className="h-5 w-5 text-purple-500" />Revenue Trends</CardTitle>
+                      <CardDescription>Monthly revenue from completed payments</CardDescription>
+                    </CardHeader>
+                    <CardContent><RevenueTrendsChart data={analyticsData.revenueData} /></CardContent>
+                  </Card>
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2"><Users className="h-5 w-5 text-blue-500" />User Distribution</CardTitle>
+                      <CardDescription>Breakdown of users by role</CardDescription>
+                    </CardHeader>
+                    <CardContent><UserDistributionChart data={analyticsData.userDistribution} /></CardContent>
+                  </Card>
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2"><BarChart3 className="h-5 w-5 text-green-500" />Billing Status</CardTitle>
+                      <CardDescription>Billing completion rates</CardDescription>
+                    </CardHeader>
+                    <CardContent><PaymentStatusChart data={analyticsData.paymentStatus} /></CardContent>
+                  </Card>
                 </div>
-                <div className="flex gap-2 mt-4">
-                  <Button variant="outline" size="sm" onClick={resetUserFilters}>
-                    <X className="h-4 w-4 mr-2" />
-                    Reset Filters
-                  </Button>
-                  <Button variant="default" size="sm" onClick={handleExportUsers}>
-                    <Download className="h-4 w-4 mr-2" />
-                    Export CSV
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
+              ) : (
+                <p className="text-center text-muted-foreground py-8">No analytics data available</p>
+              )}
+            </div>
+          )}
 
-            <Card>
-              <CardHeader>
-                <CardTitle>All Users</CardTitle>
-                <CardDescription>
-                  Showing {usersData?.users.length || 0} of {usersData?.total || 0} users
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                {usersLoading ? (
-                  <div className="space-y-4">
-                    {[1, 2, 3].map(i => <Skeleton key={i} className="h-16 w-full" />)}
+          {activeSection === "users" && (
+            <div className="space-y-4">
+              <Card>
+                <CardHeader><CardTitle>Filters</CardTitle></CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <div>
+                      <label className="text-sm font-medium mb-2 block">Search</label>
+                      <Input placeholder="Name or email..." value={userFilters.search || ""} onChange={e => setUserFilters({ ...userFilters, search: e.target.value || undefined })} />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium mb-2 block">Role</label>
+                      <Select value={userFilters.role || "all"} onValueChange={v => setUserFilters({ ...userFilters, role: v === "all" ? undefined : v as any })}>
+                        <SelectTrigger><SelectValue placeholder="All roles" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All roles</SelectItem>
+                          <SelectItem value="admin">Admin</SelectItem>
+                          <SelectItem value="parent">Parent</SelectItem>
+                          <SelectItem value="tutor">Tutor</SelectItem>
+                          <SelectItem value="coordinator">Coordinator</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium mb-2 block">Start Date</label>
+                      <Input type="date" value={userFilters.startDate || ""} onChange={e => setUserFilters({ ...userFilters, startDate: e.target.value || undefined })} />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium mb-2 block">End Date</label>
+                      <Input type="date" value={userFilters.endDate || ""} onChange={e => setUserFilters({ ...userFilters, endDate: e.target.value || undefined })} />
+                    </div>
                   </div>
-                ) : usersData && usersData.users.length > 0 ? (
-                  <div className="space-y-4">
-                    {usersData.users.map((user) => (
-                      <div
-                        key={user.id}
-                        className="flex items-center justify-between p-4 border rounded-lg hover:bg-accent transition-colors"
-                      >
-                        <div className="flex-1">
-                          <div className="flex items-center gap-3">
-                            <p className="font-semibold">{user.name || 'Unknown'}</p>
-                            <Badge variant={
-                              user.role === 'admin' ? 'default' :
-                              user.role === 'tutor' ? 'secondary' : 'outline'
-                            }>
-                              {user.role}
-                            </Badge>
+                  <div className="flex gap-2 mt-4">
+                    <Button variant="outline" size="sm" onClick={resetUserFilters}><X className="h-4 w-4 mr-2" />Reset</Button>
+                    <Button variant="default" size="sm" onClick={handleExportUsers}><Download className="h-4 w-4 mr-2" />Export CSV</Button>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader>
+                  <CardTitle>All Users</CardTitle>
+                  <CardDescription>Showing {usersData?.users.length || 0} of {usersData?.total || 0} users</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {usersLoading ? (
+                    <div className="space-y-4">{[1,2,3].map(i => <Skeleton key={i} className="h-16 w-full" />)}</div>
+                  ) : usersData && usersData.users.length > 0 ? (
+                    <div className="space-y-3">
+                      {usersData.users.map(u => (
+                        <div key={u.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-accent transition-colors">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-3">
+                              <p className="font-semibold">{u.name || "Unknown"}</p>
+                              <Badge variant={u.role === "admin" ? "default" : u.role === "tutor" ? "secondary" : "outline"}>{u.role}</Badge>
+                            </div>
+                            <p className="text-sm text-muted-foreground mt-1">{u.email}</p>
+                            {u.createdAt && <p className="text-xs text-muted-foreground mt-1">Joined {new Date(u.createdAt).toLocaleDateString()}</p>}
                           </div>
-                          <p className="text-sm text-muted-foreground mt-1">{user.email}</p>
-                          {user.createdAt && (
-                            <p className="text-xs text-muted-foreground mt-1">
-                              Joined {new Date(user.createdAt).toLocaleDateString()}
-                            </p>
+                          {u.role !== "admin" && (
+                            confirmDeleteId === u.id ? (
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm text-muted-foreground">Delete?</span>
+                                <Button size="sm" variant="destructive" onClick={() => deleteUserMutation.mutate({ userId: u.id })} disabled={deleteUserMutation.isPending}>Yes</Button>
+                                <Button size="sm" variant="outline" onClick={() => setConfirmDeleteId(null)}>No</Button>
+                              </div>
+                            ) : (
+                              <Button size="sm" variant="ghost" onClick={() => setConfirmDeleteId(u.id)} className="text-destructive hover:text-destructive hover:bg-destructive/10">
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            )
                           )}
                         </div>
-                        {user.role !== 'admin' && (
-                          confirmDeleteId === user.id ? (
-                            <div className="flex items-center gap-2">
-                              <span className="text-sm text-muted-foreground">Delete?</span>
-                              <Button
-                                size="sm"
-                                variant="destructive"
-                                onClick={() => deleteUserMutation.mutate({ userId: user.id })}
-                                disabled={deleteUserMutation.isPending}
-                              >
-                                Yes
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => setConfirmDeleteId(null)}
-                              >
-                                No
-                              </Button>
-                            </div>
-                          ) : (
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => setConfirmDeleteId(user.id)}
-                              className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          )
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-center text-muted-foreground py-8">No users found</p>
-                )}
-                
-                {usersData && usersData.total > ITEMS_PER_PAGE && (
-                  <Pagination
-                    currentPage={usersPage}
-                    totalItems={usersData.total}
-                    itemsPerPage={ITEMS_PER_PAGE}
-                    onPageChange={setUsersPage}
-                  />
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-center text-muted-foreground py-8">No users found</p>
+                  )}
+                  {usersData && usersData.total > ITEMS_PER_PAGE && (
+                    <Pagination currentPage={usersPage} totalItems={usersData.total} itemsPerPage={ITEMS_PER_PAGE} onPageChange={setUsersPage} />
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          )}
 
-          {/* Enrollments Tab */}
-          <TabsContent value="enrollments" forceMount className={tabContentClass}>
-            {/* Filters */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Filters</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                  <div>
-                    <label className="text-sm font-medium mb-2 block">Status</label>
-                    <Select
-                      value={enrollmentFilters.status || 'all'}
-                      onValueChange={(value) => setEnrollmentFilters({ ...enrollmentFilters, status: value === 'all' ? undefined : value as any })}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="All statuses" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All statuses</SelectItem>
-                        <SelectItem value="active">Active</SelectItem>
-                        <SelectItem value="paused">Paused</SelectItem>
-                        <SelectItem value="cancelled">Cancelled</SelectItem>
-                        <SelectItem value="completed">Completed</SelectItem>
-                      </SelectContent>
-                    </Select>
+          {activeSection === "enrollments" && (
+            <div className="space-y-4">
+              <Card>
+                <CardHeader><CardTitle>Filters</CardTitle></CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <div>
+                      <label className="text-sm font-medium mb-2 block">Status</label>
+                      <Select value={enrollmentFilters.status || "all"} onValueChange={v => setEnrollmentFilters({ ...enrollmentFilters, status: v === "all" ? undefined : v as any })}>
+                        <SelectTrigger><SelectValue placeholder="All statuses" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All statuses</SelectItem>
+                          <SelectItem value="active">Active</SelectItem>
+                          <SelectItem value="paused">Paused</SelectItem>
+                          <SelectItem value="cancelled">Cancelled</SelectItem>
+                          <SelectItem value="completed">Completed</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium mb-2 block">Billing Status</label>
+                      <Select value={enrollmentFilters.paymentStatus || "all"} onValueChange={v => setEnrollmentFilters({ ...enrollmentFilters, paymentStatus: v === "all" ? undefined : v as any })}>
+                        <SelectTrigger><SelectValue placeholder="All billing statuses" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All billing statuses</SelectItem>
+                          <SelectItem value="paid">Paid</SelectItem>
+                          <SelectItem value="pending">Pending</SelectItem>
+                          <SelectItem value="failed">Failed</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium mb-2 block">Start Date</label>
+                      <Input type="date" value={enrollmentFilters.startDate || ""} onChange={e => setEnrollmentFilters({ ...enrollmentFilters, startDate: e.target.value || undefined })} />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium mb-2 block">End Date</label>
+                      <Input type="date" value={enrollmentFilters.endDate || ""} onChange={e => setEnrollmentFilters({ ...enrollmentFilters, endDate: e.target.value || undefined })} />
+                    </div>
                   </div>
-                  <div>
-                    <label className="text-sm font-medium mb-2 block">Billing Status</label>
-                    <Select
-                      value={enrollmentFilters.paymentStatus || 'all'}
-                      onValueChange={(value) => setEnrollmentFilters({ ...enrollmentFilters, paymentStatus: value === 'all' ? undefined : value as any })}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="All billing statuses" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All billing statuses</SelectItem>
-                        <SelectItem value="paid">Paid</SelectItem>
-                        <SelectItem value="pending">Pending</SelectItem>
-                        <SelectItem value="failed">Failed</SelectItem>
-                      </SelectContent>
-                    </Select>
+                  <div className="flex gap-2 mt-4">
+                    <Button variant="outline" size="sm" onClick={resetEnrollmentFilters}><X className="h-4 w-4 mr-2" />Reset</Button>
+                    <Button variant="default" size="sm" onClick={handleExportEnrollments}><Download className="h-4 w-4 mr-2" />Export CSV</Button>
                   </div>
-                  <div>
-                    <label className="text-sm font-medium mb-2 block">Start Date</label>
-                    <Input
-                      type="date"
-                      value={enrollmentFilters.startDate || ''}
-                      onChange={(e) => setEnrollmentFilters({ ...enrollmentFilters, startDate: e.target.value || undefined })}
-                    />
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium mb-2 block">End Date</label>
-                    <Input
-                      type="date"
-                      value={enrollmentFilters.endDate || ''}
-                      onChange={(e) => setEnrollmentFilters({ ...enrollmentFilters, endDate: e.target.value || undefined })}
-                    />
-                  </div>
-                </div>
-                <div className="flex gap-2 mt-4">
-                  <Button variant="outline" size="sm" onClick={resetEnrollmentFilters}>
-                    <X className="h-4 w-4 mr-2" />
-                    Reset Filters
-                  </Button>
-                  <Button variant="default" size="sm" onClick={handleExportEnrollments}>
-                    <Download className="h-4 w-4 mr-2" />
-                    Export CSV
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>All Enrollments</CardTitle>
-                <CardDescription>
-                  Showing {enrollmentsData?.enrollments.length || 0} of {enrollmentsData?.total || 0} enrollments
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                {enrollmentsLoading ? (
-                  <div className="space-y-4">
-                    {[1, 2, 3].map(i => <Skeleton key={i} className="h-24 w-full" />)}
-                  </div>
-                ) : enrollmentsData && enrollmentsData.enrollments.length > 0 ? (
-                  <div className="space-y-4">
-                    {enrollmentsData.enrollments.map((enrollment) => (
-                      <div
-                        key={enrollment.id}
-                        className="flex items-start justify-between p-4 border rounded-lg hover:bg-accent transition-colors"
-                      >
-                        <div className="flex-1">
-                          <div className="flex items-center gap-3 mb-2">
-                            <p className="font-semibold">{enrollment.courseName}</p>
-                            <Badge variant={enrollment.status === 'active' ? 'default' : 'secondary'}>
-                              {enrollment.status}
-                            </Badge>
-                            <Badge variant="outline" className="text-xs">
-                              {enrollment.paymentStatus}
-                            </Badge>
-                          </div>
-                          <div className="space-y-1 text-sm text-muted-foreground">
-                            <p>
-                              <span className="font-medium text-foreground">Student:</span> {enrollment.studentName}
-                            </p>
-                            <p>
-                              <span className="font-medium text-foreground">Parent:</span> {enrollment.parentName} ({enrollment.parentEmail})
-                            </p>
-                            <p>
-                              <span className="font-medium text-foreground">Tutor:</span> {enrollment.tutorName}
-                            </p>
-                            <p className="text-xs">
-                              Enrolled {new Date(enrollment.createdAt).toLocaleDateString()}
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-center text-muted-foreground py-8">No enrollments found</p>
-                )}
-                
-                {enrollmentsData && enrollmentsData.total > ITEMS_PER_PAGE && (
-                  <Pagination
-                    currentPage={enrollmentsPage}
-                    totalItems={enrollmentsData.total}
-                    itemsPerPage={ITEMS_PER_PAGE}
-                    onPageChange={setEnrollmentsPage}
-                  />
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* Payments Tab */}
-          <TabsContent value="payments" forceMount className={tabContentClass}>
-            {/* Admin Tools */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Billing Tools</CardTitle>
-                <CardDescription>Administrative billing operations</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="flex items-center gap-4">
-                  <Button
-                    variant="outline"
-                    onClick={() => triggerUsageBillingMutation.mutate()}
-                    disabled={triggerUsageBillingMutation.isPending}
-                  >
-                    {triggerUsageBillingMutation.isPending ? "Running..." : "Run Usage Billing Now"}
-                  </Button>
-                  <p className="text-sm text-muted-foreground">
-                    Manually trigger the usage billing job that charges Tutor/Homework courses after a billing cycle ends. Normally runs daily at 02:00 UTC.
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Filters */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Filters</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div>
-                    <label className="text-sm font-medium mb-2 block">Status</label>
-                    <Select
-                      value={paymentFilters.status || 'all'}
-                      onValueChange={(value) => setPaymentFilters({ ...paymentFilters, status: value === 'all' ? undefined : value as any })}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="All statuses" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All statuses</SelectItem>
-                        <SelectItem value="completed">Completed</SelectItem>
-                        <SelectItem value="pending">Pending</SelectItem>
-                        <SelectItem value="failed">Failed</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium mb-2 block">Start Date</label>
-                    <Input
-                      type="date"
-                      value={paymentFilters.startDate || ''}
-                      onChange={(e) => setPaymentFilters({ ...paymentFilters, startDate: e.target.value || undefined })}
-                    />
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium mb-2 block">End Date</label>
-                    <Input
-                      type="date"
-                      value={paymentFilters.endDate || ''}
-                      onChange={(e) => setPaymentFilters({ ...paymentFilters, endDate: e.target.value || undefined })}
-                    />
-                  </div>
-                </div>
-                <div className="flex gap-2 mt-4">
-                  <Button variant="outline" size="sm" onClick={resetPaymentFilters}>
-                    <X className="h-4 w-4 mr-2" />
-                    Reset Filters
-                  </Button>
-                  <Button variant="default" size="sm" onClick={handleExportPayments}>
-                    <Download className="h-4 w-4 mr-2" />
-                    Export CSV
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>All Billing Transactions</CardTitle>
-                <CardDescription>
-                  Showing {paymentsData?.payments.length || 0} of {paymentsData?.total || 0} transactions
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                {paymentsLoading ? (
-                  <div className="space-y-4">
-                    {[1, 2, 3].map(i => <Skeleton key={i} className="h-24 w-full" />)}
-                  </div>
-                ) : paymentsData && paymentsData.payments.length > 0 ? (
-                  <div className="space-y-4">
-                    {paymentsData.payments.map((payment) => {
-                      const planLabel = payment.paymentPlan === 'installment'
-                        ? payment.installmentNumber
-                          ? `Installment ${payment.installmentNumber}`
-                          : 'Installment'
-                        : 'Pay in Full';
-                      return (
-                        <div
-                          key={payment.id}
-                          className="flex items-start justify-between p-4 border rounded-lg hover:bg-accent transition-colors"
-                        >
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader>
+                  <CardTitle>All Enrollments</CardTitle>
+                  <CardDescription>Showing {enrollmentsData?.enrollments.length || 0} of {enrollmentsData?.total || 0} enrollments</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {enrollmentsLoading ? (
+                    <div className="space-y-4">{[1,2,3].map(i => <Skeleton key={i} className="h-24 w-full" />)}</div>
+                  ) : enrollmentsData && enrollmentsData.enrollments.length > 0 ? (
+                    <div className="space-y-3">
+                      {enrollmentsData.enrollments.map(enrollment => (
+                        <div key={enrollment.id} className="flex items-start justify-between p-4 border rounded-lg hover:bg-accent transition-colors">
                           <div className="flex-1">
                             <div className="flex items-center gap-3 mb-2">
-                              <p className="font-semibold text-lg">
-                                ${payment.amount} {payment.currency.toUpperCase()}
-                              </p>
-                              <Badge variant={payment.status === 'completed' ? 'default' : 'secondary'}>
-                                {payment.status}
-                              </Badge>
-                              <Badge variant="outline">{planLabel}</Badge>
+                              <p className="font-semibold">{enrollment.courseName}</p>
+                              <Badge variant={enrollment.status === "active" ? "default" : "secondary"}>{enrollment.status}</Badge>
+                              <Badge variant="outline" className="text-xs">{enrollment.paymentStatus}</Badge>
                             </div>
                             <div className="space-y-1 text-sm text-muted-foreground">
-                              <p>
-                                <span className="font-medium text-foreground">Date:</span>{" "}
-                                {new Date(payment.createdAt).toLocaleDateString()} at{" "}
-                                {new Date(payment.createdAt).toLocaleTimeString()}
-                              </p>
-                              {payment.courseName && (
-                                <p>
-                                  <span className="font-medium text-foreground">Course:</span> {payment.courseName}
-                                </p>
-                              )}
-                              {payment.studentName && (
-                                <p>
-                                  <span className="font-medium text-foreground">Student:</span> {payment.studentName}
-                                </p>
-                              )}
-                              <p>
-                                <span className="font-medium text-foreground">Parent:</span> {payment.parentName} ({payment.parentEmail})
-                              </p>
-                              <p>
-                                <span className="font-medium text-foreground">Tutor:</span> {payment.tutorName}
-                              </p>
-                              {payment.stripePaymentIntentId && (
-                                <p className="text-xs">
-                                  <span className="font-medium text-foreground">Transaction ID:</span>{" "}
-                                  {payment.stripePaymentIntentId}
-                                </p>
-                              )}
+                              <p><span className="font-medium text-foreground">Student:</span> {enrollment.studentName}</p>
+                              <p><span className="font-medium text-foreground">Parent:</span> {enrollment.parentName} ({enrollment.parentEmail})</p>
+                              <p><span className="font-medium text-foreground">Tutor:</span> {enrollment.tutorName}</p>
+                              <p className="text-xs">Enrolled {new Date(enrollment.createdAt).toLocaleDateString()}</p>
                             </div>
                           </div>
                         </div>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <p className="text-center text-muted-foreground py-8">No billing transactions found</p>
-                )}
-                
-                {paymentsData && paymentsData.total > ITEMS_PER_PAGE && (
-                  <Pagination
-                    currentPage={paymentsPage}
-                    totalItems={paymentsData.total}
-                    itemsPerPage={ITEMS_PER_PAGE}
-                    onPageChange={setPaymentsPage}
-                  />
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-center text-muted-foreground py-8">No enrollments found</p>
+                  )}
+                  {enrollmentsData && enrollmentsData.total > ITEMS_PER_PAGE && (
+                    <Pagination currentPage={enrollmentsPage} totalItems={enrollmentsData.total} itemsPerPage={ITEMS_PER_PAGE} onPageChange={setEnrollmentsPage} />
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          )}
 
-          {/* Sessions Tab */}
-          <TabsContent value="sessions" forceMount className={tabContentClass}>
-            {/* Filters */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Filters</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div>
-                    <label className="text-sm font-medium mb-2 block">Status</label>
-                    <Select
-                      value={sessionFilters.status || 'all'}
-                      onValueChange={(value) => setSessionFilters({ ...sessionFilters, status: value === 'all' ? undefined : value as any })}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="All statuses" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All statuses</SelectItem>
-                        <SelectItem value="scheduled">Scheduled</SelectItem>
-                        <SelectItem value="completed">Completed</SelectItem>
-                        <SelectItem value="cancelled">Cancelled</SelectItem>
-                        <SelectItem value="no_show">No Show</SelectItem>
-                      </SelectContent>
-                    </Select>
+          {activeSection === "payments" && (
+            <div className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Billing Tools</CardTitle>
+                  <CardDescription>Administrative billing operations</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex items-center gap-4">
+                    <Button variant="outline" onClick={() => triggerUsageBillingMutation.mutate()} disabled={triggerUsageBillingMutation.isPending}>
+                      {triggerUsageBillingMutation.isPending ? "Running..." : "Run Usage Billing Now"}
+                    </Button>
+                    <p className="text-sm text-muted-foreground">Manually trigger the usage billing job. Normally runs daily at 02:00 UTC.</p>
                   </div>
-                  <div>
-                    <label className="text-sm font-medium mb-2 block">Month</label>
-                    <Select
-                      value={sessionFilters.month || 'all'}
-                      onValueChange={(value) => setSessionFilters({ ...sessionFilters, month: value === 'all' ? undefined : value })}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="All months" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All months</SelectItem>
-                        {sessionFilterOptions?.months.map((m) => (
-                          <SelectItem key={m} value={m}>
-                            {new Date(m + "-01").toLocaleDateString(undefined, { year: "numeric", month: "long" })}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader><CardTitle>Filters</CardTitle></CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                      <label className="text-sm font-medium mb-2 block">Status</label>
+                      <Select value={paymentFilters.status || "all"} onValueChange={v => setPaymentFilters({ ...paymentFilters, status: v === "all" ? undefined : v as any })}>
+                        <SelectTrigger><SelectValue placeholder="All statuses" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All statuses</SelectItem>
+                          <SelectItem value="completed">Completed</SelectItem>
+                          <SelectItem value="pending">Pending</SelectItem>
+                          <SelectItem value="failed">Failed</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium mb-2 block">Start Date</label>
+                      <Input type="date" value={paymentFilters.startDate || ""} onChange={e => setPaymentFilters({ ...paymentFilters, startDate: e.target.value || undefined })} />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium mb-2 block">End Date</label>
+                      <Input type="date" value={paymentFilters.endDate || ""} onChange={e => setPaymentFilters({ ...paymentFilters, endDate: e.target.value || undefined })} />
+                    </div>
                   </div>
-                  <div>
-                    <label className="text-sm font-medium mb-2 block">Parent Name</label>
-                    <Select
-                      value={sessionFilters.parentName || 'all'}
-                      onValueChange={(value) => setSessionFilters({ ...sessionFilters, parentName: value === 'all' ? undefined : value })}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="All parents" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All parents</SelectItem>
-                        {sessionFilterOptions?.parentNames.map((name) => (
-                          <SelectItem key={name} value={name}>{name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                  <div className="flex gap-2 mt-4">
+                    <Button variant="outline" size="sm" onClick={resetPaymentFilters}><X className="h-4 w-4 mr-2" />Reset</Button>
+                    <Button variant="default" size="sm" onClick={handleExportPayments}><Download className="h-4 w-4 mr-2" />Export CSV</Button>
                   </div>
-                  <div>
-                    <label className="text-sm font-medium mb-2 block">Student Name</label>
-                    <Select
-                      value={sessionFilters.studentName || 'all'}
-                      onValueChange={(value) => setSessionFilters({ ...sessionFilters, studentName: value === 'all' ? undefined : value })}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="All students" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All students</SelectItem>
-                        {sessionFilterOptions?.studentNames.map((name) => (
-                          <SelectItem key={name} value={name}>{name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium mb-2 block">Course Name</label>
-                    <Select
-                      value={sessionFilters.courseName || 'all'}
-                      onValueChange={(value) => setSessionFilters({ ...sessionFilters, courseName: value === 'all' ? undefined : value })}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="All courses" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All courses</SelectItem>
-                        {sessionFilterOptions?.courseNames.map((name) => (
-                          <SelectItem key={name} value={name}>{name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium mb-2 block">Start Date</label>
-                    <Input
-                      type="date"
-                      value={sessionFilters.startDate || ''}
-                      onChange={(e) => setSessionFilters({ ...sessionFilters, startDate: e.target.value || undefined })}
-                    />
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium mb-2 block">End Date</label>
-                    <Input
-                      type="date"
-                      value={sessionFilters.endDate || ''}
-                      onChange={(e) => setSessionFilters({ ...sessionFilters, endDate: e.target.value || undefined })}
-                    />
-                  </div>
-                </div>
-                <div className="flex gap-2 mt-4">
-                  <Button variant="outline" size="sm" onClick={resetSessionFilters}>
-                    <X className="h-4 w-4 mr-2" />
-                    Reset Filters
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>All Sessions</CardTitle>
-                <CardDescription>
-                  Showing {sessionsData?.sessions.length || 0} of {sessionsData?.total || 0} sessions
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                {sessionsLoading ? (
-                  <div className="space-y-4">
-                    {[1, 2, 3].map(i => <Skeleton key={i} className="h-24 w-full" />)}
-                  </div>
-                ) : sessionsData && sessionsData.sessions.length > 0 ? (
-                  <div className="space-y-4">
-                    {sessionsData.sessions.map((session) => {
-                      const studentName = [session.studentFirstName, session.studentLastName]
-                        .filter(Boolean)
-                        .join(" ")
-                        .trim() || "Student";
-
-                      return (
-                        <div
-                          key={session.id}
-                          className="flex items-start justify-between p-4 border rounded-lg hover:bg-accent transition-colors"
-                        >
-                          <div className="flex-1">
-                            <div className="flex items-center gap-3 mb-2">
-                              <p className="font-semibold">
-                                {new Date(session.scheduledAt).toLocaleDateString()} • {new Date(session.scheduledAt).toLocaleTimeString()}
-                              </p>
-                              <Badge
-                                variant={
-                                  session.status === "completed" ? "secondary" :
-                                  session.status === "cancelled" ? "destructive" :
-                                  session.status === "no_show" ? "outline" :
-                                  "default"
-                                }
-                                className={
-                                  session.status === "no_show"
-                                    ? "bg-amber-100 text-amber-900 border-amber-300 dark:bg-amber-950 dark:text-amber-200 dark:border-amber-800"
-                                    : ""
-                                }
-                              >
-                                {session.status === "no_show" ? "Completed (No Show)" : session.status}
-                              </Badge>
-                            </div>
-                            <div className="space-y-1 text-sm text-muted-foreground">
-                              <p>
-                                <span className="font-medium text-foreground">Course:</span> {session.courseTitle || "Unknown"}
-                              </p>
-                              <p>
-                                <span className="font-medium text-foreground">Student:</span> {studentName}
-                              </p>
-                              <p>
-                                <span className="font-medium text-foreground">Parent:</span> {session.parentName} ({session.parentEmail})
-                              </p>
-                              <p>
-                                <span className="font-medium text-foreground">Tutor:</span> {session.tutorName}
-                              </p>
-                              <p>
-                                <span className="font-medium text-foreground">Duration:</span> {session.duration} minutes
-                              </p>
-                              {session.feedbackFromTutor && (
-                                <p className="mt-2">
-                                  <span className="font-medium text-foreground">Tutor Notes:</span> {session.feedbackFromTutor}
-                                </p>
-                              )}
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader>
+                  <CardTitle>All Billing Transactions</CardTitle>
+                  <CardDescription>Showing {paymentsData?.payments.length || 0} of {paymentsData?.total || 0} transactions</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {paymentsLoading ? (
+                    <div className="space-y-4">{[1,2,3].map(i => <Skeleton key={i} className="h-24 w-full" />)}</div>
+                  ) : paymentsData && paymentsData.payments.length > 0 ? (
+                    <div className="space-y-3">
+                      {paymentsData.payments.map(payment => {
+                        const planLabel = payment.paymentPlan === "installment"
+                          ? payment.installmentNumber ? `Installment ${payment.installmentNumber}` : "Installment"
+                          : "Pay in Full";
+                        return (
+                          <div key={payment.id} className="flex items-start justify-between p-4 border rounded-lg hover:bg-accent transition-colors">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-3 mb-2">
+                                <p className="font-semibold text-lg">${payment.amount} {payment.currency.toUpperCase()}</p>
+                                <Badge variant={payment.status === "completed" ? "default" : "secondary"}>{payment.status}</Badge>
+                                <Badge variant="outline">{planLabel}</Badge>
+                              </div>
+                              <div className="space-y-1 text-sm text-muted-foreground">
+                                <p><span className="font-medium text-foreground">Date:</span> {new Date(payment.createdAt).toLocaleDateString()} at {new Date(payment.createdAt).toLocaleTimeString()}</p>
+                                {payment.courseName && <p><span className="font-medium text-foreground">Course:</span> {payment.courseName}</p>}
+                                {payment.studentName && <p><span className="font-medium text-foreground">Student:</span> {payment.studentName}</p>}
+                                <p><span className="font-medium text-foreground">Parent:</span> {payment.parentName} ({payment.parentEmail})</p>
+                                <p><span className="font-medium text-foreground">Tutor:</span> {payment.tutorName}</p>
+                                {payment.stripePaymentIntentId && <p className="text-xs"><span className="font-medium text-foreground">Transaction ID:</span> {payment.stripePaymentIntentId}</p>}
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      );
-                    })}
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p className="text-center text-muted-foreground py-8">No billing transactions found</p>
+                  )}
+                  {paymentsData && paymentsData.total > ITEMS_PER_PAGE && (
+                    <Pagination currentPage={paymentsPage} totalItems={paymentsData.total} itemsPerPage={ITEMS_PER_PAGE} onPageChange={setPaymentsPage} />
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          {activeSection === "sessions" && (
+            <div className="space-y-4">
+              <Card>
+                <CardHeader><CardTitle>Filters</CardTitle></CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                      <label className="text-sm font-medium mb-2 block">Status</label>
+                      <Select value={sessionFilters.status || "all"} onValueChange={v => setSessionFilters({ ...sessionFilters, status: v === "all" ? undefined : v as any })}>
+                        <SelectTrigger><SelectValue placeholder="All statuses" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All statuses</SelectItem>
+                          <SelectItem value="scheduled">Scheduled</SelectItem>
+                          <SelectItem value="completed">Completed</SelectItem>
+                          <SelectItem value="cancelled">Cancelled</SelectItem>
+                          <SelectItem value="no_show">No Show</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium mb-2 block">Month</label>
+                      <Select value={sessionFilters.month || "all"} onValueChange={v => setSessionFilters({ ...sessionFilters, month: v === "all" ? undefined : v })}>
+                        <SelectTrigger><SelectValue placeholder="All months" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All months</SelectItem>
+                          {sessionFilterOptions?.months.map(m => (
+                            <SelectItem key={m} value={m}>{new Date(m + "-01").toLocaleDateString(undefined, { year: "numeric", month: "long" })}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium mb-2 block">Parent Name</label>
+                      <Select value={sessionFilters.parentName || "all"} onValueChange={v => setSessionFilters({ ...sessionFilters, parentName: v === "all" ? undefined : v })}>
+                        <SelectTrigger><SelectValue placeholder="All parents" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All parents</SelectItem>
+                          {sessionFilterOptions?.parentNames.map(name => <SelectItem key={name} value={name}>{name}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium mb-2 block">Student Name</label>
+                      <Select value={sessionFilters.studentName || "all"} onValueChange={v => setSessionFilters({ ...sessionFilters, studentName: v === "all" ? undefined : v })}>
+                        <SelectTrigger><SelectValue placeholder="All students" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All students</SelectItem>
+                          {sessionFilterOptions?.studentNames.map(name => <SelectItem key={name} value={name}>{name}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium mb-2 block">Course Name</label>
+                      <Select value={sessionFilters.courseName || "all"} onValueChange={v => setSessionFilters({ ...sessionFilters, courseName: v === "all" ? undefined : v })}>
+                        <SelectTrigger><SelectValue placeholder="All courses" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All courses</SelectItem>
+                          {sessionFilterOptions?.courseNames.map(name => <SelectItem key={name} value={name}>{name}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium mb-2 block">Start Date</label>
+                      <Input type="date" value={sessionFilters.startDate || ""} onChange={e => setSessionFilters({ ...sessionFilters, startDate: e.target.value || undefined })} />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium mb-2 block">End Date</label>
+                      <Input type="date" value={sessionFilters.endDate || ""} onChange={e => setSessionFilters({ ...sessionFilters, endDate: e.target.value || undefined })} />
+                    </div>
                   </div>
-                ) : (
-                  <p className="text-center text-muted-foreground py-8">No sessions found</p>
-                )}
+                  <div className="flex gap-2 mt-4">
+                    <Button variant="outline" size="sm" onClick={resetSessionFilters}><X className="h-4 w-4 mr-2" />Reset</Button>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader>
+                  <CardTitle>All Sessions</CardTitle>
+                  <CardDescription>Showing {sessionsData?.sessions.length || 0} of {sessionsData?.total || 0} sessions</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {sessionsLoading ? (
+                    <div className="space-y-4">{[1,2,3].map(i => <Skeleton key={i} className="h-24 w-full" />)}</div>
+                  ) : sessionsData && sessionsData.sessions.length > 0 ? (
+                    <div className="space-y-3">
+                      {sessionsData.sessions.map(session => {
+                        const studentName = [session.studentFirstName, session.studentLastName].filter(Boolean).join(" ").trim() || "Student";
+                        return (
+                          <div key={session.id} className="flex items-start justify-between p-4 border rounded-lg hover:bg-accent transition-colors">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-3 mb-2">
+                                <p className="font-semibold">{new Date(session.scheduledAt).toLocaleDateString()} • {new Date(session.scheduledAt).toLocaleTimeString()}</p>
+                                <Badge
+                                  variant={session.status === "completed" ? "secondary" : session.status === "cancelled" ? "destructive" : session.status === "no_show" ? "outline" : "default"}
+                                  className={session.status === "no_show" ? "bg-amber-100 text-amber-900 border-amber-300" : ""}
+                                >
+                                  {session.status === "no_show" ? "Completed (No Show)" : session.status}
+                                </Badge>
+                              </div>
+                              <div className="space-y-1 text-sm text-muted-foreground">
+                                <p><span className="font-medium text-foreground">Course:</span> {session.courseTitle || "Unknown"}</p>
+                                <p><span className="font-medium text-foreground">Student:</span> {studentName}</p>
+                                <p><span className="font-medium text-foreground">Parent:</span> {session.parentName} ({session.parentEmail})</p>
+                                <p><span className="font-medium text-foreground">Tutor:</span> {session.tutorName}</p>
+                                <p><span className="font-medium text-foreground">Duration:</span> {session.duration} minutes</p>
+                                {session.feedbackFromTutor && <p className="mt-2"><span className="font-medium text-foreground">Tutor Notes:</span> {session.feedbackFromTutor}</p>}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p className="text-center text-muted-foreground py-8">No sessions found</p>
+                  )}
+                  {sessionsData && sessionsData.total > ITEMS_PER_PAGE && (
+                    <Pagination currentPage={sessionsPage} totalItems={sessionsData.total} itemsPerPage={ITEMS_PER_PAGE} onPageChange={setSessionsPage} />
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          )}
 
-                {sessionsData && sessionsData.total > ITEMS_PER_PAGE && (
-                  <Pagination
-                    currentPage={sessionsPage}
-                    totalItems={sessionsData.total}
-                    itemsPerPage={ITEMS_PER_PAGE}
-                    onPageChange={setSessionsPage}
-                  />
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* Payout Requests Tab */}
-          <TabsContent value="payout-requests" forceMount className={tabContentClass}>
+          {activeSection === "payout-requests" && (
             <div className="space-y-4">
               <div className="flex items-center gap-3">
-                <Select value={payoutStatusFilter} onValueChange={(v) => setPayoutStatusFilter(v as any)}>
-                  <SelectTrigger className="w-40">
-                    <SelectValue />
-                  </SelectTrigger>
+                <Select value={payoutStatusFilter} onValueChange={v => setPayoutStatusFilter(v as any)}>
+                  <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All</SelectItem>
                     <SelectItem value="pending">Pending</SelectItem>
@@ -1528,277 +1097,158 @@ export function AdminDashboard() {
               </div>
               {payoutRequestsLoading ? (
                 <div className="space-y-2">{Array(3).fill(0).map((_, i) => <Skeleton key={i} className="h-24 w-full" />)}</div>
-              ) : (
-                (() => {
-                  const filtered = payoutStatusFilter === "all"
-                    ? payoutRequests
-                    : payoutRequests.filter(r => r.status === payoutStatusFilter);
-                  if (filtered.length === 0) {
-                    return <p className="text-muted-foreground text-center py-8">No payout requests found.</p>;
-                  }
-                  return (
-                    <div className="space-y-3">
-                      {filtered.map((req) => {
-                        const studentName =
-                          req.studentFirstName || req.studentLastName
-                            ? `${req.studentFirstName ?? ""} ${req.studentLastName ?? ""}`.trim()
-                            : "Student";
-                        return (
-                          <Card key={req.id}>
-                            <CardContent className="py-4">
-                              <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
-                                <div className="space-y-1">
-                                  <p className="font-semibold">{req.tutorName} <span className="text-muted-foreground font-normal text-sm">({req.tutorEmail})</span></p>
-                                  <p className="text-sm text-muted-foreground">{req.courseTitle} · Student: {studentName} · Parent: {req.parentName}</p>
-                                  <p className="text-sm text-muted-foreground">{req.sessionsCompleted} sessions · ${parseFloat(req.ratePerSession).toFixed(2)}/session</p>
-                                  {req.adminNotes && <p className="text-sm text-red-600">Note: {req.adminNotes}</p>}
-                                  <p className="text-xs text-muted-foreground">{new Date(req.createdAt).toLocaleDateString()}</p>
-                                </div>
-                                <div className="flex flex-col items-end gap-2 shrink-0">
-                                  <p className="text-xl font-bold">${parseFloat(req.totalAmount).toFixed(2)}</p>
-                                  <Badge className={
-                                    req.status === "approved" ? "bg-green-100 text-green-800 border-green-200" :
-                                    req.status === "rejected" ? "bg-red-100 text-red-800 border-red-200" :
-                                    "bg-yellow-100 text-yellow-800 border-yellow-200"
-                                  }>
-                                    {req.status.charAt(0).toUpperCase() + req.status.slice(1)}
-                                  </Badge>
-                                  {req.status === "pending" && (
-                                    <div className="flex gap-2 mt-1">
-                                      <Button
-                                        size="sm"
-                                        className="bg-green-600 hover:bg-green-700 text-white"
-                                        onClick={() => updatePayoutMutation.mutate({ id: req.id, status: "approved" })}
-                                        disabled={updatePayoutMutation.isPending}
-                                      >
-                                        Approve
-                                      </Button>
-                                      <Button
-                                        size="sm"
-                                        variant="destructive"
-                                        onClick={() => setRejectingId(rejectingId === req.id ? null : req.id)}
-                                      >
-                                        Reject
-                                      </Button>
-                                    </div>
-                                  )}
-                                  {rejectingId === req.id && (
-                                    <div className="flex gap-2 mt-1 w-full">
-                                      <Input
-                                        placeholder="Rejection reason (optional)"
-                                        value={rejectNotes}
-                                        onChange={(e) => setRejectNotes(e.target.value)}
-                                        className="text-sm h-8"
-                                      />
-                                      <Button
-                                        size="sm"
-                                        variant="destructive"
-                                        onClick={() => updatePayoutMutation.mutate({ id: req.id, status: "rejected", adminNotes: rejectNotes || undefined })}
-                                        disabled={updatePayoutMutation.isPending}
-                                      >
-                                        Confirm
-                                      </Button>
-                                    </div>
-                                  )}
-                                </div>
+              ) : (() => {
+                const filtered = payoutStatusFilter === "all" ? payoutRequests : payoutRequests.filter(r => r.status === payoutStatusFilter);
+                if (filtered.length === 0) return <p className="text-muted-foreground text-center py-8">No payout requests found.</p>;
+                return (
+                  <div className="space-y-3">
+                    {filtered.map(req => {
+                      const studentName = req.studentFirstName || req.studentLastName ? `${req.studentFirstName ?? ""} ${req.studentLastName ?? ""}`.trim() : "Student";
+                      return (
+                        <Card key={req.id}>
+                          <CardContent className="py-4">
+                            <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+                              <div className="space-y-1">
+                                <p className="font-semibold">{req.tutorName} <span className="text-muted-foreground font-normal text-sm">({req.tutorEmail})</span></p>
+                                <p className="text-sm text-muted-foreground">{req.courseTitle} · Student: {studentName} · Parent: {req.parentName}</p>
+                                <p className="text-sm text-muted-foreground">{req.sessionsCompleted} sessions · ${parseFloat(req.ratePerSession).toFixed(2)}/session</p>
+                                {req.adminNotes && <p className="text-sm text-red-600">Note: {req.adminNotes}</p>}
+                                <p className="text-xs text-muted-foreground">{new Date(req.createdAt).toLocaleDateString()}</p>
                               </div>
-                            </CardContent>
-                          </Card>
-                        );
-                      })}
-                    </div>
-                  );
-                })()
-              )}
+                              <div className="flex flex-col items-end gap-2 shrink-0">
+                                <p className="text-xl font-bold">${parseFloat(req.totalAmount).toFixed(2)}</p>
+                                <Badge className={req.status === "approved" ? "bg-green-100 text-green-800 border-green-200" : req.status === "rejected" ? "bg-red-100 text-red-800 border-red-200" : "bg-yellow-100 text-yellow-800 border-yellow-200"}>
+                                  {req.status.charAt(0).toUpperCase() + req.status.slice(1)}
+                                </Badge>
+                                {req.status === "pending" && (
+                                  <div className="flex gap-2 mt-1">
+                                    <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white" onClick={() => updatePayoutMutation.mutate({ id: req.id, status: "approved" })} disabled={updatePayoutMutation.isPending}>Approve</Button>
+                                    <Button size="sm" variant="destructive" onClick={() => setRejectingId(rejectingId === req.id ? null : req.id)}>Reject</Button>
+                                  </div>
+                                )}
+                                {rejectingId === req.id && (
+                                  <div className="flex gap-2 mt-1 w-full">
+                                    <Input placeholder="Rejection reason (optional)" value={rejectNotes} onChange={e => setRejectNotes(e.target.value)} className="text-sm h-8" />
+                                    <Button size="sm" variant="destructive" onClick={() => updatePayoutMutation.mutate({ id: req.id, status: "rejected", adminNotes: rejectNotes || undefined })} disabled={updatePayoutMutation.isPending}>Confirm</Button>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
             </div>
-          </TabsContent>
+          )}
 
-          {/* Courses Tab */}
-          <TabsContent value="courses" forceMount className={tabContentClass}>
+          {activeSection === "courses" && (
             <div className="space-y-6">
               <CourseCreationForm onSuccess={() => refetchCourses()} />
-              <CourseManagementTable onAssignTutors={(courseId) => {
-                setSelectedCourseId(courseId);
-                setIsTutorAssignmentOpen(true);
-              }} />
+              <CourseManagementTable onAssignTutors={courseId => { setSelectedCourseId(courseId); setIsTutorAssignmentOpen(true); }} />
+              <TutorAssignmentDialog
+                courseId={selectedCourseId}
+                isOpen={isTutorAssignmentOpen}
+                onClose={() => { setIsTutorAssignmentOpen(false); setSelectedCourseId(null); refetchCourses(); }}
+              />
             </div>
-            <TutorAssignmentDialog
-              courseId={selectedCourseId}
-              isOpen={isTutorAssignmentOpen}
-              onClose={() => {
-                setIsTutorAssignmentOpen(false);
-                setSelectedCourseId(null);
-                refetchCourses();
-              }}
-            />
-          </TabsContent>
+          )}
 
-          {/* Registered Tutors Tab */}
-          <TabsContent value="registered-tutors" forceMount className={tabContentClass}>
-            <RegisteredTutorsManager />
-          </TabsContent>
+          {activeSection === "registered-tutors" && <RegisteredTutorsManager />}
 
-          {/* Coordinators Tab */}
-          <TabsContent value="coordinators" forceMount className={tabContentClass}>
-            <CoordinatorManager />
-          </TabsContent>
+          {activeSection === "coordinators" && <CoordinatorManager />}
 
-          {/* Tutor Course Approval Tab */}
-          <TabsContent value="course-approval" forceMount className={tabContentClass}>
-            <Card>
-              <CardHeader>
-                <CardTitle>Tutor Course Approval</CardTitle>
-                <CardDescription>
-                  Select a tutor to review their requested courses and approve or reject individually.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex flex-wrap items-end gap-4">
-                  <div>
-                    <label className="text-sm font-medium mb-2 block">Select Tutor</label>
-                    <Select
-                      value={selectedTutorId ? String(selectedTutorId) : undefined}
-                      onValueChange={(value) => setSelectedTutorId(Number(value))}
-                      disabled={tutorOptionsLoading}
-                    >
-                      <SelectTrigger className="w-72">
-                        <SelectValue placeholder="Select Tutor" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {tutorOptions?.map((tutor) => (
-                          <SelectItem key={tutor.id} value={String(tutor.id)}>
-                            {tutor.name || "Tutor"}{tutor.email ? ` • ${tutor.email}` : ""}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  {selectedTutorId && (() => {
-                    const selected = tutorOptions?.find((t) => t.id === selectedTutorId);
-                    const rate = selected?.hourlyRate ? parseFloat(selected.hourlyRate) : null;
-                    return rate && rate > 0 ? (
-                      <div className="pb-0.5">
-                        <p className="text-xs text-muted-foreground mb-1">Requested Hourly Rate</p>
-                        <p className="text-lg font-semibold text-primary">${rate.toFixed(2)}<span className="text-sm font-normal text-muted-foreground">/hr</span></p>
-                      </div>
-                    ) : null;
-                  })()}
-                </div>
-
-                {!tutorOptionsLoading && (!tutorOptions || tutorOptions.length === 0) && (
-                  <p className="text-sm text-muted-foreground">No tutors found.</p>
-                )}
-              </CardContent>
-            </Card>
-
-            {selectedTutorId && (
+          {activeSection === "course-approval" && (
+            <div className="space-y-4">
               <Card>
                 <CardHeader>
-                  <CardTitle>Requested Courses</CardTitle>
-                  <CardDescription>
-                    Decisions apply immediately. Pending preferences are hidden from parents until approved.
-                  </CardDescription>
+                  <CardTitle>Tutor Course Approval</CardTitle>
+                  <CardDescription>Select a tutor to review their requested courses and approve or reject individually.</CardDescription>
                 </CardHeader>
-                <CardContent>
-                  {tutorPreferencesLoading ? (
-                    <div className="space-y-3">
-                      {[1, 2, 3].map((i) => (
-                        <Skeleton key={i} className="h-14 w-full" />
-                      ))}
+                <CardContent className="space-y-4">
+                  <div className="flex flex-wrap items-end gap-4">
+                    <div>
+                      <label className="text-sm font-medium mb-2 block">Select Tutor</label>
+                      <Select value={selectedTutorId ? String(selectedTutorId) : undefined} onValueChange={v => setSelectedTutorId(Number(v))} disabled={tutorOptionsLoading}>
+                        <SelectTrigger className="w-72"><SelectValue placeholder="Select Tutor" /></SelectTrigger>
+                        <SelectContent>
+                          {tutorOptions?.map(tutor => (
+                            <SelectItem key={tutor.id} value={String(tutor.id)}>
+                              {tutor.name || "Tutor"}{tutor.email ? ` • ${tutor.email}` : ""}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
-                  ) : tutorPreferenceData && tutorPreferenceData.length > 0 ? (
-                    <div className="divide-y">
-                      <div className="grid grid-cols-12 text-sm font-medium text-muted-foreground py-2">
-                        <div className="col-span-4">Course</div>
-                        <div className="col-span-2">Requested Rate</div>
-                        <div className="col-span-2">Status</div>
-                        <div className="col-span-4 text-right">Actions</div>
-                      </div>
-                      {tutorPreferenceData.map((pref: any) => (
-                        <div key={pref.id} className="grid grid-cols-12 items-center py-3 gap-2">
-                          <div className="col-span-4">
-                            <p className="font-semibold">{pref.courseTitle}</p>
-                          </div>
-                          <div className="col-span-2">
-                            ${parseFloat(pref.hourlyRate || 0).toFixed(2)}
-                          </div>
-                          <div className="col-span-2">
-                            <Badge
-                              variant={
-                                pref.approvalStatus === "APPROVED"
-                                  ? "default"
-                                  : pref.approvalStatus === "REJECTED"
-                                    ? "destructive"
-                                    : "secondary"
-                              }
-                            >
-                              {pref.approvalStatus}
-                            </Badge>
-                          </div>
-                          <div className="col-span-4 flex justify-end gap-2">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              disabled={updatePreferenceStatus.isPending}
-                              onClick={() =>
-                                updatePreferenceStatus.mutate({
-                                  preferenceId: pref.id,
-                                  approvalStatus: "APPROVED",
-                                })
-                              }
-                            >
-                              Approve
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="secondary"
-                              disabled={updatePreferenceStatus.isPending}
-                              onClick={() =>
-                                updatePreferenceStatus.mutate({
-                                  preferenceId: pref.id,
-                                  approvalStatus: "REJECTED",
-                                })
-                              }
-                            >
-                              Reject
-                            </Button>
-                          </div>
+                    {selectedTutorId && (() => {
+                      const selected = tutorOptions?.find(t => t.id === selectedTutorId);
+                      const rate = selected?.hourlyRate ? parseFloat(selected.hourlyRate) : null;
+                      return rate && rate > 0 ? (
+                        <div className="pb-0.5">
+                          <p className="text-xs text-muted-foreground mb-1">Requested Hourly Rate</p>
+                          <p className="text-lg font-semibold text-primary">${rate.toFixed(2)}<span className="text-sm font-normal text-muted-foreground">/hr</span></p>
                         </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-sm text-muted-foreground">No preferences submitted by this tutor yet.</p>
+                      ) : null;
+                    })()}
+                  </div>
+                  {!tutorOptionsLoading && (!tutorOptions || tutorOptions.length === 0) && (
+                    <p className="text-sm text-muted-foreground">No tutors found.</p>
                   )}
                 </CardContent>
               </Card>
-            )}
-          </TabsContent>
+              {selectedTutorId && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Requested Courses</CardTitle>
+                    <CardDescription>Decisions apply immediately. Pending preferences are hidden from parents until approved.</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    {tutorPreferencesLoading ? (
+                      <div className="space-y-3">{[1,2,3].map(i => <Skeleton key={i} className="h-14 w-full" />)}</div>
+                    ) : tutorPreferenceData && tutorPreferenceData.length > 0 ? (
+                      <div className="divide-y">
+                        <div className="grid grid-cols-12 text-sm font-medium text-muted-foreground py-2">
+                          <div className="col-span-4">Course</div>
+                          <div className="col-span-2">Requested Rate</div>
+                          <div className="col-span-2">Status</div>
+                          <div className="col-span-4 text-right">Actions</div>
+                        </div>
+                        {tutorPreferenceData.map((pref: any) => (
+                          <div key={pref.id} className="grid grid-cols-12 items-center py-3 gap-2">
+                            <div className="col-span-4"><p className="font-semibold">{pref.courseTitle}</p></div>
+                            <div className="col-span-2">${parseFloat(pref.hourlyRate || 0).toFixed(2)}</div>
+                            <div className="col-span-2">
+                              <Badge variant={pref.approvalStatus === "APPROVED" ? "default" : pref.approvalStatus === "REJECTED" ? "destructive" : "secondary"}>{pref.approvalStatus}</Badge>
+                            </div>
+                            <div className="col-span-4 flex justify-end gap-2">
+                              <Button size="sm" variant="outline" disabled={updatePreferenceStatus.isPending} onClick={() => updatePreferenceStatus.mutate({ preferenceId: pref.id, approvalStatus: "APPROVED" })}>Approve</Button>
+                              <Button size="sm" variant="secondary" disabled={updatePreferenceStatus.isPending} onClick={() => updatePreferenceStatus.mutate({ preferenceId: pref.id, approvalStatus: "REJECTED" })}>Reject</Button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">No preferences submitted by this tutor yet.</p>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+          )}
 
-          {/* Tutor Availability Tab */}
-          <TabsContent value="availability" forceMount className={tabContentClass}>
-            <TutorAvailabilityManager />
-          </TabsContent>
+          {activeSection === "availability" && <TutorAvailabilityManager />}
 
-          {/* Email Settings Tab */}
-          <TabsContent value="email" forceMount className={tabContentClass}>
-            <EmailSettings />
-          </TabsContent>
+          {activeSection === "email" && <EmailSettings />}
 
-          {/* Referrals Tab */}
-          <TabsContent value="referrals" forceMount className={tabContentClass}>
-            <ReferralSettingsPanel />
-          </TabsContent>
+          {activeSection === "referrals" && <ReferralSettingsPanel />}
 
-          {/* Testimonials Tab */}
-          <TabsContent value="testimonials" forceMount className={tabContentClass}>
-            <TestimonialsManager />
-          </TabsContent>
-          <TabsContent value="course-files" forceMount className={tabContentClass}>
-            <CourseFilesAdminPanel />
-          </TabsContent>
-        </Tabs>
-      </div>
-      <Footer />
+          {activeSection === "testimonials" && <TestimonialsManager />}
+
+          {activeSection === "course-files" && <CourseFilesAdminPanel />}
+        </div>
+      </DashboardLayout>
     </div>
   );
 }
