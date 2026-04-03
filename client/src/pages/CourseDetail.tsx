@@ -726,17 +726,6 @@ export default function CourseDetail() {
                               </Button>
                             )}
 
-                            {/* Legacy: non-typed courses with price >= 150 */}
-                            {!isTestPrep && !isUsageBased && price >= 150 && (
-                              <Button
-                                variant="secondary"
-                                className="w-full"
-                                onClick={handlePayLater}
-                                disabled={enrollWithoutPaymentMutation.isPending || !studentFirstName || !studentLastName}
-                              >
-                                {enrollWithoutPaymentMutation.isPending ? "Enrolling..." : "Enroll & Pay Monthly"}
-                              </Button>
-                            )}
                           </div>
                         </DialogContent>
                       </Dialog>

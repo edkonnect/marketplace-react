@@ -271,6 +271,7 @@ export const subscriptions = mysqlTable("subscriptions", {
   studentFirstName: varchar("studentFirstName", { length: 100 }),
   studentLastName: varchar("studentLastName", { length: 100 }),
   studentGrade: varchar("studentGrade", { length: 50 }),
+  progressStatus: mysqlEnum("progressStatus", ["low", "medium", "high"]),
   status: mysqlEnum("status", ["active", "paused", "cancelled", "completed"]).default("active").notNull(),
   startDate: timestamp("startDate").notNull(),
   endDate: timestamp("endDate"),

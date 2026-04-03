@@ -1966,6 +1966,31 @@ export const appRouter = router({
         }
         return { success: true };
       }),
+
+    updateProgressStatus: protectedProcedure
+      .input(z.object({
+        id: z.number(),
+        progressStatus: z.enum(["low", "medium", "high"]).nullable(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const subscription = await db.getSubscriptionById(input.id);
+        if (!subscription) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Subscription not found" });
+        }
+
+        const canManageAsAdmin = ctx.user.role === "admin";
+        const canManageAsTutor = ctx.user.role === "tutor" && subscription.preferredTutorId === ctx.user.id;
+        if (!canManageAsAdmin && !canManageAsTutor) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "Not authorized" });
+        }
+
+        const success = await db.updateSubscriptionProgressStatus(input.id, input.progressStatus);
+        if (!success) {
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to update progress status" });
+        }
+
+        return { success: true };
+      }),
   }),
 
   // Session Management

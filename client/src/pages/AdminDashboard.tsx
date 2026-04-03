@@ -1153,7 +1153,7 @@ export function AdminDashboard() {
                     {triggerUsageBillingMutation.isPending ? "Running..." : "Run Usage Billing Now"}
                   </Button>
                   <p className="text-sm text-muted-foreground">
-                    Manually trigger the monthly cron job that charges Tutor/Homework courses for completed sessions. Normally runs at 02:00 UTC on the 1st of each month.
+                    Manually trigger the usage billing job that charges Tutor/Homework courses after a billing cycle ends. Normally runs daily at 02:00 UTC.
                   </p>
                 </div>
               </CardContent>

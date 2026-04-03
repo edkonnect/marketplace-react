@@ -8,12 +8,14 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Label } from "@/components/ui/label";
+import { Slider } from "@/components/ui/slider";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Link, useLocation } from "wouter";
 import { BookOpen, Calendar, MessageSquare, DollarSign, Users, Edit, Clock, FileText, Plus, Filter, Search, X, Sparkles, Globe, ClipboardPaste, CheckCircle, HelpCircle, Download } from "lucide-react";
 import { AvailabilityManager } from "@/components/AvailabilityManager";
@@ -27,6 +29,77 @@ import { LOGIN_PATH } from "@/const";
 import { toast } from "sonner";
 import { formatSessionTime, COMMON_TIMEZONES } from "@/../../shared/timezone-utils";
 import Footer from "@/components/Footer";
+import { statusLabel, statusToStep, stepToStatus, type ProgressStatus } from "@/lib/progressStatus";
+
+type ProgressStatusValue = ProgressStatus;
+
+function progressStatusToStep(v: ProgressStatusValue): number {
+  return statusToStep(v);
+}
+
+function stepToProgressStatus(step: number): ProgressStatusValue {
+  return stepToStatus(step);
+}
+
+function progressStatusLabel(v: ProgressStatusValue): string {
+  return statusLabel(v);
+}
+
+function ProgressStatusMiniSlider({
+  value,
+  disabled,
+  onCommit,
+}: {
+  value: ProgressStatusValue;
+  disabled?: boolean;
+  onCommit: (next: ProgressStatusValue) => void;
+}) {
+  const [internal, setInternal] = useState<number>(() => progressStatusToStep(value));
+
+  useEffect(() => {
+    setInternal(progressStatusToStep(value));
+  }, [value]);
+
+  const colorClass =
+    internal === 3
+      ? "[&_[data-slot=slider-range]]:bg-emerald-500 [&_[data-slot=slider-thumb]]:border-emerald-500"
+      : internal === 2
+        ? "[&_[data-slot=slider-range]]:bg-blue-500 [&_[data-slot=slider-thumb]]:border-blue-500"
+        : internal === 1
+          ? "[&_[data-slot=slider-range]]:bg-orange-500 [&_[data-slot=slider-thumb]]:border-orange-500"
+          : "[&_[data-slot=slider-range]]:bg-muted-foreground/30 [&_[data-slot=slider-thumb]]:border-muted-foreground/40";
+
+  return (
+    <div className="flex items-center" title={`Progress Status: ${progressStatusLabel(stepToProgressStatus(internal))}`}>
+      <span className="sr-only">Progress Status</span>
+      <Slider
+        value={[internal]}
+        min={0}
+        max={3}
+        step={1}
+        disabled={disabled}
+        onValueChange={(v) => {
+          const next = v?.[0] ?? 0;
+          setInternal(next);
+        }}
+        onValueCommit={(v) => {
+          const nextStep = v?.[0] ?? 0;
+          const next = stepToProgressStatus(nextStep);
+          if (next !== value) onCommit(next);
+        }}
+        className={[
+          "w-36",
+          "cursor-pointer",
+          "[&_[data-slot=slider-track]]:h-2",
+          "[&_[data-slot=slider-thumb]]:size-4",
+          "[&_[data-slot=slider-thumb]]:bg-background",
+          "[&_[data-slot=slider-thumb]]:shadow-sm",
+          colorClass,
+        ].join(" ")}
+      />
+    </div>
+  );
+}
 
 function renderBoldMarkdown(text: string) {
   const html = text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
@@ -251,7 +324,7 @@ export default function TutorDashboard() {
       enabled: isAuthenticated && (user?.role === "tutor" || user?.role === "admin"),
     });
 
-  const { data: subscriptions, isLoading: subsLoading } = trpc.subscription.mySubscriptionsAsTutor.useQuery(
+  const { data: subscriptions, isLoading: subsLoading, refetch: refetchSubscriptions } = trpc.subscription.mySubscriptionsAsTutor.useQuery(
     undefined,
     { enabled: isAuthenticated && user?.role === "tutor" }
   );
@@ -276,6 +349,144 @@ export default function TutorDashboard() {
     (tutorGrades || []).forEach((g) => { if (g.sessionId) map.set(g.sessionId, g); });
     return map;
   }, [tutorGrades]);
+
+  const progressSuggestionBySubscriptionId = useMemo(() => {
+    const clamp01 = (n: number) => Math.max(0, Math.min(1, n));
+    const parsePct = (rate?: string | null): number | null => {
+      const match = rate?.match(/(\d+(?:\.\d+)?)/);
+      if (!match) return null;
+      const pct = Number(match[1]);
+      if (!Number.isFinite(pct)) return null;
+      return Math.max(0, Math.min(100, pct));
+    };
+    const ctNorm = (text?: string | null): { level: "High" | "Medium" | "Low" | null; norm: number | null } => {
+      const level = (text?.split(".")[0]?.trim()?.split(/\s+/)[0] ?? "") as any;
+      if (level === "High") return { level: "High", norm: 1.0 };
+      if (level === "Medium") return { level: "Medium", norm: 0.6 };
+      if (level === "Low") return { level: "Low", norm: 0.25 };
+      return { level: null, norm: null };
+    };
+
+    const bySub = new Map<number, any[]>();
+    (historySessions || []).forEach((s: any) => {
+      const subId = s?.subscriptionId as number | null | undefined;
+      if (!subId) return;
+      if (s?.status !== "completed") return;
+      const arr = bySub.get(subId) ?? [];
+      arr.push(s);
+      bySub.set(subId, arr);
+    });
+
+    const out = new Map<number, {
+      suggested: Exclude<ProgressStatusValue, null> | null;
+      confidence: "none" | "low" | "medium" | "high";
+      usedCount: number;
+      avgOverallScore: number | null;
+      avgParticipationPct: number | null;
+      ctMode: "High" | "Medium" | "Low" | null;
+      sessions: Array<{
+        sessionId: number;
+        scheduledAt: number | null;
+        overallScore: number | null;
+        participationPct: number | null;
+        criticalThinkingLevel: "High" | "Medium" | "Low" | null;
+        combinedNorm: number;
+      }>;
+    }>();
+
+    bySub.forEach((sessions, subId) => {
+      sessions.sort((a: any, b: any) => Number(b?.scheduledAt ?? 0) - Number(a?.scheduledAt ?? 0));
+
+      let used = 0;
+      let combinedSum = 0;
+
+      let scoreSum = 0;
+      let scoreCount = 0;
+
+      let partSum = 0;
+      let partCount = 0;
+
+      const ctCounts: Record<"High" | "Medium" | "Low", number> = { High: 0, Medium: 0, Low: 0 };
+      const detailSessions: Array<{
+        sessionId: number;
+        scheduledAt: number | null;
+        overallScore: number | null;
+        participationPct: number | null;
+        criticalThinkingLevel: "High" | "Medium" | "Low" | null;
+        combinedNorm: number;
+      }> = [];
+
+      for (const s of sessions) {
+        if (used >= 4) break;
+        const g = tutorGradeBySessionId.get(Number(s?.id ?? 0)) as any;
+        if (!g) continue;
+
+        const overall = g?.rubricOverallScore as number | null | undefined;
+        const eng = g?.rubricEngagementData as { studentParticipationRate?: string; studentCriticalThinking?: string } | null | undefined;
+
+        const signals: Array<{ w: number; v: number }> = [];
+
+        if (overall != null && Number.isFinite(Number(overall))) {
+          const overallNum = Number(overall);
+          const norm = clamp01((overallNum - 1) / 3);
+          signals.push({ w: 0.7, v: norm });
+          scoreSum += overallNum;
+          scoreCount += 1;
+        }
+
+        const ct = ctNorm(eng?.studentCriticalThinking);
+        if (ct.norm != null) {
+          signals.push({ w: 0.2, v: ct.norm });
+          if (ct.level) ctCounts[ct.level] += 1;
+        }
+
+        const pct = parsePct(eng?.studentParticipationRate);
+        if (pct != null) {
+          signals.push({ w: 0.1, v: clamp01(pct / 100) });
+          partSum += pct;
+          partCount += 1;
+        }
+
+        if (signals.length === 0) continue;
+
+        const wSum = signals.reduce((sum, it) => sum + it.w, 0);
+        const combined = wSum > 0 ? signals.reduce((sum, it) => sum + (it.w / wSum) * it.v, 0) : 0;
+
+        combinedSum += combined;
+        used += 1;
+        detailSessions.push({
+          sessionId: Number(s?.id ?? 0),
+          scheduledAt: s?.scheduledAt != null ? Number(s.scheduledAt) : null,
+          overallScore: overall != null && Number.isFinite(Number(overall)) ? Number(overall) : null,
+          participationPct: pct,
+          criticalThinkingLevel: ct.level,
+          combinedNorm: combined,
+        });
+      }
+
+      const confidence = used === 0 ? "none" : used === 1 ? "low" : used === 2 ? "medium" : "high";
+      const avgCombined = used > 0 ? combinedSum / used : null;
+
+      const suggested = avgCombined == null ? null : avgCombined < 0.45 ? "low" : avgCombined <= 0.7 ? "medium" : "high";
+
+      const ctMode =
+        ctCounts.High === 0 && ctCounts.Medium === 0 && ctCounts.Low === 0
+          ? null
+          : (Object.entries(ctCounts).sort((a, b) => b[1] - a[1])[0]![0] as "High" | "Medium" | "Low");
+
+      out.set(subId, {
+        suggested,
+        confidence,
+        usedCount: used,
+        avgOverallScore: scoreCount > 0 ? Math.round((scoreSum / scoreCount) * 10) / 10 : null,
+        avgParticipationPct: partCount > 0 ? Math.round(partSum / partCount) : null,
+        ctMode,
+        sessions: detailSessions,
+      });
+    });
+
+    return out;
+  }, [historySessions, tutorGradeBySessionId]);
 
   const [expandedGrades, setExpandedGrades] = useState<Set<number>>(new Set());
   const toggleGradeExpand = (id: number) => setExpandedGrades((prev) => {
@@ -359,6 +570,15 @@ export default function TutorDashboard() {
     },
     onError: (err) => toast.error(err.message || "Failed to update session"),
   });
+
+  const updateProgressStatusMutation = trpc.subscription.updateProgressStatus.useMutation({
+    onSuccess: () => {
+      refetchSubscriptions();
+      toast.success("Progress status updated");
+    },
+    onError: (err) => toast.error(err.message || "Failed to update progress status"),
+  });
+  const [progressSuggestionModal, setProgressSuggestionModal] = useState<null | { subscriptionId: number; studentName: string; courseTitle: string }>(null);
 
   const fetchTranscriptMutation = trpc.zoom.fetchTranscript.useMutation({
     onSuccess: (data, variables) => {
@@ -928,6 +1148,9 @@ export default function TutorDashboard() {
   }, [hiddenStorageKey]);
 
   const [historyTimePeriod, setHistoryTimePeriod] = useState<string>("all");
+  const [historyStudentQuery, setHistoryStudentQuery] = useState("");
+  const [historyStartDate, setHistoryStartDate] = useState("");
+  const [historyEndDate, setHistoryEndDate] = useState("");
   const [historyPage, setHistoryPage] = useState(1);
   const HISTORY_PAGE_SIZE = 8;
 
@@ -950,17 +1173,31 @@ export default function TutorDashboard() {
   }, [historySessions]);
 
   const filteredHistorySessions = useMemo(() => {
+    const normalizedQuery = historyStudentQuery.trim().toLowerCase();
+    const startMs = historyStartDate ? new Date(`${historyStartDate}T00:00:00`).getTime() : null;
+    const endMs = historyEndDate ? new Date(`${historyEndDate}T23:59:59.999`).getTime() : null;
     const base = (historySessions || [])
       .filter((s) => !hiddenHistory.has(s.id))
       .filter((s) => s.scheduledAt <= Date.now())
+      .filter((s) => {
+        if (!normalizedQuery) return true;
+        const studentName = [s.studentFirstName, s.studentLastName].filter(Boolean).join(" ").trim().toLowerCase();
+        return studentName.includes(normalizedQuery);
+      })
       .sort((a, b) => b.scheduledAt - a.scheduledAt);
-    if (historyTimePeriod === "all") return base;
+    const rangeFiltered = base.filter((s) => {
+      const scheduledAt = Number(s.scheduledAt);
+      if (startMs != null && scheduledAt < startMs) return false;
+      if (endMs != null && scheduledAt > endMs) return false;
+      return true;
+    });
+    if (historyTimePeriod === "all") return rangeFiltered;
     const [y, m] = historyTimePeriod.split("-").map(Number);
-    return base.filter((s) => {
+    return rangeFiltered.filter((s) => {
       const d = new Date(s.scheduledAt);
       return d.getFullYear() === y && d.getMonth() + 1 === m;
     });
-  }, [historySessions, hiddenHistory, historyTimePeriod]);
+  }, [historySessions, hiddenHistory, historyStudentQuery, historyStartDate, historyEndDate, historyTimePeriod]);
 
   useEffect(() => {
     if (!availableCourses) return;
@@ -1467,6 +1704,11 @@ export default function TutorDashboard() {
                         // Calculate enrollment year for badge
                         const enrollDate = subscription.startDate || subscription.createdAt;
                         const enrollYear = enrollDate ? new Date(enrollDate).getFullYear() : null;
+                        const progressValue = (subscription.progressStatus as ProgressStatusValue) ?? null;
+                        const progressSuggestion = progressSuggestionBySubscriptionId.get(subscription.id) ?? null;
+                        const studentNameForModal = subscription.studentFirstName || subscription.studentLastName
+                          ? `${subscription.studentFirstName ?? ""} ${subscription.studentLastName ?? ""}`.trim()
+                          : "Student";
 
                         return (
                           <Card key={subscription.id}>
@@ -1489,7 +1731,7 @@ export default function TutorDashboard() {
                                     </div>
                                     <p className="text-sm text-muted-foreground">{course.title}</p>
                                   </div>
-                                  <div className="flex items-center gap-2 flex-wrap">
+                                  <div className="flex items-center gap-3 flex-wrap justify-end">
                                     {statusBadge}
                                     <Button asChild variant="outline" size="sm">
                                       <Link href="/messages" className="flex items-center gap-2">
@@ -1500,25 +1742,122 @@ export default function TutorDashboard() {
                                   </div>
                                 </div>
 
-                                {/* Course duration */}
-                                <div className="flex flex-col sm:flex-row sm:items-center gap-2 text-sm">
-                                  <div className="flex items-center gap-2">
-                                    <Calendar className="w-4 h-4 text-muted-foreground" />
-                                    <span className="text-muted-foreground">Duration:</span>
-                                    <span>
-                                      {formatDate(startDate)} - {formatDate(tentativeEndDate)}
-                                      {isTentative && tentativeEndDate && (
-                                        <span className="text-xs text-muted-foreground ml-1">(tentative)</span>
-                                      )}
-                                    </span>
-                                  </div>
-                                </div>
+                                <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                                  <div className="space-y-4">
+                                    {/* Course duration */}
+                                    <div className="flex flex-col sm:flex-row sm:items-center gap-2 text-sm">
+                                      <div className="flex items-center gap-2">
+                                        <Calendar className="w-4 h-4 text-muted-foreground" />
+                                        <span className="text-muted-foreground">Duration:</span>
+                                        <span>
+                                          {formatDate(startDate)} - {formatDate(tentativeEndDate)}
+                                          {isTentative && tentativeEndDate && (
+                                            <span className="text-xs text-muted-foreground ml-1">(tentative)</span>
+                                          )}
+                                        </span>
+                                      </div>
+                                    </div>
 
-                                {/* Progress */}
-                                <div className="text-sm text-muted-foreground">
-                                  Progress: {completedCount} completed, {scheduledCount} scheduled
-                                  {remainingSessions > 0 && `, ${remainingSessions} remaining`}
-                                  {totalSessions > 0 && ` (${completedCount + scheduledCount}/${totalSessions})`}
+                                    {/* Progress */}
+                                    <div className="text-sm text-muted-foreground">
+                                      Progress: {completedCount} completed, {scheduledCount} scheduled
+                                      {remainingSessions > 0 && `, ${remainingSessions} remaining`}
+                                      {totalSessions > 0 && ` (${completedCount + scheduledCount}/${totalSessions})`}
+                                    </div>
+                                  </div>
+                                  <div className="w-full lg:w-auto lg:min-w-[420px] rounded-2xl border bg-slate-50/80 px-3 py-2 shadow-sm">
+                                    <div className="flex flex-col items-end gap-2">
+                                      <div className="w-full space-y-0.5 text-right">
+                                        <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-600">Progress Status</p>
+                                        <p className="text-[11px] text-muted-foreground">Drag to update the parent-facing proficiency status.</p>
+                                      </div>
+                                      <Tooltip>
+                                        <TooltipTrigger asChild>
+                                          <div>
+                                            <ProgressStatusMiniSlider
+                                              value={progressValue}
+                                              disabled={updateProgressStatusMutation.isPending}
+                                              onCommit={(next) => {
+                                                updateProgressStatusMutation.mutate({
+                                                  id: subscription.id,
+                                                  progressStatus: next,
+                                                });
+                                              }}
+                                            />
+                                          </div>
+                                        </TooltipTrigger>
+                                        <TooltipContent side="left" sideOffset={8} className="max-w-72 space-y-1.5">
+                                          <p>Use this slider to set the student&apos;s shared progress status.</p>
+                                          <p className="font-semibold">
+                                            Suggested: {progressSuggestion?.suggested ? progressStatusLabel(progressSuggestion.suggested) : "Not enough data"}
+                                          </p>
+                                          <p>
+                                            Current: {progressStatusLabel(progressValue)}
+                                          </p>
+                                          {progressSuggestion?.suggested ? (
+                                            <>
+                                              <p>
+                                                Avg score {progressSuggestion.avgOverallScore != null ? `${progressSuggestion.avgOverallScore}/4` : "n/a"} • Participation {progressSuggestion.avgParticipationPct != null ? `~${progressSuggestion.avgParticipationPct}%` : "n/a"}
+                                              </p>
+                                              <p>
+                                                Critical thinking {progressSuggestion.ctMode ?? "n/a"} • Last {progressSuggestion.usedCount} completed session{progressSuggestion.usedCount === 1 ? "" : "s"}
+                                              </p>
+                                            </>
+                                          ) : (
+                                            <p>Need completed sessions with grading or engagement data to suggest a status.</p>
+                                          )}
+                                        </TooltipContent>
+                                      </Tooltip>
+                                      <Tooltip>
+                                        <TooltipTrigger asChild>
+                                          <div className="flex justify-end w-full">
+                                            <Button
+                                              type="button"
+                                              size="sm"
+                                              className={[
+                                                "h-9 max-w-full justify-between rounded-xl px-3 text-[12px] font-semibold shadow-sm transition-colors",
+                                                progressSuggestion?.suggested
+                                                  ? "border border-blue-200 bg-blue-600 text-white hover:bg-blue-700"
+                                                  : "border border-slate-200 bg-white text-slate-500 hover:bg-slate-50",
+                                              ].join(" ")}
+                                              disabled={updateProgressStatusMutation.isPending}
+                                              onClick={() => {
+                                                setProgressSuggestionModal({
+                                                  subscriptionId: subscription.id,
+                                                  studentName: studentNameForModal,
+                                                  courseTitle: course.title,
+                                                });
+                                              }}
+                                            >
+                                              <span className="flex items-center">
+                                                <Sparkles className="w-3.5 h-3.5 mr-2" />
+                                                {progressSuggestion?.suggested ? `Review Suggested: ${progressStatusLabel(progressSuggestion.suggested)}` : "Review Suggested Status"}
+                                              </span>
+                                              <span className="text-[11px] opacity-90">Details</span>
+                                            </Button>
+                                          </div>
+                                        </TooltipTrigger>
+                                        <TooltipContent side="left" sideOffset={8} className="max-w-72 space-y-1.5">
+                                          <p className="font-semibold">
+                                            {progressSuggestion?.suggested ? `View details for ${progressStatusLabel(progressSuggestion.suggested)}` : "Suggested status unavailable"}
+                                          </p>
+                                          {progressSuggestion?.suggested ? (
+                                            <>
+                                              <p>Open the modal to review the evidence and apply the suggested status.</p>
+                                              <p>
+                                                Avg score {progressSuggestion.avgOverallScore != null ? `${progressSuggestion.avgOverallScore}/4` : "n/a"} • Participation {progressSuggestion.avgParticipationPct != null ? `~${progressSuggestion.avgParticipationPct}%` : "n/a"}
+                                              </p>
+                                              <p>
+                                                Critical thinking {progressSuggestion.ctMode ?? "n/a"} • Last {progressSuggestion.usedCount} completed session{progressSuggestion.usedCount === 1 ? "" : "s"}
+                                              </p>
+                                            </>
+                                          ) : (
+                                            <p>Need completed sessions with grading or engagement data to generate a suggestion.</p>
+                                          )}
+                                        </TooltipContent>
+                                      </Tooltip>
+                                    </div>
+                                  </div>
                                 </div>
                               </div>
                             </CardContent>
@@ -1591,18 +1930,59 @@ export default function TutorDashboard() {
                 <TabsContent value="history" forceMount className={tabContentClass}>
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
                     <h2 className="text-2xl font-bold">Session History</h2>
-                    <div className="flex items-center gap-2">
-                      <Label htmlFor="tutor-history-time" className="text-sm whitespace-nowrap">Time Period</Label>
-                      <Select value={historyTimePeriod} onValueChange={(v) => { setHistoryTimePeriod(v); setHistoryPage(1); }}>
-                        <SelectTrigger id="tutor-history-time" className="w-44">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {historyMonthOptions.map((opt) => (
-                            <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                    <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+                      <div className="relative">
+                        <Search className="w-4 h-4 text-muted-foreground absolute left-3 top-1/2 -translate-y-1/2" />
+                        <Input
+                          value={historyStudentQuery}
+                          onChange={(e) => { setHistoryStudentQuery(e.target.value); setHistoryPage(1); }}
+                          placeholder="Search student name"
+                          className="w-full sm:w-52 pl-9"
+                        />
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Label htmlFor="tutor-history-time" className="text-sm whitespace-nowrap">Time Period</Label>
+                        <Select value={historyTimePeriod} onValueChange={(v) => { setHistoryTimePeriod(v); setHistoryPage(1); }}>
+                          <SelectTrigger id="tutor-history-time" className="w-44">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {historyMonthOptions.map((opt) => (
+                              <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <Input
+                        type="date"
+                        value={historyStartDate}
+                        onChange={(e) => { setHistoryStartDate(e.target.value); setHistoryPage(1); }}
+                        className="w-full sm:w-40"
+                        aria-label="History start date"
+                      />
+                      <Input
+                        type="date"
+                        value={historyEndDate}
+                        onChange={(e) => { setHistoryEndDate(e.target.value); setHistoryPage(1); }}
+                        className="w-full sm:w-40"
+                        aria-label="History end date"
+                      />
+                      {(historyStudentQuery || historyStartDate || historyEndDate || historyTimePeriod !== "all") && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            setHistoryStudentQuery("");
+                            setHistoryStartDate("");
+                            setHistoryEndDate("");
+                            setHistoryTimePeriod("all");
+                            setHistoryPage(1);
+                          }}
+                        >
+                          <X className="w-4 h-4 mr-1" />
+                          Clear
+                        </Button>
+                      )}
                     </div>
                   </div>
 
@@ -2389,10 +2769,110 @@ export default function TutorDashboard() {
               </Button>
             </DialogFooter>
           </DialogContent>
-        </Dialog>
-      )}
-      <Footer />
-    </div>
-  );
+	        </Dialog>
+	      )}
+	      {progressSuggestionModal && (
+	        <Dialog
+	          open={!!progressSuggestionModal}
+	          onOpenChange={(open) => {
+	            if (!open) setProgressSuggestionModal(null);
+	          }}
+	        >
+	          <DialogContent className="max-w-lg">
+	            <DialogHeader>
+	              <DialogTitle>Progress Status Suggestion</DialogTitle>
+	              <DialogDescription className="mt-1">
+	                {progressSuggestionModal.studentName} · {progressSuggestionModal.courseTitle}
+	              </DialogDescription>
+	            </DialogHeader>
+	            {(() => {
+	              const s = progressSuggestionBySubscriptionId.get(progressSuggestionModal.subscriptionId) ?? null;
+	              const current =
+	                (subscriptions || []).find((x: any) => x?.subscription?.id === progressSuggestionModal.subscriptionId)
+	                  ?.subscription?.progressStatus as ProgressStatusValue | undefined;
+	              const currentValue: ProgressStatusValue = current ?? null;
+	              if (!s || !s.suggested) {
+	                return (
+	                  <div className="space-y-2">
+	                    <p className="text-sm">
+	                      Current: <span className="font-semibold">{progressStatusLabel(currentValue)}</span>
+	                    </p>
+	                    <p className="text-sm text-muted-foreground">
+	                      No grading or engagement data is available yet for this student.
+	                    </p>
+	                  </div>
+	                );
+	              }
+	              return (
+	                <div className="space-y-3">
+	                  <div className="space-y-1">
+	                    <p className="text-sm">
+	                      Current: <span className="font-semibold">{progressStatusLabel(currentValue)}</span>
+	                    </p>
+	                    <p className="text-sm">
+	                      Suggested: <span className="font-semibold">{progressStatusLabel(s.suggested)}</span>
+	                    </p>
+	                    <p className="text-xs text-muted-foreground">
+	                      Based on the last {s.usedCount} completed session{s.usedCount === 1 ? "" : "s"}
+	                      {s.avgOverallScore != null ? ` · avg score ${s.avgOverallScore}/4` : ""}
+	                      {s.avgParticipationPct != null ? ` · participation ~${s.avgParticipationPct}%` : ""}
+	                      {s.ctMode ? ` · critical thinking ${s.ctMode}` : ""}
+	                    </p>
+	                  </div>
+	                  <div className="rounded-md border">
+	                    <div className="px-3 py-2 border-b text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+	                      Sessions Used
+	                    </div>
+	                    <div className="divide-y">
+	                      {s.sessions.map((row) => (
+	                        <div key={row.sessionId} className="px-3 py-2 text-sm flex items-start justify-between gap-3">
+	                          <div className="min-w-0">
+	                            <p className="font-medium truncate">
+	                              {row.scheduledAt ? new Date(row.scheduledAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "Session"}
+	                            </p>
+	                            <p className="text-xs text-muted-foreground">
+	                              {row.overallScore != null ? `Score ${row.overallScore}/4` : "Score n/a"}
+	                              {row.participationPct != null ? ` · Participation ~${Math.round(row.participationPct)}%` : ""}
+	                              {row.criticalThinkingLevel ? ` · Critical Thinking ${row.criticalThinkingLevel}` : ""}
+	                            </p>
+	                          </div>
+	                          <div className="text-xs text-muted-foreground shrink-0">
+	                            {Math.round(row.combinedNorm * 100)}%
+	                          </div>
+	                        </div>
+	                      ))}
+	                    </div>
+	                  </div>
+	                </div>
+	              );
+	            })()}
+	            <DialogFooter>
+	              <Button variant="outline" onClick={() => setProgressSuggestionModal(null)}>
+	                Close
+	              </Button>
+	              {(() => {
+	                const s = progressSuggestionBySubscriptionId.get(progressSuggestionModal.subscriptionId) ?? null;
+	                if (!s || !s.suggested) return null;
+	                return (
+	                  <Button
+	                    onClick={() => {
+	                      updateProgressStatusMutation.mutate({
+	                        id: progressSuggestionModal.subscriptionId,
+	                        progressStatus: s.suggested,
+	                      });
+	                      setProgressSuggestionModal(null);
+	                    }}
+	                    disabled={updateProgressStatusMutation.isPending}
+	                  >
+	                    Set To Suggested
+	                  </Button>
+	                );
+	              })()}
+	            </DialogFooter>
+	          </DialogContent>
+	        </Dialog>
+	      )}
+	      <Footer />
+	    </div>
+	  );
 }
-

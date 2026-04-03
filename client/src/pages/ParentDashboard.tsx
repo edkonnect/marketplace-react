@@ -25,6 +25,8 @@ import { ReferralCouponPopup } from "@/components/ReferralCouponPopup";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import Footer from "@/components/Footer";
+import { buildParentAnalyticsViewModel } from "@/lib/parentAnalytics";
+import { statusLabel, statusToPercentScore } from "@/lib/progressStatus";
 
 function renderBoldMarkdown(text: string) {
   const html = text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
@@ -368,10 +370,9 @@ export default function ParentDashboard() {
   const [showProficiencyModal, setShowProficiencyModal] = useState(false);
   const [proficiencyStudentTab, setProficiencyStudentTab] = useState(0);
   const [showEngagementModal, setShowEngagementModal] = useState(false);
-  const [selectedAnalyticsMonth, setSelectedAnalyticsMonth] = useState<string>(() => {
-    const now = new Date();
-    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-  });
+  const [selectedAnalyticsMonth, setSelectedAnalyticsMonth] = useState<string>("all");
+  const [analyticsPerspective, setAnalyticsPerspective] = useState<"family" | "individual">("family");
+  const [selectedAnalyticsStudentKey, setSelectedAnalyticsStudentKey] = useState<string | null>(null);
 
   const subscriptionStudentMap = useMemo(() => {
     const map = new Map<number, string>();
@@ -792,130 +793,42 @@ export default function ParentDashboard() {
       const d = new Date(Number(y), Number(m) - 1, 1);
       return { value: key, label: d.toLocaleDateString(undefined, { month: "short", year: "numeric" }) };
     });
-    return [{ value: "all", label: "All" }, ...options];
+    return [{ value: "all", label: "View all" }, ...options];
   }, [sessionHistory, subscriptions, parentQuizzes, parentGrades]);
 
-  // Shared subscription month filter — used by Cards 1, 2 and Session Summary
-  const analyticsFilteredSubscriptions = useMemo(() => {
-    if (selectedAnalyticsMonth === "all") return subscriptions || [];
-    const [y, m] = selectedAnalyticsMonth.split("-").map(Number);
-    const startOfMonth = new Date(y, m - 1, 1);
-    const endOfMonth = new Date(y, m, 0, 23, 59, 59);
-    return (subscriptions || []).filter(item => {
-      const subStart = item.subscription.startDate
-        ? new Date(item.subscription.startDate)
-        : new Date(item.subscription.createdAt);
-      const subEnd = item.subscription.endDate ? new Date(item.subscription.endDate) : null;
-      return subStart <= endOfMonth && (subEnd === null || subEnd >= startOfMonth);
-    });
-  }, [subscriptions, selectedAnalyticsMonth]);
+  const analyticsViewModel = useMemo(() => buildParentAnalyticsViewModel({
+    subscriptions: subscriptions || [],
+    analyticsSessions: sessionHistory || [],
+    upcomingSessions: upcomingSessions || [],
+    quizzes: parentQuizzes || [],
+    grades: parentGrades || [],
+    selectedMonth: selectedAnalyticsMonth,
+    perspective: analyticsPerspective,
+    selectedStudentKey: selectedAnalyticsStudentKey,
+  }), [subscriptions, sessionHistory, upcomingSessions, parentQuizzes, parentGrades, selectedAnalyticsMonth, analyticsPerspective, selectedAnalyticsStudentKey]);
 
-  // Analytics filtered data based on selected month
-  const analyticsFilteredSessions = useMemo(() => {
-    if (selectedAnalyticsMonth === "all") return sessionHistory || [];
-    const [y, m] = selectedAnalyticsMonth.split("-").map(Number);
-    return (sessionHistory || []).filter(s => {
-      const d = new Date(s.scheduledAt);
-      return d.getFullYear() === y && d.getMonth() + 1 === m;
-    });
-  }, [sessionHistory, selectedAnalyticsMonth]);
+  const analyticsFilteredSubscriptions = analyticsViewModel.filteredSubscriptions;
+  const analyticsFilteredSessions = analyticsViewModel.filteredSessions;
+  const analyticsFilteredUpcomingSessions = analyticsViewModel.filteredUpcomingSessions;
+  const analyticsFilteredQuizzes = analyticsViewModel.filteredQuizzes;
+  const analyticsFilteredGrades = analyticsViewModel.filteredGrades;
 
-  const analyticsFilteredQuizzes = useMemo(() => {
-    if (selectedAnalyticsMonth === "all") return parentQuizzes || [];
-    const [y, m] = selectedAnalyticsMonth.split("-").map(Number);
-    return (parentQuizzes || []).filter(q => {
-      if (!q.completedAt) return false;
-      const d = new Date(q.completedAt);
-      return d.getFullYear() === y && d.getMonth() + 1 === m;
-    });
-  }, [parentQuizzes, selectedAnalyticsMonth]);
-
-  const analyticsFilteredGrades = useMemo(() => {
-    if (selectedAnalyticsMonth === "all") return parentGrades || [];
-    const [y, m] = selectedAnalyticsMonth.split("-").map(Number);
-    return (parentGrades || []).filter(g => {
-      if (!g.rubricGradedAt) return false;
-      const d = new Date(g.rubricGradedAt);
-      return d.getFullYear() === y && d.getMonth() + 1 === m;
-    });
-  }, [parentGrades, selectedAnalyticsMonth]);
-
-  // Analytics computations
-  const analyticsStats = useMemo(() => {
-    const allSessions = analyticsFilteredSessions;
-    const completed = allSessions.filter(s => s.status === "completed");
-    const noShows = allSessions.filter(s => s.status === "no_show");
-    const totalScheduled = allSessions.filter(s => s.status === "completed" || s.status === "no_show" || s.status === "scheduled");
-    const attendanceRate = totalScheduled.length > 0 ? Math.round((completed.length / totalScheduled.length) * 100) : 0;
-    const totalMinutes = completed.reduce((sum, s) => sum + (s.duration || 0), 0);
-
-    // Per-student breakdown
-    const studentMap = new Map<string, { sessions: number; lastSession: number | null; quizScores: number[] }>();
-    completed.forEach((s) => {
-      const name = [s.studentFirstName, s.studentLastName].filter(Boolean).join(" ").trim() || "Student";
-      if (!studentMap.has(name)) studentMap.set(name, { sessions: 0, lastSession: null, quizScores: [] });
-      const entry = studentMap.get(name)!;
-      entry.sessions += 1;
-      if (entry.lastSession === null || s.scheduledAt > entry.lastSession) entry.lastSession = s.scheduledAt;
-    });
-    analyticsFilteredQuizzes.filter(q => q.status === "completed" && q.score != null).forEach((q) => {
-      const session = allSessions.find(s => s.id === q.sessionId);
-      if (!session) return;
-      const name = [session.studentFirstName, session.studentLastName].filter(Boolean).join(" ").trim() || "Student";
-      if (studentMap.has(name)) studentMap.get(name)!.quizScores.push(q.score!);
-    });
-
-    // Monthly activity: last 6 months when "all", otherwise single selected month
-    const now = new Date();
-    const months: { label: string; count: number }[] = [];
-    if (selectedAnalyticsMonth === "all") {
-      for (let i = 5; i >= 0; i--) {
-        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-        const label = d.toLocaleDateString(undefined, { month: "short", year: "numeric" });
-        const count = completed.filter(s => {
-          const sd = new Date(s.scheduledAt);
-          return sd.getMonth() === d.getMonth() && sd.getFullYear() === d.getFullYear();
-        }).length;
-        months.push({ label, count });
-      }
-    } else {
-      const [y, m] = selectedAnalyticsMonth.split("-").map(Number);
-      const d = new Date(y, m - 1, 1);
-      const label = d.toLocaleDateString(undefined, { month: "short", year: "numeric" });
-      months.push({ label, count: completed.length });
-    }
-
-    const completedQuizzes = analyticsFilteredQuizzes.filter(q => q.status === "completed");
-    const avgQuizScore = completedQuizzes.length > 0
-      ? Math.round(completedQuizzes.reduce((sum, q) => sum + (q.score ?? 0), 0) / completedQuizzes.length)
-      : null;
-
-    // Avg rubric score from parentGrades
-    const gradedRows = analyticsFilteredGrades.filter(g => g.rubricOverallScore != null);
-    const avgRubricScore = gradedRows.length > 0
-      ? Math.round((gradedRows.reduce((sum, g) => sum + Number(g.rubricOverallScore!), 0) / gradedRows.length) * 10) / 10
-      : null;
-
-    // Proficiency label based on quiz score + attendance
-    let proficiencyLabel: "Above Average" | "On Track" | "Needs Attention" = "On Track";
-    if (avgQuizScore != null && attendanceRate != null) {
-      if (avgQuizScore >= 70 && attendanceRate >= 80) proficiencyLabel = "Above Average";
-      else if (avgQuizScore < 50 || attendanceRate < 50) proficiencyLabel = "Needs Attention";
-    }
-
-    return {
-      totalCompleted: completed.length,
-      noShowCount: noShows.length,
-      attendanceRate,
-      totalHours: Math.round(totalMinutes / 60 * 10) / 10,
-      studentBreakdown: Array.from(studentMap.entries()).map(([name, data]) => ({ name, ...data })),
-      monthlyActivity: months,
-      completedQuizzes: completedQuizzes.length,
-      avgQuizScore,
-      avgRubricScore,
-      proficiencyLabel,
-    };
-  }, [analyticsFilteredSessions, analyticsFilteredQuizzes, analyticsFilteredGrades, selectedAnalyticsMonth]);
+  const analyticsStats = useMemo(() => ({
+    totalCompleted: analyticsViewModel.totalCompleted,
+    noShowCount: analyticsViewModel.noShowCount,
+    cancelledCount: analyticsViewModel.cancelledCount,
+    cancellationRate: analyticsViewModel.cancellationRate,
+    attendanceRate: analyticsViewModel.attendanceRate,
+    totalHours: analyticsViewModel.totalHours,
+    studentBreakdown: analyticsViewModel.studentBreakdown,
+    monthlyActivity: analyticsViewModel.monthlyActivity,
+    completedQuizzes: analyticsViewModel.completedQuizzes,
+    avgQuizScore: analyticsViewModel.avgQuizScore,
+    avgRubricScore: analyticsViewModel.avgRubricScore,
+    proficiencyLabel: analyticsViewModel.proficiency.label,
+    proficiencySource: analyticsViewModel.proficiency.source,
+    proficiencyScore: analyticsViewModel.proficiency.score,
+  }), [analyticsViewModel]);
 
   if (loading || !isAuthenticated) {
     return (
@@ -1892,27 +1805,68 @@ export default function ParentDashboard() {
             </TabsContent>
             <TabsContent value="analytics" forceMount className={tabContentClass}>
               {/* Header */}
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                <div>
-                  <h2 className="text-2xl font-bold">Learning Analytics</h2>
-                  <p className="text-sm text-muted-foreground mt-0.5">Overview of your child's progress and activity</p>
-                </div>
-                <div className="flex flex-col items-start sm:items-end gap-1.5 self-start sm:self-auto">
-                  <Select value={selectedAnalyticsMonth} onValueChange={(v) => { setSelectedAnalyticsMonth(v); setActiveStudentTab(0); }}>
-                    <SelectTrigger className="h-8 text-xs w-36">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {analyticsMonthOptions.map(opt => (
-                        <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {(previousLastSignedIn || user?.lastSignedIn) && (
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/60 rounded-lg px-3 py-2">
-                      <LogIn className="w-3.5 h-3.5 shrink-0" />
-                      <span>Last login: <span className="font-medium text-foreground">{new Date(previousLastSignedIn ?? user!.lastSignedIn!).toLocaleString()}</span></span>
-                    </div>
+	              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+	                <div>
+	                  <h2 className="text-2xl font-bold">Learning Analytics</h2>
+	                  <p className="text-sm text-muted-foreground mt-0.5">Overview of your child's progress and activity</p>
+	                </div>
+	                <div className="flex flex-col items-start sm:items-end gap-1.5 self-start sm:self-auto">
+		                  <div className="flex flex-wrap items-end gap-2">
+		                    <div className="flex flex-col gap-1">
+		                      <Label className="text-xs text-muted-foreground">Time Period</Label>
+		                      <Select value={selectedAnalyticsMonth} onValueChange={(v) => { setSelectedAnalyticsMonth(v); setActiveStudentTab(0); setProficiencyStudentTab(0); }}>
+		                        <SelectTrigger className="h-8 text-xs w-36">
+		                          <SelectValue />
+		                        </SelectTrigger>
+		                        <SelectContent>
+		                          {analyticsMonthOptions.map(opt => (
+		                            <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+		                          ))}
+		                        </SelectContent>
+		                      </Select>
+		                    </div>
+		                    <Select
+		                      value={analyticsPerspective}
+		                      onValueChange={(v: "family" | "individual") => {
+		                        setAnalyticsPerspective(v);
+	                        setActiveStudentTab(0);
+	                        setProficiencyStudentTab(0);
+		                        if (v === "family") setSelectedAnalyticsStudentKey(null);
+		                      }}
+		                    >
+		                      <SelectTrigger className="h-8 text-xs w-36">
+		                        <SelectValue />
+		                      </SelectTrigger>
+		                      <SelectContent>
+		                        <SelectItem value="family">Grouped View</SelectItem>
+		                        <SelectItem value="individual">Individual View</SelectItem>
+		                      </SelectContent>
+		                    </Select>
+		                    {analyticsPerspective === "individual" && analyticsViewModel.studentOptions.length > 0 && (
+		                      <Select
+		                        value={analyticsViewModel.activeStudentKey ?? analyticsViewModel.studentOptions[0]?.key ?? ""}
+	                        onValueChange={(v) => {
+	                          setSelectedAnalyticsStudentKey(v);
+	                          setActiveStudentTab(0);
+	                          setProficiencyStudentTab(0);
+	                        }}
+	                      >
+		                        <SelectTrigger className="h-8 text-xs w-44">
+		                          <SelectValue placeholder="Select student" />
+		                        </SelectTrigger>
+	                        <SelectContent>
+	                          {analyticsViewModel.studentOptions.map((student) => (
+	                            <SelectItem key={student.key} value={student.key}>{student.label}</SelectItem>
+	                          ))}
+	                        </SelectContent>
+	                      </Select>
+	                    )}
+	                  </div>
+	                  {(previousLastSignedIn || user?.lastSignedIn) && (
+	                    <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/60 rounded-lg px-3 py-2">
+	                      <LogIn className="w-3.5 h-3.5 shrink-0" />
+	                      <span>Last login: <span className="font-medium text-foreground">{new Date(previousLastSignedIn ?? user!.lastSignedIn!).toLocaleString()}</span></span>
+	                    </div>
                   )}
                 </div>
               </div>
@@ -1924,14 +1878,13 @@ export default function ParentDashboard() {
                 {(() => {
                   const visibleSubscriptions = analyticsFilteredSubscriptions;
 
-                  const studentGroups = Object.entries(
-                    visibleSubscriptions.reduce((acc, item) => {
-                      const name = [item.subscription.studentFirstName, item.subscription.studentLastName].filter(Boolean).join(" ").trim() || "Student";
-                      if (!acc[name]) acc[name] = [];
-                      acc[name].push(item);
-                      return acc;
-                    }, {} as Record<string, NonNullable<typeof subscriptions>>)
-                  );
+                  const groupedSubscriptions = visibleSubscriptions.reduce((acc, item) => {
+                    const name = [item.subscription.studentFirstName, item.subscription.studentLastName].filter(Boolean).join(" ").trim() || "Student";
+                    if (!acc[name]) acc[name] = [];
+                    acc[name].push(item);
+                    return acc;
+                  }, {} as Record<string, NonNullable<typeof subscriptions>>);
+                  const studentGroups = Object.entries(groupedSubscriptions) as Array<[string, NonNullable<typeof subscriptions>]>;
                   const clampedTab = Math.min(activeStudentTab, Math.max(0, studentGroups.length - 1));
                   const activeGroup = studentGroups[clampedTab];
                   const activeStudentName = activeGroup?.[0] ?? "";
@@ -1941,14 +1894,14 @@ export default function ParentDashboard() {
                   const completedForStudent = analyticsFilteredSessions.filter(s =>
                     ([s.studentFirstName, s.studentLastName].filter(Boolean).join(" ").trim() || "Student") === activeStudentName && s.status === "completed"
                   ).length;
-                  const scheduledForStudent = analyticsFilteredSessions.filter(s =>
-                    ([s.studentFirstName, s.studentLastName].filter(Boolean).join(" ").trim() || "Student") === activeStudentName && s.status === "scheduled"
-                  ).length;
+	                  const scheduledForStudent = analyticsFilteredUpcomingSessions.filter(s =>
+	                    ([s.studentFirstName, s.studentLastName].filter(Boolean).join(" ").trim() || "Student") === activeStudentName && s.status === "scheduled"
+	                  ).length;
 
                   return (
                     <div className="rounded-2xl bg-gradient-to-br from-blue-500 to-blue-600 p-5 text-white shadow-md flex flex-col gap-2 h-[220px]">
                       <div className="flex items-center justify-between">
-                        <p className="text-xs font-medium uppercase tracking-wider opacity-80">Subscriptions</p>
+                        <p className="text-xs font-medium uppercase tracking-wider opacity-80">Students</p>
                         <div className="flex items-center gap-2">
                           <div className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center">
                             <Users className="w-4 h-4" />
@@ -1961,12 +1914,12 @@ export default function ParentDashboard() {
                       {studentGroups.length === 0 ? (
                         <>
                           <p className="text-4xl font-bold">0</p>
-                          <p className="text-xs opacity-70 -mt-1">no enrollments this month</p>
+                          <p className="text-xs opacity-70 -mt-1">no active students this month</p>
                         </>
                       ) : (
                         <>
                           <p className="text-4xl font-bold">{studentGroups.length}</p>
-                          <p className="text-xs opacity-70 -mt-1">student{studentGroups.length !== 1 ? "s" : ""} enrolled</p>
+                          <p className="text-xs opacity-70 -mt-1">active student{studentGroups.length !== 1 ? "s" : ""}</p>
                           {/* Segmented student selector — only shown for multiple students */}
                           {studentGroups.length > 1 ? (
                             <div className="flex items-center gap-2">
@@ -2055,16 +2008,19 @@ export default function ParentDashboard() {
                   );
                 })()}
 
-                {/* Card 3 — Learning Proficiency */}
-                {(() => {
-                  const { avgQuizScore, attendanceRate, avgRubricScore, proficiencyLabel, completedQuizzes } = analyticsStats;
-                  const gradientClass = proficiencyLabel === "Above Average"
-                    ? "from-teal-500 to-teal-600"
-                    : proficiencyLabel === "On Track"
-                    ? "from-violet-500 to-violet-600"
-                    : "from-amber-400 to-amber-500";
-                  return (
-                    <div className={`rounded-2xl bg-gradient-to-br ${gradientClass} p-5 text-white shadow-md flex flex-col gap-2 h-[220px]`}>
+	                {/* Card 3 — Learning Proficiency */}
+	                {(() => {
+	                  const { avgQuizScore, attendanceRate, avgRubricScore, proficiencyLabel, completedQuizzes, proficiencySource, proficiencyScore } = analyticsStats;
+	                  const gradientClass = proficiencyScore == null
+	                    ? "from-slate-500 to-slate-600"
+	                    : proficiencyScore >= 84
+	                    ? "from-teal-500 to-teal-600"
+	                    : proficiencyScore >= 45
+	                    ? "from-violet-500 to-violet-600"
+	                    : "from-amber-400 to-amber-500";
+	                  const ratedCount = analyticsFilteredSubscriptions.filter(s => s.subscription.progressStatus === "low" || s.subscription.progressStatus === "medium" || s.subscription.progressStatus === "high").length;
+	                  return (
+	                    <div className={`rounded-2xl bg-gradient-to-br ${gradientClass} p-5 text-white shadow-md flex flex-col gap-2 h-[220px]`}>
                       <div className="flex items-center justify-between">
                         <p className="text-xs font-medium uppercase tracking-wider opacity-80">Learning Proficiency</p>
                         <div className="flex items-center gap-2">
@@ -2074,9 +2030,13 @@ export default function ParentDashboard() {
                           <button onClick={() => setShowProficiencyModal(true)} className="text-xs font-medium opacity-90 hover:opacity-100 underline underline-offset-2">Show more</button>
                         </div>
                       </div>
-                      <p className="text-4xl font-bold">{avgQuizScore != null ? `${avgQuizScore}%` : "—"}</p>
-                      <p className="text-xs opacity-70 -mt-2">avg quiz score · {completedQuizzes} taken</p>
-                      {analyticsFilteredSessions.length > 0 && <p className="text-xs opacity-90 font-medium">{proficiencyLabel}</p>}
+	                      <p className="text-4xl font-bold">{proficiencyScore != null ? `${proficiencyScore}%` : "—"}</p>
+	                      <p className="text-xs opacity-70 -mt-2">
+	                        {proficiencySource === "tutor_status"
+	                          ? `tutor rating · ${ratedCount} rated`
+	                          : `avg quiz score · ${completedQuizzes} taken`}
+	                      </p>
+	                      {proficiencyScore != null && <p className="text-xs opacity-90 font-medium">{proficiencyLabel}</p>}
                       <div className="space-y-1.5">
                         <div className="flex items-center justify-between text-xs opacity-80">
                           <span>Attendance</span><span className="font-semibold">{attendanceRate}%</span>
@@ -2178,11 +2138,9 @@ export default function ParentDashboard() {
                         <div className="w-2.5 h-2.5 rounded-full bg-blue-500 shrink-0" />
                         Scheduled
                       </div>
-                      <span className="font-semibold text-blue-600 dark:text-blue-400">
-                        {selectedAnalyticsMonth === "all"
-                          ? (subscriptions || []).reduce((sum, s) => sum + (s.sessionStats?.scheduledCount ?? 0), 0)
-                          : analyticsFilteredSessions.filter(s => s.status === "scheduled").length}
-                      </span>
+	                      <span className="font-semibold text-blue-600 dark:text-blue-400">
+	                        {analyticsFilteredUpcomingSessions.filter(s => s.status === "scheduled").length}
+	                      </span>
                     </div>
                     <div className="flex items-center justify-between px-5 py-3.5">
                       <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -2196,10 +2154,11 @@ export default function ParentDashboard() {
                     <div className="flex items-center justify-between px-5 py-3.5">
                       <div className="flex items-center gap-2 text-sm text-muted-foreground">
                         <div className="w-2.5 h-2.5 rounded-full bg-violet-500 shrink-0" />
-                        Active Enrollments
+                        Cancelled Sessions
                       </div>
                       <span className="font-semibold text-violet-600 dark:text-violet-400">
-                        {analyticsFilteredSubscriptions.filter(s => s.subscription.status === "active").length}
+                        {analyticsStats.cancelledCount}
+                        {analyticsStats.cancellationRate != null ? ` (${analyticsStats.cancellationRate}%)` : ""}
                       </span>
                     </div>
                   </div>
@@ -2471,14 +2430,32 @@ export default function ParentDashboard() {
                 sessionMap.set(s.id, { studentName: name, status: s.status });
               });
 
-              const studentNames = Array.from(
-                new Set(analyticsFilteredSessions.map(s => [s.studentFirstName, s.studentLastName].filter(Boolean).join(" ").trim() || "Student"))
-              );
+	              const studentNames = Array.from(new Set([
+	                ...(analyticsFilteredSessions.map(s => [s.studentFirstName, s.studentLastName].filter(Boolean).join(" ").trim() || "Student")),
+	                ...(analyticsFilteredSubscriptions.map(s => [s.subscription.studentFirstName, s.subscription.studentLastName].filter(Boolean).join(" ").trim() || "Student")),
+	              ]));
 
-              const perStudent = studentNames.map(name => {
-                const studentSessions = analyticsFilteredSessions.filter(s =>
-                  ([s.studentFirstName, s.studentLastName].filter(Boolean).join(" ").trim() || "Student") === name
-                );
+	              const perStudent = studentNames.map(name => {
+	                const studentSubs = analyticsFilteredSubscriptions.filter(s =>
+	                  ([s.subscription.studentFirstName, s.subscription.studentLastName].filter(Boolean).join(" ").trim() || "Student") === name
+	                );
+	                const tutorNames = Array.from(new Set(
+	                  studentSubs
+	                    .map((s) => s.tutor?.name?.trim?.())
+	                    .filter((value): value is string => Boolean(value))
+	                ));
+	                const tutorStatusScores = studentSubs
+	                  .map((s) => statusToPercentScore(s.subscription.progressStatus))
+	                  .filter((score): score is 33 | 66 | 100 => score != null);
+	                const tutorProficiencyScore = tutorStatusScores.length > 0
+	                  ? Math.round(tutorStatusScores.reduce((sum, score) => sum + score, 0) / tutorStatusScores.length)
+	                  : null;
+	                const tutorStatusLevel: "low" | "medium" | "high" | null =
+	                  tutorProficiencyScore == null ? null : tutorProficiencyScore <= 44 ? "low" : tutorProficiencyScore <= 83 ? "medium" : "high";
+
+	                const studentSessions = analyticsFilteredSessions.filter(s =>
+	                  ([s.studentFirstName, s.studentLastName].filter(Boolean).join(" ").trim() || "Student") === name
+	                );
                 const completed = studentSessions.filter(s => s.status === "completed").length;
                 const noShows = studentSessions.filter(s => s.status === "no_show").length;
                 const totalScheduled = studentSessions.filter(s => s.status === "completed" || s.status === "no_show" || s.status === "scheduled").length;
@@ -2500,16 +2477,23 @@ export default function ParentDashboard() {
                   ? Math.round((studentGrades.reduce((sum, g) => sum + Number(g.rubricOverallScore!), 0) / studentGrades.length) * 10) / 10
                   : null;
 
-                let proficiency: "Above Average" | "On Track" | "Needs Attention" = "On Track";
-                if (avgQuiz != null) {
-                  if (avgQuiz >= 70 && attendance >= 80) proficiency = "Above Average";
-                  else if (avgQuiz < 50 || attendance < 50) proficiency = "Needs Attention";
-                } else if (attendance < 50 && totalScheduled > 0) {
-                  proficiency = "Needs Attention";
-                }
+	                let proficiency: "Above Average" | "On Track" | "Needs Attention" = "On Track";
+	                let source: "tutor_status" | "quiz_attendance" | "unrated" = "unrated";
+	                if (tutorProficiencyScore != null) {
+	                  source = "tutor_status";
+	                  if (tutorProficiencyScore >= 84) proficiency = "Above Average";
+	                  else if (tutorProficiencyScore <= 44) proficiency = "Needs Attention";
+	                } else if (avgQuiz != null) {
+	                  source = "quiz_attendance";
+	                  if (avgQuiz >= 70 && attendance >= 80) proficiency = "Above Average";
+	                  else if (avgQuiz < 50 || attendance < 50) proficiency = "Needs Attention";
+	                } else if (attendance < 50 && totalScheduled > 0) {
+	                  source = "quiz_attendance";
+	                  proficiency = "Needs Attention";
+	                }
 
-                return { name, completed, noShows, attendance, totalScheduled, avgQuiz, avgRubric, quizCount: studentQuizzes.length, gradeCount: studentGrades.length, proficiency };
-              });
+	                return { name, completed, noShows, attendance, totalScheduled, avgQuiz, avgRubric, quizCount: studentQuizzes.length, gradeCount: studentGrades.length, proficiency, source, tutorStatusLevel, tutorProficiencyScore, tutorNames };
+	              });
 
               if (perStudent.length === 0) {
                 return (
@@ -2520,11 +2504,11 @@ export default function ParentDashboard() {
                 );
               }
 
-              const clampedTab = Math.min(proficiencyStudentTab, Math.max(0, perStudent.length - 1));
-              const student = perStudent[clampedTab];
-              const { name, completed, noShows, attendance, avgQuiz, avgRubric, quizCount, gradeCount, proficiency } = student;
-              const profColor = proficiency === "Above Average" ? "text-emerald-600 dark:text-emerald-400" : proficiency === "On Track" ? "text-blue-600 dark:text-blue-400" : "text-amber-500";
-              const profBg = proficiency === "Above Average" ? "bg-emerald-50 dark:bg-emerald-950/40" : proficiency === "On Track" ? "bg-blue-50 dark:bg-blue-950/40" : "bg-amber-50 dark:bg-amber-950/40";
+	              const clampedTab = Math.min(proficiencyStudentTab, Math.max(0, perStudent.length - 1));
+	              const student = perStudent[clampedTab];
+	              const { name, completed, noShows, attendance, avgQuiz, avgRubric, quizCount, gradeCount, proficiency, source, tutorStatusLevel, tutorProficiencyScore, tutorNames } = student;
+	              const profColor = proficiency === "Above Average" ? "text-emerald-600 dark:text-emerald-400" : proficiency === "On Track" ? "text-blue-600 dark:text-blue-400" : "text-amber-500";
+	              const profBg = proficiency === "Above Average" ? "bg-emerald-50 dark:bg-emerald-950/40" : proficiency === "On Track" ? "bg-blue-50 dark:bg-blue-950/40" : "bg-amber-50 dark:bg-amber-950/40";
 
               return (
                 <div className="space-y-4">
@@ -2552,15 +2536,29 @@ export default function ParentDashboard() {
                     </div>
                   )}
 
-                  {/* Proficiency label */}
-                  <div className={`rounded-xl px-4 py-3 ${profBg}`}>
-                    <p className={`text-base font-bold ${profColor}`}>{proficiency}</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">{name} · Overall assessment based on quiz score &amp; attendance</p>
-                  </div>
+	                  {/* Proficiency label */}
+	                  <div className={`rounded-xl px-4 py-3 ${profBg}`}>
+	                    <p className={`text-base font-bold ${profColor}`}>{proficiency}</p>
+	                    <p className="text-xs text-muted-foreground mt-0.5">{name} · Overall assessment based on {source === "tutor_status" ? "tutor rating" : "quiz score & attendance"}</p>
+	                  </div>
 
-                  {/* Quiz Performance */}
-                  <div className="rounded-xl border bg-card p-4 space-y-3">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Quiz Performance</p>
+	                  {/* Tutor Rating */}
+	                  {tutorStatusLevel && tutorProficiencyScore != null && (
+	                    <div className="rounded-xl border bg-card p-4 space-y-3">
+	                      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Tutor Rating</p>
+	                      <div className="flex items-end justify-between">
+	                        <p className="text-3xl font-bold">{tutorProficiencyScore}%</p>
+	                        <p className="text-xs text-muted-foreground">{statusLabel(tutorStatusLevel)}</p>
+	                      </div>
+	                      <div className="h-2 rounded-full bg-muted overflow-hidden">
+	                        <div className="h-2 rounded-full bg-gradient-to-r from-teal-500 to-violet-500" style={{ width: `${tutorProficiencyScore}%` }} />
+	                      </div>
+	                    </div>
+	                  )}
+
+	                  {/* Quiz Performance */}
+	                  <div className="rounded-xl border bg-card p-4 space-y-3">
+	                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Quiz Performance</p>
                     <div className="flex items-end justify-between">
                       <p className="text-3xl font-bold">{avgQuiz != null ? `${avgQuiz}%` : "—"}</p>
                       <p className="text-xs text-muted-foreground">{quizCount} quiz{quizCount !== 1 ? "zes" : ""} taken</p>
@@ -2598,20 +2596,55 @@ export default function ParentDashboard() {
                       const vals = studentGradesModal.map(g => (g as any)[key]).filter((v: any) => v != null) as number[];
                       return vals.length > 0 ? Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 10) / 10 : null;
                     };
-                    const scoreColorModal = (v: number | null) =>
-                      v == null ? "bg-muted" : v >= 3.5 ? "bg-emerald-500" : v >= 2.5 ? "bg-blue-500" : v >= 1.5 ? "bg-amber-400" : "bg-red-500";
-                    const scoreTextModal = (v: number | null) =>
-                      v == null ? "text-muted-foreground" : v >= 3.5 ? "text-emerald-600 dark:text-emerald-400" : v >= 2.5 ? "text-blue-600 dark:text-blue-400" : v >= 1.5 ? "text-amber-500" : "text-red-600 dark:text-red-400";
-                    const engagements = studentGradesModal
-                      .map(g => (g as any).rubricEngagementData)
-                      .filter(Boolean)
-                      .map((e: any) => (typeof e === "string" ? JSON.parse(e) : e));
-                    const latestParticipation = engagements.map((e: any) => e?.studentParticipationRate).filter(Boolean).slice(-1)[0] ?? null;
-                    const rawCT = engagements.map((e: any) => e?.studentCriticalThinking).filter(Boolean).slice(-1)[0];
-                    const latestCT = rawCT ? String(rawCT).split("|")[0]?.trim() : null;
-                    return (
-                      <div className="rounded-xl border bg-card p-4 space-y-3">
-                        <div className="flex items-center justify-between">
+	                    const scoreColorModal = (v: number | null) =>
+	                      v == null ? "bg-muted" : v >= 3.5 ? "bg-emerald-500" : v >= 2.5 ? "bg-blue-500" : v >= 1.5 ? "bg-amber-400" : "bg-red-500";
+	                    const scoreTextModal = (v: number | null) =>
+	                      v == null ? "text-muted-foreground" : v >= 3.5 ? "text-emerald-600 dark:text-emerald-400" : v >= 2.5 ? "text-blue-600 dark:text-blue-400" : v >= 1.5 ? "text-amber-500" : "text-red-600 dark:text-red-400";
+	                    const engagements = studentGradesModal
+	                      .map(g => (g as any).rubricEngagementData)
+	                      .filter(Boolean)
+	                      .map((e: any) => (typeof e === "string" ? JSON.parse(e) : e));
+	                    const parseParticipation = (value: unknown) => {
+	                      const match = String(value ?? "").match(/(\d+(?:\.\d+)?)/);
+	                      return match ? Number(match[1]) : null;
+	                    };
+	                    const averageParticipationValues = engagements
+	                      .map((e: any) => parseParticipation(e?.studentParticipationRate))
+	                      .filter((value): value is number => value != null && Number.isFinite(value));
+	                    const averageParticipation = averageParticipationValues.length > 0
+	                      ? Math.round(averageParticipationValues.reduce((sum, value) => sum + value, 0) / averageParticipationValues.length)
+	                      : null;
+	                    const normalizeCriticalThinking = (value: unknown): "High" | "Medium" | "Low" | null => {
+	                      const text = String(value ?? "");
+	                      if (/high/i.test(text)) return "High";
+	                      if (/medium/i.test(text)) return "Medium";
+	                      if (/low/i.test(text)) return "Low";
+	                      return null;
+	                    };
+	                    const criticalThinkingLevels = engagements
+	                      .map((e: any) => normalizeCriticalThinking(e?.studentCriticalThinking))
+	                      .filter((value): value is "High" | "Medium" | "Low" => value != null);
+	                    const criticalThinkingCounts = criticalThinkingLevels.reduce((acc, value) => {
+	                      acc[value] = (acc[value] ?? 0) + 1;
+	                      return acc;
+	                    }, {} as Record<"High" | "Medium" | "Low", number>);
+	                    const typicalCriticalThinking = criticalThinkingLevels.length > 0
+	                      ? (Object.entries(criticalThinkingCounts).sort((a, b) => b[1] - a[1])[0]?.[0] as "High" | "Medium" | "Low")
+	                      : null;
+	                    const criteriaAverages = criteriaModal.reduce<Array<{ label: typeof criteriaModal[number]["label"]; avg: number }>>((acc, { key, label }) => {
+	                      const avg = avgForModal(key);
+	                      if (avg != null) acc.push({ label, avg });
+	                      return acc;
+	                    }, []);
+	                    const strongestArea = criteriaAverages.length > 0
+	                      ? criteriaAverages.reduce((best, item) => item.avg > best.avg ? item : best).label
+	                      : null;
+	                    const needsMostSupport = criteriaAverages.length > 0
+	                      ? criteriaAverages.reduce((lowest, item) => item.avg < lowest.avg ? item : lowest).label
+	                      : null;
+	                    return (
+	                      <div className="rounded-xl border bg-card p-4 space-y-3">
+	                        <div className="flex items-center justify-between">
                           <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Session Grading</p>
                           <p className="text-xs text-muted-foreground">{gradeCount} session{gradeCount !== 1 ? "s" : ""} graded</p>
                         </div>
@@ -2630,25 +2663,31 @@ export default function ParentDashboard() {
                                 </div>
                                 <span className={`text-xs font-semibold w-8 text-right ${scoreTextModal(avg)}`}>{avg != null ? avg.toFixed(1) : "—"}</span>
                               </div>
-                            );
-                          })}
-                        </div>
-                        {(latestParticipation || latestCT) && (
-                          <div className="flex flex-wrap gap-2 pt-1">
-                            {latestParticipation && (
-                              <span className="text-xs bg-muted px-2 py-1 rounded-md text-muted-foreground">
-                                Participation: <span className="font-medium text-foreground">{latestParticipation}</span>
-                              </span>
-                            )}
-                            {latestCT && (
-                              <span className="text-xs bg-muted px-2 py-1 rounded-md text-muted-foreground">
-                                Critical Thinking: <span className="font-medium text-foreground">{latestCT}</span>
-                              </span>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    );
+	                            );
+	                          })}
+	                        </div>
+	                        {(averageParticipation != null || typicalCriticalThinking || strongestArea || needsMostSupport) && (
+	                          <div className="grid gap-2 pt-1 sm:grid-cols-2">
+	                            <div className="rounded-lg bg-muted px-3 py-2">
+	                              <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Average Participation</p>
+	                              <p className="text-sm font-medium text-foreground">{averageParticipation != null ? `~${averageParticipation}%` : "—"}</p>
+	                            </div>
+	                            <div className="rounded-lg bg-muted px-3 py-2">
+	                              <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Typical Critical Thinking</p>
+	                              <p className="text-sm font-medium text-foreground">{typicalCriticalThinking ?? "—"}</p>
+	                            </div>
+	                            <div className="rounded-lg bg-muted px-3 py-2">
+	                              <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Strongest Area</p>
+	                              <p className="text-sm font-medium text-foreground">{strongestArea ?? "—"}</p>
+	                            </div>
+	                            <div className="rounded-lg bg-muted px-3 py-2">
+	                              <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Needs Most Support</p>
+	                              <p className="text-sm font-medium text-foreground">{needsMostSupport ?? "—"}</p>
+	                            </div>
+	                          </div>
+	                        )}
+	                      </div>
+	                    );
                   })()}
                 </div>
               );
@@ -2931,34 +2970,6 @@ export default function ParentDashboard() {
                 );
               })()}
 
-              {/* Academic / Other: Monthly subscription */}
-              {paymentModalSub.course.courseType !== "test_prep" &&
-               paymentModalSub.course.courseType !== "tutor" &&
-               paymentModalSub.course.courseType !== "homework" && (
-                <button
-                  className="w-full rounded-lg border-2 border-primary bg-primary/5 p-4 text-left hover:bg-primary/10 transition-colors disabled:opacity-60"
-                  disabled={setupLoadingId === paymentModalSub.subscription.id}
-                  onClick={async () => {
-                    try {
-                      setSetupLoadingId(paymentModalSub.subscription.id);
-                      const result = await setupBillingMutation.mutateAsync({
-                        subscriptionId: paymentModalSub.subscription.id,
-                        origin: window.location.origin,
-                      });
-                      if (result?.setupUrl) window.open(result.setupUrl, "_blank");
-                      else toast.error("Could not create billing setup.");
-                      setPaymentModalSub(null);
-                    } catch {
-                      toast.error("Failed to set up billing");
-                    } finally {
-                      setSetupLoadingId(null);
-                    }
-                  }}
-                >
-                  <div className="font-semibold text-sm">Set Up Monthly Billing</div>
-                  <div className="text-xs text-muted-foreground mt-1">Save your card — charged monthly on your billing date</div>
-                </button>
-              )}
             </div>
 
             <DialogFooter>

@@ -1660,6 +1660,13 @@ export async function updateSubscription(id: number, updates: Partial<InsertSubs
   }
 }
 
+export async function updateSubscriptionProgressStatus(
+  id: number,
+  progressStatus: "low" | "medium" | "high" | null
+) {
+  return await updateSubscription(id, { progressStatus });
+}
+
 export async function updateUserStripeCustomerId(userId: number, stripeCustomerId: string) {
   const db = await getDb();
   if (!db) return false;
@@ -2049,7 +2056,7 @@ export async function getSessionsByTutorId(
     .limit(options?.limit ?? 500);
 }
 
-// Completed sessions (for history views)
+// Past and non-active sessions (for history views)
 export async function getCompletedSessionsByParentId(parentId: number) {
   const db = await getDb();
   if (!db) return [];
@@ -2075,7 +2082,12 @@ export async function getCompletedSessionsByParentId(parentId: number) {
       eq(sessions.parentId, parentId),
       or(
         eq(sessions.status, 'completed' as any),
-        eq(sessions.status, 'no_show' as any)
+        eq(sessions.status, 'no_show' as any),
+        eq(sessions.status, 'cancelled' as any),
+        and(
+          eq(sessions.status, 'scheduled' as any),
+          lt(sessions.scheduledAt, Date.now())
+        )
       )
     ))
     .orderBy(desc(sessions.scheduledAt));
@@ -5906,4 +5918,3 @@ export async function userHasAccessToCourseFile(userId: number, role: string, fi
   }
   return false;
 }
-
