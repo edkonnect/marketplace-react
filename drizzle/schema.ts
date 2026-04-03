@@ -286,6 +286,7 @@ export const subscriptions = mysqlTable("subscriptions", {
   secondInstallmentAmount: decimal("secondInstallmentAmount", { precision: 10, scale: 2 }),
   siblingDiscountApplied: boolean("siblingDiscountApplied").default(false).notNull(),
   promoDiscountAmount: decimal("promoDiscountAmount", { precision: 10, scale: 2 }).default("0.00").notNull(),
+  appliedCouponId: int("appliedCouponId").references(() => coupons.id, { onDelete: "set null" }),
   discountAmount: decimal("discountAmount", { precision: 10, scale: 2 }),
   thirdInstallmentPaid: boolean("thirdInstallmentPaid").default(false).notNull(),
   thirdInstallmentAmount: decimal("thirdInstallmentAmount", { precision: 10, scale: 2 }),
@@ -439,6 +440,8 @@ export const payments = mysqlTable("payments", {
 }, (table) => ({
   parentIdIdx: index("payments_parentId_idx").on(table.parentId),
   tutorIdIdx: index("payments_tutorId_idx").on(table.tutorId),
+  invoiceSubscriptionUnique: uniqueIndex("payments_invoice_subscription_type_unique").on(table.stripeInvoiceId, table.subscriptionId, table.paymentType),
+  piSubscriptionUnique: uniqueIndex("payments_pi_subscription_type_unique").on(table.stripePaymentIntentId, table.subscriptionId, table.paymentType),
 }));
 
 export type Payment = typeof payments.$inferSelect;

@@ -28,6 +28,7 @@ export async function createCheckoutSession(params: {
   discountPercent?: number; // sibling discount % (still percentage-based)
   discountAmountUsd?: number; // fixed promo coupon discount in USD
   discountLabel?: string;
+  convertPendingPlanToFull?: boolean;
 }) {
   const stripe = getStripe();
 
@@ -64,6 +65,7 @@ export async function createCheckoutSession(params: {
       tutor_id: params.tutorId?.toString() || "",
       customer_email: params.userEmail || "",
       customer_name: params.userName || "",
+      convert_pending_plan_to_full: params.convertPendingPlanToFull ? "true" : "false",
     },
     allow_promotion_codes: true,
     success_url: `${params.origin}/parent/dashboard?payment=success`,

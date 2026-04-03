@@ -35,6 +35,13 @@ async function processReferralReward(parentId: number): Promise<void> {
   }
 }
 
+async function consumeAppliedCouponForSubscription(subscriptionId: number): Promise<void> {
+  const localSub = await db.getSubscriptionById(subscriptionId);
+  if (!localSub?.appliedCouponId) return;
+  await db.markCouponUsed(localSub.appliedCouponId);
+  await db.updateSubscription(subscriptionId, { appliedCouponId: null });
+}
+
 export async function handleStripeWebhook(req: Request, res: Response) {
   const stripe = getStripe();
   const sig = req.headers["stripe-signature"];
@@ -134,6 +141,7 @@ export async function handleStripeWebhook(req: Request, res: Response) {
                 // Just mark the subscription as paid (card is saved on the Stripe customer).
                 try {
                   await db.updateSubscription(subscriptionId, { paymentStatus: "paid" });
+                  await consumeAppliedCouponForSubscription(subscriptionId);
                   const localSubForReferral = await db.getSubscriptionById(subscriptionId);
                   if (localSubForReferral?.parentId) {
                     await processReferralReward(localSubForReferral.parentId);
@@ -342,6 +350,7 @@ export async function handleStripeWebhook(req: Request, res: Response) {
                   stripeItemId: stripeSub.items.data[0].id,
                   paymentStatus: "paid",
                 });
+                await consumeAppliedCouponForSubscription(subscriptionId);
                 await processReferralReward(localSub.parentId);
                 // Send enrollment confirmation emails
                 try {
@@ -398,6 +407,7 @@ export async function handleStripeWebhook(req: Request, res: Response) {
 
               // Activate subscription
               await db.updateSubscription(subscriptionId, { paymentStatus: "paid", status: "active" });
+              await consumeAppliedCouponForSubscription(subscriptionId);
 
               // Record the upfront payment as the first billing cycle (pre-paid)
               const localSub = await db.getSubscriptionById(subscriptionId);
@@ -477,8 +487,26 @@ export async function handleStripeWebhook(req: Request, res: Response) {
           const tutorId = parseInt(session.metadata?.tutor_id || "0");
 
           if (subscriptionId) {
-            // Mark subscription as paid
-            await db.updateSubscription(subscriptionId, { paymentStatus: "paid" });
+            const localSubBeforePayment = await db.getSubscriptionById(subscriptionId);
+            const convertPendingPlanToFull = session.metadata?.convert_pending_plan_to_full === "true";
+            const subscriptionUpdates: Record<string, any> = { paymentStatus: "paid" };
+            if (convertPendingPlanToFull && localSubBeforePayment && localSubBeforePayment.paymentPlan !== "full") {
+              subscriptionUpdates.paymentPlan = "full";
+              subscriptionUpdates.stripeSubscriptionId = null;
+              subscriptionUpdates.stripeItemId = null;
+              subscriptionUpdates.billingCycleStart = null;
+              subscriptionUpdates.billingCycleEnd = null;
+              subscriptionUpdates.perSessionRateCents = null;
+              subscriptionUpdates.numberOfInstallments = 1;
+              subscriptionUpdates.firstInstallmentAmount = null;
+              subscriptionUpdates.secondInstallmentAmount = null;
+              subscriptionUpdates.thirdInstallmentAmount = null;
+              subscriptionUpdates.firstInstallmentPaid = false;
+              subscriptionUpdates.secondInstallmentPaid = false;
+              subscriptionUpdates.thirdInstallmentPaid = false;
+            }
+            await db.updateSubscription(subscriptionId, subscriptionUpdates);
+            await consumeAppliedCouponForSubscription(subscriptionId);
             // Trigger referral reward on first enrollment
             if (userId) await processReferralReward(userId);
 
@@ -705,64 +733,6 @@ export async function handleStripeWebhook(req: Request, res: Response) {
             break;
         }
 
-        // Idempotency check — skip if any payment was already recorded for this invoice
-        const existing = await db.getPaymentByStripeInvoiceId(invoice.id);
-        if (existing) {
-            break;
-        }
-
-        // Handle usage-based invoices (standalone, no Stripe subscription)
-        if (invoice.metadata?.type === "usage_cycle") {
-          const billingCycleId = parseInt(invoice.metadata?.billing_cycle_id || "0");
-          const localSubId = parseInt(invoice.metadata?.local_subscription_id || "0");
-          if (billingCycleId) {
-            await db.updateBillingCycle(billingCycleId, {
-              status: "paid",
-              stripeInvoiceId: invoice.id,
-              processedAt: new Date(),
-            });
-          }
-          if (localSubId) {
-            const localSub = await db.getSubscriptionById(localSubId);
-            if (localSub) {
-              const tutors = await db.getTutorsForCourse(localSub.courseId);
-              const tutorId = localSub.preferredTutorId
-                ? tutors.find((t: any) => t.tutorId === localSub.preferredTutorId)?.tutorId
-                : undefined;
-              const resolvedTutorId = tutorId || tutors.find((t: any) => t.isPrimary)?.tutorId || tutors[0]?.tutorId;
-              if (resolvedTutorId) {
-                const stripePaymentIntentId = (invoice.payments?.data?.[0] as any)?.payment_details?.payment_intent
-                  ?? (invoice.payments?.data?.[0] as any)?.payment_intent ?? null;
-                const piStr = typeof stripePaymentIntentId === "string"
-                  ? stripePaymentIntentId : (stripePaymentIntentId as any)?.id ?? null;
-                await db.createPayment({
-                  parentId: localSub.parentId,
-                  tutorId: resolvedTutorId,
-                  subscriptionId: localSubId,
-                  sessionId: null,
-                  amount: (invoice.amount_paid / 100).toFixed(2),
-                  currency: invoice.currency,
-                  status: "completed",
-                  stripePaymentIntentId: piStr,
-                  stripeInvoiceId: invoice.id,
-                  paymentType: "subscription",
-                });
-                console.log(`[Webhook] ✓ Usage cycle payment recorded: sub=${localSubId}, cycle=${billingCycleId}`);
-              }
-            }
-          }
-          break;
-        }
-
-        const stripeSubscriptionId = (
-          typeof (invoice.parent as any)?.subscription_details?.subscription === "string"
-            ? (invoice.parent as any).subscription_details.subscription
-            : ((invoice.parent as any)?.subscription_details?.subscription as any)?.id ?? null
-        ) as string | null;
-        if (!stripeSubscriptionId) {
-          console.warn("[Webhook] invoice.payment_succeeded: no subscription on invoice", invoice.id);
-          break;
-        }
         const stripePaymentIntentId = (invoice.payments?.data?.[0] as any)?.payment_details?.payment_intent
           ?? (invoice.payments?.data?.[0] as any)?.payment_intent ?? null;
         const stripePaymentIntentIdStr = typeof stripePaymentIntentId === "string"
@@ -780,10 +750,80 @@ export async function handleStripeWebhook(req: Request, res: Response) {
           }
         }
 
+        // Handle usage-based invoices (standalone, no Stripe subscription)
+        if (invoice.metadata?.type === "usage_cycle") {
+          const cycleIds = new Set<number>(
+            (invoice.metadata?.billing_cycle_ids || "")
+              .split(",")
+              .map((id) => parseInt(id, 10))
+              .filter((id) => id > 0)
+          );
 
+          for (const line of lineItems) {
+            const meta = (line as any).metadata ?? {};
+            const billingCycleId = parseInt(meta.billing_cycle_id || "0");
+            const localSubId = parseInt(meta.local_subscription_id || "0");
+
+            if (billingCycleId) {
+              cycleIds.add(billingCycleId);
+            }
+
+            if (!localSubId) continue;
+
+            const existingPayment =
+              await db.getPaymentByStripeInvoiceIdAndSubscriptionId(invoice.id, localSubId)
+              || (stripePaymentIntentIdStr
+                ? await db.getPaymentByStripePaymentIntentIdAndSubscriptionId(stripePaymentIntentIdStr, localSubId)
+                : null);
+            if (existingPayment) continue;
+
+            const localSub = await db.getSubscriptionById(localSubId);
+            if (!localSub) continue;
+
+            const tutors = await db.getTutorsForCourse(localSub.courseId);
+            const tutorId = localSub.preferredTutorId
+              ? tutors.find((t: any) => t.tutorId === localSub.preferredTutorId)?.tutorId
+              : undefined;
+            const resolvedTutorId = tutorId || tutors.find((t: any) => t.isPrimary)?.tutorId || tutors[0]?.tutorId;
+            if (!resolvedTutorId) continue;
+
+            await db.createPayment({
+              parentId: localSub.parentId,
+              tutorId: resolvedTutorId,
+              subscriptionId: localSubId,
+              sessionId: null,
+              amount: ((line.amount ?? 0) / 100).toFixed(2),
+              currency: line.currency,
+              status: "completed",
+              stripePaymentIntentId: stripePaymentIntentIdStr,
+              stripeInvoiceId: invoice.id,
+              paymentType: "subscription",
+            });
+            console.log(`[Webhook] ✓ Usage cycle payment recorded: sub=${localSubId}, cycle=${billingCycleId || "unknown"}`);
+          }
+
+          for (const billingCycleId of cycleIds) {
+            await db.updateBillingCycle(billingCycleId, {
+              status: "paid",
+              stripeInvoiceId: invoice.id,
+              processedAt: new Date(),
+            });
+          }
+          break;
+        }
+
+        const stripeSubscriptionId = (
+          typeof (invoice.parent as any)?.subscription_details?.subscription === "string"
+            ? (invoice.parent as any).subscription_details.subscription
+            : ((invoice.parent as any)?.subscription_details?.subscription as any)?.id ?? null
+        ) as string | null;
+        if (!stripeSubscriptionId) {
+          console.warn("[Webhook] invoice.payment_succeeded: no subscription on invoice", invoice.id);
+          break;
+        }
         // Process each line item — find the matching local subscription via stripeItemId
         let anyProcessed = false;
-        let anySkippedAsCompleted = false;
+        let anyLineMatched = false;
         for (const line of lineItems) {
           // Try new parent.subscription_item_details path first, fall back to legacy top-level field
           const stripeItemId = ((line.parent as any)?.subscription_item_details?.subscription_item
@@ -815,11 +855,11 @@ export async function handleStripeWebhook(req: Request, res: Response) {
             console.warn(`[Webhook] Could not find local subscription for Stripe item ${stripeItemId}, skipping line`);
             continue;
           }
+          anyLineMatched = true;
 
           // Skip if this subscription is already fully paid — prevents over-charging
           // if Stripe fires an invoice after we've already removed the item
           if (localSub.paymentStatus === "completed") {
-              anySkippedAsCompleted = true;
             continue;
           }
 
@@ -827,7 +867,15 @@ export async function handleStripeWebhook(req: Request, res: Response) {
           // Their billing is handled exclusively via standalone usage invoices from the cron job.
           if (localSub.paymentPlan === "monthly" && localSub.perSessionRateCents) {
             console.log(`[Webhook] Skipping usage-based sub ${localSub.id} on subscription invoice — billed via cron`);
-            anySkippedAsCompleted = true;
+            continue;
+          }
+
+          const existingPayment =
+            await db.getPaymentByStripeInvoiceIdAndSubscriptionId(invoice.id, localSub.id)
+            || (stripePaymentIntentIdStr
+              ? await db.getPaymentByStripePaymentIntentIdAndSubscriptionId(stripePaymentIntentIdStr, localSub.id)
+              : null);
+          if (existingPayment) {
             continue;
           }
 
@@ -851,7 +899,6 @@ export async function handleStripeWebhook(req: Request, res: Response) {
           // invoices arrive simultaneously (e.g. when test clock is advanced rapidly)
           if (numberOfMonths !== null && paidCount >= numberOfMonths) {
             console.log(`[Webhook] ⚠ Sub ${localSub.id} at limit (${paidCount}/${numberOfMonths}) — blocked extra charge`);
-            anySkippedAsCompleted = true;
             // Still try to remove Stripe item in case previous attempt failed
             if (localSub.stripeItemId) {
               try {
@@ -938,11 +985,18 @@ export async function handleStripeWebhook(req: Request, res: Response) {
           }
         }
 
-        if (!anyProcessed && !anySkippedAsCompleted) {
+        if (!anyProcessed && !anyLineMatched) {
           // No line items matched at all (not because they're completed) — legacy fallback path
           console.warn(`[Webhook] No line items matched for invoice ${invoice.id}, trying single-subscription fallback`);
           const localSub = await db.getSubscriptionByStripeId(stripeSubscriptionId);
           if (localSub) {
+            const existingPayment =
+              await db.getPaymentByStripeInvoiceIdAndSubscriptionId(invoice.id, localSub.id)
+              || (stripePaymentIntentIdStr
+                ? await db.getPaymentByStripePaymentIntentIdAndSubscriptionId(stripePaymentIntentIdStr, localSub.id)
+                : null);
+            if (existingPayment) break;
+
             await db.updateSubscription(localSub.id, { paymentStatus: "paid" });
             const tutors = await db.getTutorsForCourse(localSub.courseId);
             const tutorId = tutors.find(t => t.tutorId === localSub.preferredTutorId)?.tutorId
@@ -999,8 +1053,17 @@ export async function handleStripeWebhook(req: Request, res: Response) {
 
         // Handle usage-based invoice failure
         if (invoice.metadata?.type === "usage_cycle") {
-          const billingCycleId = parseInt(invoice.metadata?.billing_cycle_id || "0");
-          if (billingCycleId) {
+          const cycleIds = new Set<number>(
+            (invoice.metadata?.billing_cycle_ids || "")
+              .split(",")
+              .map((id) => parseInt(id, 10))
+              .filter((id) => id > 0)
+          );
+          for (const line of (invoice.lines?.data ?? [])) {
+            const billingCycleId = parseInt(((line as any).metadata ?? {}).billing_cycle_id || "0");
+            if (billingCycleId) cycleIds.add(billingCycleId);
+          }
+          for (const billingCycleId of cycleIds) {
             await db.updateBillingCycle(billingCycleId, { status: "failed" });
             console.log(`[Webhook] Usage cycle ${billingCycleId} payment failed`);
           }

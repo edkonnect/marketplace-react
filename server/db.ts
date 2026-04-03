@@ -1721,6 +1721,34 @@ export async function getPaymentByStripeInvoiceId(stripeInvoiceId: string) {
   return result[0] ?? null;
 }
 
+export async function getPaymentByStripeInvoiceIdAndSubscriptionId(stripeInvoiceId: string, subscriptionId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const result = await db
+    .select()
+    .from(payments)
+    .where(and(
+      eq(payments.stripeInvoiceId, stripeInvoiceId),
+      eq(payments.subscriptionId, subscriptionId),
+    ))
+    .limit(1);
+  return result[0] ?? null;
+}
+
+export async function getPaymentByStripePaymentIntentIdAndSubscriptionId(stripePaymentIntentId: string, subscriptionId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const result = await db
+    .select()
+    .from(payments)
+    .where(and(
+      eq(payments.stripePaymentIntentId, stripePaymentIntentId),
+      eq(payments.subscriptionId, subscriptionId),
+    ))
+    .limit(1);
+  return result[0] ?? null;
+}
+
 export async function getSessionStatsBySubscription(subscriptionId: number) {
   const db = await getDb();
   if (!db) return null;
@@ -2623,7 +2651,8 @@ export async function createPayment(payment: InsertPayment) {
   try {
     const result = await db.insert(payments).values(payment) as any;
     return Number(result.insertId);
-  } catch (error) {
+  } catch (error: any) {
+    if (error?.code === "ER_DUP_ENTRY") return null;
     console.error("[Database] Failed to create payment:", error);
     return null;
   }

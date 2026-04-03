@@ -1177,6 +1177,20 @@ export const appRouter = router({
             ? Math.round(coursePrice * totalPercentDiscount) / 100
             : 0;
 
+          // Validate promo code if provided before creating the subscription
+          let promoDiscountUsd = 0;
+          let appliedCouponId: number | null = null;
+          if (input.promoCode) {
+            const coupon = await db.getCouponByCode(input.promoCode);
+            if (!coupon || coupon.isUsed || coupon.userId !== ctx.user.id) {
+              throw new TRPCError({ code: "BAD_REQUEST", message: "Invalid or expired promo code." });
+            }
+            const referralDiscount = await db.getReferralDiscountForPrice(coursePrice);
+            promoDiscountUsd = referralDiscount.usd;
+            await db.updateCouponAmounts(coupon.id, { usd: referralDiscount.usd, inr: referralDiscount.inr });
+            appliedCouponId = coupon.id;
+          }
+
           // Create local subscription row (pending payment)
           const now = new Date();
           subscriptionId = await db.createSubscription({
@@ -1192,32 +1206,13 @@ export const appRouter = router({
             paymentPlan: "full",
             siblingDiscountApplied: hasSiblingDiscount,
             loyaltyDiscountApplied: true,
+            promoDiscountAmount: promoDiscountUsd.toString(),
+            appliedCouponId,
             discountAmount: discountAmount > 0 ? discountAmount.toFixed(2) : null,
           });
 
           if (!subscriptionId) {
             throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to create enrollment" });
-          }
-
-          // Validate promo code if provided
-          let promoDiscountUsd = 0;
-          let appliedCouponId: number | null = null;
-          if (input.promoCode) {
-            const coupon = await db.getCouponByCode(input.promoCode);
-            if (!coupon || coupon.isUsed || coupon.userId !== ctx.user.id) {
-              throw new TRPCError({ code: "BAD_REQUEST", message: "Invalid or expired promo code." });
-            }
-            // Resolve fixed discount amount based on course price tier
-            const referralDiscount = await db.getReferralDiscountForPrice(coursePrice);
-            promoDiscountUsd = referralDiscount.usd;
-            // Persist resolved amount on coupon and subscription
-            await db.updateCouponAmounts(coupon.id, { usd: referralDiscount.usd, inr: referralDiscount.inr });
-            appliedCouponId = coupon.id;
-          }
-
-          // Store promo discount on subscription so webhook can use it
-          if (promoDiscountUsd > 0) {
-            await db.updateSubscription(subscriptionId, { promoDiscountAmount: promoDiscountUsd.toString() });
           }
 
           // STRIPE_BYPASS=true — skip payment, mark as paid immediately
@@ -1372,6 +1367,7 @@ export const appRouter = router({
           paymentPlan: 'monthly',
           siblingDiscountApplied: hasSiblingDiscount,
           promoDiscountAmount: promoDiscountUsd.toString(),
+          appliedCouponId,
           discountAmount: hasSiblingDiscount ? discountAmount.toFixed(2) : null,
           ...(isUsageBased && billingCycleStart && billingCycleEnd && perSessionRateCents !== undefined
             ? { billingCycleStart, billingCycleEnd, perSessionRateCents }
@@ -1382,12 +1378,10 @@ export const appRouter = router({
           throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to create enrollment' });
         }
 
-        // Mark coupon used immediately so it can't be reused on another enrollment
-        if (appliedCouponId) await db.markCouponUsed(appliedCouponId);
-
         // STRIPE_BYPASS=true — skip payment collection, mark as paid immediately
         if (ENV.stripeBypass) {
           await db.updateSubscription(subscriptionId, { paymentStatus: 'paid' });
+          if (appliedCouponId) await db.markCouponUsed(appliedCouponId);
           await triggerReferralReward(ctx.user.id);
           return { success: true, subscriptionId, setupUrl: null };
         }
@@ -1531,6 +1525,7 @@ export const appRouter = router({
           thirdInstallmentAmount: (lastInstallmentCents / 100).toFixed(2),
           siblingDiscountApplied: hasSiblingDiscount,
           promoDiscountAmount: promoDiscountUsd.toString(),
+          appliedCouponId,
           discountAmount: (coursePrice - discountedTotalCents / 100).toFixed(2),
         });
 
@@ -1538,10 +1533,9 @@ export const appRouter = router({
           throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to create enrollment' });
         }
 
-        if (appliedCouponId) await db.markCouponUsed(appliedCouponId);
-
         if (ENV.stripeBypass) {
           await db.updateSubscription(subscriptionId, { paymentStatus: 'paid' });
+          if (appliedCouponId) await db.markCouponUsed(appliedCouponId);
           await triggerReferralReward(ctx.user.id);
           return { success: true, subscriptionId, setupUrl: null };
         }
@@ -1635,6 +1629,7 @@ export const appRouter = router({
           discountPercent: totalPct > 0 ? totalPct : undefined,
           discountAmountUsd: promoUsd > 0 ? promoUsd : undefined,
           discountLabel,
+          convertPendingPlanToFull: localSub.paymentPlan !== "full",
         });
 
         return { checkoutUrl: session.url };

@@ -128,7 +128,6 @@ export async function processUsageBilling() {
       if (!parentUserRecord?.stripeCustomerId) {
         for (const line of lines) {
           await db.updateBillingCycle(line.billingCycleId, { status: "failed" });
-          await db.updateSubscription(line.subscriptionId, { billingCycleStart: line.nextStart, billingCycleEnd: line.nextEnd });
         }
         console.error(`[Cron] Group ${groupKey}: no stripeCustomerId for parentId=${firstSub.parentId}`);
         continue;
@@ -154,7 +153,6 @@ export async function processUsageBilling() {
       } catch (stripeErr: any) {
         for (const line of lines) {
           await db.updateBillingCycle(line.billingCycleId, { status: "failed" });
-          await db.updateSubscription(line.subscriptionId, { billingCycleStart: line.nextStart, billingCycleEnd: line.nextEnd });
         }
         console.error(`[Cron] Group ${groupKey}: Stripe invoice failed:`, stripeErr?.message);
       }
