@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -38,14 +38,31 @@ export function CourseManagementTable({ onAssignTutors }: CourseManagementTableP
   const [search, setSearch] = useState("");
   const [subjectFilter, setSubjectFilter] = useState<string | undefined>(undefined);
   const [statusFilter, setStatusFilter] = useState<string | undefined>(undefined);
+  const [letterFilter, setLetterFilter] = useState<string | null>(null);
   const [editingCourse, setEditingCourse] = useState<any>(null);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
 
-  const { data: courses, isLoading, refetch } = trpc.adminCourses.getAllCoursesWithTutors.useQuery({
-    search: search || undefined,
-    subject: subjectFilter || undefined,
-    isActive: statusFilter === "active" ? true : statusFilter === "inactive" ? false : undefined,
-  });
+  const { data: allCourses, isLoading, refetch } = trpc.adminCourses.getAllCoursesWithTutors.useQuery({});
+
+  const courses = useMemo(() => {
+    if (!allCourses) return [];
+    const q = search.toLowerCase().trim();
+    return allCourses
+      .filter((c) => {
+        if (q && !c.title.toLowerCase().includes(q) && !c.description?.toLowerCase().includes(q)) return false;
+        if (subjectFilter && c.subject !== subjectFilter) return false;
+        if (statusFilter === "active" && !c.isActive) return false;
+        if (statusFilter === "inactive" && c.isActive) return false;
+        if (letterFilter && c.title[0]?.toUpperCase() !== letterFilter) return false;
+        return true;
+      })
+      .sort((a, b) => a.title.localeCompare(b.title));
+  }, [allCourses, search, subjectFilter, statusFilter, letterFilter]);
+
+  const activeLetters = useMemo(() => {
+    if (!allCourses) return new Set<string>();
+    return new Set(allCourses.map((c) => c.title[0]?.toUpperCase()).filter(Boolean));
+  }, [allCourses]);
 
   const deleteMutation = trpc.adminCourses.deleteCourse.useMutation({
     onSuccess: () => {
@@ -122,18 +139,53 @@ export function CourseManagementTable({ onAssignTutors }: CourseManagementTableP
             <SelectItem value="inactive">Inactive</SelectItem>
           </SelectContent>
         </Select>
-        {(search || subjectFilter || statusFilter) && (
+        {(search || subjectFilter || statusFilter || letterFilter) && (
           <Button
             variant="outline"
             onClick={() => {
               setSearch("");
               setSubjectFilter(undefined);
               setStatusFilter(undefined);
+              setLetterFilter(null);
             }}
           >
             Clear Filters
           </Button>
         )}
+      </div>
+
+      {/* A–Z letter filter */}
+      <div className="flex flex-wrap items-center gap-1 border rounded-lg px-3 py-2 bg-muted/30">
+        <button
+          onClick={() => setLetterFilter(null)}
+          className={`px-2 py-0.5 rounded text-sm font-medium transition-colors ${
+            letterFilter === null
+              ? "bg-primary text-primary-foreground"
+              : "text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          All
+        </button>
+        {"ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("").map((letter) => {
+          const hasEntries = activeLetters.has(letter);
+          const isActive = letterFilter === letter;
+          return (
+            <button
+              key={letter}
+              onClick={() => hasEntries && setLetterFilter(isActive ? null : letter)}
+              disabled={!hasEntries}
+              className={`px-2 py-0.5 rounded text-sm font-medium transition-colors ${
+                isActive
+                  ? "bg-primary text-primary-foreground"
+                  : hasEntries
+                  ? "text-foreground hover:bg-muted"
+                  : "text-muted-foreground/30 cursor-default"
+              }`}
+            >
+              {letter}
+            </button>
+          );
+        })}
       </div>
 
       {/* Table */}
