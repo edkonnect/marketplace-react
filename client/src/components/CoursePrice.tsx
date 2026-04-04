@@ -15,10 +15,14 @@ export function CoursePrice({ price, priceInr, region = "global", className = ""
   const exchangeRate = useExchangeRate();
 
   if (isIndian) {
-    // Use the stored INR price if available, otherwise fall back to exchange rate conversion
-    const inrAmount = priceInr != null
-      ? (typeof priceInr === "string" ? parseFloat(priceInr) : priceInr)
-      : Math.round(usdAmount * exchangeRate);
+    // India-only: price column already holds INR, use directly
+    // Global with priceInr set: use stored INR value
+    // Otherwise: convert USD → INR via exchange rate
+    const inrAmount = region === "india"
+      ? usdAmount
+      : priceInr != null
+        ? (typeof priceInr === "string" ? parseFloat(priceInr) : priceInr)
+        : Math.round(usdAmount * exchangeRate);
     const inrFormatted = new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(inrAmount);
     return (
       <div className={`flex items-baseline gap-1 ${className}`}>
