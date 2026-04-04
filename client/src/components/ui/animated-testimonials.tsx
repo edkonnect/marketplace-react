@@ -74,7 +74,7 @@ export const AnimatedTestimonials = ({
 
   return (
     <div className="mx-auto max-w-sm px-4 py-6 font-sans antialiased md:max-w-4xl md:px-8 lg:px-12">
-      <div className="relative grid grid-cols-1 gap-10 md:grid-cols-2 md:gap-14">
+      <div className="relative rounded-2xl border border-border bg-card shadow-lg p-6 md:p-10 grid grid-cols-1 gap-10 md:grid-cols-2 md:gap-14">
         {/* Left: Animated initials "cards" stack */}
         <div>
           <div className="relative h-56 w-full">
@@ -157,10 +157,10 @@ export const AnimatedTestimonials = ({
             exit={{ y: -18, opacity: 0 }}
             transition={{ duration: 0.25, ease: "easeInOut" }}
           >
-            <h3 className="text-2xl font-bold text-white">
+            <h3 className="text-2xl font-bold text-foreground">
               {current.name}
             </h3>
-            <p className="text-sm text-white/70">
+            <p className="text-sm text-muted-foreground">
               {current.designation}
             </p>
 
@@ -170,7 +170,7 @@ export const AnimatedTestimonials = ({
               const visibleWords = isTruncatable ? words.slice(0, WORD_LIMIT) : words;
               return (
                 <div className="mt-4">
-                  <motion.p className="text-lg text-white/90">
+                  <motion.p className="text-lg text-foreground/80">
                     {visibleWords.map((word, index) => (
                       <motion.span
                         key={`${word}-${index}`}
@@ -187,13 +187,13 @@ export const AnimatedTestimonials = ({
                       </motion.span>
                     ))}
                     {isTruncatable && (
-                      <span className="inline-block text-white/50">…</span>
+                      <span className="inline-block text-muted-foreground">…</span>
                     )}
                   </motion.p>
                   {isTruncatable && (
                     <button
                       onClick={() => setModalOpen(true)}
-                      className="mt-2 text-sm font-medium text-white/60 hover:text-white/90 transition-colors underline underline-offset-2"
+                      className="mt-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors underline underline-offset-2"
                     >
                       Show more
                     </button>
@@ -224,17 +224,17 @@ export const AnimatedTestimonials = ({
             <button
               onClick={handlePrev}
               aria-label="Previous testimonial"
-              className="group/button flex h-9 w-9 items-center justify-center rounded-full border border-white/30 bg-white/10 backdrop-blur-sm hover:bg-white/20 transition"
+              className="group/button flex h-9 w-9 items-center justify-center rounded-full border border-border bg-background hover:bg-muted transition"
             >
-              <IconArrowLeft className="h-5 w-5 duration-300 group-hover/button:rotate-12" />
+              <IconArrowLeft className="h-5 w-5 text-foreground/70 duration-300 group-hover/button:rotate-12" />
             </button>
 
             <button
               onClick={handleNext}
               aria-label="Next testimonial"
-              className="group/button flex h-9 w-9 items-center justify-center rounded-full border border-white/30 bg-white/10 backdrop-blur-sm hover:bg-white/20 transition"
+              className="group/button flex h-9 w-9 items-center justify-center rounded-full border border-border bg-background hover:bg-muted transition"
             >
-              <IconArrowRight className="h-5 w-5 text-foreground/80 transition-transform duration-300 group-hover/button:-rotate-12" />
+              <IconArrowRight className="h-5 w-5 text-foreground/70 transition-transform duration-300 group-hover/button:-rotate-12" />
             </button>
           </div>
         </div>

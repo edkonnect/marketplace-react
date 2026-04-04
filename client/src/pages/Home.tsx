@@ -42,7 +42,6 @@ import { trpc } from "@/lib/trpc";
 import { motion, type Variants } from "framer-motion";
 import useEmblaCarousel from "embla-carousel-react";
 import { StatNumber } from "@/components/motion-primitives/StatNumber";
-import { AnimatedTestimonials } from "@/components/ui/animated-testimonials";
 
 // Icon mapping for featured courses
 const iconMap: Record<string, React.ComponentType<any>> = {
@@ -133,6 +132,8 @@ export default function Home() {
 
   const scrollPrev = React.useCallback(() => emblaApi?.scrollPrev(), [emblaApi]);
   const scrollNext = React.useCallback(() => emblaApi?.scrollNext(), [emblaApi]);
+
+  const [activeTestimonialModal, setActiveTestimonialModal] = useState<number | null>(null);
 
   const isIndian = useIsIndianUser();
   const exchangeRate = useExchangeRate();
@@ -649,41 +650,137 @@ export default function Home() {
       </motion.section>
 
       {/* Testimonials Section */}
-      <motion.section className="relative overflow-hidden py-8" {...scrollReveal}>
-        {/* Background video */}
-        <video
-          autoPlay
-          loop
-          muted
-          playsInline
-          className="absolute inset-0 w-full h-full object-cover"
-          aria-hidden="true"
-        >
-          <source src="/bgvideo/bgvideo.mp4" type="video/mp4" />
-        </video>
-
-        {/* Dark overlay */}
-        <div className="absolute inset-0 bg-black/70" aria-hidden="true" />
-
-        {/* Content */}
-        <div className="relative z-10 container">
-          <div className="text-center mb-4">
-            <h2 className="text-3xl md:text-4xl font-bold mb-2 text-white drop-shadow-lg">What Parents Are Saying</h2>
-            <p className="text-lg text-white/80 max-w-2xl mx-auto">
+      <motion.section className="py-16 bg-gradient-to-br from-primary/5 via-accent/5 to-background" {...scrollReveal}>
+        <div className="container">
+          <div className="text-center mb-10">
+            <h2 className="text-3xl md:text-4xl font-bold mb-2">What Parents Are Saying</h2>
+            <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
               Hear from families who have transformed their children's learning experience with EdKonnect Academy.
             </p>
           </div>
 
-          <div className="flex items-center justify-center">
-            <div className="w-full max-w-3xl p-2 text-center">
-              {animatedTestimonials.length > 0 ? (
-                <AnimatedTestimonials testimonials={animatedTestimonials} />
-              ) : (
-                <div className="text-white/70 py-8">No testimonials yet.</div>
-              )}
+          {animatedTestimonials.length > 0 ? (
+            <div className="overflow-hidden [mask-image:linear-gradient(to_right,transparent,black_10%,black_90%,transparent)]">
+              <div
+                className="flex gap-5 w-max"
+                style={{ animation: "marquee 30s linear infinite" }}
+                onMouseEnter={e => (e.currentTarget.style.animationPlayState = "paused")}
+                onMouseLeave={e => (e.currentTarget.style.animationPlayState = "running")}
+              >
+                {[...animatedTestimonials, ...animatedTestimonials].map((t, index) => {
+                  const clampedRating = Math.max(0, Math.min(5, Number(t.rating ?? 0)));
+                  const WORD_LIMIT = 30;
+                  const words = t.quote.split(" ");
+                  const isTruncatable = words.length > WORD_LIMIT;
+                  const visibleQuote = isTruncatable
+                    ? words.slice(0, WORD_LIMIT).join(" ") + "…"
+                    : t.quote;
+                  const originalIndex = index % animatedTestimonials.length;
+                  return (
+                    <div key={index} className="flex-none w-[280px] sm:w-[300px]">
+                      <Card className="h-full flex flex-col shadow-sm hover:shadow-md transition-shadow">
+                        <CardContent className="flex flex-col gap-3 p-5 h-full">
+                          {/* Stars */}
+                          <div className="flex items-center gap-1">
+                            {Array.from({ length: clampedRating }).map((_, i) => (
+                              <Star key={i} className="h-3.5 w-3.5 fill-yellow-400 text-yellow-400" />
+                            ))}
+                            {clampedRating < 5 && Array.from({ length: 5 - clampedRating }).map((_, i) => (
+                              <Star key={`e-${i}`} className="h-3.5 w-3.5 text-muted-foreground/30" />
+                            ))}
+                          </div>
+
+                          {/* Quote */}
+                          <div className="flex-1">
+                            <p className="text-sm text-muted-foreground leading-relaxed break-words">
+                              "{visibleQuote}"
+                            </p>
+                            {isTruncatable && (
+                              <button
+                                onClick={() => setActiveTestimonialModal(originalIndex)}
+                                className="mt-1 text-xs font-medium text-primary hover:underline"
+                              >
+                                Show more
+                              </button>
+                            )}
+                          </div>
+
+                          {/* Avatar + Name */}
+                          <div className="flex items-center gap-3 pt-2 border-t border-border">
+                            {t.src ? (
+                              <img
+                                src={t.src}
+                                alt={t.name}
+                                className="h-9 w-9 rounded-full object-cover flex-shrink-0"
+                              />
+                            ) : (
+                              <div className="h-9 w-9 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xs font-bold flex-shrink-0">
+                                {t.initials || "U"}
+                              </div>
+                            )}
+                            <div>
+                              <p className="text-sm font-semibold text-foreground">{t.name}</p>
+                              <p className="text-xs text-muted-foreground">{t.designation}</p>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className="text-muted-foreground py-8 text-center">No testimonials yet.</div>
+          )}
         </div>
+
+        {/* Testimonial full-review modal */}
+        {activeTestimonialModal !== null && (() => {
+          const t = animatedTestimonials[activeTestimonialModal];
+          const clampedRating = Math.max(0, Math.min(5, Number(t.rating ?? 0)));
+          return (
+            <div
+              className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+              onClick={() => setActiveTestimonialModal(null)}
+            >
+              <div
+                className="relative w-full max-w-lg rounded-2xl bg-card border border-border p-6 shadow-2xl"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <button
+                  onClick={() => setActiveTestimonialModal(null)}
+                  aria-label="Close"
+                  className="absolute right-4 top-4 flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground transition"
+                >
+                  ✕
+                </button>
+                <div className="flex items-center gap-3 mb-4">
+                  {t.src ? (
+                    <img src={t.src} alt={t.name} className="h-11 w-11 rounded-full object-cover flex-shrink-0" />
+                  ) : (
+                    <div className="h-11 w-11 rounded-full bg-primary/10 text-primary flex items-center justify-center text-sm font-bold flex-shrink-0">
+                      {t.initials || "U"}
+                    </div>
+                  )}
+                  <div>
+                    <p className="font-semibold text-foreground">{t.name}</p>
+                    <p className="text-sm text-muted-foreground">{t.designation}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-1 mb-3">
+                  {Array.from({ length: clampedRating }).map((_, i) => (
+                    <Star key={i} className="h-4 w-4 fill-yellow-400 text-yellow-400" />
+                  ))}
+                  {clampedRating < 5 && Array.from({ length: 5 - clampedRating }).map((_, i) => (
+                    <Star key={`e-${i}`} className="h-4 w-4 text-muted-foreground/30" />
+                  ))}
+                </div>
+                <p className="text-sm text-muted-foreground leading-7">"{t.quote}"</p>
+              </div>
+            </div>
+          );
+        })()}
       </motion.section>
 
       {/* Features Section */}
