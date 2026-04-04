@@ -348,7 +348,7 @@ export default function TutorDetail() {
                                 )}
                               </div>
                               <div className="ml-4">
-                                <CoursePrice price={course.price} region={course.region ?? "global"} priceClassName="text-xl font-semibold text-primary" />
+                                <CoursePrice price={course.price} priceInr={course.priceInr} region={course.region ?? "global"} priceClassName="text-xl font-semibold text-primary" />
                                 {course.duration && (
                                   <div className="text-xs text-muted-foreground text-right">
                                     {course.duration} min/session

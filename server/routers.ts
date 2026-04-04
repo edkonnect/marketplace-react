@@ -1727,10 +1727,14 @@ export const appRouter = router({
         );
 
         if (isPendingUsageEnrollment) {
+          const perSessionRateCents = localSub.perSessionRateCents;
+          if (perSessionRateCents == null) {
+            throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Subscription is missing per-session rate" });
+          }
           const sessionsPerMonth = (course.sessionsPerWeek ?? 1) * 4;
           const checkoutSession = await createUsageEnrollmentCheckout({
             stripeCustomerId,
-            amountCents: sessionsPerMonth * localSub.perSessionRateCents,
+            amountCents: sessionsPerMonth * perSessionRateCents,
             courseName: course.title,
             courseId: localSub.courseId,
             userId: ctx.user.id,
@@ -5870,6 +5874,7 @@ export const appRouter = router({
         subject: z.string(),
         gradeLevel: z.string().optional(),
         price: z.string(),
+        priceInr: z.string().nullable().optional(),
         duration: z.number().optional(),
         sessionsPerWeek: z.number().optional(),
         totalSessions: z.number().optional(),
@@ -5893,6 +5898,7 @@ export const appRouter = router({
         subject: z.string().optional(),
         gradeLevel: z.string().optional(),
         price: z.string().optional(),
+        priceInr: z.string().optional().nullable(),
         duration: z.number().optional(),
         sessionsPerWeek: z.number().optional(),
         totalSessions: z.number().optional(),

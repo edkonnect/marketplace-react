@@ -21,6 +21,8 @@ export function CourseCreationForm({ onSuccess, editingCourse }: CourseCreationF
   const [region, setRegion] = useState<"global" | "us" | "india">("global");
   const [courseType, setCourseType] = useState<"tutor" | "homework" | "test_prep">("tutor");
   const [selectedGradeLevels, setSelectedGradeLevels] = useState<string[]>([]);
+  const [priceInr, setPriceInr] = useState<string>("");
+  const [priceInrError, setPriceInrError] = useState<string>("");
 
   const emptyValues = {
     title: "",
@@ -64,6 +66,8 @@ export function CourseCreationForm({ onSuccess, editingCourse }: CourseCreationF
     setAiPowered(editingCourse?.aiPowered ?? false);
     setRegion(editingCourse?.region ?? "global");
     setCourseType(editingCourse?.courseType ?? "tutor");
+    setPriceInr(editingCourse?.priceInr?.toString() || "");
+    setPriceInrError("");
     setSelectedGradeLevels(
       editingCourse?.gradeLevel
         ? editingCourse.gradeLevel.split(",").map((g: string) => g.trim()).filter(Boolean)
@@ -98,6 +102,8 @@ export function CourseCreationForm({ onSuccess, editingCourse }: CourseCreationF
     setRegion("global");
     setCourseType("tutor");
     setSelectedGradeLevels([]);
+    setPriceInr("");
+    setPriceInrError("");
   };
 
   const toggleGradeLevel = (grade: string) => {
@@ -109,7 +115,22 @@ export function CourseCreationForm({ onSuccess, editingCourse }: CourseCreationF
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const { isValid } = validateForm();
-    if (!isValid) {
+
+    // Validate INR price for global region
+    let inrValid = true;
+    if (region === "global") {
+      if (!priceInr || priceInr.trim() === "") {
+        setPriceInrError("INR price is required");
+        inrValid = false;
+      } else if (parseFloat(priceInr) <= 0) {
+        setPriceInrError("Price must be greater than 0");
+        inrValid = false;
+      } else {
+        setPriceInrError("");
+      }
+    }
+
+    if (!isValid || !inrValid) {
       toast.error("Please fix the highlighted fields.");
       return;
     }
@@ -122,6 +143,7 @@ export function CourseCreationForm({ onSuccess, editingCourse }: CourseCreationF
       sessionsPerWeek: parseInt(values.sessionsPerWeek),
       totalSessions: parseInt(values.totalSessions),
       price: values.price,
+      priceInr: region === "global" && priceInr ? priceInr : null,
       displayOrder: parseInt(values.displayOrder) || 0,
       aiPowered,
       region,
@@ -214,17 +236,27 @@ export function CourseCreationForm({ onSuccess, editingCourse }: CourseCreationF
               </div>
             </div>
 
-            <FormInput
-              field={register("price")}
-              label="Price ($) *"
-              required
-              type="number"
-              step="0.01"
-              placeholder="99.99"
-            />
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Region</Label>
+              <Select
+                key={`region-${editingCourse?.id ?? "new"}-${region}`}
+                value={region}
+                onValueChange={(v) => { setRegion(v as typeof region); setPriceInrError(""); }}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="global">🌐 Global</SelectItem>
+                  <SelectItem value="us">🇺🇸 US Only</SelectItem>
+                  <SelectItem value="india">🇮🇳 India Only</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          {/* Price fields — dynamic based on region */}
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
             <FormInput
               field={register("duration")}
               label="Duration (minutes)"
@@ -246,7 +278,63 @@ export function CourseCreationForm({ onSuccess, editingCourse }: CourseCreationF
               type="number"
               placeholder="12"
             />
+
+            {region === "us" && (
+              <FormInput
+                field={register("price")}
+                label="Price (USD $) *"
+                required
+                type="number"
+                step="0.01"
+                placeholder="99.99"
+              />
+            )}
+
+            {region === "india" && (
+              <FormInput
+                field={register("price")}
+                label="Price (INR ₹) *"
+                required
+                type="number"
+                step="0.01"
+                placeholder="8499"
+              />
+            )}
+
+            {region === "global" && (
+              <>
+                <FormInput
+                  field={register("price")}
+                  label="Price (USD $) *"
+                  required
+                  type="number"
+                  step="0.01"
+                  placeholder="99.99"
+                />
+              </>
+            )}
           </div>
+
+          {region === "global" && (
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+              <div className="sm:col-start-4">
+                <div className="space-y-1.5">
+                  <Label className="text-sm font-medium">Price (INR ₹) *</Label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    placeholder="8499"
+                    value={priceInr}
+                    onChange={(e) => { setPriceInr(e.target.value); setPriceInrError(""); }}
+                    className={`flex h-9 w-full rounded-md border bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ${priceInrError ? "border-destructive focus-visible:ring-destructive" : "border-input"}`}
+                  />
+                  {priceInrError && (
+                    <p className="text-xs text-destructive">{priceInrError}</p>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <FormInput
@@ -283,20 +371,6 @@ export function CourseCreationForm({ onSuccess, editingCourse }: CourseCreationF
               <Label htmlFor="aiPowered" className="cursor-pointer">
                 AI Powered
               </Label>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <Label className="text-sm font-medium">Region</Label>
-              <Select key={`region-${editingCourse?.id ?? "new"}-${region}`} value={region} onValueChange={(v) => setRegion(v as typeof region)}>
-                <SelectTrigger className="w-36">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="global">🌐 Global</SelectItem>
-                  <SelectItem value="us">🇺🇸 US Only</SelectItem>
-                  <SelectItem value="india">🇮🇳 India Only</SelectItem>
-                </SelectContent>
-              </Select>
             </div>
 
             <div className="flex items-center gap-2">

@@ -201,7 +201,7 @@ export default function CourseListing() {
                             </Badge>
                           )}
                         </div>
-                        <CoursePrice price={course.price} region={course.region ?? "global"} priceClassName="text-2xl font-bold text-primary" />
+                        <CoursePrice price={course.price} priceInr={course.priceInr} region={course.region ?? "global"} priceClassName="text-2xl font-bold text-primary" />
                       </div>
                       <CardTitle className="text-xl">{course.title}</CardTitle>
                       {course.gradeLevel && (

@@ -205,6 +205,7 @@ export const courses = mysqlTable("courses", {
   subject: varchar("subject", { length: 100 }).notNull(),
   gradeLevel: text("gradeLevel"),
   price: decimal("price", { precision: 10, scale: 2 }).notNull(),
+  priceInr: decimal("priceInr", { precision: 10, scale: 2 }),
   duration: int("duration"), // Duration in minutes per session
   sessionsPerWeek: int("sessionsPerWeek").default(1),
   totalSessions: int("totalSessions"), // Total sessions in package

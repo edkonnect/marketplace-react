@@ -481,7 +481,7 @@ export default function CourseDetail() {
               <Card className="sticky top-24 border-2 z-20 bg-background">
                 <CardHeader>
                   <div className="flex items-baseline gap-2 mb-2">
-                    <CoursePrice price={price} region={course.region ?? "global"} priceClassName="text-4xl font-bold text-primary" />
+                    <CoursePrice price={price} priceInr={course.priceInr} region={course.region ?? "global"} priceClassName="text-4xl font-bold text-primary" />
                     {course.totalSessions && (
                       <span className="text-sm text-muted-foreground">
                         / {course.totalSessions} sessions
