@@ -2041,7 +2041,7 @@ export const appRouter = router({
           </div>`;
 
         await emailService.sendEmail({
-          to: 'giteshvs307@gmail.com',
+          to: 'support@edkonnect-academy.com',
           subject: `Cancellation Request – ${courseName} – ${parentName}`,
           html,
         });
