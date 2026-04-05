@@ -1,7 +1,11 @@
 import { GraduationCap } from "lucide-react";
 import { Link } from "wouter";
+import { useState } from "react";
+import { CancelSubscriptionModal } from "./CancelSubscriptionModal";
 
 export default function Footer() {
+  const [cancelModalOpen, setCancelModalOpen] = useState(false);
+
   return (
     <footer className="border-t border-border/50 py-12 bg-muted/30">
       <div className="container">
@@ -33,6 +37,14 @@ export default function Footer() {
                 <Link href="/signup" className="hover:text-primary transition-colors">
                   Sign Up
                 </Link>
+              </li>
+              <li>
+                <button
+                  onClick={() => setCancelModalOpen(true)}
+                  className="hover:text-primary transition-colors text-left"
+                >
+                  Cancel Subscription
+                </button>
               </li>
             </ul>
           </div>
@@ -84,6 +96,8 @@ export default function Footer() {
           <p>© 2026 EdKonnect Academy. All rights reserved.</p>
         </div>
       </div>
+
+      <CancelSubscriptionModal open={cancelModalOpen} onOpenChange={setCancelModalOpen} />
     </footer>
   );
 }

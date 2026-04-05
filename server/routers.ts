@@ -1993,6 +1993,62 @@ export const appRouter = router({
         return { success: true };
       }),
 
+    requestCancellation: parentProcedure
+      .input(z.object({
+        subscriptionId: z.number(),
+        reason: z.string().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const subscription = await db.getSubscriptionById(input.subscriptionId);
+        if (!subscription) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'Subscription not found' });
+        }
+        if (subscription.parentId !== ctx.user.id) {
+          throw new TRPCError({ code: 'FORBIDDEN', message: 'Not authorized' });
+        }
+
+        const [course, sessionStats] = await Promise.all([
+          db.getCourseById(subscription.courseId),
+          db.getSessionStatsBySubscription(input.subscriptionId),
+        ]);
+        const studentName = [subscription.studentFirstName, subscription.studentLastName].filter(Boolean).join(' ') || 'N/A';
+        const parentName = ctx.user.name || ctx.user.email;
+        const courseName = course?.title || `Course ID ${subscription.courseId}`;
+        const enrollmentDate = subscription.startDate
+          ? new Date(subscription.startDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
+          : 'N/A';
+        const totalCourseSessions = course?.totalSessions ?? 0;
+        const completedSessions = sessionStats?.completedCount ?? 0;
+        const sessionsProgress = totalCourseSessions > 0
+          ? `${completedSessions} of ${totalCourseSessions} sessions completed`
+          : completedSessions > 0 ? `${completedSessions} sessions completed` : 'No sessions completed yet';
+
+        const html = `
+          <div style="font-family:sans-serif;max-width:600px;margin:0 auto">
+            <h2 style="color:#dc2626">Subscription Cancellation Request</h2>
+            <table style="width:100%;border-collapse:collapse">
+              <tr><td style="padding:8px;font-weight:bold;width:160px">Parent</td><td style="padding:8px">${parentName}</td></tr>
+              <tr style="background:#f9f9f9"><td style="padding:8px;font-weight:bold">Parent Email</td><td style="padding:8px">${ctx.user.email}</td></tr>
+              <tr><td style="padding:8px;font-weight:bold">Course</td><td style="padding:8px">${courseName}</td></tr>
+              <tr style="background:#f9f9f9"><td style="padding:8px;font-weight:bold">Student</td><td style="padding:8px">${studentName}${subscription.studentGrade ? ` (Grade ${subscription.studentGrade})` : ''}</td></tr>
+              <tr><td style="padding:8px;font-weight:bold">Enrollment Start Date</td><td style="padding:8px">${enrollmentDate}</td></tr>
+              <tr style="background:#f9f9f9"><td style="padding:8px;font-weight:bold">Sessions Progress</td><td style="padding:8px">${sessionsProgress}</td></tr>
+              <tr><td style="padding:8px;font-weight:bold">Payment Plan</td><td style="padding:8px">${subscription.paymentPlan || 'N/A'}</td></tr>
+              <tr style="background:#f9f9f9"><td style="padding:8px;font-weight:bold">Reason</td><td style="padding:8px">${input.reason?.trim() || 'No reason provided'}</td></tr>
+              <tr><td style="padding:8px;font-weight:bold">Requested At</td><td style="padding:8px">${new Date().toUTCString()}</td></tr>
+            </table>
+            <p style="margin-top:24px;color:#666;font-size:13px">Please review and process this cancellation request at your earliest convenience.</p>
+          </div>`;
+
+        await emailService.sendEmail({
+          to: 'giteshvs307@gmail.com',
+          subject: `Cancellation Request – ${courseName} – ${parentName}`,
+          html,
+        });
+
+        return { success: true };
+      }),
+
     updateProgressStatus: protectedProcedure
       .input(z.object({
         id: z.number(),

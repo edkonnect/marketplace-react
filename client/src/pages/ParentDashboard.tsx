@@ -352,6 +352,7 @@ export default function ParentDashboard() {
   }, []);
 
   const activeSubscriptions = subscriptions?.filter(s => s.subscription.status === "active") || [];
+  const inactiveSubscriptions = subscriptions?.filter(s => s.subscription.status !== "active") || [];
   const completedSessions = sessionHistory?.filter(s => s.status === "completed") || [];
 
   const [selectedHistoryStudent, setSelectedHistoryStudent] = useState<string>("all");
@@ -364,6 +365,7 @@ export default function ParentDashboard() {
   const [selectedSessionTime, setSelectedSessionTime] = useState<string>("all");
   const [selectedSessionCourse, setSelectedSessionCourse] = useState<string>("all");
   const [subscriptionSearchQuery, setSubscriptionSearchQuery] = useState("");
+  const [courseStatusView, setCourseStatusView] = useState<"active" | "inactive">("active");
   const [activeStudentTab, setActiveStudentTab] = useState(0);
   const [showSubsModal, setShowSubsModal] = useState(false);
   const [showBillingModal, setShowBillingModal] = useState(false);
@@ -700,6 +702,42 @@ export default function ParentDashboard() {
       }));
   }, [activeSubscriptions]);
 
+  const groupedInactiveSubscriptionsForTab = useMemo(() => {
+    const groups = new Map<string, {
+      studentName: string;
+      grades: Set<string>;
+      items: any[];
+      activeCount: number;
+      actionRequiredCount: number;
+    }>();
+
+    inactiveSubscriptions.forEach((entry: any) => {
+      const studentName = getStudentName(entry.subscription);
+      const existing = groups.get(studentName) ?? {
+        studentName,
+        grades: new Set<string>(),
+        items: [],
+        activeCount: 0,
+        actionRequiredCount: 0,
+      };
+      if (entry.subscription.studentGrade) {
+        existing.grades.add(String(entry.subscription.studentGrade));
+      }
+      existing.items.push(entry);
+      groups.set(studentName, existing);
+    });
+
+    return Array.from(groups.values())
+      .sort((a, b) => a.studentName.localeCompare(b.studentName))
+      .map((group) => ({
+        ...group,
+        gradeLabel: group.grades.size === 1 ? `Grade ${Array.from(group.grades)[0]}` : null,
+        items: [...group.items].sort((a, b) =>
+          (a.course?.title ?? "").localeCompare(b.course?.title ?? "")
+        ),
+      }));
+  }, [inactiveSubscriptions]);
+
   const filteredGroupedSubscriptionsForTab = useMemo(() => {
     const query = subscriptionSearchQuery.trim().toLowerCase();
     if (!query) return groupedSubscriptionsForTab;
@@ -955,6 +993,16 @@ export default function ParentDashboard() {
                 </div>
 
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                  <Select value={courseStatusView} onValueChange={(v) => setCourseStatusView(v as "active" | "inactive")}>
+                    <SelectTrigger className="w-[220px]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="active">Active Courses ({activeSubscriptions.length})</SelectItem>
+                      <SelectItem value="inactive">Inactive / Completed ({inactiveSubscriptions.length})</SelectItem>
+                    </SelectContent>
+                  </Select>
+
                   <div className="relative w-full sm:w-[340px]">
                     <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                     <Input
@@ -975,9 +1023,21 @@ export default function ParentDashboard() {
                 <div className="space-y-4">
                   {[1, 2].map(i => <Skeleton key={i} className="h-48 w-full" />)}
                 </div>
-              ) : activeSubscriptions.length > 0 ? (
-                <div className="space-y-6">
-                  {filteredGroupedSubscriptionsForTab.length === 0 ? (
+              ) : (
+                <div className="space-y-4">
+
+                  {courseStatusView === "active" ? (
+                  <>
+                  {activeSubscriptions.length === 0 ? (
+                    <Card>
+                      <CardContent className="py-10 text-center">
+                        <BookOpen className="mx-auto mb-3 h-10 w-10 text-muted-foreground" />
+                        <h3 className="text-base font-semibold">No Active Courses</h3>
+                        <p className="mt-1 text-sm text-muted-foreground mb-4">Start your learning journey by finding a tutor</p>
+                        <Button asChild size="sm"><Link href="/tutors">Browse Tutors</Link></Button>
+                      </CardContent>
+                    </Card>
+                  ) : filteredGroupedSubscriptionsForTab.length === 0 ? (
                     <Card>
                       <CardContent className="py-14 text-center">
                         <BookOpen className="mx-auto mb-4 h-12 w-12 text-muted-foreground" />
@@ -1189,20 +1249,68 @@ export default function ParentDashboard() {
                     </section>
                     );
                   })}
+                  </>
+                  ) : (
+                  <div className="space-y-6">
+                        {groupedInactiveSubscriptionsForTab.map(({ studentName, gradeLabel, items }) => {
+                          const useHorizontalScroll = items.length > 2;
+                          return (
+                            <section key={studentName} className="space-y-3">
+                              <div className="flex flex-col gap-2 border-b border-border/70 pb-3 sm:flex-row sm:items-end sm:justify-between">
+                                <div>
+                                  <h3 className="text-lg font-semibold tracking-tight">{studentName}</h3>
+                                  {gradeLabel && <p className="mt-0.5 text-sm text-muted-foreground">{gradeLabel}</p>}
+                                </div>
+                                <p className="text-sm text-muted-foreground">
+                                  {items.length} {items.length === 1 ? "course" : "courses"}
+                                </p>
+                              </div>
+                              <div className={cn(
+                                "grid gap-4",
+                                useHorizontalScroll
+                                  ? "flex snap-x snap-mandatory overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                                  : items.length === 1 ? "grid-cols-1 max-w-sm" : "grid-cols-1 sm:grid-cols-2"
+                              )}>
+                                {items.map(({ subscription, course, tutor }: any) => {
+                                  const primaryStatus = getPrimaryStatusBadge(subscription);
+                                  return (
+                                    <Card
+                                      key={subscription.id}
+                                      className={cn(
+                                        "flex h-full flex-col border-border/60 shadow-sm opacity-80",
+                                        useHorizontalScroll && "snap-start flex-none w-[300px] sm:w-[340px]"
+                                      )}
+                                    >
+                                      <CardHeader className="space-y-3 p-5 pb-3">
+                                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                                          <div className="space-y-1">
+                                            <CardTitle className="text-lg leading-tight">{course.title}</CardTitle>
+                                            <CardDescription className="text-sm">
+                                              with <span className="font-medium text-foreground">{tutor?.name ?? "Tutor"}</span>
+                                            </CardDescription>
+                                          </div>
+                                          <Badge variant="secondary" className={`text-[11px] ${primaryStatus.className}`}>
+                                            {primaryStatus.label}
+                                          </Badge>
+                                        </div>
+                                      </CardHeader>
+                                      <CardContent className="flex flex-col gap-3 p-5 pt-0">
+                                        <div className="flex gap-2">
+                                          <Button asChild variant="outline" size="sm" className="flex-1">
+                                            <Link href={`/course/${course.id}`}>View Course</Link>
+                                          </Button>
+                                        </div>
+                                      </CardContent>
+                                    </Card>
+                                  );
+                                })}
+                              </div>
+                            </section>
+                          );
+                        })}
+                  </div>
+                  )}
                 </div>
-              ) : (
-                <Card>
-                  <CardContent className="py-16 text-center">
-                    <BookOpen className="w-16 h-16 mx-auto mb-4 text-muted-foreground" />
-                    <h3 className="text-xl font-semibold mb-2">No Active Subscriptions</h3>
-                    <p className="text-muted-foreground mb-6">
-                      Start your learning journey by finding a tutor
-                    </p>
-                    <Button asChild>
-                      <Link href="/tutors">Browse Tutors</Link>
-                    </Button>
-                  </CardContent>
-                </Card>
               )}
             </TabsContent>
 
