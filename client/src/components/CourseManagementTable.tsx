@@ -217,7 +217,7 @@ export function CourseManagementTable({ onAssignTutors }: CourseManagementTableP
                   </TableCell>
                   <TableCell>{course.subject}</TableCell>
                   <TableCell>{course.gradeLevel ? course.gradeLevel.split(",").map((g: string) => g.trim()).join(", ") : "—"}</TableCell>
-                  <TableCell>${course.price}</TableCell>
+                  <TableCell>{course.region === "india" ? "₹" : "$"}{course.price}</TableCell>
                   <TableCell>
                     {course.region === "us" ? "🇺🇸 US" : course.region === "india" ? "🇮🇳 India" : "🌐 Global"}
                   </TableCell>
