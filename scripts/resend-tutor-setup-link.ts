@@ -54,6 +54,8 @@ async function main() {
   console.log(`\nSetup URL (valid 48h): ${setupUrl}\n`);
 
   const { sendPasswordSetupEmail } = await import("../server/email-helpers");
+  const { emailService } = await import("../server/email-service");
+  await emailService.ready();
   const emailSent = await sendPasswordSetupEmail({
     tutorEmail: user.email,
     tutorName: user.name || 'Tutor',

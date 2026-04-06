@@ -16,9 +16,14 @@ interface EmailOptions {
 class EmailService {
   private transporter: Transporter | null = null;
   private isConfigured: boolean = false;
+  private initPromise: Promise<void>;
 
   constructor() {
-    this.initialize();
+    this.initPromise = this.initialize();
+  }
+
+  async ready(): Promise<void> {
+    return this.initPromise;
   }
 
   private async initialize() {

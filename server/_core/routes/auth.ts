@@ -449,12 +449,18 @@ authRouter.post("/resend-setup-link", async (req, res) => {
   // Send email
   try {
     const { sendPasswordSetupEmail } = await import('../../email-helpers');
-    await sendPasswordSetupEmail({
+    const emailSent = await sendPasswordSetupEmail({
       tutorEmail: user.email,
       tutorName: user.name || 'Tutor',
       setupUrl,
       expiresAt,
     });
+    if (!emailSent) {
+      console.error('[ResendSetupLink] Email service returned false for:', user.email);
+      return res.status(500).json({
+        error: "Failed to send setup link. Please try again later."
+      });
+    }
   } catch (error) {
     console.error('[ResendSetupLink] Failed to send email:', error);
     return res.status(500).json({
