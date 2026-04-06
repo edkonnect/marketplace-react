@@ -1,76 +1,119 @@
 import Navigation from "@/components/Navigation";
 import Footer from "@/components/Footer";
 import { CoursePrice } from "@/components/CoursePrice";
-import { useFormatPrice } from "@/hooks/useFormatPrice";
 import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useParams, Link, useLocation } from "wouter";
 import { ChevronDown, ChevronUp, ArrowLeft } from "lucide-react";
-import { Star, BookOpen, Clock, MessageSquare, Calendar as CalendarIcon, Mail } from "lucide-react";
+import { Star, BookOpen, Clock, Calendar as CalendarIcon, Mail } from "lucide-react";
 import { VideoPlayerWithRecommendations } from "@/components/VideoPlayerWithRecommendations";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { LOGIN_PATH } from "@/const";
-import AvailabilityCalendar from "@/components/AvailabilityCalendar";
 import TutorAvailabilityDisplay from "@/components/TutorAvailabilityDisplay";
+import {
+  convertFromUTC,
+  createTimestamp,
+  detectUserTimezone,
+  formatSessionTime,
+  getTimezoneAbbreviation,
+} from "@/../../shared/timezone-utils";
 
-// Convert a HH:MM time string from tutorTz to the viewer's local timezone.
-// Returns { time: "HH:MM", dayOffset: -1|0|1 } — dayOffset indicates if the
-// converted time falls on the previous (-1) or next (+1) day.
-function convertSlotToViewerTz(
-  timeStr: string,
-  dayOfWeek: number,
-  tutorTz: string
-): { time: string; dayOfWeek: number } {
-  try {
-    const [hour, minute] = timeStr.split(":").map(Number);
-    // Use an arbitrary reference week starting on Sunday 2024-01-07
-    const refSunday = new Date("2024-01-07T00:00:00");
-    const refDate = new Date(refSunday);
-    refDate.setDate(refSunday.getDate() + dayOfWeek);
+type AvailabilitySlot = {
+  id: number;
+  dayOfWeek: number;
+  startTime: string;
+  endTime: string;
+  isActive: boolean;
+};
 
-    // Build an ISO string representing this time in the tutor's timezone
-    // by formatting the date in tutor tz and replacing the time portion
-    const isoDatePart = refDate.toISOString().substring(0, 10);
-    const paddedHour = String(hour).padStart(2, "0");
-    const paddedMin = String(minute).padStart(2, "0");
+type DisplayAvailabilitySlot = AvailabilitySlot & {
+  key: string;
+  sortKey: number;
+};
 
-    // Create a Date that represents the wall-clock time in tutorTz
-    const localStr = `${isoDatePart}T${paddedHour}:${paddedMin}:00`;
-    const tutorDate = new Date(
-      new Intl.DateTimeFormat("en-CA", {
-        timeZone: tutorTz,
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-      })
-        .format(new Date(localStr))
-        .replace(/\//g, "-") + `T${paddedHour}:${paddedMin}:00`
+function convertWeeklyAvailabilityToTimezone(
+  availability: AvailabilitySlot[],
+  tutorTimezone: string,
+  viewerTimezone: string
+): DisplayAvailabilitySlot[] {
+  const convertedSlots: DisplayAvailabilitySlot[] = [];
+
+  for (const slot of availability) {
+    if (!slot.isActive) continue;
+
+    const [startHour, startMinute] = slot.startTime.split(":").map(Number);
+    const [endHour, endMinute] = slot.endTime.split(":").map(Number);
+
+    const startUTC = createTimestamp(2024, 0, 7 + slot.dayOfWeek, startHour, startMinute, tutorTimezone);
+    let endUTC = createTimestamp(2024, 0, 7 + slot.dayOfWeek, endHour, endMinute, tutorTimezone);
+
+    if (endUTC <= startUTC) {
+      endUTC += 24 * 60 * 60 * 1000;
+    }
+
+    const viewerStart = convertFromUTC(startUTC, viewerTimezone);
+    const viewerEnd = convertFromUTC(endUTC, viewerTimezone);
+    const startDayOfWeek = viewerStart.getDay();
+    const endDayOfWeek = viewerEnd.getDay();
+    const startLabel = formatSessionTime(startUTC, viewerTimezone, "HH:mm");
+    const endLabel = formatSessionTime(endUTC, viewerTimezone, "HH:mm");
+    const startSortKey = viewerStart.getHours() * 60 + viewerStart.getMinutes();
+
+    if (startDayOfWeek === endDayOfWeek) {
+      convertedSlots.push({
+        ...slot,
+        key: `${slot.id}-${startDayOfWeek}-${startLabel}-${endLabel}`,
+        dayOfWeek: startDayOfWeek,
+        startTime: startLabel,
+        endTime: endLabel,
+        sortKey: startSortKey,
+      });
+      continue;
+    }
+
+    const endOfStartDayUTC = createTimestamp(
+      viewerStart.getFullYear(),
+      viewerStart.getMonth(),
+      viewerStart.getDate(),
+      23,
+      59,
+      viewerTimezone
+    );
+    const startOfEndDayUTC = createTimestamp(
+      viewerEnd.getFullYear(),
+      viewerEnd.getMonth(),
+      viewerEnd.getDate(),
+      0,
+      0,
+      viewerTimezone
     );
 
-    // Convert to viewer's local timezone using Intl
-    const viewerTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    const formatter = new Intl.DateTimeFormat("en-US", {
-      timeZone: viewerTz,
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false,
-      weekday: "long",
+    convertedSlots.push({
+      ...slot,
+      key: `${slot.id}-${startDayOfWeek}-${startLabel}-split-start`,
+      dayOfWeek: startDayOfWeek,
+      startTime: startLabel,
+      endTime: formatSessionTime(endOfStartDayUTC, viewerTimezone, "HH:mm"),
+      sortKey: startSortKey,
     });
-    const parts = formatter.formatToParts(tutorDate);
-    const timePart = parts.find(p => p.type === "hour")!.value + ":" + parts.find(p => p.type === "minute")!.value;
-    const weekdayPart = parts.find(p => p.type === "weekday")!.value;
-    const weekdayMap: Record<string, number> = {
-      Sunday: 0, Monday: 1, Tuesday: 2, Wednesday: 3,
-      Thursday: 4, Friday: 5, Saturday: 6,
-    };
-    return { time: timePart, dayOfWeek: weekdayMap[weekdayPart] ?? dayOfWeek };
-  } catch {
-    return { time: timeStr, dayOfWeek };
+    convertedSlots.push({
+      ...slot,
+      key: `${slot.id}-${endDayOfWeek}-${endLabel}-split-end`,
+      dayOfWeek: endDayOfWeek,
+      startTime: formatSessionTime(startOfEndDayUTC, viewerTimezone, "HH:mm"),
+      endTime: endLabel,
+      sortKey: 0,
+    });
   }
+
+  return convertedSlots.sort((a, b) => {
+    if (a.dayOfWeek !== b.dayOfWeek) return a.dayOfWeek - b.dayOfWeek;
+    return a.sortKey - b.sortKey;
+  });
 }
 
 const DAYS_OF_WEEK = [
@@ -91,7 +134,6 @@ export default function TutorDetail() {
   const [, navigate] = useLocation();
   const [showAllCourses, setShowAllCourses] = useState(false);
   const COURSES_PREVIEW = 3;
-  const formatPrice = useFormatPrice();
 
   const { data: tutorProfile, isLoading: profileLoading } = trpc.tutorProfile.get.useQuery(
     { userId: tutorId },
@@ -113,6 +155,21 @@ export default function TutorDetail() {
   });
   
   const displayCourses = coursesData || [];
+  const tutorTz = tutorProfile ? ((tutorProfile as any).businessTimezone || (tutorProfile as any).timezone || null) : null;
+  const viewerTz = user?.timezone || detectUserTimezone();
+  const viewerTzAbbr = useMemo(() => getTimezoneAbbreviation(viewerTz), [viewerTz]);
+  const convertedAvailability = useMemo(() => {
+    const activeAvailability = (availability ?? []).filter((slot) => slot.isActive);
+    if (!activeAvailability.length) return [];
+    if (!tutorTz) {
+      return activeAvailability.map((slot) => ({
+        ...slot,
+        key: `${slot.id}-${slot.dayOfWeek}-${slot.startTime}-${slot.endTime}`,
+        sortKey: Number.parseInt(slot.startTime.slice(0, 2), 10) * 60 + Number.parseInt(slot.startTime.slice(3, 5), 10),
+      }));
+    }
+    return convertWeeklyAvailabilityToTimezone(activeAvailability, tutorTz, viewerTz);
+  }, [availability, tutorTz, viewerTz]);
 
   const parseSubjects = (subjects: string | null) => {
     if (!subjects) return [];
@@ -175,25 +232,6 @@ export default function TutorDetail() {
   const subjects = parseSubjects(tutorProfile.subjects);
   const gradeLevels = parseGradeLevels(tutorProfile.gradeLevels);
   const rating = tutorProfile.rating ? parseFloat(tutorProfile.rating) : 0;
-  const hourlyRate = tutorProfile.hourlyRate ? parseFloat(tutorProfile.hourlyRate) : 0;
-
-  const tutorTz = tutorProfile ? ((tutorProfile as any).businessTimezone || (tutorProfile as any).timezone || null) : null;
-  const viewerTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  const viewerTzAbbr = new Intl.DateTimeFormat("en-US", { timeZone: viewerTz, timeZoneName: "short" })
-    .formatToParts(new Date())
-    .find(p => p.type === "timeZoneName")?.value ?? viewerTz;
-  const tzConversionAvailable = !!tutorTz && tutorTz !== viewerTz;
-
-  // Re-map availability slots to viewer's timezone when conversion is possible
-  const convertedAvailability = availability && tzConversionAvailable
-    ? availability
-        .filter(slot => slot.isActive)
-        .map(slot => {
-          const start = convertSlotToViewerTz(slot.startTime, slot.dayOfWeek, tutorTz);
-          const end = convertSlotToViewerTz(slot.endTime, slot.dayOfWeek, tutorTz);
-          return { ...slot, startTime: start.time, endTime: end.time, dayOfWeek: start.dayOfWeek };
-        })
-    : availability?.filter(slot => slot.isActive) ?? [];
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
@@ -406,7 +444,12 @@ export default function TutorDetail() {
             <div className="space-y-6">
               {/* Available Slots (Next 7 Days) */}
               {availability && availability.length > 0 && (
-                <TutorAvailabilityDisplay availability={availability} tutorId={tutorId} />
+                <TutorAvailabilityDisplay
+                  availability={availability}
+                  tutorId={tutorId}
+                  tutorTimezone={tutorTz}
+                  viewerTimezone={viewerTz}
+                />
               )}
 
               {/* General Weekly Availability */}
@@ -418,11 +461,9 @@ export default function TutorDetail() {
                       General Availability
                     </CardTitle>
                     <CardDescription>
-                      {tzConversionAvailable
-                        ? `Times shown in your timezone (${viewerTzAbbr})`
-                        : tutorTz
-                          ? `Times in tutor's timezone (${tutorTz})`
-                          : tutorProfile.name ? `${tutorProfile.name}'s usual weekly schedule` : "Usual weekly schedule"}
+                      {tutorTz && tutorTz !== viewerTz
+                        ? `Times shown in your timezone (${viewerTzAbbr}). Tutor schedule is set in ${tutorTz}.`
+                        : `Times shown in your timezone (${viewerTzAbbr})`}
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
@@ -447,7 +488,7 @@ export default function TutorDetail() {
                               {daySlots.length > 0 ? (
                                 <div className="space-y-1">
                                   {daySlots.map(slot => (
-                                    <div key={slot.id} className="flex items-center gap-2 text-sm">
+                                    <div key={slot.key} className="flex items-center gap-2 text-sm">
                                       <Clock className="w-3 h-3 text-primary" />
                                       <span>{slot.startTime} - {slot.endTime}</span>
                                     </div>

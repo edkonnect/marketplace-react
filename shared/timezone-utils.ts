@@ -71,6 +71,29 @@ export function formatWithTimezoneAbbr(
 }
 
 /**
+ * Get a timezone abbreviation for a specific timezone at a specific moment
+ * (for example "EDT" or "IST").
+ */
+export function getTimezoneAbbreviation(
+  timezone: string,
+  timestampMs: number = Date.now()
+): string {
+  try {
+    return (
+      new Intl.DateTimeFormat('en-US', {
+        timeZone: timezone,
+        timeZoneName: 'short',
+      })
+        .formatToParts(new Date(timestampMs))
+        .find((part) => part.type === 'timeZoneName')?.value ?? timezone
+    );
+  } catch (error) {
+    console.error('Error getting timezone abbreviation:', error);
+    return timezone;
+  }
+}
+
+/**
  * Format time for email notifications (full date with timezone)
  */
 export function formatEmailTime(
