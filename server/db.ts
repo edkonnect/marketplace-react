@@ -2278,7 +2278,7 @@ export async function createConversation(conversation: InsertConversationPayload
 
     return insertId;
   } catch (error: any) {
-    if (error?.code === "ER_DUP_ENTRY") {
+    if (error?.code === "ER_DUP_ENTRY" || error?.cause?.code === "ER_DUP_ENTRY") {
       return await getExistingConversationId(conversationToInsert);
     }
     throw error;
