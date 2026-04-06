@@ -117,6 +117,68 @@ const listItemReveal: Variants = {
   }),
 };
 
+const faqBulletPattern = /^\s*[-*•]\s+(.+)$/;
+
+function renderFaqAnswer(answer: string) {
+  const blocks: Array<
+    | { type: "paragraph"; lines: string[] }
+    | { type: "list"; items: string[] }
+  > = [];
+  let paragraphLines: string[] = [];
+  let listItems: string[] = [];
+
+  const flushParagraph = () => {
+    if (paragraphLines.length === 0) return;
+    blocks.push({ type: "paragraph", lines: paragraphLines });
+    paragraphLines = [];
+  };
+
+  const flushList = () => {
+    if (listItems.length === 0) return;
+    blocks.push({ type: "list", items: listItems });
+    listItems = [];
+  };
+
+  for (const rawLine of answer.split(/\r?\n/)) {
+    const trimmedLine = rawLine.trim();
+
+    if (!trimmedLine) {
+      flushParagraph();
+      flushList();
+      continue;
+    }
+
+    const bulletMatch = trimmedLine.match(faqBulletPattern);
+    if (bulletMatch) {
+      flushParagraph();
+      listItems.push(bulletMatch[1].trim());
+      continue;
+    }
+
+    flushList();
+    paragraphLines.push(trimmedLine);
+  }
+
+  flushParagraph();
+  flushList();
+
+  return blocks.map((block, blockIndex) => {
+    if (block.type === "list") {
+      return (
+        <ul key={`faq-list-${blockIndex}`} className="list-disc space-y-2 pl-6 marker:text-foreground/70">
+          {block.items.map((item, itemIndex) => (
+            <li key={`faq-list-item-${blockIndex}-${itemIndex}`}>{item}</li>
+          ))}
+        </ul>
+      );
+    }
+
+    return block.lines.map((line, lineIndex) => (
+      <p key={`faq-paragraph-${blockIndex}-${lineIndex}`}>{line}</p>
+    ));
+  });
+}
+
 export default function Home() {
   const { isAuthenticated, user } = useAuth();
   const formatPrice = useFormatPrice();
@@ -963,8 +1025,8 @@ export default function Home() {
                     <AccordionTrigger className="text-left hover:no-underline">
                       <span className="font-semibold text-base lg:text-lg">{faq.question}</span>
                     </AccordionTrigger>
-                    <AccordionContent className="text-muted-foreground leading-relaxed">
-                      {faq.answer}
+                    <AccordionContent className="space-y-4 text-muted-foreground leading-relaxed">
+                      {renderFaqAnswer(faq.answer)}
                     </AccordionContent>
                   </AccordionItem>
                 ))}
@@ -1214,4 +1276,3 @@ export default function Home() {
     </div>
   );
 }
-
