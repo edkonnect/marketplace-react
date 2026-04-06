@@ -2244,34 +2244,45 @@ function buildConversationInsert(conversation: InsertConversationPayload): Inser
   };
 }
 
+async function getExistingConversationId(conversation: InsertConversation) {
+  if (conversation.conversationType === 'parent_coordinator' && conversation.coordinatorId) {
+    const fetched = await getConversationByParentAndCoordinator(conversation.parentId, conversation.coordinatorId);
+    return fetched ? fetched.id : null;
+  }
+  if (conversation.conversationType === 'parent_tutor_inquiry' && conversation.tutorId) {
+    const fetched = await getConversationByParentAndTutorInquiry(conversation.parentId, conversation.tutorId);
+    return fetched ? fetched.id : null;
+  }
+  const fetched = await getConversationByStudentAndTutor(
+    conversation.parentId,
+    conversation.tutorId!,
+    conversation.studentId!
+  );
+  return fetched ? fetched.id : null;
+}
+
 export async function createConversation(conversation: InsertConversationPayload) {
   const db = await getDb();
   if (!db) return null;
 
   const conversationToInsert = buildConversationInsert(conversation);
-  const result = await db.insert(conversations).values(conversationToInsert) as any;
-  const rawId = result?.[0]?.insertId ?? (result as any)?.insertId;
-  const insertId = rawId ? Number(rawId) : null;
+  try {
+    const result = await db.insert(conversations).values(conversationToInsert) as any;
+    const rawId = result?.[0]?.insertId ?? (result as any)?.insertId;
+    const insertId = rawId ? Number(rawId) : null;
 
-  if (!insertId) {
-    // Driver didn't return insertId — fetch the row we just inserted
-    if (conversationToInsert.conversationType === 'parent_coordinator' && conversationToInsert.coordinatorId) {
-      const fetched = await getConversationByParentAndCoordinator(conversationToInsert.parentId, conversationToInsert.coordinatorId);
-      return fetched ? fetched.id : null;
+    if (!insertId) {
+      // Driver didn't return insertId — fetch the row we just inserted
+      return await getExistingConversationId(conversationToInsert);
     }
-    if (conversationToInsert.conversationType === 'parent_tutor_inquiry' && conversationToInsert.tutorId) {
-      const fetched = await getConversationByParentAndTutorInquiry(conversationToInsert.parentId, conversationToInsert.tutorId);
-      return fetched ? fetched.id : null;
+
+    return insertId;
+  } catch (error: any) {
+    if (error?.code === "ER_DUP_ENTRY") {
+      return await getExistingConversationId(conversationToInsert);
     }
-    const fetched = await getConversationByStudentAndTutor(
-      conversationToInsert.parentId,
-      conversationToInsert.tutorId!,
-      conversationToInsert.studentId!
-    );
-    return fetched ? fetched.id : null;
+    throw error;
   }
-
-  return insertId;
 }
 
 export async function getConversationByParticipants(parentId: number, tutorId: number) {
