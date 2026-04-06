@@ -22,7 +22,6 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { trpc } from "@/lib/trpc";
@@ -34,9 +33,68 @@ interface CourseManagementTableProps {
   onAssignTutors?: (courseId: number) => void;
 }
 
+type Category =
+  | "cbse"
+  | "icse"
+  | "igcse"
+  | "ib"
+  | "ap"
+  | "alevel"
+  | "test_prep"
+  | "middle_school"
+  | "elementary"
+  | "high_school"
+  | "computer_science"
+  | "languages"
+  | "other";
+
+const CATEGORY_LABELS: Record<Category, string> = {
+  cbse: "CBSE",
+  icse: "ICSE / ISC",
+  igcse: "IGCSE",
+  ib: "IB",
+  ap: "AP",
+  alevel: "A Level",
+  test_prep: "Test Prep",
+  middle_school: "Middle School",
+  elementary: "Elementary",
+  high_school: "High School",
+  computer_science: "Computer Science",
+  languages: "Languages",
+  other: "Other",
+};
+
+const TEST_PREP_KEYWORDS = [
+  "sat", "act", "psat", "gre", "gmat", "toefl", "ielts", "pte", "oet",
+  "neet", "jee", "iit", "bitsat", "eapcet", "eamcet", "kcet", "lsat",
+  "clat", "cat", "cuet", "isee", "ssat", "hspt", "staar", "det",
+  "spelling bee", "duolingo", "occupational english", "pearson",
+];
+
+function getCourseCategory(title: string, subject: string): Category {
+  const t = title.toLowerCase();
+
+  if (t.startsWith("cbse")) return "cbse";
+  if (t.startsWith("icse") || t.startsWith("isc ")) return "icse";
+  if (t.startsWith("igcse")) return "igcse";
+  if (t.startsWith("ib ") || t.startsWith("ib dp") || t.startsWith("ib myp") || t.startsWith("ib mathematics")) return "ib";
+  if (t.startsWith("ap ") || t.startsWith("ap calculus") || t.startsWith("ap computer") || t.startsWith("ap world") || t.startsWith("ap united") || t.startsWith("ap comparative") || t.startsWith("ap human") || t.startsWith("ap macro") || t.startsWith("ap micro") || t.startsWith("ap psychology") || t.startsWith("ap biology") || t.startsWith("ap chemistry") || t.startsWith("ap environmental") || t.startsWith("ap physics") || t.startsWith("ap statistics") || t.startsWith("ap french") || t.startsWith("ap german") || t.startsWith("ap italian") || t.startsWith("ap spanish") || t.startsWith("ap language")) return "ap";
+  if (t.startsWith("a level")) return "alevel";
+  if (t.startsWith("middle school")) return "middle_school";
+  if (t.startsWith("elementary")) return "elementary";
+  if (t.startsWith("high school")) return "high_school";
+
+  if (TEST_PREP_KEYWORDS.some((kw) => t.includes(kw))) return "test_prep";
+
+  if (subject === "Computer Science") return "computer_science";
+  if (subject === "Foreign Language" || subject === "Spanish" || t.includes("language course")) return "languages";
+
+  return "other";
+}
+
 export function CourseManagementTable({ onAssignTutors }: CourseManagementTableProps) {
   const [search, setSearch] = useState("");
-  const [subjectFilter, setSubjectFilter] = useState<string | undefined>(undefined);
+  const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string | undefined>(undefined);
   const [letterFilter, setLetterFilter] = useState<string | null>(null);
   const [editingCourse, setEditingCourse] = useState<any>(null);
@@ -50,18 +108,20 @@ export function CourseManagementTable({ onAssignTutors }: CourseManagementTableP
     return allCourses
       .filter((c) => {
         if (q && !c.title.toLowerCase().includes(q) && !c.description?.toLowerCase().includes(q)) return false;
-        if (subjectFilter && c.subject !== subjectFilter) return false;
+        if (categoryFilter && categoryFilter !== "all") {
+          if (getCourseCategory(c.title, c.subject ?? "") !== categoryFilter) return false;
+        }
         if (statusFilter === "active" && !c.isActive) return false;
         if (statusFilter === "inactive" && c.isActive) return false;
-        if (letterFilter && c.title[0]?.toUpperCase() !== letterFilter) return false;
+        if (letterFilter && c.title.trim()[0]?.toUpperCase() !== letterFilter) return false;
         return true;
       })
       .sort((a, b) => a.title.localeCompare(b.title));
-  }, [allCourses, search, subjectFilter, statusFilter, letterFilter]);
+  }, [allCourses, search, categoryFilter, statusFilter, letterFilter]);
 
   const activeLetters = useMemo(() => {
     if (!allCourses) return new Set<string>();
-    return new Set(allCourses.map((c) => c.title[0]?.toUpperCase()).filter(Boolean));
+    return new Set(allCourses.map((c) => c.title.trim()[0]?.toUpperCase()).filter(Boolean));
   }, [allCourses]);
 
   const deleteMutation = trpc.adminCourses.deleteCourse.useMutation({
@@ -91,18 +151,7 @@ export function CourseManagementTable({ onAssignTutors }: CourseManagementTableP
     setEditingCourse(null);
   };
 
-  const subjects = [
-    "Mathematics",
-    "Science",
-    "English",
-    "History",
-    "Foreign Language",
-    "Computer Science",
-    "Art",
-    "Music",
-    "Test Prep",
-    "Other",
-  ];
+  const hasFilters = search || (categoryFilter && categoryFilter !== "all") || statusFilter || letterFilter;
 
   if (isLoading) {
     return <div className="p-4 text-center">Loading courses...</div>;
@@ -111,21 +160,22 @@ export function CourseManagementTable({ onAssignTutors }: CourseManagementTableP
   return (
     <div className="space-y-4">
       {/* Filters */}
-      <div className="flex gap-4">
+      <div className="flex flex-wrap gap-3">
         <Input
           placeholder="Search courses..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="max-w-xs"
         />
-        <Select value={subjectFilter} onValueChange={setSubjectFilter}>
+        <Select value={categoryFilter} onValueChange={setCategoryFilter}>
           <SelectTrigger className="w-[200px]">
-            <SelectValue placeholder="All subjects" />
+            <SelectValue placeholder="All categories" />
           </SelectTrigger>
           <SelectContent>
-            {subjects.map((subject) => (
-              <SelectItem key={subject} value={subject}>
-                {subject}
+            <SelectItem value="all">All Categories</SelectItem>
+            {(Object.entries(CATEGORY_LABELS) as [Category, string][]).map(([value, label]) => (
+              <SelectItem key={value} value={value}>
+                {label}
               </SelectItem>
             ))}
           </SelectContent>
@@ -139,12 +189,12 @@ export function CourseManagementTable({ onAssignTutors }: CourseManagementTableP
             <SelectItem value="inactive">Inactive</SelectItem>
           </SelectContent>
         </Select>
-        {(search || subjectFilter || statusFilter || letterFilter) && (
+        {hasFilters && (
           <Button
             variant="outline"
             onClick={() => {
               setSearch("");
-              setSubjectFilter(undefined);
+              setCategoryFilter("all");
               setStatusFilter(undefined);
               setLetterFilter(null);
             }}
@@ -188,12 +238,19 @@ export function CourseManagementTable({ onAssignTutors }: CourseManagementTableP
         })}
       </div>
 
+      {/* Count */}
+      <p className="text-sm text-muted-foreground">
+        Showing {courses.length} course{courses.length !== 1 ? "s" : ""}
+        {hasFilters ? " (filtered)" : ""}
+      </p>
+
       {/* Table */}
       <div className="border rounded-lg overflow-x-auto">
         <Table>
           <TableHeader>
             <TableRow>
               <TableHead className="sticky left-0 z-10 bg-background">Course</TableHead>
+              <TableHead>Category</TableHead>
               <TableHead>Subject</TableHead>
               <TableHead>Grade</TableHead>
               <TableHead>Price</TableHead>
@@ -204,7 +261,7 @@ export function CourseManagementTable({ onAssignTutors }: CourseManagementTableP
             </TableRow>
           </TableHeader>
           <TableBody>
-            {courses && courses.length > 0 ? (
+            {courses.length > 0 ? (
               courses.map((course) => (
                 <TableRow key={course.id}>
                   <TableCell className="sticky left-0 z-10 bg-background">
@@ -214,6 +271,11 @@ export function CourseManagementTable({ onAssignTutors }: CourseManagementTableP
                         {course.description?.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim()}
                       </div>
                     </div>
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant="outline" className="whitespace-nowrap">
+                      {CATEGORY_LABELS[getCourseCategory(course.title, course.subject ?? "")]}
+                    </Badge>
                   </TableCell>
                   <TableCell>{course.subject}</TableCell>
                   <TableCell>{course.gradeLevel ? course.gradeLevel.split(",").map((g: string) => g.trim()).join(", ") : "—"}</TableCell>
@@ -263,7 +325,7 @@ export function CourseManagementTable({ onAssignTutors }: CourseManagementTableP
               ))
             ) : (
               <TableRow>
-                <TableCell colSpan={7} className="text-center text-muted-foreground">
+                <TableCell colSpan={9} className="text-center text-muted-foreground">
                   No courses found
                 </TableCell>
               </TableRow>
