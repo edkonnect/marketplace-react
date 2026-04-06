@@ -43,6 +43,13 @@ export function NotificationCenter() {
     await markAllReadMutation.mutateAsync();
   };
 
+  const getNotificationDate = (notification: any) => {
+    if (notification?.createdAtMs) {
+      return new Date(Number(notification.createdAtMs));
+    }
+    return new Date(notification.createdAt);
+  };
+
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
@@ -103,7 +110,7 @@ export function NotificationCenter() {
                         {notification.message}
                       </p>
                       <p className="text-xs text-muted-foreground mt-2">
-                        {formatDistanceToNow(new Date(notification.createdAt), {
+                        {formatDistanceToNow(getNotificationDate(notification), {
                           addSuffix: true,
                         })}
                       </p>

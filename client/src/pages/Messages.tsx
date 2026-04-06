@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { MessageSquare, Send, User, Users, GraduationCap, ChevronRight, Paperclip, X, FileText, Download, ArrowLeft, Mail, Phone } from "lucide-react";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
@@ -48,6 +49,7 @@ interface StudentsWithTutorsData {
 
 interface TutorConversation {
   conversationId: number | null;
+  conversationType: "parent_tutor" | "parent_tutor_inquiry";
   parentName: string;
   studentName: string;
   courseTitle: string;
@@ -57,6 +59,24 @@ interface TutorConversation {
   lastMessageAt: number;
   hasConversation: boolean;
   unreadCount: number;
+}
+
+interface ParentTutorInquiryConversation {
+  conversationId: number;
+  tutorId: number | null;
+  tutorName: string | null;
+  tutorEmail: string | null;
+  lastMessageAt: number | null;
+  unreadCount: number;
+  conversationType: "parent_tutor_inquiry";
+}
+
+interface TutorInquiryConversation {
+  conversationId: number;
+  parentName: string;
+  lastMessageAt: number;
+  unreadCount: number;
+  conversationType: "parent_tutor_inquiry";
 }
 
 interface CoordinatorConversation {
@@ -88,11 +108,16 @@ export default function Messages() {
   const [showCoordinatorCard, setShowCoordinatorCard] = useState(false);
   const [coordinatorConversationId, setCoordinatorConversationId] = useState<number | null>(null);
   const [fabBubbleDismissed, setFabBubbleDismissed] = useState(false);
+  const [handledInquiryLink, setHandledInquiryLink] = useState(false);
+  const [inquiryDialogOpen, setInquiryDialogOpen] = useState(false);
+  const [tutorInquiryDialogOpen, setTutorInquiryDialogOpen] = useState(false);
   const RECENCY_MS = 10 * 24 * 60 * 60 * 1000;
 
   // Get parentId from URL query params if coordinator is filtering
   const search = useSearch();
-  const filterParentId = new URLSearchParams(search).get('parentId');
+  const queryParams = new URLSearchParams(search);
+  const filterParentId = queryParams.get('parentId');
+  const inquiryTutorIdParam = queryParams.get('inquiryTutorId');
 
   const isParent = user?.role === "parent";
   const isTutor = user?.role === "tutor";
@@ -112,6 +137,10 @@ export default function Messages() {
     { enabled: isAuthenticated && isParent, refetchInterval: 10000 }
   );
   const coordinatorUnreadCount = coordinatorConversationData?.unreadCount ?? 0;
+  const { data: parentTutorInquiryConversations = [] } = trpc.messaging.getParentTutorInquiryConversations.useQuery(
+    undefined,
+    { enabled: isAuthenticated && isParent, refetchInterval: 10000 }
+  );
 
   const { data: tutorConversations, isLoading: tutorConversationsLoading } = trpc.messaging.getTutorConversations.useQuery(
     undefined,
@@ -145,6 +174,7 @@ export default function Messages() {
   const markAsReadMutation = trpc.messaging.markAsRead.useMutation();
   const createConversationMutation = trpc.messaging.getOrCreateStudentConversation.useMutation();
   const createCoordinatorConversationMutation = trpc.messaging.getOrCreateCoordinatorConversation.useMutation();
+  const createTutorInquiryConversationMutation = trpc.messaging.getOrCreateTutorInquiryConversation.useMutation();
   const uploadFileMutation = trpc.messaging.uploadFile.useMutation();
 
   useEffect(() => {
@@ -166,6 +196,7 @@ export default function Messages() {
             utils.messaging.getTutorConversations.invalidate();
             utils.messaging.getCoordinatorConversations.invalidate();
             utils.messaging.getParentCoordinatorConversation.invalidate();
+            utils.messaging.getParentTutorInquiryConversations.invalidate();
           },
         }
       );
@@ -181,13 +212,102 @@ export default function Messages() {
           onSuccess: () => {
             utils.messaging.getUnreadMessageCount.invalidate();
             utils.messaging.getParentCoordinatorConversation.invalidate();
+            utils.messaging.getParentTutorInquiryConversations.invalidate();
           },
         }
       );
     }
   }, [messages]);
 
+  useEffect(() => {
+    const unreadConversationIds = new Set<number>();
+
+    for (const student of studentsWithTutors || []) {
+      for (const tutor of student.tutors || []) {
+        if (tutor.conversationId && (tutor.unreadCount ?? 0) > 0) {
+          unreadConversationIds.add(tutor.conversationId);
+        }
+      }
+    }
+
+    for (const conversation of (parentTutorInquiryConversations as ParentTutorInquiryConversation[])) {
+      if (conversation.conversationId && conversation.unreadCount > 0) {
+        unreadConversationIds.add(conversation.conversationId);
+      }
+    }
+
+    for (const conversation of (tutorConversations || [])) {
+      if (conversation?.conversation?.id && Number(conversation.unreadCount) > 0) {
+        unreadConversationIds.add(Number(conversation.conversation.id));
+      }
+    }
+
+    if (coordinatorConversationData?.conversationId && coordinatorUnreadCount > 0) {
+      unreadConversationIds.add(coordinatorConversationData.conversationId);
+    }
+
+    for (const conversation of (coordinatorConversations || [])) {
+      if (conversation?.conversationId && Number(conversation.unreadCount) > 0) {
+        unreadConversationIds.add(Number(conversation.conversationId));
+      }
+    }
+
+    setReadConversationIds((prev) => {
+      let changed = false;
+      const next = new Set(prev);
+
+      unreadConversationIds.forEach((conversationId) => {
+        if (next.delete(conversationId)) {
+          changed = true;
+        }
+      });
+
+      return changed ? next : prev;
+    });
+  }, [
+    studentsWithTutors,
+    parentTutorInquiryConversations,
+    tutorConversations,
+    coordinatorConversationData,
+    coordinatorUnreadCount,
+    coordinatorConversations,
+  ]);
+
   const [conversationLoading, setConversationLoading] = useState(false);
+
+  useEffect(() => {
+    if (!isParent || loading || !isAuthenticated || handledInquiryLink) return;
+    if (!inquiryTutorIdParam) return;
+
+    const tutorId = Number(inquiryTutorIdParam);
+    if (!Number.isFinite(tutorId) || tutorId <= 0) {
+      setHandledInquiryLink(true);
+      return;
+    }
+
+    setHandledInquiryLink(true);
+    setConversationLoading(true);
+
+    createTutorInquiryConversationMutation.mutateAsync({ tutorId })
+      .then((conversation) => {
+        if (!conversation?.id) {
+          toast.error("Failed to open tutor inquiry");
+          return;
+        }
+        utils.messaging.getParentTutorInquiryConversations.invalidate();
+        setSelectedStudentId(null);
+        setSelectedTutorId(tutorId);
+        setSelectedConversationId(conversation.id);
+        window.history.replaceState({}, "", "/messages");
+      })
+      .catch((error: any) => {
+        console.error("Failed to open tutor inquiry", error);
+        toast.error(error?.message || "Failed to open tutor inquiry");
+      })
+      .finally(() => {
+        setConversationLoading(false);
+      });
+  }, [isParent, loading, isAuthenticated, handledInquiryLink, inquiryTutorIdParam]);
 
   const handleCoordinatorChat = async () => {
     if (conversationLoading) return;
@@ -324,10 +444,12 @@ export default function Messages() {
       refetchMessages();
 
       // Refresh conversation lists for all roles
+      utils.messaging.getUnreadMessageCount.invalidate();
       utils.messaging.getStudentsWithTutors.invalidate();
       utils.messaging.getTutorConversations.invalidate();
       utils.messaging.getCoordinatorConversations.invalidate();
       utils.messaging.getParentCoordinatorConversation.invalidate();
+      utils.messaging.getParentTutorInquiryConversations.invalidate();
 
       toast.success("Message sent");
     } catch (error) {
@@ -347,6 +469,14 @@ export default function Messages() {
 
   const selectedStudent = studentsWithTutors?.find((s: StudentWithTutors) => s.id === selectedStudentId);
   const selectedTutor = selectedStudent?.tutors?.find((t: TutorInfo) => t.id === selectedTutorId);
+  const selectedParentInquiryConversation = (parentTutorInquiryConversations as ParentTutorInquiryConversation[])
+    .find((conversation) => conversation.conversationId === selectedConversationId);
+
+  const getVisibleUnreadCount = (conversationId: number | null | undefined, unreadCount: number | null | undefined) => {
+    if (!conversationId) return Number(unreadCount) || 0;
+    if (readConversationIds.has(conversationId)) return 0;
+    return Number(unreadCount) || 0;
+  };
 
   const searchTerm = globalSearch.trim().toLowerCase();
 
@@ -370,6 +500,23 @@ export default function Messages() {
     });
     return nameMatch || tutorMatch;
   });
+
+  const filteredInquiryConversations = (parentTutorInquiryConversations as ParentTutorInquiryConversation[])
+    .filter((conversation) => {
+      if (!searchTerm) {
+        if (conversation.unreadCount > 0) return true;
+        if (!conversation.lastMessageAt || Number.isNaN(Number(conversation.lastMessageAt))) return false;
+        return Date.now() - Number(conversation.lastMessageAt) <= RECENCY_MS;
+      }
+
+      return [
+        conversation.tutorName,
+        conversation.tutorEmail,
+        "general inquiry",
+      ]
+        .filter(Boolean)
+        .some((value) => value!.toLowerCase().includes(searchTerm));
+    });
 
   const selectedMatchesSearch =
     selectedStudent &&
@@ -395,12 +542,15 @@ export default function Messages() {
   const tutorListForUI: TutorConversation[] = isTutor
     ? (() => {
         // Existing conversations
-        const existingConvs: TutorConversation[] = (tutorConversations || []).map((c: any) => {
+        const existingConvs: TutorConversation[] = (tutorConversations || [])
+          .filter((c: any) => c.conversationType !== "parent_tutor_inquiry")
+          .map((c: any) => {
           const enrollmentDate = c.subscription?.startDate || c.subscription?.createdAt;
           const enrollmentDateLabel = enrollmentDate
             ? new Date(enrollmentDate).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })
             : "";
           return {
+            conversationType: "parent_tutor",
             conversationId: c.conversation.id as number | null,
             parentName: c.parent.name || c.parent.email || "Parent",
             studentName: (() => {
@@ -422,7 +572,11 @@ export default function Messages() {
         });
 
         // Enrolled students without an existing conversation
-        const existingStudentIds = new Set(existingConvs.map((c) => c.studentId));
+        const existingStudentIds = new Set(
+          existingConvs
+            .filter((conversation) => conversation.conversationType === "parent_tutor")
+            .map((conversation) => conversation.studentId)
+        );
         const withoutConvs = (enrolledSubscriptions || [])
           .filter(({ subscription }: any) => !existingStudentIds.has(subscription.id))
           .map(({ subscription, course, parent }: any) => {
@@ -434,6 +588,7 @@ export default function Messages() {
               : "";
             return {
               conversationId: null as number | null,
+              conversationType: "parent_tutor" as const,
               parentName: parent.name || parent.email || "Parent",
               studentName,
               courseTitle: course?.title || "Course",
@@ -449,6 +604,45 @@ export default function Messages() {
         return [...existingConvs, ...withoutConvs];
       })()
     : [];
+
+  const allTutorInquiryConversations: TutorInquiryConversation[] = isTutor
+    ? (tutorConversations || [])
+        .filter((conversation: any) => conversation.conversationType === "parent_tutor_inquiry")
+        .map((conversation: any) => ({
+          conversationId: Number(conversation.conversation.id),
+          parentName: conversation.parent.name || conversation.parent.email || "Parent",
+          lastMessageAt: Number(conversation.conversation.lastMessageAt) || 0,
+          unreadCount: Number(conversation.unreadCount) || 0,
+          conversationType: "parent_tutor_inquiry" as const,
+        }))
+    : [];
+
+  const tutorInquiryConversations: TutorInquiryConversation[] = isTutor
+    ? allTutorInquiryConversations
+        .filter((conversation) => {
+          if (!searchTerm) {
+            if (conversation.unreadCount > 0) return true;
+            if (!conversation.lastMessageAt || Number.isNaN(conversation.lastMessageAt)) return false;
+            return Date.now() - conversation.lastMessageAt <= RECENCY_MS;
+          }
+          return [
+            conversation.parentName,
+            "general inquiry",
+          ]
+            .filter(Boolean)
+            .some((value) => value!.toLowerCase().includes(searchTerm));
+        })
+    : [];
+
+  const parentInquiryUnreadCount = (parentTutorInquiryConversations as ParentTutorInquiryConversation[]).reduce(
+    (sum, conversation) => sum + getVisibleUnreadCount(conversation.conversationId, conversation.unreadCount),
+    0
+  );
+
+  const tutorInquiryUnreadCount = allTutorInquiryConversations.reduce(
+    (sum, conversation) => sum + getVisibleUnreadCount(conversation.conversationId, conversation.unreadCount),
+    0
+  );
 
   const filteredTutorListForUI = tutorListForUI
     .filter((item) => {
@@ -474,6 +668,19 @@ export default function Messages() {
         .filter(Boolean)
         .some((value) => value!.toLowerCase().includes(searchTerm));
     });
+
+  const selectedTutorConversation = tutorListForUI.find(
+    (conversation: TutorConversation) => conversation.conversationId === selectedConversationId
+  );
+
+  const canRenderSelectedConversation = Boolean(
+    selectedConversationId &&
+    (selectedTutor ||
+      selectedParentInquiryConversation ||
+      isTutor ||
+      isCoordinator ||
+      (isParent && selectedConversationId === coordinatorConversationId))
+  );
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
@@ -540,28 +747,180 @@ export default function Messages() {
         )}
 
         <div className="mb-4 sm:mb-6 space-y-3 sm:space-y-4">
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-bold">Messages</h1>
-            <p className="text-sm sm:text-base text-muted-foreground">
-              {user?.role === "parent"
-                ? "Select a student to view their tutors and messages"
-                : user?.role === "coordinator"
-                ? filterParentId
-                  ? (() => {
-                      const parent = coordinatorConversations?.find((c) => c.parentId === parseInt(filterParentId));
-                      return parent ? `Viewing messages for ${parent.parentName}` : "View messages for your assigned families";
-                    })()
-                  : "View messages for your assigned families"
-                : "Communicate with parents"}
-            </p>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h1 className="text-2xl sm:text-3xl font-bold">Messages</h1>
+              <p className="text-sm sm:text-base text-muted-foreground">
+                {user?.role === "parent"
+                  ? "Select a student to view their tutor messages"
+                  : user?.role === "coordinator"
+                  ? filterParentId
+                    ? (() => {
+                        const parent = coordinatorConversations?.find((c) => c.parentId === parseInt(filterParentId));
+                        return parent ? `Viewing messages for ${parent.parentName}` : "View messages for your assigned families";
+                      })()
+                    : "View messages for your assigned families"
+                  : "Communicate with parents"}
+              </p>
+            </div>
+            {isParent && (parentTutorInquiryConversations as ParentTutorInquiryConversation[]).length > 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="rounded-full gap-2"
+                onClick={() => setInquiryDialogOpen(true)}
+              >
+                <Mail className="w-4 h-4" />
+                Tutor Inquiries
+                {parentInquiryUnreadCount > 0 && (
+                  <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
+                    {parentInquiryUnreadCount > 9 ? "9+" : parentInquiryUnreadCount}
+                  </span>
+                )}
+              </Button>
+            )}
+            {isTutor && allTutorInquiryConversations.length > 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="rounded-full gap-2"
+                onClick={() => setTutorInquiryDialogOpen(true)}
+              >
+                <Mail className="w-4 h-4" />
+                General Inquiries
+                {tutorInquiryUnreadCount > 0 && (
+                  <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
+                    {tutorInquiryUnreadCount > 9 ? "9+" : tutorInquiryUnreadCount}
+                  </span>
+                )}
+              </Button>
+            )}
           </div>
           <Input
-            placeholder={isTutor ? "Search by student name, parent, or course..." : "Search by student or course..."}
+            placeholder={isTutor ? "Search by student name, parent, or course..." : "Search by student, tutor, or course..."}
             value={globalSearch}
             onChange={(e) => setGlobalSearch(e.target.value)}
             className="text-sm"
           />
         </div>
+
+        <Dialog open={inquiryDialogOpen} onOpenChange={setInquiryDialogOpen}>
+          <DialogContent className="sm:max-w-lg">
+            <DialogHeader>
+              <DialogTitle>Tutor Inquiries</DialogTitle>
+              <DialogDescription>
+                Ongoing general inquiry chats you started from tutor profiles.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="max-h-[60vh] overflow-y-auto rounded-lg border">
+              {filteredInquiryConversations.length > 0 ? (
+                <div>
+                  {filteredInquiryConversations.map((conversation) => (
+                    <button
+                      key={`modal-inquiry-${conversation.conversationId}`}
+                      onClick={() => {
+                        setSelectedStudentId(null);
+                        setSelectedTutorId(conversation.tutorId ?? null);
+                        setSelectedConversationId(conversation.conversationId);
+                        setInquiryDialogOpen(false);
+                      }}
+                      className={`w-full p-4 text-left hover:bg-muted/50 transition-colors border-b border-border last:border-b-0 ${
+                        selectedConversationId === conversation.conversationId ? "bg-muted" : ""
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-sm font-semibold text-primary flex-shrink-0">
+                          {(conversation.tutorName || "T").charAt(0)}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="font-medium truncate">{conversation.tutorName || "Tutor"}</p>
+                            {getVisibleUnreadCount(conversation.conversationId, conversation.unreadCount) > 0 && (
+                              <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white px-1 flex-shrink-0">
+                                {getVisibleUnreadCount(conversation.conversationId, conversation.unreadCount) > 9
+                                  ? "9+"
+                                  : getVisibleUnreadCount(conversation.conversationId, conversation.unreadCount)}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-muted-foreground truncate">General inquiry</p>
+                          {conversation.lastMessageAt && (
+                            <p className="text-xs text-muted-foreground mt-1">
+                              {new Date(conversation.lastMessageAt).toLocaleString()}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="p-8 text-center text-muted-foreground">
+                  No ongoing tutor inquiries.
+                </div>
+              )}
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={tutorInquiryDialogOpen} onOpenChange={setTutorInquiryDialogOpen}>
+          <DialogContent className="sm:max-w-lg">
+            <DialogHeader>
+              <DialogTitle>General Inquiries</DialogTitle>
+              <DialogDescription>
+                General inquiry chats started by parents from your tutor profile.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="max-h-[60vh] overflow-y-auto rounded-lg border">
+              {tutorInquiryConversations.length > 0 ? (
+                <div>
+                  {tutorInquiryConversations.map((conversation) => (
+                    <button
+                      key={`modal-tutor-inquiry-${conversation.conversationId}`}
+                      onClick={() => {
+                        setSelectedConversationId(conversation.conversationId);
+                        setSelectedStudentId(null);
+                        setSelectedTutorId(null);
+                        setTutorInquiryDialogOpen(false);
+                      }}
+                      className={`w-full p-4 text-left hover:bg-muted/50 transition-colors border-b border-border last:border-b-0 ${
+                        selectedConversationId === conversation.conversationId ? "bg-muted" : ""
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-sm font-semibold text-primary flex-shrink-0">
+                          {(conversation.parentName || "P").charAt(0)}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="font-medium truncate">{conversation.parentName}</p>
+                            {getVisibleUnreadCount(conversation.conversationId, conversation.unreadCount) > 0 && (
+                              <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white px-1 flex-shrink-0">
+                                {getVisibleUnreadCount(conversation.conversationId, conversation.unreadCount) > 9
+                                  ? "9+"
+                                  : getVisibleUnreadCount(conversation.conversationId, conversation.unreadCount)}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-muted-foreground truncate">General tutor inquiry</p>
+                          {conversation.lastMessageAt > 0 && (
+                            <p className="text-xs text-muted-foreground mt-1">
+                              {new Date(conversation.lastMessageAt).toLocaleString()}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="p-8 text-center text-muted-foreground">
+                  No ongoing general inquiries.
+                </div>
+              )}
+            </div>
+          </DialogContent>
+        </Dialog>
 
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 sm:gap-6 h-[calc(100vh-12rem)] sm:h-[calc(100vh-16rem)]">
           {isCoordinator ? (
@@ -896,7 +1255,7 @@ export default function Messages() {
 
           {/* Messages Area */}
           <Card className={`lg:col-span-2 flex flex-col h-[calc(100vh-12rem)] sm:h-[70vh] ${!selectedConversationId ? 'hidden lg:flex' : ''}`}>
-            {selectedConversationId && (selectedTutor || isTutor || isCoordinator || (isParent && selectedConversationId === coordinatorConversationId)) ? (
+            {canRenderSelectedConversation ? (
               <>
                 <CardHeader className="py-3 sm:py-4 flex flex-row items-start justify-between space-y-0">
                   <CardTitle className="text-base sm:text-lg flex-1">
@@ -917,22 +1276,26 @@ export default function Messages() {
                         {selectedConversationId === coordinatorConversationId && coordinator
                           ? `${coordinator.firstName} ${coordinator.lastName}`
                           : isTutor
-                          ? tutorListForUI.find((t: TutorConversation) => t.conversationId === selectedConversationId)?.parentName || "Parent"
+                          ? selectedTutorConversation?.parentName || "Parent"
                           : isCoordinator
                             ? coordinatorConversations?.find((c) => c.conversationId === selectedConversationId)?.tutorName || "Tutor"
-                            : selectedTutor?.name || "Tutor"}
+                            : selectedParentInquiryConversation?.tutorName || selectedTutor?.name || "Tutor"}
                       </span>
                     </div>
                     <p className="text-xs sm:text-sm font-normal text-muted-foreground mt-1">
                       {selectedConversationId === coordinatorConversationId && coordinator
                         ? "Your Academic Coordinator"
                         : isTutor
-                        ? tutorListForUI.find((t: TutorConversation) => t.conversationId === selectedConversationId)?.studentName || "Student"
+                        ? selectedTutorConversation?.conversationType === "parent_tutor_inquiry"
+                          ? "General tutor inquiry"
+                          : selectedTutorConversation?.studentName || "Student"
                         : isCoordinator
                           ? (() => {
                               const conv = coordinatorConversations?.find((c) => c.conversationId === selectedConversationId);
                               return conv ? `${conv.courseTitle}: ${conv.studentFirstName} ${conv.studentLastName}` : "Student";
                             })()
+                          : selectedParentInquiryConversation
+                            ? "General tutor inquiry"
                           : `About ${selectedStudent?.firstName} ${selectedStudent?.lastName}`}
                     </p>
                   </CardTitle>
@@ -1112,9 +1475,11 @@ export default function Messages() {
                   <MessageSquare className="w-16 h-16 mx-auto mb-4 text-muted-foreground" />
                   <p className="text-lg font-medium mb-2">Select a tutor to chat</p>
                   <p className="text-sm text-muted-foreground">
-                    {selectedStudent 
-                      ? "Choose a tutor from the list to start messaging" 
-                      : "Select a student first, then choose their tutor"}
+                    {selectedStudent
+                      ? "Choose a tutor from the list to start messaging"
+                      : isParent
+                        ? "Select a tutor inquiry or choose a student first, then choose their tutor"
+                        : "Select a conversation to start messaging"}
                   </p>
                 </div>
               </div>

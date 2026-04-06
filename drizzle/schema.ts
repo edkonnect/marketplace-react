@@ -385,7 +385,8 @@ export const conversations = mysqlTable("conversations", {
   tutorId: int("tutorId").references(() => users.id, { onDelete: "cascade" }), // Nullable for parent-coordinator conversations
   coordinatorId: int("coordinatorId").references(() => users.id, { onDelete: "set null" }), // Can be the other participant in parent-coordinator chats
   studentId: int("studentId"), // Reference to which student this conversation is about
-  conversationType: mysqlEnum("conversationType", ["parent_tutor", "parent_coordinator"]).default("parent_tutor").notNull(), // Type of conversation
+  conversationType: mysqlEnum("conversationType", ["parent_tutor", "parent_tutor_inquiry", "parent_coordinator"]).default("parent_tutor").notNull(), // Type of conversation
+  dedupeKey: varchar("dedupeKey", { length: 191 }).notNull(),
   lastMessageAt: bigint("lastMessageAt", { mode: "number" }), // Unix timestamp in milliseconds
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
@@ -393,6 +394,7 @@ export const conversations = mysqlTable("conversations", {
   parentIdIdx: index("conversations_parentId_idx").on(table.parentId),
   tutorIdIdx: index("conversations_tutorId_idx").on(table.tutorId),
   coordinatorIdIdx: index("conversations_coordinatorId_idx").on(table.coordinatorId),
+  dedupeKeyUnique: uniqueIndex("conversations_dedupeKey_unique").on(table.dedupeKey),
 }));
 
 export type Conversation = typeof conversations.$inferSelect;

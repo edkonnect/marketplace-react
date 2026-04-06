@@ -2216,24 +2216,57 @@ export async function updateSession(id: number, updates: Partial<InsertSession>)
 
 // ============ Messaging ============
 
-export async function createConversation(conversation: InsertConversation) {
+type InsertConversationPayload = Omit<InsertConversation, "dedupeKey"> & {
+  dedupeKey?: string;
+};
+
+function buildConversationDedupeKey(conversation: {
+  parentId: number;
+  tutorId?: number | null;
+  coordinatorId?: number | null;
+  studentId?: number | null;
+  conversationType?: "parent_tutor" | "parent_tutor_inquiry" | "parent_coordinator";
+}) {
+  return [
+    conversation.conversationType ?? "parent_tutor",
+    conversation.parentId,
+    conversation.tutorId ?? 0,
+    conversation.coordinatorId ?? 0,
+    conversation.studentId ?? 0,
+  ].join(":");
+}
+
+function buildConversationInsert(conversation: InsertConversationPayload): InsertConversation {
+  return {
+    ...conversation,
+    conversationType: conversation.conversationType ?? "parent_tutor",
+    dedupeKey: conversation.dedupeKey ?? buildConversationDedupeKey(conversation),
+  };
+}
+
+export async function createConversation(conversation: InsertConversationPayload) {
   const db = await getDb();
   if (!db) return null;
 
-  const result = await db.insert(conversations).values(conversation) as any;
+  const conversationToInsert = buildConversationInsert(conversation);
+  const result = await db.insert(conversations).values(conversationToInsert) as any;
   const rawId = result?.[0]?.insertId ?? (result as any)?.insertId;
   const insertId = rawId ? Number(rawId) : null;
 
   if (!insertId) {
     // Driver didn't return insertId — fetch the row we just inserted
-    if (conversation.conversationType === 'parent_coordinator' && conversation.coordinatorId) {
-      const fetched = await getConversationByParentAndCoordinator(conversation.parentId, conversation.coordinatorId);
+    if (conversationToInsert.conversationType === 'parent_coordinator' && conversationToInsert.coordinatorId) {
+      const fetched = await getConversationByParentAndCoordinator(conversationToInsert.parentId, conversationToInsert.coordinatorId);
+      return fetched ? fetched.id : null;
+    }
+    if (conversationToInsert.conversationType === 'parent_tutor_inquiry' && conversationToInsert.tutorId) {
+      const fetched = await getConversationByParentAndTutorInquiry(conversationToInsert.parentId, conversationToInsert.tutorId);
       return fetched ? fetched.id : null;
     }
     const fetched = await getConversationByStudentAndTutor(
-      conversation.parentId,
-      conversation.tutorId!,
-      conversation.studentId!
+      conversationToInsert.parentId,
+      conversationToInsert.tutorId!,
+      conversationToInsert.studentId!
     );
     return fetched ? fetched.id : null;
   }
@@ -2248,7 +2281,13 @@ export async function getConversationByParticipants(parentId: number, tutorId: n
   const result = await db
     .select()
     .from(conversations)
-    .where(and(eq(conversations.parentId, parentId), eq(conversations.tutorId, tutorId)))
+    .where(
+      and(
+        eq(conversations.parentId, parentId),
+        eq(conversations.tutorId, tutorId),
+        eq(conversations.conversationType, 'parent_tutor_inquiry')
+      )
+    )
     .limit(1);
 
   return result.length > 0 ? result[0] : null;
@@ -2273,7 +2312,7 @@ export async function getTutorConversationsWithDetails(tutorId: number) {
   const db = await getDb();
   if (!db) return [];
 
-  const [rows, unreadMap] = await Promise.all([
+  const [rows, inquiryRows, unreadMap] = await Promise.all([
     db
       .select({
         conversation: conversations,
@@ -2288,15 +2327,44 @@ export async function getTutorConversationsWithDetails(tutorId: number) {
         eq(subscriptions.preferredTutorId, tutorId)
       ))
       .leftJoin(courses, eq(subscriptions.courseId, courses.id))
-      .where(eq(conversations.tutorId, tutorId))
+      .where(
+        and(
+          eq(conversations.tutorId, tutorId),
+          eq(conversations.conversationType, 'parent_tutor')
+        )
+      )
+      .orderBy(desc(conversations.lastMessageAt)),
+    db
+      .select({
+        conversation: conversations,
+        parent: users,
+      })
+      .from(conversations)
+      .innerJoin(users, eq(conversations.parentId, users.id))
+      .where(
+        and(
+          eq(conversations.tutorId, tutorId),
+          eq(conversations.conversationType, 'parent_tutor_inquiry')
+        )
+      )
       .orderBy(desc(conversations.lastMessageAt)),
     getUnreadCountsByConversation(tutorId),
   ]);
 
-  return rows.map(row => ({
-    ...row,
-    unreadCount: unreadMap.get(Number(row.conversation.id)) ?? 0,
-  }));
+  return [
+    ...rows.map(row => ({
+      ...row,
+      conversationType: 'parent_tutor' as const,
+      unreadCount: unreadMap.get(Number(row.conversation.id)) ?? 0,
+    })),
+    ...inquiryRows.map(row => ({
+      ...row,
+      subscription: null,
+      course: null,
+      conversationType: 'parent_tutor_inquiry' as const,
+      unreadCount: unreadMap.get(Number(row.conversation.id)) ?? 0,
+    })),
+  ].sort((a, b) => (Number(b.conversation.lastMessageAt) || 0) - (Number(a.conversation.lastMessageAt) || 0));
 }
 
 /**
@@ -3051,7 +3119,8 @@ export async function getConversationByStudentAndTutor(
         and(
           eq(conversations.parentId, parentId),
           eq(conversations.tutorId, tutorId),
-          eq(conversations.studentId, studentId)
+          eq(conversations.studentId, studentId),
+          eq(conversations.conversationType, 'parent_tutor')
         )
       )
       .limit(1);
@@ -3059,6 +3128,30 @@ export async function getConversationByStudentAndTutor(
     return result[0] || null;
   } catch (error) {
     console.error("[Database] Error getting conversation by student and tutor:", error);
+    return null;
+  }
+}
+
+export async function getConversationByParentAndTutorInquiry(parentId: number, tutorId: number) {
+  const db = await getDb();
+  if (!db) return null;
+
+  try {
+    const result = await db
+      .select()
+      .from(conversations)
+      .where(
+        and(
+          eq(conversations.parentId, parentId),
+          eq(conversations.tutorId, tutorId),
+          eq(conversations.conversationType, 'parent_tutor_inquiry')
+        )
+      )
+      .limit(1);
+
+    return result[0] || null;
+  } catch (error) {
+    console.error("[Database] Error getting inquiry conversation by parent and tutor:", error);
     return null;
   }
 }
@@ -3074,12 +3167,13 @@ export async function createOrGetStudentConversation(
   const existing = await getConversationByStudentAndTutor(parentId, tutorId, studentId);
   if (existing) return existing;
 
-  const newConv: InsertConversation = {
+  const newConv = buildConversationInsert({
     parentId,
     tutorId,
     studentId,
+    conversationType: 'parent_tutor',
     lastMessageAt: Date.now(),
-  };
+  });
 
   try {
     const createdId = await createConversation(newConv);
@@ -3093,6 +3187,98 @@ export async function createOrGetStudentConversation(
     console.error("[Database] Failed to create conversation, retrying fetch:", error);
     // If creation failed due to a race/constraint, attempt to fetch again
     return await getConversationByStudentAndTutor(parentId, tutorId, studentId);
+  }
+}
+
+export async function createOrGetTutorInquiryConversation(
+  parentId: number,
+  tutorId: number
+) {
+  const existing = await getConversationByParentAndTutorInquiry(parentId, tutorId);
+  if (existing) return existing;
+
+  const newConversation = buildConversationInsert({
+    parentId,
+    tutorId,
+    studentId: null,
+    conversationType: 'parent_tutor_inquiry',
+    lastMessageAt: Date.now(),
+  });
+
+  try {
+    const createdId = await createConversation(newConversation);
+    if (!createdId) {
+      console.error("[Database] createConversation returned null/0 for inquiry", { parentId, tutorId });
+      return await getConversationByParentAndTutorInquiry(parentId, tutorId);
+    }
+    return await getConversationById(createdId);
+  } catch (error) {
+    console.error("[Database] Failed to create tutor inquiry conversation, retrying fetch:", error);
+    return await getConversationByParentAndTutorInquiry(parentId, tutorId);
+  }
+}
+
+export async function createOrGetParentCoordinatorConversation(
+  parentId: number,
+  coordinatorId: number
+) {
+  const existing = await getConversationByParentAndCoordinator(parentId, coordinatorId);
+  if (existing) return existing;
+
+  const newConversation = buildConversationInsert({
+    parentId,
+    tutorId: null,
+    coordinatorId,
+    studentId: null,
+    conversationType: 'parent_coordinator',
+    lastMessageAt: Date.now(),
+  });
+
+  try {
+    const createdId = await createConversation(newConversation);
+    if (!createdId) {
+      console.error("[Database] createConversation returned null/0 for parent coordinator", { parentId, coordinatorId });
+      return await getConversationByParentAndCoordinator(parentId, coordinatorId);
+    }
+    return await getConversationById(createdId);
+  } catch (error) {
+    console.error("[Database] Failed to create parent coordinator conversation, retrying fetch:", error);
+    return await getConversationByParentAndCoordinator(parentId, coordinatorId);
+  }
+}
+
+export async function getParentTutorInquiryConversations(parentId: number) {
+  const db = await getDb();
+  if (!db) return [];
+
+  try {
+    const unreadMap = await getUnreadCountsByConversation(parentId);
+    const results = await db
+      .select({
+        conversationId: conversations.id,
+        tutorId: conversations.tutorId,
+        tutorName: users.name,
+        tutorEmail: users.email,
+        lastMessageAt: conversations.lastMessageAt,
+      })
+      .from(conversations)
+      .leftJoin(users, eq(conversations.tutorId, users.id))
+      .where(
+        and(
+          eq(conversations.parentId, parentId),
+          eq(conversations.conversationType, 'parent_tutor_inquiry')
+        )
+      )
+      .orderBy(desc(conversations.lastMessageAt));
+
+    return results.map((row) => ({
+      ...row,
+      unreadCount: row.conversationId ? (unreadMap.get(Number(row.conversationId)) ?? 0) : 0,
+      conversationType: 'parent_tutor_inquiry' as const,
+    }));
+  } catch (error) {
+    console.error("[Database] Error getting parent tutor inquiry conversations:", error);
+    return [];
   }
 }
 
@@ -4584,8 +4770,25 @@ export async function getInAppNotifications(userId: number, includeRead: boolean
     conditions.push(eq(inAppNotifications.isRead, false));
   }
 
+  const normalizedCreatedAt = sql<Date>`CASE
+    WHEN ${inAppNotifications.createdAt} > NOW()
+      THEN TIMESTAMPADD(SECOND, TIMESTAMPDIFF(SECOND, UTC_TIMESTAMP(), NOW()), ${inAppNotifications.createdAt})
+    ELSE ${inAppNotifications.createdAt}
+  END`;
+
   return await db
-    .select()
+    .select({
+      id: inAppNotifications.id,
+      userId: inAppNotifications.userId,
+      title: inAppNotifications.title,
+      message: inAppNotifications.message,
+      type: inAppNotifications.type,
+      relatedId: inAppNotifications.relatedId,
+      isRead: inAppNotifications.isRead,
+      createdAt: normalizedCreatedAt,
+      createdAtMs: sql<number>`unix_timestamp(${normalizedCreatedAt}) * 1000`,
+      readAt: inAppNotifications.readAt,
+    })
     .from(inAppNotifications)
     .where(and(...conditions))
     .orderBy(desc(inAppNotifications.createdAt))

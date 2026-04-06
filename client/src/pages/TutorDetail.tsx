@@ -291,7 +291,11 @@ export default function TutorDetail() {
               {/* Contact Button */}
               <div className="flex-shrink-0">
                 {isAuthenticated && user?.role === "parent" && (
-                  <Button size="lg" className="gap-2" onClick={() => navigate("/messages")}>
+                  <Button
+                    size="lg"
+                    className="gap-2"
+                    onClick={() => navigate(`/messages?inquiryTutorId=${tutorId}`)}
+                  >
                     <Mail className="w-4 h-4" />
                     Contact Tutor
                   </Button>

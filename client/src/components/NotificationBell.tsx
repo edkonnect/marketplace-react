@@ -61,6 +61,13 @@ export function NotificationBell() {
     markAllAsReadMutation.mutate();
   };
 
+  const getNotificationDate = (notification: any) => {
+    if (notification?.createdAtMs) {
+      return new Date(Number(notification.createdAtMs));
+    }
+    return new Date(notification.createdAt);
+  };
+
   const getNotificationIcon = (type: string) => {
     switch (type) {
       case 'session_cancelled':
@@ -134,7 +141,7 @@ export function NotificationBell() {
                       {notification.message}
                     </p>
                     <p className="text-xs text-muted-foreground mt-1">
-                      {formatDistanceToNow(new Date(notification.createdAt), {
+                      {formatDistanceToNow(getNotificationDate(notification), {
                         addSuffix: true,
                       })}
                     </p>

@@ -3156,14 +3156,10 @@ export const appRouter = router({
         let conversation = await db.getConversationByParticipants(input.parentId, input.tutorId);
         
         if (!conversation) {
-          const id = await db.createConversation({
-            parentId: input.parentId,
-            tutorId: input.tutorId,
-          });
-          if (!id) {
+          conversation = await db.createOrGetTutorInquiryConversation(input.parentId, input.tutorId);
+          if (!conversation) {
             throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to create conversation' });
           }
-          conversation = await db.getConversationByParticipants(input.parentId, input.tutorId);
         }
 
         return conversation;
@@ -3226,7 +3222,9 @@ export const appRouter = router({
         }
 
         // Check authorization based on conversation type
-        const isParentTutorChat = conversation.conversationType === 'parent_tutor';
+        const isParentTutorChat =
+          conversation.conversationType === 'parent_tutor' ||
+          conversation.conversationType === 'parent_tutor_inquiry';
         const isParentCoordinatorChat = conversation.conversationType === 'parent_coordinator';
 
         if (isParentTutorChat) {
@@ -3339,6 +3337,10 @@ export const appRouter = router({
       return await db.getStudentsWithTutors(ctx.user.id);
     }),
 
+    getParentTutorInquiryConversations: parentProcedure.query(async ({ ctx }) => {
+      return await db.getParentTutorInquiryConversations(ctx.user.id);
+    }),
+
     getTutorConversations: tutorProcedure.query(async ({ ctx }) => {
       return await db.getTutorConversationsWithDetails(ctx.user.id);
     }),
@@ -3388,22 +3390,9 @@ export const appRouter = router({
 
       const coordinatorId = assignments[0].coordinatorId;
 
-      // Check if conversation already exists
-      let conversation = await db.getConversationByParentAndCoordinator(ctx.user.id, coordinatorId);
-
+      const conversation = await db.createOrGetParentCoordinatorConversation(ctx.user.id, coordinatorId);
       if (!conversation) {
-        // Create new parent-coordinator conversation
-        const id = await db.createConversation({
-          parentId: ctx.user.id,
-          tutorId: null,
-          coordinatorId: coordinatorId,
-          studentId: null,
-          conversationType: 'parent_coordinator',
-        });
-        if (!id) {
-          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to create conversation' });
-        }
-        conversation = await db.getConversationById(id);
+        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to create conversation' });
       }
 
       return conversation;
@@ -3418,6 +3407,28 @@ export const appRouter = router({
       // Get parent's coordinator conversation with unread count
       return await db.getParentCoordinatorConversation(ctx.user.id);
     }),
+
+    getOrCreateTutorInquiryConversation: parentProcedure
+      .input(z.object({
+        tutorId: z.number(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        if (input.tutorId === ctx.user.id) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'You cannot message yourself' });
+        }
+
+        const tutorProfile = await db.getTutorProfileByUserId(input.tutorId);
+        if (!tutorProfile) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'Tutor not found' });
+        }
+
+        const conversation = await db.createOrGetTutorInquiryConversation(ctx.user.id, input.tutorId);
+        if (!conversation) {
+          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to create conversation' });
+        }
+
+        return conversation;
+      }),
 
     getOrCreateStudentConversation: protectedProcedure
       .input(z.object({

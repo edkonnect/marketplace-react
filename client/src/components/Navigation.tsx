@@ -61,9 +61,9 @@ export default function Navigation() {
     undefined,
     {
       enabled: isAuthenticated && (role === "parent" || role === "tutor" || role === "coordinator"),
-      // Avoid constant polling; refresh on tab focus and every 60s instead of ~5–10s
+      // Keep the nav badge reasonably fresh without polling as aggressively as the messages page.
       refetchOnWindowFocus: true,
-      refetchInterval: 60_000,
+      refetchInterval: 15_000,
     }
   );
   const unreadCount = unreadData?.count ?? 0;
