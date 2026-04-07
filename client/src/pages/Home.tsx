@@ -232,6 +232,11 @@ export default function Home() {
   const { data: testimonialsData = [] } = trpc.home.testimonials.useQuery();
   const { data: faqsData = [] } = trpc.home.faqs.useQuery();
   const { data: blogPostsData = [], isLoading: blogPostsLoading } = trpc.home.blogPosts.useQuery({ limit: 3 });
+  const [selectedBlogSlug, setSelectedBlogSlug] = useState<string | null>(null);
+  const { data: selectedBlogPost } = trpc.home.blogPost.useQuery(
+    { slug: selectedBlogSlug! },
+    { enabled: !!selectedBlogSlug }
+  );
   const [heroSearchQuery, setHeroSearchQuery] = useState("");
   const [searchDropdownOpen, setSearchDropdownOpen] = useState(false);
   const searchContainerRef = useRef<HTMLDivElement>(null);
@@ -1116,7 +1121,8 @@ export default function Home() {
                 {[...blogPostsData, ...blogPostsData].map((post, idx) => (
                   <Card
                     key={`${post.id}-${idx}`}
-                    className="overflow-hidden hover:shadow-lg transition-shadow group min-w-[260px] md:min-w-[300px] lg:min-w-[320px] max-w-[320px]"
+                    className="overflow-hidden hover:shadow-lg transition-shadow group min-w-[260px] md:min-w-[300px] lg:min-w-[320px] max-w-[320px] cursor-pointer"
+                    onClick={() => setSelectedBlogSlug(post.slug)}
                   >
                     <CardContent className="p-6">
                       {post.category && (
@@ -1161,6 +1167,52 @@ export default function Home() {
           )}
         </div>
       </motion.section>
+
+      {/* Blog Post Detail Modal */}
+      <Dialog open={!!selectedBlogSlug} onOpenChange={(open) => { if (!open) setSelectedBlogSlug(null); }}>
+        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
+          {selectedBlogPost ? (
+            <>
+              <DialogHeader>
+                {selectedBlogPost.category && (
+                  <span className="inline-block px-3 py-1 text-xs font-semibold text-primary bg-primary/10 rounded-full mb-2 w-fit">
+                    {selectedBlogPost.category}
+                  </span>
+                )}
+                <DialogTitle className="text-2xl font-bold leading-tight">{selectedBlogPost.title}</DialogTitle>
+                <DialogDescription asChild>
+                  <div className="flex items-center gap-4 text-sm text-muted-foreground mt-2">
+                    {selectedBlogPost.publishedAt && (
+                      <span>{new Date(selectedBlogPost.publishedAt).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}</span>
+                    )}
+                    {selectedBlogPost.readTime && (
+                      <span className="flex items-center gap-1">
+                        <BookOpen className="w-4 h-4" />
+                        {selectedBlogPost.readTime} min read
+                      </span>
+                    )}
+                  </div>
+                </DialogDescription>
+              </DialogHeader>
+              <div className="prose prose-sm dark:prose-invert max-w-none mt-4 whitespace-pre-line">
+                {selectedBlogPost.content?.split('\n').map((line, i) => {
+                  if (line.startsWith('## ')) return <h2 key={i} className="text-xl font-bold mt-6 mb-2">{line.replace('## ', '')}</h2>;
+                  if (line.startsWith('### ')) return <h3 key={i} className="text-lg font-semibold mt-4 mb-2">{line.replace('### ', '')}</h3>;
+                  if (line.startsWith('> ')) return <blockquote key={i} className="border-l-4 border-primary pl-4 italic text-muted-foreground my-3">{line.replace('> ', '')}</blockquote>;
+                  if (line.startsWith('- ') || line.startsWith('* ')) return <li key={i} className="ml-4 list-disc">{line.replace(/^[-*] /, '')}</li>;
+                  if (line.startsWith('**') && line.endsWith('**')) return <p key={i} className="font-semibold">{line.replace(/\*\*/g, '')}</p>;
+                  if (line.trim() === '') return <br key={i} />;
+                  return <p key={i} className="mb-2">{line}</p>;
+                })}
+              </div>
+            </>
+          ) : (
+            <div className="flex items-center justify-center h-40">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* CTA Section */}
       <motion.section className="py-20 bg-gradient-to-br from-primary/10 via-accent/10 to-background" {...scrollReveal}>
