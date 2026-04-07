@@ -231,7 +231,7 @@ export default function Home() {
   const { data: featuredCoursesData = [] } = trpc.home.featuredCourses.useQuery();
   const { data: testimonialsData = [] } = trpc.home.testimonials.useQuery();
   const { data: faqsData = [] } = trpc.home.faqs.useQuery();
-  const { data: blogPostsData = [], isLoading: blogPostsLoading } = trpc.home.blogPosts.useQuery({ limit: 3 });
+  const { data: blogPostsData = [], isLoading: blogPostsLoading } = trpc.home.blogPosts.useQuery({ limit: 20 });
   const [selectedBlogSlug, setSelectedBlogSlug] = useState<string | null>(null);
   const { data: selectedBlogPost } = trpc.home.blogPost.useQuery(
     { slug: selectedBlogSlug! },
@@ -1201,6 +1201,7 @@ export default function Home() {
                   if (line.startsWith('> ')) return <blockquote key={i} className="border-l-4 border-primary pl-4 italic text-muted-foreground my-3">{line.replace('> ', '')}</blockquote>;
                   if (line.startsWith('- ') || line.startsWith('* ')) return <li key={i} className="ml-4 list-disc">{line.replace(/^[-*] /, '')}</li>;
                   if (line.startsWith('**') && line.endsWith('**')) return <p key={i} className="font-semibold">{line.replace(/\*\*/g, '')}</p>;
+                  if (line.startsWith('*') && line.endsWith('*') && !line.startsWith('**')) return <p key={i} className="italic text-muted-foreground">{line.replace(/^\*|\*$/g, '')}</p>;
                   if (line.trim() === '') return <br key={i} />;
                   return <p key={i} className="mb-2">{line}</p>;
                 })}
