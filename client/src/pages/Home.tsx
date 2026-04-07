@@ -1116,7 +1116,7 @@ export default function Home() {
               {/* Continuous marquee track */}
               <div
                 className="flex gap-6 w-max"
-                style={{ animation: "blog-marquee 28s linear infinite" }}
+                style={{ animation: "blog-marquee 60s linear infinite" }}
               >
                 {[...blogPostsData, ...blogPostsData].map((post, idx) => (
                   <Card
@@ -1198,7 +1198,7 @@ export default function Home() {
                 {selectedBlogPost.content?.split('\n').map((line, i) => {
                   if (line.startsWith('## ')) return <h2 key={i} className="text-xl font-bold mt-6 mb-2">{line.replace('## ', '')}</h2>;
                   if (line.startsWith('### ')) return <h3 key={i} className="text-lg font-semibold mt-4 mb-2">{line.replace('### ', '')}</h3>;
-                  if (line.startsWith('> ')) return <blockquote key={i} className="border-l-4 border-primary pl-4 italic text-muted-foreground my-3">{line.replace('> ', '')}</blockquote>;
+                  if (line.startsWith('> ')) return <blockquote key={i} className="border-l-4 border-primary pl-4 italic text-muted-foreground my-3">{line.replace('> ', '').replace(/^\*|\*$/g, '')}</blockquote>;
                   if (line.startsWith('- ') || line.startsWith('* ')) return <li key={i} className="ml-4 list-disc">{line.replace(/^[-*] /, '')}</li>;
                   if (line.startsWith('**') && line.endsWith('**')) return <p key={i} className="font-semibold">{line.replace(/\*\*/g, '')}</p>;
                   if (line.startsWith('*') && line.endsWith('*') && !line.startsWith('**')) return <p key={i} className="italic text-muted-foreground">{line.replace(/^\*|\*$/g, '')}</p>;
