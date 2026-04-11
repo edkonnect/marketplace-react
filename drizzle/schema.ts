@@ -360,6 +360,7 @@ export const sessions = mysqlTable("sessions", {
   seriesId: varchar("seriesId", { length: 64 }),
   sessionNumberInSeries: int("sessionNumberInSeries"),
   totalSessionsInSeries: int("totalSessionsInSeries"),
+  acuityAppointmentId: varchar("acuityAppointmentId", { length: 64 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 }, (table) => ({
@@ -371,6 +372,7 @@ export const sessions = mysqlTable("sessions", {
   tutorStartUnique: uniqueIndex("sessions_tutor_start_unique").on(table.tutorId, table.scheduledAt),
   seriesIdIdx: index("sessions_seriesId_idx").on(table.seriesId),
   trialParentIdx: index("sessions_trial_parent_idx").on(table.parentId, table.isTrial), // Index for trial counting
+  acuityAppointmentIdIdx: index("sessions_acuityAppointmentId_idx").on(table.acuityAppointmentId),
 }));
 
 export type Session = typeof sessions.$inferSelect;

@@ -59,6 +59,10 @@ async function startServer() {
   const { handleStripeWebhook } = await import("../stripeWebhook");
   app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), handleStripeWebhook);
 
+  // Acuity webhook requires raw body for HMAC-SHA256 signature verification.
+  const { handleAcuityWebhook } = await import("../acuity-webhook");
+  app.post("/api/webhooks/acuity", express.raw({ type: "application/json" }), handleAcuityWebhook);
+
   app.use(
     cors({
       origin: ENV.corsOrigin,
