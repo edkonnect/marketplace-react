@@ -304,7 +304,7 @@ export default function ParentDashboard() {
     if (Object.keys(noteAlerts).length === 0) return;
 
     setHistoryPulse(true);
-    toast.info("New tutor notes available in History");
+    toast.info("New tutor notes available in Notes");
     const timer = setTimeout(() => setHistoryPulse(false), 2000);
 
     // Mark current alerts as seen so they won't reappear until updated again
@@ -967,15 +967,15 @@ export default function ParentDashboard() {
             <div className="overflow-x-auto">
               <TabsList className="inline-flex min-w-max gap-2 sm:w-full sm:flex-wrap sm:justify-start">
                 <TabsTrigger className="whitespace-nowrap" value="subscriptions">Subscriptions</TabsTrigger>
-                <TabsTrigger className="whitespace-nowrap" value="bookings">My Bookings</TabsTrigger>
-                <TabsTrigger className="whitespace-nowrap" value="schedule">Schedule</TabsTrigger>
                 <TabsTrigger className="whitespace-nowrap" value="sessions">Sessions</TabsTrigger>
                 <TabsTrigger
                   className={`whitespace-nowrap ${historyPulse ? "ring-2 ring-primary/60 animate-pulse" : ""}`}
                   value="history"
                 >
-                  History
+                  Notes
                 </TabsTrigger>
+                <TabsTrigger className="whitespace-nowrap" value="bookings">My Bookings</TabsTrigger>
+                <TabsTrigger className="whitespace-nowrap" value="schedule">Schedule</TabsTrigger>
                 <TabsTrigger className="whitespace-nowrap" value="analytics">Analytics</TabsTrigger>
                 <TabsTrigger className="whitespace-nowrap" value="my-files">My Files</TabsTrigger>
               </TabsList>
