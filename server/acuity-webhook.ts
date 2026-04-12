@@ -66,7 +66,7 @@ const CALENDAR_TUTOR_MAP: Record<number, number> = {
 const APPOINTMENT_TYPE_COURSE_MAP: Record<number, number | null> = {
   57218677: null, // Middle School Computer Science (no platform mapping)
   71128100: 116,  // High School English (IG/IB)
-  71128121: 177,  // High School Math (IG/IB)
+  71128121: 274,  // High School Math (IG/IB)
   71128144: 154,  // High School Chemistry (IG/IB)
   71128157: 162,  // High School Biology (IG/IB)
   71128190: 157,  // High School Physics (IG/IB)
@@ -76,24 +76,34 @@ const APPOINTMENT_TYPE_COURSE_MAP: Record<number, number | null> = {
   71170563: 220,  // Middle School Chemistry (IG/IB)
   71556848: 33,   // AP Calculus
   76604953: 12,   // Computer Programming - Python
-  84052873: 88,   // AP Computer Science
+  84052873: 201,   // AP Computer Science
   84510036: 22,   // Computer Programming - Java
-  88415090: 25,   // AP Language
-  37431356: 33,   // AP Course - Private Session
+  88415090: 29,   // AP Language
+  37431356: null,   // AP Course - Private Session
   54015900: 51,   // High School Computer Science
   28978757: 154,  // Chemistry - Private Session
   35389384: 162,  // Biology - Private Session
   27314322: 115,  // Elementary School English (CBSE/ICSE/IG/IB/State)
-  24510098: 113,  // Elementary School English - Private Session (US)
+  24510098: 115,  // Elementary School English - Private Session (US)
   14691452: 4,    // Elementary School Math - Private Session (US)
   26804440: 4,    // Elementary School Mathematics (CBSE/ICSE/IG/IB/State)
   55339864: 276,  // Spoken English - Private Sessions
   34108709: 25,   // On-Demand English Private Tutoring
   63049663: 274,  // High School Hindi → Math Olympiad placeholder
   74079295: 139,  // Middle School Hindi
-  27561406: 150,  // A Level Math - Private Session
-  30219038: 116,  // A Level English - Private Session
-  31263147: 276,  // IELTS/TOEFL - Private Session
+  27561406: 251,  // A Level Math - Private Session
+  30219038: 252,  // A Level English - Private Session
+  31263147: 42,  // IELTS/TOEFL - Private Session
+  14792692: 25,   // PSAT/SAT/ACT English - Private Session
+  19034374: 1,    // PSAT/SAT/ACT Math - Private Session
+  87525059: 68,   // AP - Statistics
+  38756951: 116,  // High School English - Private Session (US)
+  14691576: 274,  // High School Math - Private Session (US)
+  26804614: 150,  // High School Mathematics - Private Session (CBSE/ICSE/IG/IB/State)
+  27314289: 141,  // Middle School English - Private Session (CBSE/ICSE/IG/IB/State)
+  38757538: 114,  // Middle School English - Private Session (US)
+  14474827: 4,    // Middle School Math - Private Session (US)
+  33654551: 124,  // Middle School Science - Private Session (CBSE/ICSE/IB/IG/State)
   40643350: 1,    // SAT Trial Lesson (isTrial=true)
   55339838: null, // Trial Lesson - Edkonnect Academy (isTrial only, no courseId)
   31198809: null, // Additional half hour class — skip
@@ -184,17 +194,29 @@ export async function upsertAcuityAppointment(apt: AcuityAppointment): Promise<v
   const meetingUrl = meetingUrlMatch ? meetingUrlMatch[1] : null;
 
   // Look up parentId (must be one of our 63 migrated parents, id 81–143)
-  const parentRows = await db
-    .select({ id: users.id })
-    .from(users)
-    .where(sql`LOWER(${users.email}) = LOWER(${apt.email}) AND ${users.id} BETWEEN 81 AND 143`)
-    .limit(1);
+  // Acuity may store multiple emails joined with ", " or "; " — split and try each
+  const emailCandidates = apt.email
+    .split(/[,;]/)
+    .map(e => e.trim().toLowerCase())
+    .filter(e => e.length > 0);
 
-  if (parentRows.length === 0) {
-    console.log(`[Acuity] No migrated parent found for email ${apt.email}, skipping`);
+  let parentId: number | null = null;
+  for (const emailCandidate of emailCandidates) {
+    const parentRows = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(sql`LOWER(${users.email}) = ${emailCandidate} AND ${users.id} BETWEEN 81 AND 143`)
+      .limit(1);
+    if (parentRows.length > 0) {
+      parentId = parentRows[0].id;
+      break;
+    }
+  }
+
+  if (parentId === null) {
+    console.log(`[Acuity] No migrated parent found for email(s) ${apt.email}, skipping`);
     return;
   }
-  const parentId = parentRows[0].id;
 
   // Look up subscriptionId
   let subscriptionId: number | null = null;
