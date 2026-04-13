@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Star, Clock, BookOpen, Award, ChevronLeft, ChevronRight } from "lucide-react";
+import { Star, Clock, BookOpen, Award, ChevronLeft, ChevronRight, SlidersHorizontal, X } from "lucide-react";
 import { toast } from "sonner";
 import { useFormatPrice } from "@/hooks/useFormatPrice";
 
@@ -22,6 +22,7 @@ export function FindTutors() {
     minRating: 0,
   });
   const [currentPage, setCurrentPage] = useState(1);
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   const { data: tutors, isLoading, refetch } = trpc.tutors.search.useQuery(filters, {
     enabled: false, // Only search when user clicks search button
@@ -40,21 +41,34 @@ export function FindTutors() {
 
   return (
     <div className="min-h-screen bg-background">
-      <div className="container mx-auto py-8 mt-20">
-        <div className="mb-8">
-          <h1 className="text-4xl font-bold mb-2">Find Your Perfect Tutor</h1>
-          <p className="text-muted-foreground">
+      <div className="container mx-auto px-4 py-6 mt-16 lg:mt-20 lg:py-8">
+        {/* Header */}
+        <div className="mb-6">
+          <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold mb-1">Find Your Perfect Tutor</h1>
+          <p className="text-sm text-muted-foreground">
             Search and filter tutors by subject, availability, and rating
           </p>
         </div>
 
+        {/* Mobile filter toggle */}
+        <div className="lg:hidden mb-4">
+          <Button
+            variant="outline"
+            className="w-full flex items-center justify-center gap-2"
+            onClick={() => setFiltersOpen((o) => !o)}
+          >
+            {filtersOpen ? <X className="h-4 w-4" /> : <SlidersHorizontal className="h-4 w-4" />}
+            {filtersOpen ? "Hide Filters" : "Show Filters"}
+          </Button>
+        </div>
+
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
           {/* Filters Sidebar */}
-          <div className="lg:col-span-1">
+          <div className={`lg:col-span-1 ${filtersOpen ? "block" : "hidden"} lg:block`}>
             <TutorFilters
               filters={filters}
               onChange={setFilters}
-              onSearch={handleSearch}
+              onSearch={() => { handleSearch(); setFiltersOpen(false); }}
             />
           </div>
 
@@ -66,10 +80,10 @@ export function FindTutors() {
               </div>
             ) : tutors === undefined ? (
               <div className="text-center py-12">
-                <BookOpen className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
-                <h3 className="text-xl font-semibold mb-2">Start Your Search</h3>
-                <p className="text-muted-foreground">
-                  Use the filters on the left to find tutors that match your needs
+                <BookOpen className="h-12 w-12 sm:h-16 sm:w-16 mx-auto text-muted-foreground mb-4" />
+                <h3 className="text-lg sm:text-xl font-semibold mb-2">Start Your Search</h3>
+                <p className="text-sm text-muted-foreground">
+                  Use the filters {filtersOpen ? "above" : "to find tutors that match your needs"}
                 </p>
               </div>
             ) : tutors.length === 0 ? (
@@ -77,29 +91,31 @@ export function FindTutors() {
                 <p className="text-muted-foreground mb-4">
                   No tutors found matching your criteria
                 </p>
-                <Button variant="outline" onClick={() => setFilters({ 
-                  subjects: [], 
+                <Button variant="outline" onClick={() => setFilters({
+                  subjects: [],
                   gradeLevels: [],
                   minRate: undefined,
                   maxRate: undefined,
-                  minRating: 0 
+                  minRating: 0
                 })}>
                   Clear Filters
                 </Button>
               </div>
             ) : (
-              <div className="space-y-4">
+              <div className="space-y-6">
                 <p className="text-sm text-muted-foreground">
                   Found {tutors.length} tutor{tutors.length !== 1 ? "s" : ""}
                   {totalPages > 1 && ` · Page ${currentPage} of ${totalPages}`}
                 </p>
 
-                {paginatedTutors!.map((tutor) => (
-                  <TutorCard key={tutor.id} tutor={tutor} />
-                ))}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {paginatedTutors!.map((tutor) => (
+                    <TutorCard key={tutor.id} tutor={tutor} />
+                  ))}
+                </div>
 
                 {totalPages > 1 && (
-                  <div className="flex items-center justify-center gap-2 mt-6">
+                  <div className="flex flex-wrap items-center justify-center gap-2 mt-6">
                     <Button
                       variant="outline"
                       size="sm"
@@ -107,7 +123,7 @@ export function FindTutors() {
                       disabled={currentPage === 1}
                     >
                       <ChevronLeft className="h-4 w-4" />
-                      Previous
+                      <span className="hidden sm:inline">Previous</span>
                     </Button>
 
                     {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
@@ -128,7 +144,7 @@ export function FindTutors() {
                       onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
                       disabled={currentPage === totalPages}
                     >
-                      Next
+                      <span className="hidden sm:inline">Next</span>
                       <ChevronRight className="h-4 w-4" />
                     </Button>
                   </div>
@@ -174,31 +190,27 @@ function TutorCard({ tutor }: TutorCardProps) {
 
   return (
     <Card className="hover:shadow-lg transition-shadow">
-      <CardHeader>
-          <div className="flex items-start justify-between">
-          <div className="flex items-center gap-4">
-            <Avatar className="h-16 w-16">
-              <AvatarImage src={tutor.profileImageUrl || undefined} alt={tutor.userName || 'Tutor'} />
-              <AvatarFallback className="text-2xl font-bold">
-                {tutor.userName?.charAt(0).toUpperCase() || "T"}
-              </AvatarFallback>
-            </Avatar>
-            <div>
-              <CardTitle className="text-xl">{tutor.userName || "Tutor"}</CardTitle>
-              <CardDescription className="flex items-center gap-2 mt-1">
-                {rating > 0 && (
-                  <div className="flex items-center gap-1">
-                    <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
-                    <span className="font-medium">{rating.toFixed(1)}</span>
-                    <span className="text-muted-foreground">
-                      ({tutor.totalReviews} review{tutor.totalReviews !== 1 ? "s" : ""})
-                    </span>
-                  </div>
-                )}
-              </CardDescription>
-            </div>
-          </div>
-          <div className="text-right">
+      <CardHeader className="pb-3">
+        <div className="flex items-center gap-3">
+          <Avatar className="h-12 w-12 shrink-0">
+            <AvatarImage src={tutor.profileImageUrl || undefined} alt={tutor.userName || 'Tutor'} />
+            <AvatarFallback className="text-lg font-bold">
+              {tutor.userName?.charAt(0).toUpperCase() || "T"}
+            </AvatarFallback>
+          </Avatar>
+          <div className="min-w-0">
+            <CardTitle className="text-base sm:text-lg truncate">{tutor.userName || "Tutor"}</CardTitle>
+            <CardDescription className="flex items-center gap-1 mt-0.5">
+              {rating > 0 && (
+                <>
+                  <Star className="h-3.5 w-3.5 fill-yellow-400 text-yellow-400 shrink-0" />
+                  <span className="font-medium text-xs">{rating.toFixed(1)}</span>
+                  <span className="text-xs text-muted-foreground">
+                    ({tutor.totalReviews})
+                  </span>
+                </>
+              )}
+            </CardDescription>
           </div>
         </div>
       </CardHeader>
@@ -284,7 +296,7 @@ function TutorCard({ tutor }: TutorCardProps) {
           />
         ) : null}
 
-        <div className="flex gap-2 pt-2">
+        <div className="flex flex-col sm:flex-row gap-2 pt-2">
           <Button className="flex-1">View Profile</Button>
           <Button variant="outline" className="flex-1">
             Book Session
