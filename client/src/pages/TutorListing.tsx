@@ -1,21 +1,22 @@
 import Navigation from "@/components/Navigation";
 import Footer from "@/components/Footer";
 import { trpc } from "@/lib/trpc";
-import { useFormatPrice } from "@/hooks/useFormatPrice";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Input } from "@/components/ui/input";
 import { Link } from "wouter";
-import { Search, Star, DollarSign, BookOpen, Clock } from "lucide-react";
+import { Search, Star, BookOpen, Clock, ChevronLeft, ChevronRight } from "lucide-react";
 import { useState } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 
+const TUTORS_PER_PAGE = 6;
+
 export default function TutorListing() {
   const [searchTerm, setSearchTerm] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
   const { data: tutors, isLoading } = trpc.tutorProfile.list.useQuery();
-  const formatPrice = useFormatPrice();
 
   const filteredTutors = tutors?.filter(tutor => {
     if (!searchTerm) return true;
@@ -26,6 +27,17 @@ export default function TutorListing() {
       tutor.bio?.toLowerCase().includes(term)
     );
   });
+
+  const totalPages = Math.ceil((filteredTutors?.length || 0) / TUTORS_PER_PAGE);
+  const paginatedTutors = filteredTutors?.slice(
+    (currentPage - 1) * TUTORS_PER_PAGE,
+    currentPage * TUTORS_PER_PAGE
+  );
+
+  const handleSearchChange = (value: string) => {
+    setSearchTerm(value);
+    setCurrentPage(1);
+  };
 
   const parseSubjects = (subjects: string | null) => {
     if (!subjects) return [];
@@ -58,7 +70,7 @@ export default function TutorListing() {
                 placeholder="Search by name, subject, or keyword..."
                 className="pl-10 h-12 text-base"
                 value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+                onChange={(e) => handleSearchChange(e.target.value)}
               />
             </div>
             </div>
@@ -86,12 +98,12 @@ export default function TutorListing() {
             <>
               <div className="mb-6 text-sm text-muted-foreground">
                 Showing {filteredTutors.length} {filteredTutors.length === 1 ? 'tutor' : 'tutors'}
+                {totalPages > 1 && ` · Page ${currentPage} of ${totalPages}`}
               </div>
               <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {filteredTutors.map((tutor) => {
+                {paginatedTutors!.map((tutor) => {
                   const subjects = parseSubjects(tutor.subjects);
                   const rating = tutor.rating ? parseFloat(tutor.rating) : 0;
-                  const hourlyRate = tutor.hourlyRate ? parseFloat(tutor.hourlyRate) : 0;
 
                   return (
                     <Card key={tutor.id} className="hover:shadow-elegant transition-all duration-300 hover:border-primary/50 flex flex-col">
@@ -167,6 +179,42 @@ export default function TutorListing() {
                   );
                 })}
               </div>
+
+              {totalPages > 1 && (
+                <div className="flex flex-wrap items-center justify-center gap-2 mt-10">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                    disabled={currentPage === 1}
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                    <span className="hidden sm:inline">Previous</span>
+                  </Button>
+
+                  {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+                    <Button
+                      key={page}
+                      variant={currentPage === page ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setCurrentPage(page)}
+                      className="w-9"
+                    >
+                      {page}
+                    </Button>
+                  ))}
+
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                    disabled={currentPage === totalPages}
+                  >
+                    <span className="hidden sm:inline">Next</span>
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              )}
             </>
           ) : (
             <div className="text-center py-16">

@@ -26,7 +26,6 @@ import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
 import { ManageBooking } from "./pages/ManageBooking";
 import SessionNotesHistory from "./pages/SessionNotesHistory";
-import { FindTutors } from "./pages/FindTutors";
 import TutorRegistration from "./pages/TutorRegistration";
 import ParentPayments from "./pages/ParentPayments";
 import ParentNotifications from "./pages/ParentNotifications";
@@ -60,7 +59,6 @@ function Router() {
       <Route path={"/reset-password"} component={ResetPassword} />
       {/* RoleSelection removed - users get role assigned during registration */}
       <Route path={"/tutors"} component={TutorListing} />
-      <Route path={"/find-tutors"} component={FindTutors} />
       <Route path={"/tutor-registration"} component={TutorRegistration} />
       {/* Put specific tutor routes before the dynamic :id route to avoid collisions (e.g., /tutor/dashboard) */}
       <Route path={"/tutor/dashboard"} component={TutorDashboard} />
