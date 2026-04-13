@@ -2104,10 +2104,10 @@ export default function ParentDashboard() {
                           <button onClick={() => setShowBillingModal(true)} className="text-xs font-medium opacity-90 hover:opacity-100 underline underline-offset-2">Show more</button>
                         </div>
                       </div>
-                      <p className="text-4xl font-bold">${totalSpend.toFixed(0)}</p>
+                      <p className="text-4xl font-bold">{formatPrice(totalSpend)}</p>
                       <p className="text-xs opacity-70 -mt-2">across {activeSubs.length} active enrollment{activeSubs.length !== 1 ? "s" : ""}</p>
                       {totalSavings > 0 && (
-                        <p className="text-xs opacity-90">Saved <span className="font-bold">${totalSavings.toFixed(2)}</span> via discounts</p>
+                        <p className="text-xs opacity-90">Saved <span className="font-bold">{formatPrice(totalSavings)}</span> via discounts</p>
                       )}
                       {hasSiblingDiscount && (
                         <span className="self-start text-[10px] bg-white/20 px-2 py-0.5 rounded-full font-medium">Sibling discount applied</span>
@@ -2420,8 +2420,8 @@ export default function ParentDashboard() {
                               <span className="text-[10px] text-muted-foreground">Discounts:</span>
                               {s.siblingDiscountApplied && <span className="text-[10px] bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-400 px-2 py-0.5 rounded-full font-medium">Sibling</span>}
                               {s.loyaltyDiscountApplied && <span className="text-[10px] bg-violet-100 dark:bg-violet-900/40 text-violet-700 dark:text-violet-400 px-2 py-0.5 rounded-full font-medium">Loyalty</span>}
-                              {Number(s.promoDiscountAmount ?? 0) > 0 && <span className="text-[10px] bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 px-2 py-0.5 rounded-full font-medium">Promo −${Number(s.promoDiscountAmount).toFixed(2)}</span>}
-                              {Number(s.discountAmount ?? 0) > 0 && <span className="text-[10px] bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400 px-2 py-0.5 rounded-full font-medium">Discount −${Number(s.discountAmount).toFixed(2)}</span>}
+                              {Number(s.promoDiscountAmount ?? 0) > 0 && <span className="text-[10px] bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 px-2 py-0.5 rounded-full font-medium">Promo −{formatPrice(Number(s.promoDiscountAmount))}</span>}
+                              {Number(s.discountAmount ?? 0) > 0 && <span className="text-[10px] bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400 px-2 py-0.5 rounded-full font-medium">Discount −{formatPrice(Number(s.discountAmount))}</span>}
                             </div>
                           )}
                         </div>
@@ -2467,12 +2467,12 @@ export default function ParentDashboard() {
                 <div className="grid grid-cols-2 gap-3">
                   <div className="rounded-xl bg-emerald-50 dark:bg-emerald-950/40 p-4">
                     <p className="text-xs text-muted-foreground">Total Spend</p>
-                    <p className="text-2xl font-bold text-emerald-700 dark:text-emerald-400 mt-1">${totalSpend.toFixed(2)}</p>
+                    <p className="text-2xl font-bold text-emerald-700 dark:text-emerald-400 mt-1">{formatPrice(totalSpend)}</p>
                     <p className="text-[10px] text-muted-foreground mt-0.5">{activeSubs.length} active enrollment{activeSubs.length !== 1 ? "s" : ""}</p>
                   </div>
                   <div className="rounded-xl bg-blue-50 dark:bg-blue-950/40 p-4">
                     <p className="text-xs text-muted-foreground">Total Saved</p>
-                    <p className="text-2xl font-bold text-blue-700 dark:text-blue-400 mt-1">${totalSavings.toFixed(2)}</p>
+                    <p className="text-2xl font-bold text-blue-700 dark:text-blue-400 mt-1">{formatPrice(totalSavings)}</p>
                     <p className="text-[10px] text-muted-foreground mt-0.5">via discounts &amp; promos</p>
                   </div>
                 </div>
@@ -2493,15 +2493,15 @@ export default function ParentDashboard() {
                               <p className="font-semibold text-sm">{item.course?.title || "Course"}</p>
                               <p className="text-xs text-muted-foreground">{[s.studentFirstName, s.studentLastName].filter(Boolean).join(" ")} · {planLabel(s.paymentPlan)} plan</p>
                             </div>
-                            <p className="font-bold text-base shrink-0">${amount.toFixed(2)}</p>
+                            <p className="font-bold text-base shrink-0">{formatPrice(amount)}</p>
                           </div>
                           {item.nextBillingDate && (
                             <p className="text-xs text-muted-foreground">Next billing: {new Date(item.nextBillingDate).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}</p>
                           )}
                           {savings > 0 && (
                             <div className="flex flex-wrap gap-1.5 pt-1 border-t">
-                              {Number(s.promoDiscountAmount ?? 0) > 0 && <span className="text-[10px] bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 px-2 py-0.5 rounded-full font-medium">Promo −${Number(s.promoDiscountAmount).toFixed(2)}</span>}
-                              {Number(s.discountAmount ?? 0) > 0 && <span className="text-[10px] bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400 px-2 py-0.5 rounded-full font-medium">Discount −${Number(s.discountAmount).toFixed(2)}</span>}
+                              {Number(s.promoDiscountAmount ?? 0) > 0 && <span className="text-[10px] bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 px-2 py-0.5 rounded-full font-medium">Promo −{formatPrice(Number(s.promoDiscountAmount))}</span>}
+                              {Number(s.discountAmount ?? 0) > 0 && <span className="text-[10px] bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400 px-2 py-0.5 rounded-full font-medium">Discount −{formatPrice(Number(s.discountAmount))}</span>}
                               {s.siblingDiscountApplied && <span className="text-[10px] bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-400 px-2 py-0.5 rounded-full font-medium">Sibling discount</span>}
                               {s.loyaltyDiscountApplied && <span className="text-[10px] bg-violet-100 dark:bg-violet-900/40 text-violet-700 dark:text-violet-400 px-2 py-0.5 rounded-full font-medium">Loyalty discount</span>}
                             </div>

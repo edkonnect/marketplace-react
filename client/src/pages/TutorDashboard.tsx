@@ -600,7 +600,7 @@ export default function TutorDashboard() {
         sessionDate: session?.scheduledAt ? new Date(session.scheduledAt).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) : undefined,
         courseId: session?.courseId ?? undefined,
         parentId: session?.parentId ?? undefined,
-        quizEnabled: ((session as any)?.courseQuizEnabled ?? false) && !((session as any)?.hasQuiz),
+        quizEnabled: !!(session as any)?.courseQuizEnabled && !(session as any)?.hasQuiz,
       });
       toast.success("Transcript loaded. Review it in the popup.");
     },

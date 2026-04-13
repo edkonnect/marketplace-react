@@ -6552,7 +6552,10 @@ export const appRouter = router({
           const genAI = new GoogleGenerativeAI(ENV.geminiApiKey);
           // Using gemini-2.5-flash (latest fast model)
           const model = genAI.getGenerativeModel({
-            model: "gemini-2.5-flash"
+            model: "gemini-2.5-flash",
+            generationConfig: {
+              temperature: 0,
+            },
           });
 
           const sessionDateStr = input.sessionDate
@@ -6955,8 +6958,8 @@ IMPORTANT RULES (MUST FOLLOW):
 - Do NOT infer causes related to the tutor. Only describe observable student outcomes.
 - Keep language simple, clear, and parent-friendly.
 - Each section must reflect what the parent can understand about their child's learning.
+- ALWAYS refer to the student as "the student" — never use their name, and never use pronouns like "he", "she", "they", "him", "her". Every reference must be "the student".
 
-STUDENT NAME: ${input.studentName || 'Student'}
 COURSE: ${input.courseName || 'General'}
 
 TRANSCRIPT:
