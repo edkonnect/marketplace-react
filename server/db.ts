@@ -1968,6 +1968,82 @@ export async function getSessionByTutorAndTime(tutorId: number, scheduledAt: num
   return result.length > 0 ? result[0] : null;
 }
 
+export type SessionMatchResult =
+  | { sessionId: number; tutorId: number; reason: 'matched' }
+  | { sessionId: null; tutorId: number | null; reason: 'no_match' | 'ambiguous' | 'no_tutor_found' };
+
+/**
+ * Resolve which session a Zoom recording belongs to, based on recording start time.
+ * Tutors use a single permanent Zoom room, so meetingId alone is not enough —
+ * we match by finding the closest session scheduledAt within a ±30 min tolerance window.
+ */
+export async function resolveSessionForZoomRecording(params: {
+  meetingId: string;
+  hostId: string;
+  recordingStartTime: Date;
+  durationMinutes: number;
+}): Promise<SessionMatchResult> {
+  const db = await getDb();
+  if (!db) return { sessionId: null, tutorId: null, reason: 'no_tutor_found' };
+
+  // Step 1: Resolve tutorId via tutorProfiles.zoomMeetingId
+  const profileRows = await db
+    .select({ userId: tutorProfiles.userId })
+    .from(tutorProfiles)
+    .where(eq(tutorProfiles.zoomMeetingId, params.meetingId))
+    .limit(2); // fetch 2 to detect misconfiguration
+
+  if (profileRows.length === 0) {
+    console.warn(`[ZoomMatch] No tutorProfile found for zoomMeetingId=${params.meetingId} hostId=${params.hostId}`);
+    return { sessionId: null, tutorId: null, reason: 'no_tutor_found' };
+  }
+  if (profileRows.length > 1) {
+    console.warn(`[ZoomMatch] Multiple tutorProfiles share zoomMeetingId=${params.meetingId}, using first`);
+  }
+
+  const tutorId = profileRows[0].userId;
+
+  // Step 2: Query sessions within ±30 min of recording start time
+  const recordingMs = params.recordingStartTime.getTime();
+  const TOLERANCE_MS = 30 * 60 * 1000;
+  const windowStart = recordingMs - TOLERANCE_MS;
+  const windowEnd = recordingMs + TOLERANCE_MS;
+
+  const candidates = await db
+    .select({ id: sessions.id, scheduledAt: sessions.scheduledAt })
+    .from(sessions)
+    .where(and(
+      eq(sessions.tutorId, tutorId),
+      gte(sessions.scheduledAt, windowStart),
+      lte(sessions.scheduledAt, windowEnd),
+      ne(sessions.status, 'cancelled'),
+    ))
+    .orderBy(sql`ABS(${sessions.scheduledAt} - ${recordingMs})`);
+
+  console.log(
+    `[ZoomMatch] meetingId=${params.meetingId} recordingMs=${recordingMs} tutorId=${tutorId} ` +
+    `candidates=${JSON.stringify(candidates.map(c => ({ id: c.id, scheduledAt: c.scheduledAt })))}`
+  );
+
+  // Step 3: Apply match / ambiguity rules
+  if (candidates.length === 0) {
+    return { sessionId: null, tutorId, reason: 'no_match' };
+  }
+  if (candidates.length === 1) {
+    return { sessionId: candidates[0].id, tutorId, reason: 'matched' };
+  }
+
+  // Multiple candidates: reject if the top two are equidistant (ambiguous)
+  const diffFirst = Math.abs(candidates[0].scheduledAt - recordingMs);
+  const diffSecond = Math.abs(candidates[1].scheduledAt - recordingMs);
+  if (diffFirst === diffSecond) {
+    console.warn(`[ZoomMatch] Ambiguous: sessions ${candidates[0].id} and ${candidates[1].id} are equidistant (${diffFirst}ms) from recording`);
+    return { sessionId: null, tutorId, reason: 'ambiguous' };
+  }
+
+  return { sessionId: candidates[0].id, tutorId, reason: 'matched' };
+}
+
 export async function getSessionsByParentId(parentId: number) {
   const db = await getDb();
   if (!db) return [];

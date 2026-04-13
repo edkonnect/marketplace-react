@@ -7158,10 +7158,50 @@ For engagementData, describe ONLY the student's participation and behavior. The 
           throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Database not available' });
         }
 
+        const { eq, and } = await import('drizzle-orm');
+
         try {
-          // Update status to processing
+          // If we have a sessionId, check if transcript is already saved — return it directly
+          if (input.sessionId) {
+            const existing = await database
+              .select()
+              .from(zoomMeetingRecordings)
+              .where(and(
+                eq(zoomMeetingRecordings.sessionId, input.sessionId),
+                eq(zoomMeetingRecordings.status, 'completed'),
+              ))
+              .limit(1);
+
+            if (existing.length > 0 && existing[0].transcriptText) {
+              return {
+                success: true,
+                recordingId: existing[0].id,
+                transcript: existing[0].transcriptText,
+                duration: existing[0].durationMinutes ?? 0,
+              };
+            }
+          }
+
+          // Determine the ID to use when fetching from Zoom.
+          // If we have a saved recording row for this session, use its UUID
+          // (a specific past instance) rather than the numeric meetingId
+          // which only returns the latest recording.
+          let meetingIdToFetch = input.meetingId;
+          if (input.sessionId) {
+            const savedRecording = await database
+              .select({ id: zoomMeetingRecordings.id })
+              .from(zoomMeetingRecordings)
+              .where(eq(zoomMeetingRecordings.sessionId, input.sessionId))
+              .limit(1);
+
+            if (savedRecording.length > 0 && savedRecording[0].id !== input.meetingId) {
+              meetingIdToFetch = savedRecording[0].id;
+            }
+          }
+
+          // Mark as processing
           await database.insert(zoomMeetingRecordings).values({
-            id: input.meetingId,
+            id: meetingIdToFetch,
             meetingId: input.meetingId,
             sessionId: input.sessionId,
             status: 'processing',
@@ -7169,9 +7209,9 @@ For engagementData, describe ONLY the student's participation and behavior. The 
             set: { status: 'processing' }
           });
 
-          // Fetch transcript from Zoom
-          const transcriptData = await fetchZoomTranscript(input.meetingId);
-          const recording = await getZoomRecording(input.meetingId);
+          // Fetch transcript from Zoom (meetingIdToFetch may be a UUID for specific past instances)
+          const transcriptData = await fetchZoomTranscript(meetingIdToFetch);
+          const recording = await getZoomRecording(meetingIdToFetch);
 
           // Save to database
           await database.insert(zoomMeetingRecordings).values({

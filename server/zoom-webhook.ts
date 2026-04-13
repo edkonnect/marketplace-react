@@ -9,7 +9,7 @@ import type { Request, Response } from "express";
 import crypto from "crypto";
 import { ENV } from "./_core/env";
 import { fetchZoomTranscript, getZoomRecording } from "./zoom-service";
-import { getDb } from "./db";
+import { getDb, resolveSessionForZoomRecording } from "./db";
 import { zoomMeetingRecordings, InsertZoomMeetingRecording } from "../drizzle/schema";
 
 type ZoomWebhookEvent = {
@@ -174,25 +174,62 @@ async function processRecordingCompleted(event: ZoomWebhookEvent) {
       return;
     }
 
-    // Fetch transcript from Zoom
-    const transcriptData = await fetchZoomTranscript(String(meetingId));
-    const recording = await getZoomRecording(String(meetingId));
+    // Fetch transcript from Zoom — use UUID to fetch this specific recording instance
+    // (meetingId alone returns only the latest recording)
+    const transcriptData = await fetchZoomTranscript(uuid);
+    const recording = await getZoomRecording(uuid);
 
-    // Save transcript to database
+    // Resolve which session this recording belongs to by timestamp proximity
+    const recordedAt = new Date(recording.start_time);
+    const matchResult = await resolveSessionForZoomRecording({
+      meetingId: String(meetingId),
+      hostId: recording.host_id,
+      recordingStartTime: recordedAt,
+      durationMinutes: Math.round(recording.duration),
+    });
+
+    console.log(
+      `[Zoom Webhook] Session match for uuid=${uuid} meetingId=${meetingId}: ` +
+      `tutorId=${matchResult.tutorId} sessionId=${matchResult.sessionId} reason=${matchResult.reason}`
+    );
+
+    if (matchResult.reason !== 'matched') {
+      const errorMessage =
+        matchResult.reason === 'no_tutor_found'
+          ? `No tutor profile found for Zoom meetingId ${meetingId} (hostId: ${recording.host_id})`
+          : matchResult.reason === 'ambiguous'
+          ? `Ambiguous session match near ${recording.start_time} for tutorId ${matchResult.tutorId}: two sessions equidistant within 30-minute window`
+          : `No session found within 30 minutes of recording start ${recording.start_time} for tutorId ${matchResult.tutorId}`;
+
+      console.warn(`[Zoom Webhook] ${errorMessage}`);
+      await db.insert(zoomMeetingRecordings).values({
+        id: uuid,
+        meetingId: String(meetingId),
+        status: 'failed',
+        errorMessage,
+      } as InsertZoomMeetingRecording).onDuplicateKeyUpdate({
+        set: { status: 'failed', errorMessage }
+      });
+      return;
+    }
+
+    // Matched: save transcript linked to the resolved session
     await db.insert(zoomMeetingRecordings).values({
       id: uuid,
       meetingId: String(meetingId),
+      sessionId: matchResult.sessionId,
       topic: recording.topic,
       hostId: recording.host_id,
       transcriptText: transcriptData.transcript,
       rawTranscript: transcriptData.rawTranscript,
       durationMinutes: Math.round(recording.duration),
-      recordedAt: new Date(recording.start_time),
+      recordedAt,
       processedAt: new Date(),
       status: 'completed',
       shareUrl: recording.share_url,
     } as InsertZoomMeetingRecording).onDuplicateKeyUpdate({
       set: {
+        sessionId: matchResult.sessionId,
         transcriptText: transcriptData.transcript,
         rawTranscript: transcriptData.rawTranscript,
         processedAt: new Date(),
@@ -200,11 +237,9 @@ async function processRecordingCompleted(event: ZoomWebhookEvent) {
       }
     });
 
-    console.log(`[Zoom Webhook] Successfully processed recording ${uuid}`);
+    console.log(`[Zoom Webhook] Successfully processed recording ${uuid}, linked to session ${matchResult.sessionId}`);
 
     // TODO: Trigger AI processing here (generate summary, homework, progress)
-    // You can call your existing Gemini summary generation code here
-    // Example:
     // await generateAIInsights(uuid, transcriptData.transcript);
 
   } catch (error) {

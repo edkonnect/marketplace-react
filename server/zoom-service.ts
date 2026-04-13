@@ -193,13 +193,21 @@ export async function listZoomRecordings(options?: {
 }
 
 /**
- * Get recording details for a specific meeting
+ * Get recording details for a specific meeting instance.
+ * Pass the recording UUID (double-encoded) to fetch a specific past instance,
+ * or the numeric meetingId to fetch the latest recording.
  */
-export async function getZoomRecording(meetingId: string): Promise<ZoomRecording> {
+export async function getZoomRecording(meetingIdOrUuid: string): Promise<ZoomRecording> {
   const accessToken = await getZoomAccessToken();
 
+  // UUIDs contain characters like / and + that must be double-encoded for the Zoom API
+  const isUuid = meetingIdOrUuid.includes('=') || meetingIdOrUuid.includes('/') || meetingIdOrUuid.includes('+');
+  const encoded = isUuid
+    ? encodeURIComponent(encodeURIComponent(meetingIdOrUuid))
+    : meetingIdOrUuid;
+
   const response = await fetch(
-    `${ZOOM_API_BASE_URL}/meetings/${meetingId}/recordings`,
+    `${ZOOM_API_BASE_URL}/meetings/${encoded}/recordings`,
     {
       headers: {
         Authorization: `Bearer ${accessToken}`,
