@@ -7019,11 +7019,21 @@ For engagementData, describe ONLY the student's participation and behavior. The 
         try {
           const result = await model.generateContent(prompt);
 
+          const rawText = result.response.text();
+
           let parsed: any;
           try {
-            parsed = JSON.parse(result.response.text());
+            parsed = JSON.parse(rawText);
           } catch {
-            throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'AI returned invalid JSON. Try again.' });
+            // Log the actual response so we can diagnose (HTML error page, truncated JSON, etc.)
+            console.error('[gradeSession] Gemini returned non-JSON response:', rawText.substring(0, 500));
+            const isHtml = rawText.trim().startsWith('<');
+            throw new TRPCError({
+              code: 'INTERNAL_SERVER_ERROR',
+              message: isHtml
+                ? 'Grading failed: Gemini API returned an error (possibly rate limited or transcript too long). Please try again in a moment.'
+                : 'Grading failed: AI returned unexpected format. Please try again.',
+            });
           }
 
           if (!parsed.grades || parsed.grades.length !== 4) {
