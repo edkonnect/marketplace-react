@@ -6905,11 +6905,26 @@ Return ONLY the JSON object.`;
           });
         }
 
+        // Return cached result if this session has already been graded
+        const cached = await db.getSessionRubricGrades(input.sessionId);
+        if (cached?.rubricGradedAt && cached.rubricEvidence) {
+          const grades = JSON.parse(cached.rubricEvidence as string);
+          return {
+            grades,
+            overallScore: Number(cached.rubricOverallScore ?? 0),
+            overallNarrative: '',
+            transcriptQuality: cached.rubricTranscriptQuality ?? 'medium',
+            transcriptQualityReason: cached.rubricTranscriptQualityReason ?? '',
+            engagementData: cached.rubricEngagementData ? JSON.parse(cached.rubricEngagementData as string) : null,
+          };
+        }
+
         const { GoogleGenerativeAI } = await import('@google/generative-ai');
         const genAI = new GoogleGenerativeAI(ENV.geminiApiKey);
         const model = genAI.getGenerativeModel({
           model: 'gemini-2.5-flash',
           generationConfig: {
+            temperature: 0,
             responseMimeType: 'application/json',
             responseSchema: {
               type: 'object' as any,
