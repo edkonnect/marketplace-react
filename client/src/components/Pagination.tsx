@@ -68,14 +68,14 @@ export function Pagination({ currentPage, totalItems, itemsPerPage, onPageChange
   const endItem = Math.min(currentPage * itemsPerPage, totalItems);
 
   return (
-    <div className="flex items-center justify-between px-2 py-4">
+    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 px-2 py-4">
       <div className="text-sm text-muted-foreground">
         Showing <span className="font-medium">{startItem}</span> to{' '}
         <span className="font-medium">{endItem}</span> of{' '}
         <span className="font-medium">{totalItems}</span> results
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-1">
         <Button
           variant="outline"
           size="sm"
@@ -83,14 +83,14 @@ export function Pagination({ currentPage, totalItems, itemsPerPage, onPageChange
           disabled={currentPage === 1}
         >
           <ChevronLeft className="w-4 h-4" />
-          Previous
+          <span className="hidden sm:inline">Previous</span>
         </Button>
 
-        <div className="flex items-center gap-1">
+        <div className="flex flex-wrap items-center gap-1">
           {getPageNumbers().map((page, index) => {
             if (page === '...') {
               return (
-                <span key={`ellipsis-${index}`} className="px-2 text-muted-foreground">
+                <span key={`ellipsis-${index}`} className="px-1 text-muted-foreground">
                   ...
                 </span>
               );
@@ -102,7 +102,7 @@ export function Pagination({ currentPage, totalItems, itemsPerPage, onPageChange
                 variant={currentPage === page ? "default" : "outline"}
                 size="sm"
                 onClick={() => onPageChange(page as number)}
-                className="w-10"
+                className="w-8 sm:w-10"
               >
                 {page}
               </Button>
@@ -116,7 +116,7 @@ export function Pagination({ currentPage, totalItems, itemsPerPage, onPageChange
           onClick={handleNext}
           disabled={currentPage === totalPages}
         >
-          Next
+          <span className="hidden sm:inline">Next</span>
           <ChevronRight className="w-4 h-4" />
         </Button>
       </div>
