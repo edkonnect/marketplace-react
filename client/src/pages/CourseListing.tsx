@@ -66,6 +66,23 @@ export default function CourseListing() {
     currentPage * COURSES_PER_PAGE
   );
 
+  const getPageNumbers = (): (number | string)[] => {
+    const pages: (number | string)[] = [];
+    const maxVisible = 5;
+    if (totalPages <= maxVisible) {
+      for (let i = 1; i <= totalPages; i++) pages.push(i);
+    } else {
+      pages.push(1);
+      if (currentPage > 3) pages.push('...');
+      const start = Math.max(2, currentPage - 1);
+      const end = Math.min(totalPages - 1, currentPage + 1);
+      for (let i = start; i <= end; i++) pages.push(i);
+      if (currentPage < totalPages - 2) pages.push('...');
+      pages.push(totalPages);
+    }
+    return pages;
+  };
+
   // Get unique subjects and grade levels for filters
   const subjects = Array.from(new Set(courses?.map((c) => c.subject).filter((s): s is string => !!s) || []));
   const gradeLevels = [
@@ -262,7 +279,7 @@ export default function CourseListing() {
 
               {/* Pagination */}
               {totalPages > 1 && (
-                <div className="flex items-center justify-center gap-2 mt-10">
+                <div className="flex flex-wrap items-center justify-center gap-1 mt-10">
                   <Button
                     variant="outline"
                     size="sm"
@@ -270,20 +287,24 @@ export default function CourseListing() {
                     disabled={currentPage === 1}
                   >
                     <ChevronLeft className="h-4 w-4" />
-                    Previous
+                    <span className="hidden sm:inline">Previous</span>
                   </Button>
 
-                  {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
-                    <Button
-                      key={page}
-                      variant={currentPage === page ? "default" : "outline"}
-                      size="sm"
-                      onClick={() => setCurrentPage(page)}
-                      className="w-9"
-                    >
-                      {page}
-                    </Button>
-                  ))}
+                  {getPageNumbers().map((page, index) =>
+                    page === '...' ? (
+                      <span key={`ellipsis-${index}`} className="px-1 text-muted-foreground">...</span>
+                    ) : (
+                      <Button
+                        key={page}
+                        variant={currentPage === page ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => setCurrentPage(page as number)}
+                        className="w-8 sm:w-9"
+                      >
+                        {page}
+                      </Button>
+                    )
+                  )}
 
                   <Button
                     variant="outline"
@@ -291,7 +312,7 @@ export default function CourseListing() {
                     onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
                     disabled={currentPage === totalPages}
                   >
-                    Next
+                    <span className="hidden sm:inline">Next</span>
                     <ChevronRight className="h-4 w-4" />
                   </Button>
                 </div>
