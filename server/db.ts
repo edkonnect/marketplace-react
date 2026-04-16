@@ -3123,9 +3123,9 @@ export async function getStudentsWithTutors(parentId: number) {
     const studentMap = new Map<string, any>();
 
     for (const row of rows) {
-      if (!row.studentFirstName || !row.studentLastName) continue;
+      if (!row.studentFirstName) continue;
 
-      const studentKey = `${row.studentFirstName.trim().toLowerCase()}_${row.studentLastName.trim().toLowerCase()}`;
+      const studentKey = `${row.studentFirstName.trim().toLowerCase()}_${(row.studentLastName || '').trim().toLowerCase()}`;
       if (!studentMap.has(studentKey)) {
         studentMap.set(studentKey, {
           id: row.subId,
