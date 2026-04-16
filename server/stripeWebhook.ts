@@ -4,6 +4,7 @@ import { getStripe } from "./stripe";
 import { ENV } from "./_core/env";
 import * as db from "./db";
 import { sendCouponRewardEmail, sendEnrollmentConfirmation, sendTutorEnrollmentNotification } from "./email-helpers";
+import { redeemReferralPromo } from "./integrations/referralApp";
 
 /**
  * Called after the referred user's first enrollment is confirmed.
@@ -507,6 +508,14 @@ export async function handleStripeWebhook(req: Request, res: Response) {
             }
             await db.updateSubscription(subscriptionId, subscriptionUpdates);
             await consumeAppliedCouponForSubscription(subscriptionId);
+            // Redeem external EDK- promo code if one was used
+            const externalPromoCode = session.metadata?.external_promo_code;
+            const externalPromoEmail = session.metadata?.external_promo_email;
+            if (externalPromoCode && externalPromoEmail) {
+              await redeemReferralPromo(externalPromoCode, externalPromoEmail).catch((err) =>
+                console.error("[Webhook] Failed to redeem external promo:", err)
+              );
+            }
             // Trigger referral reward on first enrollment
             if (userId) await processReferralReward(userId);
 

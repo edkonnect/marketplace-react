@@ -65,7 +65,8 @@ export default function CourseDetail() {
 
   // Promo code state
   const [promoCode, setPromoCode] = React.useState("");
-  const [promoValidation, setPromoValidation] = React.useState<{ valid: boolean; discountAmountUsd?: number; discountAmountInr?: number; reason?: string } | null>(null);
+  const [promoValidation, setPromoValidation] = React.useState<{ valid: boolean; discountAmountUsd?: number; discountAmountInr?: number; reason?: string; isExternalPromo?: boolean; discountPercent?: number } | null>(null);
+  const [isValidatingExternalPromo, setIsValidatingExternalPromo] = React.useState(false);
   const validateCouponQuery = trpc.referral.validateCoupon.useQuery(
     { code: promoCode, coursePriceUsd: course ? parseFloat(course.price) : undefined },
     { enabled: false }
@@ -73,12 +74,44 @@ export default function CourseDetail() {
 
   const handleValidatePromo = async () => {
     if (!promoCode.trim()) return;
+    if (promoCode.trim().toUpperCase().startsWith("EDK-")) {
+      if (!user?.email) {
+        setPromoValidation({ valid: false, reason: "Please log in to apply this code." });
+        return;
+      }
+      setIsValidatingExternalPromo(true);
+      try {
+        const inputParam = encodeURIComponent(JSON.stringify({ json: { code: promoCode.trim().toUpperCase(), parentEmail: user.email } }));
+        const url = `${import.meta.env.VITE_REFERRAL_APP_URL}/api/trpc/promoCodes.validate?input=${inputParam}`;
+        const res = await fetch(url);
+        const json = await res.json();
+        const d = json?.result?.data?.json ?? json?.result?.data;
+        if (d?.valid) {
+          setPromoValidation({ valid: true, isExternalPromo: true, discountPercent: 10 });
+        } else {
+          const reason = d?.reason === "email_mismatch"
+            ? "This code is not linked to your account."
+            : "Invalid or expired promo code.";
+          setPromoValidation({ valid: false, reason });
+        }
+      } catch {
+        setPromoValidation({ valid: false, reason: "Could not validate code. Please try again." });
+      } finally {
+        setIsValidatingExternalPromo(false);
+      }
+      return;
+    }
     const result = await validateCouponQuery.refetch();
     if (result.data) setPromoValidation(result.data);
   };
 
-  // Promo code gives fixed USD amount off; sibling discount is still percentage-based
-  const promoDiscountUsd = promoValidation?.valid ? (promoValidation.discountAmountUsd ?? 0) : 0;
+  // Promo code gives fixed USD amount off; EDK- codes give 10% of course price
+  const coursePrice = course ? parseFloat(course.price) : 0;
+  const promoDiscountUsd = promoValidation?.valid
+    ? promoValidation.isExternalPromo
+      ? Math.round(coursePrice * 10) / 100
+      : (promoValidation.discountAmountUsd ?? 0)
+    : 0;
 
   const createCheckoutMutation = trpc.course.createCheckoutSession.useMutation();
   const enrollWithoutPaymentMutation = trpc.course.enrollWithoutPayment.useMutation();
@@ -617,7 +650,7 @@ export default function CourseDetail() {
                               <div className="flex gap-2">
                                 <Input
                                   id="promo-code"
-                                  placeholder="e.g. REF-ABC123"
+                                  placeholder="e.g. REF-ABC123 or EDK-XXXXXX"
                                   value={promoCode}
                                   onChange={(e) => { setPromoCode(e.target.value.toUpperCase()); setPromoValidation(null); }}
                                   className="uppercase"
@@ -626,15 +659,17 @@ export default function CourseDetail() {
                                   type="button"
                                   variant="outline"
                                   onClick={handleValidatePromo}
-                                  disabled={!promoCode.trim() || validateCouponQuery.isFetching}
+                                  disabled={!promoCode.trim() || validateCouponQuery.isFetching || isValidatingExternalPromo}
                                 >
-                                  {validateCouponQuery.isFetching ? "..." : "Apply"}
+                                  {(validateCouponQuery.isFetching || isValidatingExternalPromo) ? "..." : "Apply"}
                                 </Button>
                               </div>
                               {promoValidation && (
                                 promoValidation.valid ? (
                                   <p className="text-sm text-green-600 font-medium">
-                                    ✓ {formatPrice(promoDiscountUsd)} discount applied!
+                                    ✓ {promoValidation.isExternalPromo
+                                      ? `10% discount applied — you save ${formatPrice(promoDiscountUsd)}!`
+                                      : `${formatPrice(promoDiscountUsd)} discount applied!`}
                                   </p>
                                 ) : (
                                   <p className="text-sm text-destructive">{promoValidation.reason}</p>

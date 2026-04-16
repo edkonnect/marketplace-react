@@ -46,7 +46,7 @@ async function startServer() {
           scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
           styleSrc: ["'self'", "'unsafe-inline'"],
           imgSrc: ["'self'", "data:", "blob:", "https://*.amazonaws.com"],
-          connectSrc: ["'self'", "https://*.amazonaws.com"],
+          connectSrc: ["'self'", "https://*.amazonaws.com", ...(ENV.referralAppUrl ? [ENV.referralAppUrl] : [])],
           fontSrc: ["'self'", "data:"],
           objectSrc: ["'none'"],
           frameAncestors: ["'none'"],

@@ -1,5 +1,6 @@
 import { clearAuthCookies, verifyPassword, hashPassword } from "./_core/services/authService";
 import { ENV } from "./_core/env";
+import { validateReferralPromo, redeemReferralPromo } from "./integrations/referralApp";
 import { systemRouter } from "./_core/systemRouter";
 import { notifyOwner } from "./_core/notification";
 import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
@@ -1181,14 +1182,26 @@ export const appRouter = router({
           let promoDiscountUsd = 0;
           let appliedCouponId: number | null = null;
           if (input.promoCode) {
-            const coupon = await db.getCouponByCode(input.promoCode);
-            if (!coupon || coupon.isUsed || coupon.userId !== ctx.user.id) {
-              throw new TRPCError({ code: "BAD_REQUEST", message: "Invalid or expired promo code." });
+            if (input.promoCode.toUpperCase().startsWith("EDK-")) {
+              // External referral app promo code — validate against referral app API
+              const parentUser = await db.getUserById(ctx.user.id);
+              const result = await validateReferralPromo(input.promoCode, parentUser?.email ?? "");
+              if (!result.valid) {
+                throw new TRPCError({ code: "BAD_REQUEST", message: result.reason ?? "Invalid or expired promo code." });
+              }
+              promoDiscountUsd = Math.round(coursePrice * 10) / 100; // 10% of course price
+              // appliedCouponId stays null — no local coupon record for EDK- codes
+            } else {
+              // Existing REF- refer-and-earn coupon logic
+              const coupon = await db.getCouponByCode(input.promoCode);
+              if (!coupon || coupon.isUsed || coupon.userId !== ctx.user.id) {
+                throw new TRPCError({ code: "BAD_REQUEST", message: "Invalid or expired promo code." });
+              }
+              const referralDiscount = await db.getReferralDiscountForPrice(coursePrice);
+              promoDiscountUsd = referralDiscount.usd;
+              await db.updateCouponAmounts(coupon.id, { usd: referralDiscount.usd, inr: referralDiscount.inr });
+              appliedCouponId = coupon.id;
             }
-            const referralDiscount = await db.getReferralDiscountForPrice(coursePrice);
-            promoDiscountUsd = referralDiscount.usd;
-            await db.updateCouponAmounts(coupon.id, { usd: referralDiscount.usd, inr: referralDiscount.inr });
-            appliedCouponId = coupon.id;
           }
 
           // Create local subscription row (pending payment)
@@ -1219,6 +1232,9 @@ export const appRouter = router({
           if (ENV.stripeBypass) {
             await db.updateSubscription(subscriptionId, { paymentStatus: 'paid' });
             if (appliedCouponId) await db.markCouponUsed(appliedCouponId);
+            if (input.promoCode?.toUpperCase().startsWith("EDK-") && ctx.user.email) {
+              await redeemReferralPromo(input.promoCode, ctx.user.email).catch(console.error);
+            }
             await triggerReferralReward(ctx.user.id);
             return { success: true, subscriptionId, checkoutUrl: null };
           }
@@ -1244,6 +1260,8 @@ export const appRouter = router({
             discountPercent: totalPercentDiscount > 0 ? totalPercentDiscount : undefined,
             discountAmountUsd: promoDiscountUsd > 0 ? promoDiscountUsd : undefined,
             discountLabel,
+            externalPromoCode: input.promoCode?.toUpperCase().startsWith("EDK-") ? input.promoCode.toUpperCase() : undefined,
+            externalPromoEmail: input.promoCode?.toUpperCase().startsWith("EDK-") ? ctx.user.email ?? undefined : undefined,
           });
 
           return { success: true, subscriptionId, checkoutUrl: session.url, siblingDiscount: hasSiblingDiscount };
@@ -7679,6 +7697,11 @@ For engagementData, describe ONLY the student's participation and behavior. The 
     validateCoupon: protectedProcedure
       .input(z.object({ code: z.string(), coursePriceUsd: z.number().optional() }))
       .query(async ({ ctx, input }) => {
+        // EDK- codes are validated client-side against the referral app directly (needs parent email)
+        // Return a sentinel so the frontend knows it's an external code and handles it separately
+        if (input.code.toUpperCase().startsWith("EDK-")) {
+          return { valid: true, discountAmountUsd: 0, discountAmountInr: 0, couponId: null, isExternalPromo: true, discountPercent: 10 };
+        }
         const coupon = await db.getCouponByCode(input.code);
         if (!coupon) {
           return { valid: false, reason: "Invalid coupon code." };

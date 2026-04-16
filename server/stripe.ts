@@ -29,6 +29,8 @@ export async function createCheckoutSession(params: {
   discountAmountUsd?: number; // fixed promo coupon discount in USD
   discountLabel?: string;
   convertPendingPlanToFull?: boolean;
+  externalPromoCode?: string;
+  externalPromoEmail?: string;
 }) {
   const stripe = getStripe();
 
@@ -66,6 +68,8 @@ export async function createCheckoutSession(params: {
       customer_email: params.userEmail || "",
       customer_name: params.userName || "",
       convert_pending_plan_to_full: params.convertPendingPlanToFull ? "true" : "false",
+      external_promo_code: params.externalPromoCode || "",
+      external_promo_email: params.externalPromoEmail || "",
     },
     allow_promotion_codes: true,
     success_url: `${params.origin}/parent/dashboard?payment=success`,
