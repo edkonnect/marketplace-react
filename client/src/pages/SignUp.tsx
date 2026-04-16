@@ -194,13 +194,9 @@ export default function SignUp() {
 
                 <p className="text-sm text-center text-muted-foreground">
                   By signing up, you agree to our{" "}
-                  <a href="#" className="text-primary hover:underline">
-                    Terms of Service
-                  </a>{" "}
-                  and{" "}
-                  <a href="#" className="text-primary hover:underline">
-                    Privacy Policy
-                  </a>
+                  <Link href="/privacy-policy" className="text-primary hover:underline">
+                    Terms &amp; Conditions
+                  </Link>
                   . Already have an account?{" "}
                   <Link href="/login" className="text-primary hover:underline">
                     Sign in

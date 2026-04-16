@@ -87,8 +87,8 @@ export default function Navigation() {
   };
 
   // Public pages where navbar should always show (even when not authenticated)
-  const publicPages = ["/", "/tutors", "/courses", "/tutor-registration", "/about", "/contact", "/privacy-policy"];
-  const isPublicPage = publicPages.some(page => location === page || (page === "/" && location === "/"));
+  const publicPages = ["/", "/tutors", "/courses", "/tutor-registration", "/about", "/contact", "/privacy-policy", "/blog"];
+  const isPublicPage = publicPages.some(page => location === page || (page === "/" && location === "/")) || location.startsWith("/blog");
 
   // Auth pages (login/signup) should NEVER show navbar
   const isAuthPage = location.startsWith(LOGIN_PATH) || location.startsWith("/signup");
@@ -154,6 +154,24 @@ export default function Navigation() {
                     Become a Tutor
                   </Link>
                 )}
+
+                <Link href="/blog" className={`text-sm font-medium transition-colors hover:text-primary ${
+                  location.startsWith("/blog") ? "text-primary" : "text-muted-foreground"
+                }`}>
+                  Blog
+                </Link>
+
+                <Link href="/about" className={`text-sm font-medium transition-colors hover:text-primary ${
+                  location === "/about" ? "text-primary" : "text-muted-foreground"
+                }`}>
+                  About
+                </Link>
+
+                <Link href="/contact" className={`text-sm font-medium transition-colors hover:text-primary ${
+                  location === "/contact" ? "text-primary" : "text-muted-foreground"
+                }`}>
+                  Contact Us
+                </Link>
 
                 {/* What's EdKonnect button hidden */}
 

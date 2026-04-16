@@ -37,6 +37,8 @@ import TutorAvailability from "./pages/TutorAvailability";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
 import AboutUs from "./pages/AboutUs";
 import Contact from "./pages/Contact";
+import BlogListing from "./pages/BlogListing";
+import BlogPost from "./pages/BlogPost";
 
 function ScrollToTop() {
   const [location] = useLocation();
@@ -85,6 +87,8 @@ function Router() {
       <Route path={"/privacy-policy"} component={PrivacyPolicy} />
       <Route path={"/about"} component={AboutUs} />
       <Route path={"/contact"} component={Contact} />
+      <Route path={"/blog"} component={BlogListing} />
+      <Route path={"/blog/:slug"} component={BlogPost} />
       <Route path={"/404"} component={NotFound} />
       <Route component={NotFound} />
     </Switch>

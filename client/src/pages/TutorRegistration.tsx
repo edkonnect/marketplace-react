@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import Navigation from "@/components/Navigation";
+import Footer from "@/components/Footer";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
@@ -526,6 +527,7 @@ export default function TutorRegistration() {
         </div>
       </div>
     </div>
+      <Footer />
     </>
   );
 }

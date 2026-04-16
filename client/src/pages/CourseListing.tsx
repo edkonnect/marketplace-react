@@ -11,12 +11,15 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { BookOpen, Clock, DollarSign, GraduationCap, Search, ChevronLeft, ChevronRight } from "lucide-react";
 import { useState } from "react";
-import { Link } from "wouter";
+import { Link, useSearch } from "wouter";
 
 const COURSES_PER_PAGE = 9; // 3 rows × 3 columns
 
 export default function CourseListing() {
-  const [searchQuery, setSearchQuery] = useState("");
+  const search = useSearch();
+  const params = new URLSearchParams(search);
+
+  const [searchQuery, setSearchQuery] = useState(params.get("search") ?? "");
   const [subjectFilter, setSubjectFilter] = useState<string>("all");
   const [gradeLevelFilter, setGradeLevelFilter] = useState<string>("all");
   const [priceSort, setPriceSort] = useState<string>("default");
@@ -24,6 +27,7 @@ export default function CourseListing() {
 
   const isIndian = useIsIndianUser();
   const region = isIndian ? "india" : "us";
+
   const { data: courses, isLoading } = trpc.course.list.useQuery({ region });
 
   // Filter and sort courses
@@ -117,7 +121,7 @@ export default function CourseListing() {
           <div className="container">
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               {/* Search */}
-              <div className="md:col-span-2 relative">
+              <div className="md:col-span-1 relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
                   placeholder="Search courses..."
@@ -156,16 +160,10 @@ export default function CourseListing() {
                   ))}
                 </SelectContent>
               </Select>
-            </div>
 
-            {/* Sort and Results Count */}
-            <div className="flex items-center justify-between mt-4">
-              <p className="text-sm text-muted-foreground">
-                {filteredCourses?.length || 0} courses found
-                {totalPages > 1 && ` · Page ${currentPage} of ${totalPages}`}
-              </p>
+              {/* Sort */}
               <Select value={priceSort} onValueChange={setPriceSort}>
-                <SelectTrigger className="w-[180px]">
+                <SelectTrigger>
                   <SelectValue placeholder="Sort by" />
                 </SelectTrigger>
                 <SelectContent>
@@ -175,6 +173,12 @@ export default function CourseListing() {
                 </SelectContent>
               </Select>
             </div>
+
+            {/* Results Count */}
+            <p className="text-sm text-muted-foreground mt-4">
+              {filteredCourses?.length || 0} courses found
+              {totalPages > 1 && ` · Page ${currentPage} of ${totalPages}`}
+            </p>
           </div>
         </section>
 

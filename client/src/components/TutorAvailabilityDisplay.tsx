@@ -125,7 +125,7 @@ function getUpcomingAvailabilityDays(
     });
   }
 
-  return days.filter((day) => day.hasConfiguredWindows);
+  return days;
 }
 
 export default function TutorAvailabilityDisplay({

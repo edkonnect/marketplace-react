@@ -37,6 +37,10 @@ import {
   Mail,
   User,
   Sparkles,
+  Facebook,
+  Instagram,
+  Linkedin,
+  Youtube,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { motion, type Variants } from "framer-motion";
@@ -184,16 +188,37 @@ export default function Home() {
   const formatPrice = useFormatPrice();
   const [, setLocation] = useLocation();
 
-  const [emblaRef, emblaApi] = useEmblaCarousel({ loop: true, align: "start", dragFree: true });
+  const [emblaRef, emblaApi] = useEmblaCarousel({ loop: true, align: "start" });
+
+  const autoScrollDelay = 6000;
+  const autoScrollRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const resetAutoScroll = React.useCallback(() => {
+    if (autoScrollRef.current) clearInterval(autoScrollRef.current);
+    autoScrollRef.current = setInterval(() => emblaApi?.scrollNext(), autoScrollDelay);
+  }, [emblaApi]);
 
   React.useEffect(() => {
     if (!emblaApi) return;
-    const id = setInterval(() => emblaApi.scrollNext(), 3000);
-    return () => clearInterval(id);
-  }, [emblaApi]);
+    resetAutoScroll();
+    return () => {
+      if (autoScrollRef.current) clearInterval(autoScrollRef.current);
+    };
+  }, [emblaApi, resetAutoScroll]);
 
-  const scrollPrev = React.useCallback(() => emblaApi?.scrollPrev(), [emblaApi]);
-  const scrollNext = React.useCallback(() => emblaApi?.scrollNext(), [emblaApi]);
+  const scrollPrev = React.useCallback(() => {
+    emblaApi?.scrollPrev();
+    resetAutoScroll();
+  }, [emblaApi, resetAutoScroll]);
+
+  const scrollNext = React.useCallback(() => {
+    emblaApi?.scrollNext();
+    resetAutoScroll();
+  }, [emblaApi, resetAutoScroll]);
+
+  const [testimonialRef, testimonialApi] = useEmblaCarousel({ loop: true, align: "start", slidesToScroll: 1 });
+  const testimonialPrev = React.useCallback(() => testimonialApi?.scrollPrev(), [testimonialApi]);
+  const testimonialNext = React.useCallback(() => testimonialApi?.scrollNext(), [testimonialApi]);
 
   const [activeTestimonialModal, setActiveTestimonialModal] = useState<number | null>(null);
 
@@ -705,7 +730,7 @@ export default function Home() {
                         </div>
                       </div>
                       <Button asChild className="w-full mt-4" variant="outline">
-                        <Link href="/courses">View Courses</Link>
+                        <Link href={`/courses?search=${encodeURIComponent(course.title.replace(/\b(tutoring|coding|prep|course|class|lessons?)\b/gi, "").trim())}`}>View Details</Link>
                       </Button>
                     </CardContent>
                   </Card>
@@ -713,6 +738,12 @@ export default function Home() {
               );
             })}
           </motion.div>
+
+          <div className="text-center mt-10">
+            <Button asChild size="lg">
+              <Link href="/courses">View All Courses</Link>
+            </Button>
+          </div>
         </div>
       </motion.section>
 
@@ -727,74 +758,79 @@ export default function Home() {
           </div>
 
           {animatedTestimonials.length > 0 ? (
-            <div className="overflow-hidden [mask-image:linear-gradient(to_right,transparent,black_10%,black_90%,transparent)]">
-              <div
-                className="flex gap-5 w-max"
-                style={{ animation: "marquee 30s linear infinite" }}
-                onMouseEnter={e => (e.currentTarget.style.animationPlayState = "paused")}
-                onMouseLeave={e => (e.currentTarget.style.animationPlayState = "running")}
-              >
-                {[...animatedTestimonials, ...animatedTestimonials].map((t, index) => {
-                  const clampedRating = Math.max(0, Math.min(5, Number(t.rating ?? 0)));
-                  const WORD_LIMIT = 30;
-                  const words = t.quote.split(" ");
-                  const isTruncatable = words.length > WORD_LIMIT;
-                  const visibleQuote = isTruncatable
-                    ? words.slice(0, WORD_LIMIT).join(" ") + "…"
-                    : t.quote;
-                  const originalIndex = index % animatedTestimonials.length;
-                  return (
-                    <div key={index} className="flex-none w-[280px] sm:w-[300px]">
-                      <Card className="h-full flex flex-col shadow-sm hover:shadow-md transition-shadow">
-                        <CardContent className="flex flex-col gap-3 p-5 h-full">
-                          {/* Stars */}
-                          <div className="flex items-center gap-1">
-                            {Array.from({ length: clampedRating }).map((_, i) => (
-                              <Star key={i} className="h-3.5 w-3.5 fill-yellow-400 text-yellow-400" />
-                            ))}
-                            {clampedRating < 5 && Array.from({ length: 5 - clampedRating }).map((_, i) => (
-                              <Star key={`e-${i}`} className="h-3.5 w-3.5 text-muted-foreground/30" />
-                            ))}
-                          </div>
+            <div className="relative">
+              <div className="flex justify-end gap-3 mb-4">
+                <Button variant="outline" size="icon" onClick={testimonialPrev} aria-label="Previous testimonial">
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <Button variant="outline" size="icon" onClick={testimonialNext} aria-label="Next testimonial">
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
 
-                          {/* Quote */}
-                          <div className="flex-1">
-                            <p className="text-sm text-muted-foreground leading-relaxed break-words">
-                              "{visibleQuote}"
-                            </p>
-                            {isTruncatable && (
-                              <button
-                                onClick={() => setActiveTestimonialModal(originalIndex)}
-                                className="mt-1 text-xs font-medium text-primary hover:underline"
-                              >
-                                Show more
-                              </button>
-                            )}
-                          </div>
-
-                          {/* Avatar + Name */}
-                          <div className="flex items-center gap-3 pt-2 border-t border-border">
-                            {t.src ? (
-                              <img
-                                src={t.src}
-                                alt={t.name}
-                                className="h-9 w-9 rounded-full object-cover flex-shrink-0"
-                              />
-                            ) : (
-                              <div className="h-9 w-9 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xs font-bold flex-shrink-0">
-                                {t.initials || "U"}
-                              </div>
-                            )}
-                            <div>
-                              <p className="text-sm font-semibold text-foreground">{t.name}</p>
-                              <p className="text-xs text-muted-foreground">{t.designation}</p>
+              <div className="overflow-hidden" ref={testimonialRef}>
+                <div className="flex -mx-3">
+                  {animatedTestimonials.map((t, index) => {
+                    const clampedRating = Math.max(0, Math.min(5, Number(t.rating ?? 0)));
+                    const WORD_LIMIT = 30;
+                    const words = t.quote.split(" ");
+                    const isTruncatable = words.length > WORD_LIMIT;
+                    const visibleQuote = isTruncatable
+                      ? words.slice(0, WORD_LIMIT).join(" ") + "…"
+                      : t.quote;
+                    return (
+                      <div key={index} className="px-3 flex-[0_0_100%] sm:flex-[0_0_50%] lg:flex-[0_0_33.333%]">
+                        <Card className="h-full flex flex-col shadow-sm hover:shadow-md transition-shadow">
+                          <CardContent className="flex flex-col gap-3 p-5 h-full">
+                            {/* Stars */}
+                            <div className="flex items-center gap-1">
+                              {Array.from({ length: clampedRating }).map((_, i) => (
+                                <Star key={i} className="h-3.5 w-3.5 fill-yellow-400 text-yellow-400" />
+                              ))}
+                              {clampedRating < 5 && Array.from({ length: 5 - clampedRating }).map((_, i) => (
+                                <Star key={`e-${i}`} className="h-3.5 w-3.5 text-muted-foreground/30" />
+                              ))}
                             </div>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    </div>
-                  );
-                })}
+
+                            {/* Quote */}
+                            <div className="flex-1">
+                              <p className="text-sm text-muted-foreground leading-relaxed break-words">
+                                "{visibleQuote}"
+                              </p>
+                              {isTruncatable && (
+                                <button
+                                  onClick={() => setActiveTestimonialModal(index)}
+                                  className="mt-1 text-xs font-medium text-primary hover:underline"
+                                >
+                                  Show more
+                                </button>
+                              )}
+                            </div>
+
+                            {/* Avatar + Name */}
+                            <div className="flex items-center gap-3 pt-2 border-t border-border">
+                              {t.src ? (
+                                <img
+                                  src={t.src}
+                                  alt={t.name}
+                                  className="h-9 w-9 rounded-full object-cover flex-shrink-0"
+                                />
+                              ) : (
+                                <div className="h-9 w-9 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xs font-bold flex-shrink-0">
+                                  {t.initials || "U"}
+                                </div>
+                              )}
+                              <div>
+                                <p className="text-sm font-semibold text-foreground">{t.name}</p>
+                                <p className="text-xs text-muted-foreground">{t.designation}</p>
+                              </div>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             </div>
           ) : (
@@ -1119,10 +1155,9 @@ export default function Home() {
                 style={{ animation: "blog-marquee 60s linear infinite" }}
               >
                 {[...blogPostsData, ...blogPostsData].map((post, idx) => (
+                  <Link key={`${post.id}-${idx}`} href={`/blog/${post.slug}`}>
                   <Card
-                    key={`${post.id}-${idx}`}
                     className="overflow-hidden hover:shadow-lg transition-shadow group min-w-[260px] md:min-w-[300px] lg:min-w-[320px] max-w-[320px] cursor-pointer"
-                    onClick={() => setSelectedBlogSlug(post.slug)}
                   >
                     <CardContent className="p-6">
                       {post.category && (
@@ -1151,6 +1186,7 @@ export default function Home() {
                       </div>
                     </CardContent>
                   </Card>
+                  </Link>
                 ))}
               </div>
             </div>
@@ -1160,60 +1196,15 @@ export default function Home() {
             </div>
           )}
 
-          {blogPostsData.length === 0 && !blogPostsLoading && (
-            <div className="text-center py-12">
-              <p className="text-muted-foreground">No blog posts available at the moment.</p>
+          {blogPostsData.length > 0 && (
+            <div className="text-center mt-10">
+              <Button asChild size="lg" variant="outline">
+                <Link href="/blog">View All Posts</Link>
+              </Button>
             </div>
           )}
         </div>
       </motion.section>
-
-      {/* Blog Post Detail Modal */}
-      <Dialog open={!!selectedBlogSlug} onOpenChange={(open) => { if (!open) setSelectedBlogSlug(null); }}>
-        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
-          {selectedBlogPost ? (
-            <>
-              <DialogHeader>
-                {selectedBlogPost.category && (
-                  <span className="inline-block px-3 py-1 text-xs font-semibold text-primary bg-primary/10 rounded-full mb-2 w-fit">
-                    {selectedBlogPost.category}
-                  </span>
-                )}
-                <DialogTitle className="text-2xl font-bold leading-tight">{selectedBlogPost.title}</DialogTitle>
-                <DialogDescription asChild>
-                  <div className="flex items-center gap-4 text-sm text-muted-foreground mt-2">
-                    {selectedBlogPost.publishedAt && (
-                      <span>{new Date(selectedBlogPost.publishedAt).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}</span>
-                    )}
-                    {selectedBlogPost.readTime && (
-                      <span className="flex items-center gap-1">
-                        <BookOpen className="w-4 h-4" />
-                        {selectedBlogPost.readTime} min read
-                      </span>
-                    )}
-                  </div>
-                </DialogDescription>
-              </DialogHeader>
-              <div className="prose prose-sm dark:prose-invert max-w-none mt-4 whitespace-pre-line">
-                {selectedBlogPost.content?.split('\n').map((line, i) => {
-                  if (line.startsWith('## ')) return <h2 key={i} className="text-xl font-bold mt-6 mb-2">{line.replace('## ', '')}</h2>;
-                  if (line.startsWith('### ')) return <h3 key={i} className="text-lg font-semibold mt-4 mb-2">{line.replace('### ', '')}</h3>;
-                  if (line.startsWith('> ')) return <blockquote key={i} className="border-l-4 border-primary pl-4 italic text-muted-foreground my-3">{line.replace('> ', '').replace(/^\*|\*$/g, '')}</blockquote>;
-                  if (line.startsWith('- ') || line.startsWith('* ')) return <li key={i} className="ml-4 list-disc">{line.replace(/^[-*] /, '')}</li>;
-                  if (line.startsWith('**') && line.endsWith('**')) return <p key={i} className="font-semibold">{line.replace(/\*\*/g, '')}</p>;
-                  if (line.startsWith('*') && line.endsWith('*') && !line.startsWith('**')) return <p key={i} className="italic text-muted-foreground">{line.replace(/^\*|\*$/g, '')}</p>;
-                  if (line.trim() === '') return <br key={i} />;
-                  return <p key={i} className="mb-2">{line}</p>;
-                })}
-              </div>
-            </>
-          ) : (
-            <div className="flex items-center justify-center h-40">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
 
       {/* CTA Section */}
       <motion.section className="py-20 bg-gradient-to-br from-primary/10 via-accent/10 to-background" {...scrollReveal}>
@@ -1248,13 +1239,30 @@ export default function Home() {
         <div className="container">
           <div className="grid md:grid-cols-4 gap-8">
             <div>
-              <div className="flex items-center gap-2 mb-4">
+              <button
+                onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+                className="flex items-center gap-2 mb-4 hover:opacity-80 transition-opacity cursor-pointer w-fit"
+              >
                 <GraduationCap className="w-6 h-6 text-primary" />
                 <span className="font-bold text-lg">EdKonnect Academy</span>
-              </div>
-              <p className="text-sm text-muted-foreground">
+              </button>
+              <p className="text-sm text-muted-foreground mb-4">
                 Connecting parents and tutors for personalized learning experiences.
               </p>
+              <div className="flex items-center gap-3">
+                <a href="https://www.facebook.com/edkonnect/" target="_blank" rel="noopener noreferrer" aria-label="Facebook" className="text-muted-foreground hover:text-primary transition-colors">
+                  <Facebook className="w-5 h-5" />
+                </a>
+                <a href="https://www.instagram.com/edkonnect/" target="_blank" rel="noopener noreferrer" aria-label="Instagram" className="text-muted-foreground hover:text-primary transition-colors">
+                  <Instagram className="w-5 h-5" />
+                </a>
+                <a href="https://www.linkedin.com/company/edkonnect-academy/" target="_blank" rel="noopener noreferrer" aria-label="LinkedIn" className="text-muted-foreground hover:text-primary transition-colors">
+                  <Linkedin className="w-5 h-5" />
+                </a>
+                <a href="https://www.youtube.com/channel/UCTkLqe4ERRtffZJjrSt4RAA" target="_blank" rel="noopener noreferrer" aria-label="YouTube" className="text-muted-foreground hover:text-primary transition-colors">
+                  <Youtube className="w-5 h-5" />
+                </a>
+              </div>
             </div>
 
             <div>
@@ -1308,8 +1316,8 @@ export default function Home() {
                   </Link>
                 </li>
                 <li>
-                  <Link href="/" className="hover:text-primary transition-colors">
-                    Privacy Policy
+                  <Link href="/privacy-policy" className="hover:text-primary transition-colors">
+                    Terms &amp; Conditions
                   </Link>
                 </li>
                 <li>
