@@ -12,6 +12,7 @@ import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { formatSessionTime, COMMON_TIMEZONES } from "@/../../shared/timezone-utils";
+import { formatInTimeZone } from "date-fns-tz";
 import { Calendar as CalendarIcon, Clock, Edit, Trash2, RefreshCw, Star, Info, X, List, CalendarDays, ChevronDown, ChevronUp, User, ChevronLeft, ChevronRight } from "lucide-react";
 import { RatingModal } from "@/components/RatingModal";
 import { StarRatingDisplay } from "@/components/StarRatingDisplay";
@@ -44,6 +45,7 @@ interface CalendarViewProps {
   formatDate: (timestamp: number) => string;
   formatTime: (timestamp: number) => string;
   getStatusBadge: (status?: string | null) => ReactElement;
+  parentTimezone: string;
 }
 
 function CalendarView({
@@ -54,6 +56,7 @@ function CalendarView({
   formatDate,
   formatTime,
   getStatusBadge,
+  parentTimezone,
 }: CalendarViewProps) {
   const [expandedSession, setExpandedSession] = useState<number | null>(null);
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -116,8 +119,7 @@ function CalendarView({
     const grouped: Record<string, typeof allSessions> = {};
 
     allSessions.forEach((item) => {
-      const date = new Date(item.session.scheduledAt);
-      const dateKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+      const dateKey = formatInTimeZone(item.session.scheduledAt, parentTimezone, 'yyyy-MM-dd');
 
       if (!grouped[dateKey]) {
         grouped[dateKey] = [];
@@ -135,10 +137,11 @@ function CalendarView({
     const year = currentDate.getFullYear();
     const month = currentDate.getMonth();
     return allSessions.filter(({ session }) => {
-      const sessionDate = new Date(session.scheduledAt);
-      return sessionDate.getFullYear() === year && sessionDate.getMonth() === month;
+      const sessionDateKey = formatInTimeZone(session.scheduledAt, parentTimezone, 'yyyy-MM-dd');
+      const [y, m] = sessionDateKey.split('-').map(Number);
+      return y === year && m - 1 === month;
     }).length;
-  }, [allSessions, currentDate]);
+  }, [allSessions, currentDate, parentTimezone]);
 
   // Memoize color function to avoid recreating on every render
   const getSessionColor = useMemo(() => {
@@ -213,7 +216,8 @@ function CalendarView({
               const dateKey = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`;
               const daySessions = sessionsByDate[dateKey] || [];
               const isCurrentMonth = day.getMonth() === currentDate.getMonth();
-              const isToday = new Date().toDateString() === day.toDateString();
+              const todayKey = formatInTimeZone(Date.now(), parentTimezone, 'yyyy-MM-dd');
+              const isToday = todayKey === dateKey;
 
               return (
                 <div
@@ -1260,6 +1264,7 @@ export function ParentBookingsManager() {
           formatDate={formatDate}
           formatTime={formatTime}
           getStatusBadge={getStatusBadge}
+          parentTimezone={parentTimezone}
         />
       )}
 
