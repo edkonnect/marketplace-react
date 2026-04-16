@@ -1157,17 +1157,17 @@ export default function Home() {
                 {[...blogPostsData, ...blogPostsData].map((post, idx) => (
                   <Link key={`${post.id}-${idx}`} href={`/blog/${post.slug}`}>
                   <Card
-                    className="overflow-hidden hover:shadow-lg transition-shadow group min-w-[260px] md:min-w-[300px] lg:min-w-[320px] max-w-[320px] cursor-pointer"
+                    className="overflow-hidden hover:shadow-lg transition-shadow group min-w-[260px] md:min-w-[300px] lg:min-w-[320px] max-w-[320px] cursor-pointer h-full flex flex-col"
                   >
-                    <CardContent className="p-6">
+                    <CardContent className="p-6 flex flex-col flex-1">
                       {post.category && (
-                        <span className="inline-block px-3 py-1 text-xs font-semibold text-primary bg-primary/10 rounded-full mb-3">
+                        <span className="inline-block px-3 py-1 text-xs font-semibold text-primary bg-primary/10 rounded-full mb-3 w-fit">
                           {post.category}
                         </span>
                       )}
                       <h3 className="text-xl font-bold mb-3 group-hover:text-primary transition-colors">{post.title}</h3>
-                      <p className="text-muted-foreground mb-4 line-clamp-3">{post.excerpt}</p>
-                      <div className="flex items-center justify-between text-sm text-muted-foreground">
+                      <p className="text-muted-foreground mb-4 line-clamp-3 flex-1">{post.excerpt}</p>
+                      <div className="flex items-center justify-between text-sm text-muted-foreground mt-auto pt-3 border-t border-border">
                         {post.readTime && (
                           <span className="flex items-center gap-1">
                             <BookOpen className="w-4 h-4" />
