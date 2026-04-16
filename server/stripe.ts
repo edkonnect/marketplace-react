@@ -229,6 +229,8 @@ export async function createSetupCheckoutSession(params: {
   origin: string;
   courseId: number;
   subscriptionId: number;
+  externalPromoCode?: string;
+  externalPromoEmail?: string;
 }): Promise<Stripe.Checkout.Session> {
   const stripe = getStripe();
   return await stripe.checkout.sessions.create({
@@ -239,6 +241,8 @@ export async function createSetupCheckoutSession(params: {
       type: "payment_method_setup",
       subscription_id: params.subscriptionId.toString(),
       course_id: params.courseId.toString(),
+      external_promo_code: params.externalPromoCode || "",
+      external_promo_email: params.externalPromoEmail || "",
     },
     success_url: `${params.origin}/parent/dashboard?setup=success`,
     cancel_url: `${params.origin}/parent/dashboard?setup=cancelled`,
@@ -400,6 +404,8 @@ export async function createUsageEnrollmentCheckout(params: {
   userId: number;
   subscriptionId: number;
   origin: string;
+  externalPromoCode?: string;
+  externalPromoEmail?: string;
 }) {
   const stripe = getStripe();
   const session = await stripe.checkout.sessions.create({
@@ -424,6 +430,8 @@ export async function createUsageEnrollmentCheckout(params: {
       subscription_id: params.subscriptionId.toString(),
       user_id: params.userId.toString(),
       course_id: params.courseId.toString(),
+      external_promo_code: params.externalPromoCode || "",
+      external_promo_email: params.externalPromoEmail || "",
     },
   });
   return session;

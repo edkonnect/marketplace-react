@@ -1337,15 +1337,24 @@ export const appRouter = router({
         let promoDiscountUsd = 0;
         let appliedCouponId: number | null = null;
         if (input.promoCode) {
-          const coupon = await db.getCouponByCode(input.promoCode);
-          if (!coupon || coupon.isUsed || coupon.userId !== ctx.user.id) {
-            throw new TRPCError({ code: 'BAD_REQUEST', message: 'Invalid or expired promo code.' });
+          if (input.promoCode.toUpperCase().startsWith("EDK-")) {
+            const parentUser = await db.getUserById(ctx.user.id);
+            const result = await validateReferralPromo(input.promoCode, parentUser?.email ?? "");
+            if (!result.valid) {
+              throw new TRPCError({ code: "BAD_REQUEST", message: result.reason ?? "Invalid or expired promo code." });
+            }
+            promoDiscountUsd = Math.round(coursePrice * 10) / 100;
+          } else {
+            const coupon = await db.getCouponByCode(input.promoCode);
+            if (!coupon || coupon.isUsed || coupon.userId !== ctx.user.id) {
+              throw new TRPCError({ code: 'BAD_REQUEST', message: 'Invalid or expired promo code.' });
+            }
+            // Resolve fixed discount amount based on course price tier
+            const referralDiscount = await db.getReferralDiscountForPrice(coursePrice);
+            promoDiscountUsd = referralDiscount.usd;
+            await db.updateCouponAmounts(coupon.id, { usd: referralDiscount.usd, inr: referralDiscount.inr });
+            appliedCouponId = coupon.id;
           }
-          // Resolve fixed discount amount based on course price tier
-          const referralDiscount = await db.getReferralDiscountForPrice(coursePrice);
-          promoDiscountUsd = referralDiscount.usd;
-          await db.updateCouponAmounts(coupon.id, { usd: referralDiscount.usd, inr: referralDiscount.inr });
-          appliedCouponId = coupon.id;
         }
 
         // For Tutor/Homework courses: compute usage billing fields.
@@ -1400,9 +1409,15 @@ export const appRouter = router({
         if (ENV.stripeBypass) {
           await db.updateSubscription(subscriptionId, { paymentStatus: 'paid' });
           if (appliedCouponId) await db.markCouponUsed(appliedCouponId);
+          if (input.promoCode?.toUpperCase().startsWith("EDK-") && ctx.user.email) {
+            await redeemReferralPromo(input.promoCode, ctx.user.email).catch(console.error);
+          }
           await triggerReferralReward(ctx.user.id);
           return { success: true, subscriptionId, setupUrl: null };
         }
+
+        const edkPromoCode = input.promoCode?.toUpperCase().startsWith("EDK-") ? input.promoCode.toUpperCase() : undefined;
+        const edkPromoEmail = edkPromoCode ? (ctx.user.email ?? undefined) : undefined;
 
         // For usage-based (tutor/homework): Stripe Checkout charges upfront first month.
         // For non-usage-based courses using this path: Setup Checkout to collect card.
@@ -1433,6 +1448,8 @@ export const appRouter = router({
                 userId: ctx.user.id,
                 subscriptionId,
                 origin: input.origin,
+                externalPromoCode: edkPromoCode,
+                externalPromoEmail: edkPromoEmail,
               });
               setupUrl = checkoutSession.url;
             } else {
@@ -1442,6 +1459,8 @@ export const appRouter = router({
                 origin: input.origin,
                 courseId: input.courseId,
                 subscriptionId,
+                externalPromoCode: edkPromoCode,
+                externalPromoEmail: edkPromoEmail,
               });
               setupUrl = setupSession.url;
             }
@@ -1505,14 +1524,23 @@ export const appRouter = router({
         let promoDiscountUsd = 0;
         let appliedCouponId: number | null = null;
         if (input.promoCode) {
-          const coupon = await db.getCouponByCode(input.promoCode);
-          if (!coupon || coupon.isUsed || coupon.userId !== ctx.user.id) {
-            throw new TRPCError({ code: 'BAD_REQUEST', message: 'Invalid or expired promo code.' });
+          if (input.promoCode.toUpperCase().startsWith("EDK-")) {
+            const parentUser = await db.getUserById(ctx.user.id);
+            const result = await validateReferralPromo(input.promoCode, parentUser?.email ?? "");
+            if (!result.valid) {
+              throw new TRPCError({ code: "BAD_REQUEST", message: result.reason ?? "Invalid or expired promo code." });
+            }
+            promoDiscountUsd = Math.round(coursePrice * 10) / 100;
+          } else {
+            const coupon = await db.getCouponByCode(input.promoCode);
+            if (!coupon || coupon.isUsed || coupon.userId !== ctx.user.id) {
+              throw new TRPCError({ code: 'BAD_REQUEST', message: 'Invalid or expired promo code.' });
+            }
+            const referralDiscount = await db.getReferralDiscountForPrice(coursePrice);
+            promoDiscountUsd = referralDiscount.usd;
+            await db.updateCouponAmounts(coupon.id, { usd: referralDiscount.usd, inr: referralDiscount.inr });
+            appliedCouponId = coupon.id;
           }
-          const referralDiscount = await db.getReferralDiscountForPrice(coursePrice);
-          promoDiscountUsd = referralDiscount.usd;
-          await db.updateCouponAmounts(coupon.id, { usd: referralDiscount.usd, inr: referralDiscount.inr });
-          appliedCouponId = coupon.id;
         }
 
         // Apply sibling + promo discounts to full price (loyalty discount is full-pay only)

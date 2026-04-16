@@ -143,6 +143,14 @@ export async function handleStripeWebhook(req: Request, res: Response) {
                 try {
                   await db.updateSubscription(subscriptionId, { paymentStatus: "paid" });
                   await consumeAppliedCouponForSubscription(subscriptionId);
+                  // Redeem external EDK- promo code if one was used
+                  const edkCode = session.metadata?.external_promo_code;
+                  const edkEmail = session.metadata?.external_promo_email;
+                  if (edkCode && edkEmail) {
+                    await redeemReferralPromo(edkCode, edkEmail).catch((err) =>
+                      console.error("[Webhook] Failed to redeem external promo (payment_method_setup usage-based):", err)
+                    );
+                  }
                   const localSubForReferral = await db.getSubscriptionById(subscriptionId);
                   if (localSubForReferral?.parentId) {
                     await processReferralReward(localSubForReferral.parentId);
@@ -248,6 +256,14 @@ export async function handleStripeWebhook(req: Request, res: Response) {
                   stripeItemId,
                   paymentStatus: "paid",
                 });
+                // Redeem external EDK- promo code if one was used
+                const edkCode = session.metadata?.external_promo_code;
+                const edkEmail = session.metadata?.external_promo_email;
+                if (edkCode && edkEmail) {
+                  await redeemReferralPromo(edkCode, edkEmail).catch((err) =>
+                    console.error("[Webhook] Failed to redeem external promo (payment_method_setup):", err)
+                  );
+                }
                 // Trigger referral reward on first enrollment
                 const localSubForReferral = await db.getSubscriptionById(subscriptionId);
                 if (localSubForReferral?.parentId) {
@@ -409,6 +425,14 @@ export async function handleStripeWebhook(req: Request, res: Response) {
               // Activate subscription
               await db.updateSubscription(subscriptionId, { paymentStatus: "paid", status: "active" });
               await consumeAppliedCouponForSubscription(subscriptionId);
+              // Redeem external EDK- promo code if one was used
+              const edkCode = session.metadata?.external_promo_code;
+              const edkEmail = session.metadata?.external_promo_email;
+              if (edkCode && edkEmail) {
+                await redeemReferralPromo(edkCode, edkEmail).catch((err) =>
+                  console.error("[Webhook] Failed to redeem external promo (usage_enrollment):", err)
+                );
+              }
 
               // Record the upfront payment as the first billing cycle (pre-paid)
               const localSub = await db.getSubscriptionById(subscriptionId);
