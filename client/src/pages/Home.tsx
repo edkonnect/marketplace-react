@@ -572,11 +572,14 @@ export default function Home() {
               <div className="absolute inset-x-8 inset-y-12 rounded-[2.75rem] bg-gradient-to-br from-blue-200/45 via-sky-100/30 to-white blur-3xl" />
 
               <div className="relative mx-auto max-w-xl rounded-[2rem] border border-slate-200/80 bg-white/80 p-3 shadow-[0_34px_90px_-42px_rgba(15,23,42,0.45)] backdrop-blur-sm">
-                <div className="relative overflow-hidden rounded-[1.5rem] bg-slate-100">
+                <div className="relative overflow-hidden rounded-[1.5rem] bg-slate-200">
                   <img
                     src="/images/Hero-Image.jpg"
                     alt="Tutor supporting a student during a one-on-one learning session"
                     className="h-[340px] w-full object-cover sm:h-[430px] lg:h-[520px]"
+                    loading="eager"
+                    fetchPriority="high"
+                    onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-slate-950/10 via-transparent to-white/10" />
                   <div className="absolute bottom-5 left-5 hidden max-w-[400px] items-start gap-3 rounded-2xl border border-violet-100 bg-white/95 p-4 shadow-[0_24px_55px_-30px_rgba(15,23,42,0.45)] sm:flex">
@@ -655,7 +658,7 @@ export default function Home() {
       </motion.section>
 
       {/* Traction Statistics Section (animated numbers + keep new description field) */}
-      <motion.section className="py-20" {...scrollReveal}>
+      <section className="py-20">
         <div className="container">
           <div className="text-center mb-16">
             <h2 className="text-3xl lg:text-4xl font-bold mb-4">Trusted by Thousands</h2>
@@ -664,29 +667,21 @@ export default function Home() {
             </p>
           </div>
 
-          <motion.div
-            className="grid grid-cols-2 lg:grid-cols-4 gap-6 max-w-5xl mx-auto"
-            variants={cardContainer}
-            initial="hidden"
-            whileInView="visible"
-            viewport={{ once: true, amount: 0 }}
-          >
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-6 max-w-5xl mx-auto">
             {stats.map((stat) => (
-              <motion.div key={stat.id} variants={cardChild}>
-                <Card className="text-center p-8 hover:shadow-elegant transition-all duration-600 border-border/50">
-                  <CardContent className="p-0">
-                    <StatNumber value={localizeStatValue(stat.value)} />
-                    <div className="text-sm lg:text-base text-muted-foreground font-medium">{stat.label}</div>
-                  </CardContent>
-                </Card>
-              </motion.div>
+              <Card key={stat.id} className="text-center p-8 hover:shadow-elegant transition-all duration-600 border-border/50">
+                <CardContent className="p-0">
+                  <StatNumber value={localizeStatValue(stat.value)} />
+                  <div className="text-sm lg:text-base text-muted-foreground font-medium">{stat.label}</div>
+                </CardContent>
+              </Card>
             ))}
-          </motion.div>
+          </div>
         </div>
-      </motion.section>
+      </section>
 
       {/* Popular Courses Section */}
-      <motion.section className="py-20 bg-muted/30" {...scrollReveal}>
+      <section className="py-20 bg-muted/30">
         <div className="container">
           <div className="text-center mb-16">
             <h2 className="text-3xl lg:text-4xl font-bold mb-4">Popular Courses</h2>
@@ -695,45 +690,37 @@ export default function Home() {
             </p>
           </div>
 
-          <motion.div
-            className="grid md:grid-cols-2 lg:grid-cols-4 gap-6"
-            variants={cardContainer}
-            initial="hidden"
-            whileInView="visible"
-            viewport={{ once: true, amount: 0 }}
-          >
+          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
             {featuredCoursesData.map((course, index) => {
               const IconComponent = course.icon ? iconMap[course.icon] : TrendingUp;
               const isAccent = index % 2 === 1;
 
               return (
-                <motion.div key={course.id} variants={cardChild}>
-                  <Card className="border-border/50 hover:border-primary/50 transition-all duration-300 hover:shadow-elegant group h-full">
-                    <CardContent className="pt-6">
-                      <div
-                        className={`w-14 h-14 rounded-xl bg-gradient-to-br ${
-                          isAccent ? "from-accent/20 to-accent/10" : "from-primary/20 to-primary/10"
-                        } flex items-center justify-center mb-4 group-hover:scale-110 transition-transform`}
-                      >
-                        <IconComponent className={`w-7 h-7 ${isAccent ? "text-accent" : "text-primary"}`} />
+                <Card key={course.id} className="border-border/50 hover:border-primary/50 transition-all duration-300 hover:shadow-elegant group h-full">
+                  <CardContent className="pt-6">
+                    <div
+                      className={`w-14 h-14 rounded-xl bg-gradient-to-br ${
+                        isAccent ? "from-accent/20 to-accent/10" : "from-primary/20 to-primary/10"
+                      } flex items-center justify-center mb-4 group-hover:scale-110 transition-transform`}
+                    >
+                      <IconComponent className={`w-7 h-7 ${isAccent ? "text-accent" : "text-primary"}`} />
+                    </div>
+                    <h3 className="text-xl font-semibold mb-2">{course.title}</h3>
+                    <p className="text-sm text-muted-foreground mb-4">{course.description}</p>
+                    <div className="flex items-center justify-end pt-4 border-t border-border">
+                      <div className="flex items-baseline gap-1">
+                        <span className="text-xs text-muted-foreground font-normal">from</span>
+                        <span className="text-lg font-bold text-primary">{formatPrice(course.priceFrom, "/hr")}</span>
                       </div>
-                      <h3 className="text-xl font-semibold mb-2">{course.title}</h3>
-                      <p className="text-sm text-muted-foreground mb-4">{course.description}</p>
-                      <div className="flex items-center justify-end pt-4 border-t border-border">
-                        <div className="flex items-baseline gap-1">
-                          <span className="text-xs text-muted-foreground font-normal">from</span>
-                          <span className="text-lg font-bold text-primary">{formatPrice(course.priceFrom, "/hr")}</span>
-                        </div>
-                      </div>
-                      <Button asChild className="w-full mt-4" variant="outline">
-                        <Link href={`/courses?search=${encodeURIComponent(course.title.replace(/\b(tutoring|coding|prep|course|class|lessons?)\b/gi, "").trim())}`}>View Details</Link>
-                      </Button>
-                    </CardContent>
-                  </Card>
-                </motion.div>
+                    </div>
+                    <Button asChild className="w-full mt-4" variant="outline">
+                      <Link href={`/courses?search=${encodeURIComponent(course.title.replace(/\b(tutoring|coding|prep|course|class|lessons?)\b/gi, "").trim())}`}>View Details</Link>
+                    </Button>
+                  </CardContent>
+                </Card>
               );
             })}
-          </motion.div>
+          </div>
 
           <div className="text-center mt-10">
             <Button asChild size="lg">
@@ -741,7 +728,7 @@ export default function Home() {
             </Button>
           </div>
         </div>
-      </motion.section>
+      </section>
 
       {/* Testimonials Section */}
       <motion.section className="py-16 bg-gradient-to-br from-primary/5 via-accent/5 to-background" {...scrollReveal}>
