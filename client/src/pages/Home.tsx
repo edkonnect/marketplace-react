@@ -94,7 +94,7 @@ const features = [
 const scrollReveal = {
   initial: { opacity: 0, y: 36 },
   whileInView: { opacity: 1, y: 0 },
-  viewport: { once: true, amount: 0.15 },
+  viewport: { once: true, amount: 0 },
   transition: { type: "spring", stiffness: 55, damping: 18, mass: 0.8 },
 } as const;
 
@@ -669,7 +669,7 @@ export default function Home() {
             variants={cardContainer}
             initial="hidden"
             whileInView="visible"
-            viewport={{ once: true, amount: 0.15 }}
+            viewport={{ once: true, amount: 0 }}
           >
             {stats.map((stat) => (
               <motion.div key={stat.id} variants={cardChild}>
@@ -700,7 +700,7 @@ export default function Home() {
             variants={cardContainer}
             initial="hidden"
             whileInView="visible"
-            viewport={{ once: true, amount: 0.1 }}
+            viewport={{ once: true, amount: 0 }}
           >
             {featuredCoursesData.map((course, index) => {
               const IconComponent = course.icon ? iconMap[course.icon] : TrendingUp;
@@ -905,7 +905,7 @@ export default function Home() {
                     variants={listItemReveal}
                     initial="hidden"
                     whileInView="visible"
-                    viewport={{ once: true, amount: 0.35 }}
+                    viewport={{ once: true, amount: 0 }}
                   >
                     <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0">
                       <Icon className="w-6 h-6 text-primary" />
@@ -1084,14 +1084,14 @@ export default function Home() {
                   </div>
                 </div>
 
-                <div className="rounded-lg bg-muted/40 border border-border/60 p-4 space-y-2 text-sm text-muted-foreground">
-                  <div className="flex items-center justify-between">
+                <div className="rounded-lg bg-muted/40 border border-border/60 p-4 space-y-3 text-sm text-muted-foreground">
+                  <div className="flex flex-col gap-0.5">
                     <span>Live chat</span>
-                    <span className="text-primary font-semibold">Weekdays 9a–6p</span>
+                    <span className="text-primary font-semibold">Mon – Fri, 9:00 AM – 6:00 PM ET</span>
                   </div>
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-col gap-0.5">
                     <span>Email</span>
-                    <span className="font-semibold">support@edkonnect.com</span>
+                    <a href="mailto:contact@edkonnect-academy.com" className="font-semibold text-foreground hover:text-primary transition-colors">contact@edkonnect-academy.com</a>
                   </div>
                 </div>
 
