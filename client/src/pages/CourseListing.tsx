@@ -20,7 +20,7 @@ export default function CourseListing() {
   const params = new URLSearchParams(search);
 
   const [searchQuery, setSearchQuery] = useState(params.get("search") ?? "");
-  const [subjectFilter, setSubjectFilter] = useState<string>("all");
+  const [subjectFilter, setSubjectFilter] = useState<string>(params.get("subject") ?? "all");
   const [gradeLevelFilter, setGradeLevelFilter] = useState<string>("all");
   const [priceSort, setPriceSort] = useState<string>("default");
   const [currentPage, setCurrentPage] = useState(1);

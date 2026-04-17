@@ -55,10 +55,10 @@ export default function Contact() {
       </section>
 
       <div className="flex-1 container py-16 max-w-5xl">
-        <div className="grid lg:grid-cols-3 gap-10 items-start">
+        <div className="grid lg:grid-cols-5 gap-10 items-start">
 
           {/* Contact Card — mirrors the FAQ sidebar */}
-          <div className="lg:col-span-1">
+          <div className="lg:col-span-2">
             <Card className="border-border/60 shadow-sm sticky top-24">
               <CardContent className="p-6 space-y-4">
                 <div className="flex items-start gap-3">
@@ -74,29 +74,29 @@ export default function Contact() {
                 </div>
 
                 <div className="rounded-lg bg-muted/40 border border-border/60 p-4 space-y-3 text-sm text-muted-foreground">
-                  <div className="flex items-center justify-between">
-                    <span className="flex items-center gap-1.5">
-                      <Clock className="w-3.5 h-3.5" />
-                      Live chat
-                    </span>
-                    <span className="text-primary font-semibold">Weekdays 9a–6p</span>
+                  <div className="flex flex-col gap-1">
+                    <div className="flex items-center gap-1.5">
+                      <Clock className="w-3.5 h-3.5 shrink-0" />
+                      <span className="font-medium text-foreground">Live Chat</span>
+                    </div>
+                    <div className="pl-5 font-semibold text-primary">Mon – Fri, 9:00 AM – 6:00 PM ET</div>
                   </div>
-                  <div className="flex items-start justify-between gap-2">
-                    <span className="flex items-center gap-1.5 flex-shrink-0">
-                      <Mail className="w-3.5 h-3.5" />
-                      Email
-                    </span>
+                  <div className="flex flex-col gap-1">
+                    <div className="flex items-center gap-1.5">
+                      <Mail className="w-3.5 h-3.5 shrink-0" />
+                      <span className="font-medium text-foreground">Email</span>
+                    </div>
                     <a
-                      href="mailto:support@edkonnect.com"
-                      className="font-semibold text-right hover:text-primary transition-colors break-all"
+                      href="mailto:contact@edkonnect-academy.com"
+                      className="pl-5 font-semibold text-primary hover:underline transition-colors break-all"
                     >
-                      support@edkonnect.com
+                      contact@edkonnect-academy.com
                     </a>
                   </div>
                 </div>
 
                 <Button asChild className="w-full gap-2">
-                  <a href="mailto:support@edkonnect.com">
+                  <a href="mailto:contact@edkonnect-academy.com">
                     <Mail className="w-4 h-4" />
                     Email Us
                   </a>
@@ -109,7 +109,7 @@ export default function Contact() {
           </div>
 
           {/* Right side — context + reasons */}
-          <div className="lg:col-span-2 space-y-8">
+          <div className="lg:col-span-3 space-y-8">
             <div>
               <h2 className="text-2xl font-bold mb-3">How can we help?</h2>
               <p className="text-muted-foreground leading-relaxed">
@@ -138,18 +138,23 @@ export default function Contact() {
               ))}
             </div>
 
-            <div className="rounded-xl border border-border/50 bg-muted/30 p-6">
-              <h3 className="font-semibold mb-1">EdKonnect Academy LLC</h3>
-              <p className="text-sm text-muted-foreground">P.O. BOX 18, Shrewsbury, MA 01545</p>
-              <a
-                href="mailto:admin@edkonnect.com"
-                className="inline-flex items-center gap-1.5 text-sm text-primary mt-2 hover:underline"
-              >
-                <Mail className="w-3.5 h-3.5" />
-                admin@edkonnect.com
-              </a>
-            </div>
           </div>
+        </div>
+
+        {/* Address bar — full width, centered */}
+        <div className="mt-8 rounded-xl border border-border/50 bg-muted/30 p-6 flex flex-col sm:flex-row items-center justify-center gap-4 text-center sm:text-left">
+          <div>
+            <h3 className="font-semibold">EdKonnect Academy LLC</h3>
+            <p className="text-sm text-muted-foreground">30 Lyman St, Westborough, MA 01581</p>
+          </div>
+          <div className="hidden sm:block w-px h-8 bg-border/60" />
+          <a
+            href="mailto:contact@edkonnect-academy.com"
+            className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline"
+          >
+            <Mail className="w-3.5 h-3.5" />
+            contact@edkonnect-academy.com
+          </a>
         </div>
       </div>
 
