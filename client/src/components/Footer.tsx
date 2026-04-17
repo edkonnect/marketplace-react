@@ -150,8 +150,7 @@ export default function Footer() {
                 <li><Link href="/course/31" onClick={scrollToTop} className="hover:text-primary transition-colors">Geometry</Link></li>
                 <li><Link href="/course/32" onClick={scrollToTop} className="hover:text-primary transition-colors">Pre-Calculus</Link></li>
                 <li><Link href="/course/89" onClick={scrollToTop} className="hover:text-primary transition-colors">High School Statistics</Link></li>
-                <li><Link href="/course/83" onClick={scrollToTop} className="hover:text-primary transition-colors">AP Environmental Science</Link></li>
-                <li><Link href="/course/274" onClick={scrollToTop} className="hover:text-primary transition-colors">Math Olympiad</Link></li>
+<li><Link href="/course/274" onClick={scrollToTop} className="hover:text-primary transition-colors">Math Olympiad</Link></li>
               </ul>
             </div>
 
