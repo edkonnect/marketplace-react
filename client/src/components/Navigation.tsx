@@ -155,24 +155,6 @@ export default function Navigation() {
                   </Link>
                 )}
 
-                <Link href="/blog" className={`text-sm font-medium transition-colors hover:text-primary ${
-                  location.startsWith("/blog") ? "text-primary" : "text-muted-foreground"
-                }`}>
-                  Blog
-                </Link>
-
-                <Link href="/about" className={`text-sm font-medium transition-colors hover:text-primary ${
-                  location === "/about" ? "text-primary" : "text-muted-foreground"
-                }`}>
-                  About
-                </Link>
-
-                <Link href="/contact" className={`text-sm font-medium transition-colors hover:text-primary ${
-                  location === "/contact" ? "text-primary" : "text-muted-foreground"
-                }`}>
-                  Contact Us
-                </Link>
-
                 {/* What's EdKonnect button hidden */}
 
                 {isAuthenticated && (
@@ -199,6 +181,24 @@ export default function Navigation() {
                     </Link>
                   </>
                 )}
+
+                <Link href="/blog" className={`text-sm font-medium transition-colors hover:text-primary ${
+                  location.startsWith("/blog") ? "text-primary" : "text-muted-foreground"
+                }`}>
+                  Blog
+                </Link>
+
+                <Link href="/about" className={`text-sm font-medium transition-colors hover:text-primary ${
+                  location === "/about" ? "text-primary" : "text-muted-foreground"
+                }`}>
+                  About
+                </Link>
+
+                <Link href="/contact" className={`text-sm font-medium transition-colors hover:text-primary ${
+                  location === "/contact" ? "text-primary" : "text-muted-foreground"
+                }`}>
+                  Contact Us
+                </Link>
               </>
             )}
           </div>
