@@ -804,8 +804,8 @@ export default function Home() {
                                 </div>
                               )}
                               <div>
-                                <p className="text-sm font-semibold text-foreground">{t.name}</p>
-                                <p className="text-xs font-semibold text-muted-foreground">{t.designation}</p>
+                                <p className="text-base font-bold text-foreground">{t.name}</p>
+                                <p className="text-sm font-semibold text-muted-foreground">{t.designation}</p>
                               </div>
                             </div>
                           </CardContent>
@@ -850,8 +850,8 @@ export default function Home() {
                     </div>
                   )}
                   <div>
-                    <p className="font-semibold text-foreground">{t.name}</p>
-                    <p className="text-sm text-muted-foreground">{t.designation}</p>
+                    <p className="text-base font-bold text-foreground">{t.name}</p>
+                    <p className="text-sm font-semibold text-muted-foreground">{t.designation}</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-1 mb-3">

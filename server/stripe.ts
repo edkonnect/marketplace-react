@@ -259,7 +259,7 @@ export async function listStripeInvoicesForCustomer(
     limit,
     expand: ["data.lines"],
   });
-  return response.data;
+  return response.data.filter((inv) => inv.status !== "draft");
 }
 
 export async function getPaymentIntent(paymentIntentId: string) {
