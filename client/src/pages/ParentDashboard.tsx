@@ -365,7 +365,7 @@ export default function ParentDashboard() {
   const [selectedSessionTime, setSelectedSessionTime] = useState<string>("all");
   const [selectedSessionCourse, setSelectedSessionCourse] = useState<string>("all");
   const [subscriptionSearchQuery, setSubscriptionSearchQuery] = useState("");
-  const [courseStatusView, setCourseStatusView] = useState<"active" | "inactive">("active");
+  const [courseStatusView, setCourseStatusView] = useState<"active" | "inactive" | "all">("active");
   const [activeStudentTab, setActiveStudentTab] = useState(0);
   const [showSubsModal, setShowSubsModal] = useState(false);
   const [showBillingModal, setShowBillingModal] = useState(false);
@@ -738,6 +738,51 @@ export default function ParentDashboard() {
       }));
   }, [inactiveSubscriptions]);
 
+  const groupedAllSubscriptionsForTab = useMemo(() => {
+    const allSubs = subscriptions || [];
+    const groups = new Map<string, {
+      studentName: string;
+      grades: Set<string>;
+      items: any[];
+      activeCount: number;
+      actionRequiredCount: number;
+    }>();
+
+    allSubs.forEach((entry: any) => {
+      const studentName = getStudentName(entry.subscription);
+      const existing = groups.get(studentName) ?? {
+        studentName,
+        grades: new Set<string>(),
+        items: [],
+        activeCount: 0,
+        actionRequiredCount: 0,
+      };
+      if (entry.subscription.studentGrade) {
+        existing.grades.add(String(entry.subscription.studentGrade));
+      }
+      if (entry.subscription.status === "active") {
+        existing.activeCount += 1;
+      }
+      if (entry.subscription.paymentStatus === "pending") {
+        existing.actionRequiredCount += 1;
+      }
+      existing.items.push(entry);
+      groups.set(studentName, existing);
+    });
+
+    return Array.from(groups.values())
+      .sort((a, b) => a.studentName.localeCompare(b.studentName))
+      .map((group) => ({
+        ...group,
+        gradeLabel: group.grades.size === 1 ? `Grade ${Array.from(group.grades)[0]}` : null,
+        items: [...group.items].sort((a, b) => {
+          const priorityDiff = getStatusPriority(a.subscription) - getStatusPriority(b.subscription);
+          if (priorityDiff !== 0) return priorityDiff;
+          return (a.course?.title ?? "").localeCompare(b.course?.title ?? "");
+        }),
+      }));
+  }, [subscriptions]);
+
   const filteredGroupedSubscriptionsForTab = useMemo(() => {
     const query = subscriptionSearchQuery.trim().toLowerCase();
     if (!query) return groupedSubscriptionsForTab;
@@ -762,6 +807,31 @@ export default function ParentDashboard() {
       }];
     });
   }, [groupedSubscriptionsForTab, subscriptionSearchQuery]);
+
+  const filteredGroupedAllSubscriptionsForTab = useMemo(() => {
+    const query = subscriptionSearchQuery.trim().toLowerCase();
+    if (!query) return groupedAllSubscriptionsForTab;
+
+    return groupedAllSubscriptionsForTab.flatMap((group) => {
+      const studentMatches = group.studentName.toLowerCase().includes(query);
+      const filteredItems = studentMatches
+        ? group.items
+        : group.items.filter(({ course }: any) => {
+            const title = course?.title?.toLowerCase() ?? "";
+            const subject = course?.subject?.toLowerCase() ?? "";
+            return title.includes(query) || subject.includes(query);
+          });
+
+      if (filteredItems.length === 0) return [];
+
+      return [{
+        ...group,
+        items: filteredItems,
+        activeCount: filteredItems.filter((item: any) => item.subscription.status === "active").length,
+        actionRequiredCount: filteredItems.filter((item: any) => item.subscription.paymentStatus === "pending").length,
+      }];
+    });
+  }, [groupedAllSubscriptionsForTab, subscriptionSearchQuery]);
 
   // Map sessionId -> structured note for quick lookup in history
   const noteBySessionId = useMemo(() => {
@@ -993,13 +1063,14 @@ export default function ParentDashboard() {
                 </div>
 
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                  <Select value={courseStatusView} onValueChange={(v) => setCourseStatusView(v as "active" | "inactive")}>
+                  <Select value={courseStatusView} onValueChange={(v) => setCourseStatusView(v as "active" | "inactive" | "all")}>
                     <SelectTrigger className="w-[220px]">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="active">Active Courses ({activeSubscriptions.length})</SelectItem>
                       <SelectItem value="inactive">Inactive / Completed ({inactiveSubscriptions.length})</SelectItem>
+                      <SelectItem value="all">All Courses ({(subscriptions || []).length})</SelectItem>
                     </SelectContent>
                   </Select>
 
@@ -1241,6 +1312,122 @@ export default function ParentDashboard() {
                                     </Button>
                                   </div>
                                 </div>
+                              </CardContent>
+                            </Card>
+                          );
+                        })}
+                      </div>
+                    </section>
+                    );
+                  })}
+                  </>
+                  ) : courseStatusView === "all" ? (
+                  <>
+                  {(subscriptions || []).length === 0 ? (
+                    <Card>
+                      <CardContent className="py-10 text-center">
+                        <BookOpen className="mx-auto mb-3 h-10 w-10 text-muted-foreground" />
+                        <h3 className="text-base font-semibold">No Courses Yet</h3>
+                        <p className="mt-1 text-sm text-muted-foreground mb-4">Start your learning journey by finding a tutor</p>
+                        <Button asChild size="sm"><Link href="/tutors">Browse Tutors</Link></Button>
+                      </CardContent>
+                    </Card>
+                  ) : filteredGroupedAllSubscriptionsForTab.length === 0 ? (
+                    <Card>
+                      <CardContent className="py-14 text-center">
+                        <BookOpen className="mx-auto mb-4 h-12 w-12 text-muted-foreground" />
+                        <h3 className="text-lg font-semibold">No matching subscriptions</h3>
+                        <p className="mt-2 text-sm text-muted-foreground">
+                          No students or courses matched "{subscriptionSearchQuery.trim()}".
+                        </p>
+                      </CardContent>
+                    </Card>
+                  ) : filteredGroupedAllSubscriptionsForTab.map(({ studentName, gradeLabel, items, activeCount, actionRequiredCount }) => {
+                    const useHorizontalScroll = items.length > 2;
+                    return (
+                    <section key={studentName} className="space-y-3">
+                      <div className="flex flex-col gap-2 border-b border-border/70 pb-3 sm:flex-row sm:items-end sm:justify-between">
+                        <div>
+                          <h3 className="text-lg font-semibold tracking-tight">{studentName}</h3>
+                          <p className="mt-0.5 text-sm text-muted-foreground">
+                            {[
+                              items.length === 1 ? "1 course" : `${items.length} courses`,
+                              gradeLabel,
+                              actionRequiredCount > 0 ? `${actionRequiredCount} needs attention` : `${activeCount} active`,
+                            ].filter(Boolean).join(" • ")}
+                          </p>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          {useHorizontalScroll && (
+                            <span className="self-center text-xs text-muted-foreground">Scroll to view all</span>
+                          )}
+                          {actionRequiredCount > 0 && (
+                            <Badge variant="secondary" className="bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200">
+                              {actionRequiredCount} action required
+                            </Badge>
+                          )}
+                          <Badge variant="outline" className="text-muted-foreground">
+                            {items.length} {items.length === 1 ? "course" : "courses"}
+                          </Badge>
+                        </div>
+                      </div>
+                      <div className={cn(
+                        useHorizontalScroll
+                          ? "grid grid-flow-col auto-cols-[85%] gap-3 overflow-x-auto pb-2 pr-1 snap-x snap-mandatory [scrollbar-width:thin] sm:auto-cols-[calc((100%-0.75rem)/2)]"
+                          : "grid gap-3 lg:grid-cols-2",
+                      )}>
+                        {items.map(({ subscription, course, tutor, sessionStats, nextBillingDate, nextBillingAmount }: any) => {
+                          const totalSessions = course.totalSessions || 0;
+                          const completedCount = sessionStats?.completedCount || 0;
+                          const scheduledCount = sessionStats?.scheduledCount || 0;
+                          const remainingSessions = Math.max(totalSessions - completedCount - scheduledCount, 0);
+                          const accountedSessions = totalSessions > 0 ? Math.min(completedCount + scheduledCount, totalSessions) : 0;
+                          const progressValue = totalSessions > 0 ? Math.round((accountedSessions / totalSessions) * 100) : 0;
+                          const primaryStatus = getPrimaryStatusBadge(subscription);
+                          const paymentStatus = getPaymentStatusBadge(subscription);
+                          return (
+                            <Card
+                              key={subscription.id}
+                              className={cn(
+                                "flex h-full flex-col border-border/60 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg",
+                                subscription.status !== "active" && "opacity-80",
+                                useHorizontalScroll && "snap-start"
+                              )}
+                            >
+                              <CardHeader className="space-y-3 p-5 pb-3">
+                                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                                  <div className="space-y-1">
+                                    <CardTitle className="text-lg leading-tight">{course.title}</CardTitle>
+                                    <CardDescription className="text-sm">
+                                      with <span className="font-medium text-foreground">{tutor?.name ?? "Tutor"}</span>
+                                    </CardDescription>
+                                  </div>
+                                  <div className="flex flex-wrap gap-2 sm:max-w-[240px] sm:justify-end">
+                                    <Badge variant="secondary" className={`text-[11px] ${primaryStatus.className}`}>
+                                      {primaryStatus.label}
+                                    </Badge>
+                                    {paymentStatus && (
+                                      <Badge variant="secondary" className={`text-[11px] ${paymentStatus.className}`}>
+                                        {paymentStatus.label}
+                                      </Badge>
+                                    )}
+                                  </div>
+                                </div>
+                                <div className="flex flex-wrap gap-2 text-xs">
+                                  <span className="rounded-full bg-muted/50 px-3 py-1 text-muted-foreground">
+                                    <span className="font-medium text-foreground">Started:</span>{" "}
+                                    {new Date(subscription.startDate).toLocaleDateString()}
+                                  </span>
+                                  <span className="rounded-full bg-muted/50 px-3 py-1 text-muted-foreground">
+                                    <span className="font-medium text-foreground">Plan:</span>{" "}
+                                    {getPaymentPlanLabel(subscription)}
+                                  </span>
+                                </div>
+                              </CardHeader>
+                              <CardContent className="flex flex-1 flex-col gap-3 px-5 pb-5 pt-0">
+                                <Button asChild variant="outline" size="sm" className="w-full">
+                                  <Link href={`/course/${course.id}`}>View Course</Link>
+                                </Button>
                               </CardContent>
                             </Card>
                           );
