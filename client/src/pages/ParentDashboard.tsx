@@ -907,7 +907,7 @@ export default function ParentDashboard() {
   const analyticsViewModel = useMemo(() => buildParentAnalyticsViewModel({
     subscriptions: (subscriptions || []).filter((item: any) => !item?.subscription?.isMigrated),
     analyticsSessions: (sessionHistory || []).filter((s: any) => !s?.isMigrated),
-    upcomingSessions: upcomingSessions || [],
+    upcomingSessions: (upcomingSessions || []).filter((s: any) => !s?.isMigrated),
     quizzes: parentQuizzes || [],
     grades: parentGrades || [],
     selectedMonth: selectedAnalyticsMonth,
