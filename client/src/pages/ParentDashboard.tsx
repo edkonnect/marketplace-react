@@ -1037,7 +1037,7 @@ export default function ParentDashboard() {
             <div className="overflow-x-auto">
               <TabsList className="inline-flex min-w-max gap-2 sm:w-full sm:flex-wrap sm:justify-start">
                 <TabsTrigger className="whitespace-nowrap" value="subscriptions">Subscriptions</TabsTrigger>
-                <TabsTrigger className="whitespace-nowrap" value="sessions">Sessions</TabsTrigger>
+                <TabsTrigger className="whitespace-nowrap" value="sessions">Upcoming Sessions</TabsTrigger>
                 <TabsTrigger
                   className={`whitespace-nowrap ${historyPulse ? "ring-2 ring-primary/60 animate-pulse" : ""}`}
                   value="history"
@@ -2253,7 +2253,7 @@ export default function ParentDashboard() {
                           )}
                           {/* Active student course box */}
                           {firstItem && (
-                            <div className="rounded-xl bg-white/15 px-3 py-2 space-y-0.5 mt-auto">
+                            <div className="rounded-xl bg-white/15 px-3 py-2 space-y-0.5 mt-2 shrink-0">
                               <p className="text-sm font-semibold truncate">{firstItem.course?.title || "Course"}</p>
                               <p className="text-xs opacity-75">{completedForStudent} done · {scheduledForStudent} upcoming</p>
                               {totalCourses > 1 && <p className="text-[10px] opacity-60">+{totalCourses - 1} more course{totalCourses - 1 !== 1 ? "s" : ""}</p>}
