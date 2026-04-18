@@ -542,7 +542,7 @@ export default function Home() {
               </h1>
 
               <p className="mt-5 max-w-[32rem] text-base leading-7 text-slate-600 sm:text-lg">
-                Real human tutors powered by smart AI, provide personalized, one-on-one learning through zoom that fits your schedule and convenience.
+                Real human tutors powered by smart AI provide personalized, one-on-one learning through zoom that fits your schedule and convenience.
               </p>
 
               <div className="mt-6 flex items-center gap-3 text-sm font-medium text-slate-600 sm:text-base">
@@ -805,7 +805,7 @@ export default function Home() {
                               )}
                               <div>
                                 <p className="text-sm font-semibold text-foreground">{t.name}</p>
-                                <p className="text-xs text-muted-foreground">{t.designation}</p>
+                                <p className="text-xs font-semibold text-muted-foreground">{t.designation}</p>
                               </div>
                             </div>
                           </CardContent>

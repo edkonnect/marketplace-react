@@ -374,14 +374,10 @@ export function buildParentAnalyticsViewModel(input: BuildParentAnalyticsInput):
       ? Math.round(studentQuizzes.reduce((sum, quiz) => sum + Number(quiz.score ?? 0), 0) / studentQuizzes.length)
       : null;
 
-    if (avgStudentQuiz != null || studentAttendanceDenominator > 0) {
+    if (avgStudentQuiz != null) {
       let level: ProgressLevel = "medium";
-      if (avgStudentQuiz != null) {
-        if (avgStudentQuiz >= 70 && studentAttendance >= 80) level = "high";
-        else if (avgStudentQuiz < 50 || studentAttendance < 50) level = "low";
-      } else if (studentAttendance < 50) {
-        level = "low";
-      }
+      if (avgStudentQuiz >= 70 && studentAttendance >= 80) level = "high";
+      else if (avgStudentQuiz < 50 || studentAttendance < 50) level = "low";
 
       studentProgressMap.set(student.key, {
         key: student.key,

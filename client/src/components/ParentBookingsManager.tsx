@@ -587,7 +587,7 @@ export function ParentBookingsManager() {
   const [cancelReason, setCancelReason] = useState<string>("");
   const [frequency, setFrequency] = useState<"weekly" | "biweekly">("weekly");
   const [selectedStudent, setSelectedStudent] = useState<string>("all");
-  const [statusFilter, setStatusFilter] = useState<"upcoming" | "completed" | "cancelled" | "all">("upcoming");
+  const [statusFilter, setStatusFilter] = useState<"upcoming" | "completed" | "cancelled" | "all">("all");
   const [ratingModalOpen, setRatingModalOpen] = useState(false);
   const [ratingSessionId, setRatingSessionId] = useState<number | null>(null);
   const [viewMode, setViewMode] = useState<"list" | "calendar">("calendar");
