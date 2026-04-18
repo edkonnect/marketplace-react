@@ -296,6 +296,7 @@ export const subscriptions = mysqlTable("subscriptions", {
   billingCycleEnd: timestamp("billingCycleEnd"),
   perSessionRateCents: int("perSessionRateCents"),
   loyaltyDiscountApplied: boolean("loyaltyDiscountApplied").default(false).notNull(),
+  isMigrated: boolean("isMigrated").default(false).notNull(), // Flag for legacy-migrated subscriptions
   smsOptIn: boolean("smsOptIn").default(false).notNull(),
   smsConsentTimestamp: timestamp("smsConsentTimestamp"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
@@ -345,6 +346,7 @@ export const sessions = mysqlTable("sessions", {
   duration: int("duration").notNull(), // Duration in minutes
   status: mysqlEnum("status", ["scheduled", "completed", "cancelled", "no_show"]).default("scheduled").notNull(),
   isTrial: boolean("isTrial").default(false).notNull(), // Flag for trial sessions
+  isMigrated: boolean("isMigrated").default(false).notNull(), // Flag for legacy-migrated sessions
   studentFirstName: varchar("studentFirstName", { length: 255 }), // For trial sessions (duplicates subscription data for regular sessions)
   studentLastName: varchar("studentLastName", { length: 255 }), // For trial sessions
   studentGrade: varchar("studentGrade", { length: 50 }), // For trial sessions
