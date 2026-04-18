@@ -1578,7 +1578,7 @@ export async function getSubscriptionsByParentId(parentId: number) {
     // Tutor link may be missing; use left joins so subscriptions still return.
     .leftJoin(courseTutors, eq(courses.id, courseTutors.courseId))
     .leftJoin(users, eq(courseTutors.tutorId, users.id))
-    .where(and(eq(subscriptions.parentId, parentId), eq(subscriptions.isMigrated, false)))
+    .where(eq(subscriptions.parentId, parentId))
     .orderBy(desc(subscriptions.createdAt));
 
   // Deduplicate per subscription:
@@ -2184,7 +2184,6 @@ export async function getCompletedSessionsByParentId(parentId: number) {
     .leftJoin(users, eq(sessions.tutorId, users.id))
     .where(and(
       eq(sessions.parentId, parentId),
-      eq(sessions.isMigrated, false),
       or(
         eq(sessions.status, 'completed' as any),
         eq(sessions.status, 'no_show' as any),
