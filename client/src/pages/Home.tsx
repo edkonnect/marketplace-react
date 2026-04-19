@@ -269,11 +269,16 @@ export default function Home() {
   // Derived search results from local data
   const searchQuery = heroSearchQuery.trim().toLowerCase();
   const matchedTutors = searchQuery.length >= 2
-    ? allTutors.filter((t: any) =>
-        t.userName?.toLowerCase().includes(searchQuery) ||
-        (typeof t.subjects === "string" ? t.subjects : JSON.stringify(t.subjects ?? ""))
-          .toLowerCase().includes(searchQuery)
-      ).slice(0, 4)
+    ? allTutors.filter((t: any) => {
+        const stringify = (v: any) => (typeof v === "string" ? v : JSON.stringify(v ?? "")).toLowerCase();
+        return (
+          t.userName?.toLowerCase().includes(searchQuery) ||
+          stringify(t.subjects).includes(searchQuery) ||
+          stringify(t.bio).includes(searchQuery) ||
+          stringify(t.qualifications).includes(searchQuery) ||
+          stringify(t.gradeLevels).includes(searchQuery)
+        );
+      }).slice(0, 4)
     : [];
   const matchedCourses = searchQuery.length >= 2
     ? allCourses
