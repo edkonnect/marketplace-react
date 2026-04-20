@@ -74,7 +74,7 @@ export default function AboutUs() {
             <GraduationCap className="w-8 h-8 text-primary" />
           </div>
           <h1 className="text-4xl lg:text-5xl font-bold mb-5 leading-tight">
-            We built EdKonnect because finding a good tutor shouldn't be this hard
+          We built EdKonnect because finding a good tutor at an affordable price shouldn't be hard.
           </h1>
           <p className="text-lg text-muted-foreground leading-relaxed max-w-2xl mx-auto">
             EdKonnect Academy is an online tutoring platform connecting parents and students with qualified tutors — making it easy to book sessions, track progress, and actually see results.
