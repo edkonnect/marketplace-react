@@ -164,6 +164,7 @@ function CourseFilesAdminPanel() {
   const [uploadTitle, setUploadTitle] = useState("");
   const [uploadDescription, setUploadDescription] = useState("");
   const [uploadCourseId, setUploadCourseId] = useState<string>("");
+  const [fileUploadKey, setFileUploadKey] = useState(0);
   const [assignDialogFileId, setAssignDialogFileId] = useState<number | null>(null);
   const [selectedTutorIds, setSelectedTutorIds] = useState<number[]>([]);
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
@@ -180,6 +181,7 @@ function CourseFilesAdminPanel() {
     setUploadTitle("");
     setUploadDescription("");
     setUploadCourseId("");
+    setFileUploadKey(k => k + 1);
   }
 
   function openAssignDialog(fileId: number) {
@@ -280,6 +282,7 @@ function CourseFilesAdminPanel() {
             </select>
           </div>
           <FileUpload
+            key={fileUploadKey}
             onFilesSelected={setSelectedFiles}
             maxFiles={1}
             maxSizeMB={20}
