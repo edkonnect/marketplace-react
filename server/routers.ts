@@ -8007,7 +8007,7 @@ For engagementData, describe ONLY the student's participation and behavior. The 
         const { courses: coursesTable } = await import("../drizzle/schema");
         const { asc: ascOp } = await import("drizzle-orm");
         return await database
-          .select({ id: coursesTable.id, name: coursesTable.title })
+          .select({ id: coursesTable.id, name: coursesTable.title, subject: coursesTable.subject })
           .from(coursesTable)
           .orderBy(ascOp(coursesTable.title));
       }),
@@ -8029,6 +8029,14 @@ For engagementData, describe ONLY the student's participation and behavior. The 
         const hasFile = myFiles.some((f) => f.file.id === input.fileId);
         if (!hasFile) {
           throw new TRPCError({ code: "FORBIDDEN", message: "You do not have access to this file." });
+        }
+        if (input.subscriptions.length > 0) {
+          const myStudents = await db.getStudentsByTutorId(ctx.user.id);
+          const validSubIds = new Set(myStudents.map((s) => s.subscriptionId));
+          const allValid = input.subscriptions.every((s) => validSubIds.has(s.subscriptionId));
+          if (!allValid) {
+            throw new TRPCError({ code: "FORBIDDEN", message: "One or more subscriptions are not your students." });
+          }
         }
         await db.assignCourseFileToParents(input.fileId, ctx.user.id, input.subscriptions);
         return { success: true };

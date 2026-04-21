@@ -6068,11 +6068,13 @@ export async function assignCourseFileToTutors(
 ): Promise<void> {
   const db = await getDb();
   if (!db) return;
-  await db.delete(courseFileAssignments).where(eq(courseFileAssignments.fileId, fileId));
-  if (tutorIds.length === 0) return;
-  await db.insert(courseFileAssignments).values(
-    tutorIds.map((tutorId) => ({ fileId, tutorId, assignedBy }))
-  );
+  await db.transaction(async (tx) => {
+    await tx.delete(courseFileAssignments).where(eq(courseFileAssignments.fileId, fileId));
+    if (tutorIds.length === 0) return;
+    await tx.insert(courseFileAssignments).values(
+      tutorIds.map((tutorId) => ({ fileId, tutorId, assignedBy }))
+    );
+  });
 }
 
 export async function getCourseFileAssignments(fileId: number) {
@@ -6110,16 +6112,18 @@ export async function assignCourseFileToParents(
 ): Promise<void> {
   const db = await getDb();
   if (!db) return;
-  await db.delete(tutorFileAssignments).where(
-    and(
-      eq(tutorFileAssignments.fileId, fileId),
-      eq(tutorFileAssignments.tutorId, tutorId)
-    )
-  );
-  if (subscriptions.length === 0) return;
-  await db.insert(tutorFileAssignments).values(
-    subscriptions.map(({ subscriptionId, parentId }) => ({ fileId, tutorId, parentId, subscriptionId }))
-  );
+  await db.transaction(async (tx) => {
+    await tx.delete(tutorFileAssignments).where(
+      and(
+        eq(tutorFileAssignments.fileId, fileId),
+        eq(tutorFileAssignments.tutorId, tutorId)
+      )
+    );
+    if (subscriptions.length === 0) return;
+    await tx.insert(tutorFileAssignments).values(
+      subscriptions.map(({ subscriptionId, parentId }) => ({ fileId, tutorId, parentId, subscriptionId }))
+    );
+  });
 }
 
 export async function getFileParentAssignments(fileId: number, tutorId: number) {

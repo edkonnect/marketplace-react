@@ -4,7 +4,7 @@ import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Users, BookOpen, TrendingUp, UserCheck, GraduationCap, Download, X, BarChart3, Trash2, FolderOpen, FileText, Upload } from "lucide-react";
+import { Users, BookOpen, TrendingUp, UserCheck, GraduationCap, Download, X, BarChart3, Trash2, FolderOpen, FileText, Upload, Search } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -167,6 +167,8 @@ function CourseFilesAdminPanel() {
   const [assignDialogFileId, setAssignDialogFileId] = useState<number | null>(null);
   const [selectedTutorIds, setSelectedTutorIds] = useState<number[]>([]);
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
+  const [fileSearch, setFileSearch] = useState("");
+  const [filterCourseId, setFilterCourseId] = useState<string>("all");
 
   const { data: existingAssignments = [] } = trpc.fileManagement.getFileAssignments.useQuery(
     { fileId: assignDialogFileId! },
@@ -223,6 +225,30 @@ function CourseFilesAdminPanel() {
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   }
 
+  // Build subject lookup: courseId → subject
+  const courseSubjectMap = new Map<number, string>(
+    (coursesList as any[]).map((c: any) => [c.id, c.subject ?? "Other"])
+  );
+
+  // Collect distinct subjects that appear in the current course list, normalized
+  const subjectOrder = ["Mathematics", "English", "Science", "Computer Science", "History", "Foreign Language", "Spanish", "Chemistry", "Physics", "Test Prep", "Other"];
+  const availableSubjects = subjectOrder.filter(s =>
+    (coursesList as any[]).some((c: any) => (c.subject ?? "Other") === s)
+  );
+
+  const filteredFiles = files.filter((row: any) => {
+    const matchesSearch =
+      !fileSearch.trim() ||
+      row.file.title.toLowerCase().includes(fileSearch.toLowerCase()) ||
+      row.file.fileName.toLowerCase().includes(fileSearch.toLowerCase()) ||
+      (row.courseName ?? "").toLowerCase().includes(fileSearch.toLowerCase());
+    const fileSubject = row.file.courseId != null ? (courseSubjectMap.get(row.file.courseId) ?? "Other") : null;
+    const matchesCourse =
+      filterCourseId === "all" ||
+      (filterCourseId === "none" ? row.file.courseId == null : fileSubject === filterCourseId);
+    return matchesSearch && matchesCourse;
+  });
+
   return (
     <div className="space-y-6">
       <Card>
@@ -268,12 +294,42 @@ function CourseFilesAdminPanel() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2"><FolderOpen className="w-5 h-5" /> Uploaded Files</CardTitle>
+          <div className="flex flex-wrap gap-3 pt-2">
+            <div className="relative flex-1 min-w-[200px]">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+              <Input
+                placeholder="Search by title, file name or course..."
+                value={fileSearch}
+                onChange={e => setFileSearch(e.target.value)}
+                className="pl-9"
+              />
+            </div>
+            <Select value={filterCourseId} onValueChange={setFilterCourseId}>
+              <SelectTrigger className="w-[200px]">
+                <SelectValue placeholder="Filter by subject" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All subjects</SelectItem>
+                <SelectItem value="none">No course</SelectItem>
+                {availableSubjects.map(subject => (
+                  <SelectItem key={subject} value={subject}>{subject}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {(fileSearch || filterCourseId !== "all") && (
+              <Button variant="ghost" size="sm" onClick={() => { setFileSearch(""); setFilterCourseId("all"); }}>
+                <X className="w-4 h-4 mr-1" /> Clear
+              </Button>
+            )}
+          </div>
         </CardHeader>
         <CardContent>
           {filesLoading ? (
             <div className="space-y-2">{[1,2,3].map(i => <Skeleton key={i} className="h-12 w-full" />)}</div>
           ) : files.length === 0 ? (
             <p className="text-muted-foreground text-sm">No files uploaded yet.</p>
+          ) : filteredFiles.length === 0 ? (
+            <p className="text-muted-foreground text-sm">No files match your search.</p>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -289,7 +345,7 @@ function CourseFilesAdminPanel() {
                   </tr>
                 </thead>
                 <tbody>
-                  {files.map((row: any) => (
+                  {filteredFiles.map((row: any) => (
                     <tr key={row.file.id} className="border-b last:border-0 hover:bg-muted/40">
                       <td className="py-2 pr-4 font-medium">{row.file.title}</td>
                       <td className="py-2 pr-4 text-muted-foreground">{row.courseName ?? "—"}</td>
