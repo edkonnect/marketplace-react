@@ -207,6 +207,8 @@ function TutorFilesPanel({ tutorId }: { tutorId: number }) {
 
   const [assignDialogFileId, setAssignDialogFileId] = useState<number | null>(null);
   const [dialogKey, setDialogKey] = useState(0);
+  const [fileSearch, setFileSearch] = useState("");
+  const [filterSubject, setFilterSubject] = useState("all");
 
   function openPreview(fileId: number) {
     window.open(`/api/files/proxy/${fileId}`, "_blank");
@@ -223,10 +225,62 @@ function TutorFilesPanel({ tutorId }: { tutorId: number }) {
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   }
 
+  // Derive available subjects from the files the tutor has
+  const subjectOrder = ["Mathematics", "English", "Science", "Computer Science", "History", "Foreign Language", "Spanish", "Chemistry", "Physics", "Test Prep", "Other"];
+  const availableSubjects = subjectOrder.filter(s =>
+    (files as any[]).some((row: any) => {
+      const subject = row.courseSubject ?? "Other";
+      return subject === s;
+    })
+  );
+
+  const filteredFiles = (files as any[]).filter((row: any) => {
+    const matchesSearch =
+      !fileSearch.trim() ||
+      row.file.title.toLowerCase().includes(fileSearch.toLowerCase()) ||
+      row.file.fileName.toLowerCase().includes(fileSearch.toLowerCase()) ||
+      (row.courseName ?? "").toLowerCase().includes(fileSearch.toLowerCase());
+    const subject = row.courseSubject ?? "Other";
+    const matchesSubject =
+      filterSubject === "all" ||
+      (filterSubject === "none" ? !row.courseName : subject === filterSubject);
+    return matchesSearch && matchesSubject;
+  });
+
   return (
     <div className="space-y-4">
       <h2 className="text-2xl font-bold">My Files</h2>
       <p className="text-muted-foreground text-sm">Files assigned to you by the admin. You can share them with your students.</p>
+      {files.length > 0 && (
+        <div className="flex flex-wrap gap-3">
+          <div className="relative flex-1 min-w-[200px]">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+            <Input
+              placeholder="Search by title, file name or course..."
+              value={fileSearch}
+              onChange={e => setFileSearch(e.target.value)}
+              className="pl-9"
+            />
+          </div>
+          <Select value={filterSubject} onValueChange={setFilterSubject}>
+            <SelectTrigger className="w-[190px]">
+              <SelectValue placeholder="Filter by subject" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All subjects</SelectItem>
+              <SelectItem value="none">No course</SelectItem>
+              {availableSubjects.map(subject => (
+                <SelectItem key={subject} value={subject}>{subject}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {(fileSearch || filterSubject !== "all") && (
+            <Button variant="ghost" size="sm" onClick={() => { setFileSearch(""); setFilterSubject("all"); }}>
+              <X className="w-4 h-4 mr-1" /> Clear
+            </Button>
+          )}
+        </div>
+      )}
       {isLoading ? (
         <div className="space-y-3">{[1,2,3].map(i => <Skeleton key={i} className="h-20 w-full" />)}</div>
       ) : files.length === 0 ? (
@@ -236,9 +290,11 @@ function TutorFilesPanel({ tutorId }: { tutorId: number }) {
             <p className="text-muted-foreground">No files have been assigned to you yet.</p>
           </CardContent>
         </Card>
+      ) : filteredFiles.length === 0 ? (
+        <p className="text-muted-foreground text-sm">No files match your search.</p>
       ) : (
         <div className="grid gap-4 md:grid-cols-2">
-          {files.map((row: any) => (
+          {filteredFiles.map((row: any) => (
             <Card key={row.file.id} className="hover:shadow-md transition-shadow">
               <CardContent className="pt-4 pb-4 space-y-3">
                 <div className="flex items-start justify-between gap-2">

@@ -6097,6 +6097,7 @@ export async function getCourseFilesForTutor(tutorId: number) {
       file: courseFiles,
       assignment: courseFileAssignments,
       courseName: courseAlias.title,
+      courseSubject: courseAlias.subject,
     })
     .from(courseFileAssignments)
     .innerJoin(courseFiles, eq(courseFileAssignments.fileId, courseFiles.id))
