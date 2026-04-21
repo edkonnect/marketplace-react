@@ -286,7 +286,7 @@ function CourseFilesAdminPanel() {
             onFilesSelected={setSelectedFiles}
             maxFiles={1}
             maxSizeMB={20}
-            acceptedTypes={["application/pdf", ".doc", ".docx", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"]}
+            acceptedTypes={["application/pdf", ".doc", ".docx", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", ".xls", ".xlsx", "application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"]}
           />
           <Button onClick={handleUpload} disabled={uploadFileMutation.isPending || !selectedFiles[0] || !uploadTitle.trim()}>
             {uploadFileMutation.isPending ? "Uploading..." : "Upload File"}

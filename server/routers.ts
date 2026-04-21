@@ -7914,6 +7914,8 @@ For engagementData, describe ONLY the student's participation and behavior. The 
           "application/pdf",
           "application/msword",
           "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          "application/vnd.ms-excel",
+          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         ]),
         fileSize: z.number().int().max(20 * 1024 * 1024),
         base64Data: z.string(),
