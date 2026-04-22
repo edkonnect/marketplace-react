@@ -72,7 +72,7 @@ export default function TempLogin() {
                 <Input
                   id="password"
                   type={showPassword ? "text" : "password"}
-                  placeholder="Admin@123"
+                  placeholder="Password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
