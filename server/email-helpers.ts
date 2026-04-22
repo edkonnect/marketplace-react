@@ -21,6 +21,7 @@ import {
   getReferralInviteEmail,
   getReferralWelcomeEmail,
   getCouponRewardEmail,
+  getAdminNewUserNotificationEmail,
 } from './email-templates';
 
 const BASE_URL = process.env.VITE_FRONTEND_FORGE_API_URL || 'http://localhost:3000';
@@ -462,6 +463,25 @@ export async function sendCouponRewardEmail(params: {
   return await emailService.sendEmail({
     to: params.userEmail,
     subject: `Your referral discount coupon — ${params.couponCode}`,
+    html,
+  });
+}
+
+export async function sendAdminNewUserNotification(params: {
+  userName: string;
+  userEmail: string;
+  role: 'parent' | 'tutor';
+  timezone?: string;
+}): Promise<void> {
+  const adminEmail = process.env.ADMIN_NOTIFICATION_EMAIL ?? 'giteshsagvekar07@gmail.com';
+  const roleLabel = params.role === 'tutor' ? 'Tutor' : 'Parent';
+  const html = getAdminNewUserNotificationEmail({
+    ...params,
+    signupTime: new Date(),
+  });
+  await emailService.sendEmail({
+    to: adminEmail,
+    subject: `New ${roleLabel} Registered: ${params.userName}`,
     html,
   });
 }

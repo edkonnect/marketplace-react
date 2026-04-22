@@ -3,7 +3,7 @@ import { z } from "zod";
 import { authSchema, clearAuthCookies, setAuthCookies, verifyPassword, verifyRefreshToken } from "../services/authService";
 import * as db from "../../db";
 import { REFRESH_TOKEN_COOKIE } from "@shared/const";
-import { sendVerificationEmail, sendCouponRewardEmail } from "../../email-helpers";
+import { sendVerificationEmail, sendCouponRewardEmail, sendAdminNewUserNotification } from "../../email-helpers";
 
 export const authRouter = express.Router();
 
@@ -129,6 +129,16 @@ authRouter.post("/signup", async (req, res) => {
   } catch (profileErr) {
     console.error("[Auth] Failed to create initial profile:", profileErr);
     // continue; profile can be completed later
+  }
+
+  // Notify admin of new signup (fire-and-forget, only for parent/tutor roles)
+  if (role === 'parent' || role === 'tutor') {
+    sendAdminNewUserNotification({
+      userName: `${user.firstName} ${user.lastName}`.trim(),
+      userEmail: user.email || email,
+      role,
+      timezone: timezone || undefined,
+    }).catch(err => console.error("[Auth] Failed to send admin new user notification:", err));
   }
 
   const { passwordHash: _pw, ...safeUser } = user as any;

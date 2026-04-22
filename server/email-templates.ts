@@ -1118,3 +1118,58 @@ export function getCouponRewardEmail(props: CouponRewardEmailProps): string {
     preheaderText: `Your referral discount coupon: ${couponCode} — use it on your${isReferred ? ' first' : ' next'} enrollment`
   });
 }
+
+interface AdminNewUserNotificationParams {
+  userName: string;
+  userEmail: string;
+  role: 'parent' | 'tutor';
+  signupTime: Date;
+  timezone?: string;
+}
+
+export function getAdminNewUserNotificationEmail(params: AdminNewUserNotificationParams): string {
+  const { userName, userEmail, role, signupTime, timezone } = params;
+
+  const roleLabel = role === 'tutor' ? 'Tutor' : 'Parent';
+  const roleColor = role === 'tutor' ? '#7c3aed' : '#2563eb';
+  const dashboardUrl = `${process.env.LOCAL_SERVER_URL || 'https://edkonnect-academy.com'}/admin/users`;
+
+  const tz = timezone || 'UTC';
+  const timeFormatted = signupTime.toLocaleString('en-US', { timeZone: tz, dateStyle: 'medium', timeStyle: 'short' });
+  const tzLabel = tz.replace(/_/g, ' ');
+
+  const content = `
+    <h2 style="margin-top:0; color:#111827;">New ${roleLabel} Registered</h2>
+
+    <div style="background:#f9fafb; border:1px solid #e5e7eb; border-radius:8px; padding:20px; margin:20px 0;">
+      <table style="width:100%; border-collapse:collapse;">
+        <tr>
+          <td style="padding:8px 0; color:#6b7280; width:120px;">Name</td>
+          <td style="padding:8px 0; font-weight:600; color:#111827;">${userName}</td>
+        </tr>
+        <tr>
+          <td style="padding:8px 0; color:#6b7280;">Email</td>
+          <td style="padding:8px 0; color:#111827;">${userEmail}</td>
+        </tr>
+        <tr>
+          <td style="padding:8px 0; color:#6b7280;">Role</td>
+          <td style="padding:8px 0;">
+            <span style="background:${roleColor}1a; color:${roleColor}; padding:2px 10px; border-radius:12px; font-size:13px; font-weight:600;">${roleLabel}</span>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:8px 0; color:#6b7280;">Time (${tzLabel})</td>
+          <td style="padding:8px 0; color:#111827;">${timeFormatted}</td>
+        </tr>
+      </table>
+    </div>
+
+    <a href="${dashboardUrl}" style="display:inline-block; background:#2563eb; color:#ffffff; padding:10px 24px; border-radius:6px; text-decoration:none; font-weight:600; font-size:14px;">
+      View in Admin Dashboard →
+    </a>
+  `;
+
+  return getEmailBase(content, {
+    preheaderText: `New ${roleLabel} registered: ${userName} (${userEmail})`
+  });
+}

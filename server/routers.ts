@@ -9,7 +9,7 @@ import * as db from "./db";
 import { TRPCError } from "@trpc/server";
 import { searchFaq, logUnansweredQuestion, logQuery } from "./faq-search";
 import { checkChatbotRateLimit, bookingRateLimiter } from "./chatbot-rate-limiter";
-import { sendWelcomeEmail, sendBookingConfirmation, sendEnrollmentConfirmation, sendTutorEnrollmentNotification, sendNoShowNotification, formatEmailDate, formatEmailTime, formatEmailPrice, sendTutorApplicationReceivedEmail, sendReferralInviteEmail, sendCouponRewardEmail } from "./email-helpers";
+import { sendWelcomeEmail, sendBookingConfirmation, sendEnrollmentConfirmation, sendTutorEnrollmentNotification, sendNoShowNotification, formatEmailDate, formatEmailTime, formatEmailPrice, sendTutorApplicationReceivedEmail, sendReferralInviteEmail, sendCouponRewardEmail, sendAdminNewUserNotification } from "./email-helpers";
 import { generateBookingToken, isValidBookingToken } from "./booking-management";
 import { sendCancellationConfirmationEmail } from "./cancellation-email";
 import { generateCurriculumPDF } from "./pdf-generator";
@@ -454,6 +454,13 @@ export const appRouter = router({
             }
 
             userId = newUser.id;
+
+            // Notify admin of new tutor account creation (fire-and-forget)
+            sendAdminNewUserNotification({
+              userName: input.name,
+              userEmail: input.email,
+              role: 'tutor',
+            }).catch(err => console.error('[TutorRegistration] Failed to send admin new user notification:', err));
           }
         }
 
