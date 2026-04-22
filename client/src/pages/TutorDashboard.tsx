@@ -1421,8 +1421,8 @@ export default function TutorDashboard() {
                 <TabsTrigger className="whitespace-nowrap" value="courses">Courses</TabsTrigger>
                 <TabsTrigger className="whitespace-nowrap" value="course-preferences">Course Preferences</TabsTrigger>
                 <TabsTrigger className="whitespace-nowrap" value="students">Students</TabsTrigger>
-                <TabsTrigger className="whitespace-nowrap" value="sessions">Sessions</TabsTrigger>
-                <TabsTrigger className="whitespace-nowrap" value="history">History</TabsTrigger>
+                <TabsTrigger className="whitespace-nowrap" value="sessions">Upcoming Sessions</TabsTrigger>
+                <TabsTrigger className="whitespace-nowrap" value="history">Completed Sessions</TabsTrigger>
                 <TabsTrigger className="whitespace-nowrap" value="my-files">My Files</TabsTrigger>
               </TabsList>
                 </div>
