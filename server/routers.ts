@@ -7915,7 +7915,7 @@ For engagementData, describe ONLY the student's participation and behavior. The 
         base64Data: z.string(),
       }))
       .mutation(async ({ ctx, input }) => {
-        const allowedExtensions = [".pdf", ".doc", ".docx", ".xls", ".xlsx"];
+        const allowedExtensions = [".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx"];
         const fileExt = input.fileName.toLowerCase().slice(input.fileName.lastIndexOf("."));
         if (!allowedExtensions.includes(fileExt)) {
           throw new TRPCError({ code: "BAD_REQUEST", message: "Only PDF, Word, and Excel files are allowed." });
