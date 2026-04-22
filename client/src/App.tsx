@@ -39,6 +39,7 @@ import AboutUs from "./pages/AboutUs";
 import Contact from "./pages/Contact";
 import BlogListing from "./pages/BlogListing";
 import BlogPost from "./pages/BlogPost";
+import TempLogin from "./pages/TempLogin";
 
 function ScrollToTop() {
   const [location] = useLocation();
@@ -59,6 +60,7 @@ function Router() {
       <Route path={"/setup-password"} component={SetupPassword} />
       <Route path={"/forgot-password"} component={ForgotPassword} />
       <Route path={"/reset-password"} component={ResetPassword} />
+      <Route path={"/temp-login"} component={TempLogin} />
       {/* RoleSelection removed - users get role assigned during registration */}
       <Route path={"/tutors"} component={TutorListing} />
       <Route path={"/tutor-registration"} component={TutorRegistration} />
