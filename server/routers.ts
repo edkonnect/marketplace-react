@@ -7910,17 +7910,17 @@ For engagementData, describe ONLY the student's participation and behavior. The 
         description: z.string().max(2000).optional(),
         courseId: z.number().int().optional(),
         fileName: z.string().max(255),
-        fileType: z.enum([
-          "application/pdf",
-          "application/msword",
-          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-          "application/vnd.ms-excel",
-          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        ]),
+        fileType: z.string(),
         fileSize: z.number().int().max(20 * 1024 * 1024),
         base64Data: z.string(),
       }))
       .mutation(async ({ ctx, input }) => {
+        const allowedExtensions = [".pdf", ".doc", ".docx", ".xls", ".xlsx"];
+        const fileExt = input.fileName.toLowerCase().slice(input.fileName.lastIndexOf("."));
+        if (!allowedExtensions.includes(fileExt)) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Only PDF, Word, and Excel files are allowed." });
+        }
+
         const stripped = input.base64Data.replace(/\s/g, "");
         const byteLength = Math.floor((stripped.length * 3) / 4);
         if (byteLength > 20 * 1024 * 1024) {
