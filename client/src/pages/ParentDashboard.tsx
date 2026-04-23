@@ -2194,7 +2194,7 @@ export default function ParentDashboard() {
 	                  ).length;
 
                   return (
-                    <div className="rounded-2xl bg-gradient-to-br from-blue-500 to-blue-600 p-5 text-white shadow-md flex flex-col gap-2 h-[220px] overflow-hidden">
+                    <div className="rounded-2xl bg-gradient-to-br from-blue-500 to-blue-600 p-5 text-white shadow-md flex flex-col gap-2 h-[240px]">
                       <div className="flex items-center justify-between">
                         <p className="text-xs font-medium uppercase tracking-wider opacity-80">Students</p>
                         <div className="flex items-center gap-2">
@@ -2281,7 +2281,7 @@ export default function ParentDashboard() {
                   const totalSavings = analyticsFilteredSubscriptions.reduce((sum, s) => sum + Number(s.subscription.promoDiscountAmount ?? 0) + Number(s.subscription.discountAmount ?? 0), 0);
                   const hasSiblingDiscount = analyticsFilteredSubscriptions.some(s => s.subscription.siblingDiscountApplied);
                   return (
-                    <div className="rounded-2xl bg-gradient-to-br from-emerald-500 to-emerald-600 p-5 text-white shadow-md flex flex-col gap-2 h-[220px]">
+                    <div className="rounded-2xl bg-gradient-to-br from-emerald-500 to-emerald-600 p-5 text-white shadow-md flex flex-col gap-2 h-[240px]">
                       <div className="flex items-center justify-between">
                         <p className="text-xs font-medium uppercase tracking-wider opacity-80">Billing & Spend</p>
                         <div className="flex items-center gap-2">
@@ -2315,7 +2315,7 @@ export default function ParentDashboard() {
 	                    : "from-amber-400 to-amber-500";
 	                  const ratedCount = analyticsFilteredSubscriptions.filter(s => s.subscription.progressStatus === "low" || s.subscription.progressStatus === "medium" || s.subscription.progressStatus === "high").length;
 	                  return (
-	                    <div className={`rounded-2xl bg-gradient-to-br ${gradientClass} p-5 text-white shadow-md flex flex-col gap-2 h-[220px]`}>
+	                    <div className={`rounded-2xl bg-gradient-to-br ${gradientClass} p-5 text-white shadow-md flex flex-col gap-2 h-[240px]`}>
                       <div className="flex items-center justify-between">
                         <p className="text-xs font-medium uppercase tracking-wider opacity-80">Learning Proficiency</p>
                         <div className="flex items-center gap-2">
@@ -2351,7 +2351,7 @@ export default function ParentDashboard() {
                   const recentThreshold = Date.now() - 30 * 24 * 60 * 60 * 1000;
                   const hasRecentFeedback = analyticsFilteredSessions.some(s => s.feedbackFromTutor && new Date(s.scheduledAt).getTime() > recentThreshold);
                   return (
-                    <div className="rounded-2xl bg-gradient-to-br from-indigo-500 to-indigo-600 p-5 text-white shadow-md flex flex-col gap-2 h-[220px]">
+                    <div className="rounded-2xl bg-gradient-to-br from-indigo-500 to-indigo-600 p-5 text-white shadow-md flex flex-col gap-2 h-[240px]">
                       <div className="flex items-center justify-between">
                         <p className="text-xs font-medium uppercase tracking-wider opacity-80">Engagement</p>
                         <div className="flex items-center gap-2">
