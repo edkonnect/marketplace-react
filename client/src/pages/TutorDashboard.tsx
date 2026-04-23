@@ -2554,7 +2554,7 @@ export default function TutorDashboard() {
 
       {/* Session Completion Dialog */}
       <Dialog open={completionDialogOpen} onOpenChange={setCompletionDialogOpen}>
-        <DialogContent className="sm:max-w-[500px]">
+        <DialogContent className="sm:max-w-[500px] max-h-[90vh] flex flex-col">
           <DialogHeader>
             <DialogTitle>Complete Session</DialogTitle>
             <DialogDescription>
@@ -2562,7 +2562,7 @@ export default function TutorDashboard() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-6 py-4">
+          <div className="space-y-6 py-4 overflow-y-auto flex-1 pr-1">
             {/* Completion Type Selection */}
             <RadioGroup value={completionType} onValueChange={(value: any) => setCompletionType(value)}>
               <div className="flex items-center space-x-2 p-3 border rounded-lg hover:bg-accent cursor-pointer">
@@ -2601,7 +2601,8 @@ export default function TutorDashboard() {
                 }
                 value={completionNotes}
                 onChange={(e) => setCompletionNotes(e.target.value)}
-                rows={4}
+                rows={6}
+                className="resize-y overflow-y-auto max-h-64"
               />
             </div>
 
