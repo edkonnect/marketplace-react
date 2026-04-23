@@ -2253,7 +2253,7 @@ export default function ParentDashboard() {
                           )}
                           {/* Active student course box */}
                           {firstItem && (
-                            <div className="rounded-xl bg-white/15 px-3 py-2 space-y-0.5 mt-auto shrink-0">
+                            <div className="rounded-xl bg-white/15 px-3 py-2 space-y-0.5 shrink-0">
                               <p className="text-sm font-semibold truncate">{firstItem.course?.title || "Course"}</p>
                               <p className="text-xs opacity-75">{completedForStudent} done · {scheduledForStudent} upcoming</p>
                               {totalCourses > 1 && <p className="text-[10px] opacity-60">+{totalCourses - 1} more course{totalCourses - 1 !== 1 ? "s" : ""}</p>}
