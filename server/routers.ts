@@ -3364,7 +3364,17 @@ export const appRouter = router({
       .input(z.object({
         file: z.string(), // base64 encoded file
         fileName: z.string(),
-        fileType: z.string(),
+        fileType: z.enum([
+          'application/pdf',
+          'application/msword',
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          'application/vnd.ms-excel',
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          'image/jpeg',
+          'image/png',
+          'image/gif',
+          'image/webp',
+        ]),
       }))
       .mutation(async ({ input }) => {
         // Validate file size (10MB limit)

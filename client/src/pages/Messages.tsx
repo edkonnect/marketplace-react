@@ -198,6 +198,16 @@ export default function Messages() {
             utils.messaging.getParentCoordinatorConversation.invalidate();
             utils.messaging.getParentTutorInquiryConversations.invalidate();
           },
+          onError: () => {
+            // Revert optimistic badge clear
+            setReadConversationIds(prev => {
+              const next = new Set(prev);
+              next.delete(selectedConversationId);
+              return next;
+            });
+            utils.messaging.getUnreadMessageCount.invalidate();
+            utils.messaging.getStudentsWithTutors.invalidate();
+          },
         }
       );
     }
@@ -213,6 +223,9 @@ export default function Messages() {
             utils.messaging.getUnreadMessageCount.invalidate();
             utils.messaging.getParentCoordinatorConversation.invalidate();
             utils.messaging.getParentTutorInquiryConversations.invalidate();
+          },
+          onError: () => {
+            utils.messaging.getUnreadMessageCount.invalidate();
           },
         }
       );
@@ -361,8 +374,8 @@ export default function Messages() {
         studentId: studentIdToUse,
       });
       if (retry) {
-        const convId = typeof retry === "number" ? retry : retry.id;
-        setSelectedConversationId(convId);
+        const convId = typeof retry === "number" ? retry : retry?.id;
+        if (convId) setSelectedConversationId(convId);
       } else {
         toast.error("Failed to load conversation");
       }
@@ -425,7 +438,7 @@ export default function Messages() {
         fileData = await uploadFileMutation.mutateAsync({
           file: base64,
           fileName: selectedFile.name,
-          fileType: selectedFile.type,
+          fileType: selectedFile.type as "image/jpeg" | "image/png" | "image/gif" | "image/webp" | "application/pdf" | "application/msword" | "application/vnd.openxmlformats-officedocument.wordprocessingml.document" | "application/vnd.ms-excel" | "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         });
       }
 
@@ -975,8 +988,8 @@ export default function Messages() {
                                       tutorId: conv.tutorId,
                                       studentId: conv.subscriptionId,
                                     });
-                                    const convId = typeof result === "number" ? result : (result as unknown as { conversationId: number }).conversationId;
-                                    setSelectedConversationId(convId);
+                                    const convId = typeof result === "number" ? result : (result as unknown as { conversationId: number })?.conversationId ?? (result as any)?.id;
+                                    if (convId) setSelectedConversationId(convId);
                                     setSelectedStudentId(conv.subscriptionId);
                                     setSelectedTutorId(conv.tutorId);
                                   } catch (error) {
@@ -1199,8 +1212,8 @@ export default function Messages() {
                                   studentId: item.studentId,
                                 });
                                 if (conversation) {
-                                  const convId = typeof conversation === "number" ? conversation : conversation.id;
-                                  setSelectedConversationId(convId);
+                                  const convId = typeof conversation === "number" ? conversation : conversation?.id;
+                                  if (convId) setSelectedConversationId(convId);
                                   setSelectedStudentId(item.studentId || null);
                                 }
                               } catch {

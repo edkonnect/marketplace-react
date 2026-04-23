@@ -2681,7 +2681,8 @@ async function getUnreadCountsByConversation(userId: number): Promise<Map<number
           sql`${messages.senderId} != ${userId}`,
           or(
             eq(conversations.parentId, userId),
-            eq(conversations.tutorId, userId)
+            eq(conversations.tutorId, userId),
+            eq(conversations.coordinatorId, userId)
           )
         )
       )
