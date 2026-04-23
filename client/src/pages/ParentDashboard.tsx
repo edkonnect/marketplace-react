@@ -2194,7 +2194,7 @@ export default function ParentDashboard() {
 	                  ).length;
 
                   return (
-                    <div className="rounded-2xl bg-gradient-to-br from-blue-500 to-blue-600 p-5 text-white shadow-md flex flex-col gap-2 h-[220px]">
+                    <div className="rounded-2xl bg-gradient-to-br from-blue-500 to-blue-600 p-5 text-white shadow-md flex flex-col gap-2 h-[220px] overflow-hidden">
                       <div className="flex items-center justify-between">
                         <p className="text-xs font-medium uppercase tracking-wider opacity-80">Students</p>
                         <div className="flex items-center gap-2">
@@ -2213,7 +2213,7 @@ export default function ParentDashboard() {
                         </>
                       ) : (
                         <>
-                          <p className="text-4xl font-bold">{studentGroups.length}</p>
+                          <p className="text-4xl font-bold leading-tight">{studentGroups.length}</p>
                           <p className="text-xs opacity-70 -mt-1">active student{studentGroups.length !== 1 ? "s" : ""}</p>
                           {/* Segmented student selector — only shown for multiple students */}
                           {studentGroups.length > 1 ? (
@@ -2224,15 +2224,17 @@ export default function ParentDashboard() {
                               >
                                 <ChevronLeft className="w-3.5 h-3.5" />
                               </button>
-                              <div className="flex-1 text-center">
-                                <p className="text-xs font-semibold truncate">
-                                  {activeStudentName}
-                                  {(() => {
-                                    const grade = activeGroup?.[1]?.[0]?.subscription.studentGrade;
-                                    return grade && grade !== "Not specified" && String(grade).length <= 4 ? ` · G${grade}` : "";
-                                  })()}
-                                  {" "}<span className="opacity-50 font-normal">({clampedTab + 1}/{studentGroups.length})</span>
-                                </p>
+                              <div className="flex-1 min-w-0 text-center overflow-hidden">
+                                <div className="student-name-scroll text-xs font-semibold">
+                                  <span>
+                                    {activeStudentName}
+                                    {(() => {
+                                      const grade = activeGroup?.[1]?.[0]?.subscription.studentGrade;
+                                      return grade && grade !== "Not specified" && String(grade).length <= 4 ? ` · G${grade}` : "";
+                                    })()}
+                                    {" "}<span className="opacity-50 font-normal">({clampedTab + 1}/{studentGroups.length})</span>
+                                  </span>
+                                </div>
                               </div>
                               <button
                                 onClick={() => setActiveStudentTab((clampedTab + 1) % studentGroups.length)}
@@ -2242,14 +2244,16 @@ export default function ParentDashboard() {
                               </button>
                             </div>
                           ) : (
-                            // Single student — show name clearly
-                            <p className="text-xs font-semibold opacity-90 truncate">
-                              {activeStudentName}
-                              {(() => {
-                                const grade = firstItem?.subscription.studentGrade;
-                                return grade && grade !== "Not specified" && String(grade).length <= 4 ? ` · G${grade}` : "";
-                              })()}
-                            </p>
+                            // Single student — scroll name if long
+                            <div className="student-name-scroll text-xs font-semibold opacity-90">
+                              <span>
+                                {activeStudentName}
+                                {(() => {
+                                  const grade = firstItem?.subscription.studentGrade;
+                                  return grade && grade !== "Not specified" && String(grade).length <= 4 ? ` · G${grade}` : "";
+                                })()}
+                              </span>
+                            </div>
                           )}
                           {/* Active student course box */}
                           {firstItem && (
