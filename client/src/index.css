@@ -6,24 +6,6 @@
   to { transform: translateX(-50%); }
 }
 
-@keyframes scroll-name {
-  0%   { transform: translateX(0); }
-  10%  { transform: translateX(0); }
-  90%  { transform: translateX(var(--scroll-distance, -100%)); }
-  100% { transform: translateX(var(--scroll-distance, -100%)); }
-}
-
-.student-name-scroll {
-  display: block;
-  white-space: nowrap;
-  overflow: hidden;
-}
-
-.student-name-scroll span {
-  display: inline-block;
-  animation: scroll-name 4s linear infinite;
-  padding-right: 2rem;
-}
 
 @custom-variant dark (&:is(.dark *));
 

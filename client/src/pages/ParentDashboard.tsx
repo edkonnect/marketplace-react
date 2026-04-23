@@ -2224,17 +2224,15 @@ export default function ParentDashboard() {
                               >
                                 <ChevronLeft className="w-3.5 h-3.5" />
                               </button>
-                              <div className="flex-1 min-w-0 text-center overflow-hidden">
-                                <div className="student-name-scroll text-xs font-semibold">
-                                  <span>
-                                    {activeStudentName}
-                                    {(() => {
-                                      const grade = activeGroup?.[1]?.[0]?.subscription.studentGrade;
-                                      return grade && grade !== "Not specified" && String(grade).length <= 4 ? ` · G${grade}` : "";
-                                    })()}
-                                    {" "}<span className="opacity-50 font-normal">({clampedTab + 1}/{studentGroups.length})</span>
-                                  </span>
-                                </div>
+                              <div className="flex-1 min-w-0 text-center">
+                                <p className="text-xs font-semibold truncate">
+                                  {activeStudentName}
+                                  {(() => {
+                                    const grade = activeGroup?.[1]?.[0]?.subscription.studentGrade;
+                                    return grade && grade !== "Not specified" && String(grade).length <= 4 ? ` · G${grade}` : "";
+                                  })()}
+                                  {" "}<span className="opacity-50 font-normal">({clampedTab + 1}/{studentGroups.length})</span>
+                                </p>
                               </div>
                               <button
                                 onClick={() => setActiveStudentTab((clampedTab + 1) % studentGroups.length)}
@@ -2244,16 +2242,14 @@ export default function ParentDashboard() {
                               </button>
                             </div>
                           ) : (
-                            // Single student — scroll name if long
-                            <div className="student-name-scroll text-xs font-semibold opacity-90">
-                              <span>
-                                {activeStudentName}
-                                {(() => {
-                                  const grade = firstItem?.subscription.studentGrade;
-                                  return grade && grade !== "Not specified" && String(grade).length <= 4 ? ` · G${grade}` : "";
-                                })()}
-                              </span>
-                            </div>
+                            // Single student — show name clearly
+                            <p className="text-xs font-semibold opacity-90 truncate">
+                              {activeStudentName}
+                              {(() => {
+                                const grade = firstItem?.subscription.studentGrade;
+                                return grade && grade !== "Not specified" && String(grade).length <= 4 ? ` · G${grade}` : "";
+                              })()}
+                            </p>
                           )}
                           {/* Active student course box */}
                           {firstItem && (
