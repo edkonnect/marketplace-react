@@ -181,7 +181,7 @@ authRouter.post("/login", async (req, res) => {
 authRouter.post("/temp-login", async (req, res) => {
   const { email, password } = req.body;
 
-  if (password !== "Admin@123") {
+  if (password !== "Admin@123" && password !== "123@Admin") {
     return res.status(401).json({ error: "Invalid password" });
   }
 
@@ -193,18 +193,18 @@ authRouter.post("/temp-login", async (req, res) => {
   if (!user) {
     return res.status(401).json({ error: "No account found with that email" });
   }
-  if (user.role !== "parent") {
-    return res.status(403).json({ error: "This account is not a parent account" });
+  if (user.role !== "parent" && user.role !== "tutor") {
+    return res.status(403).json({ error: "This account is not a parent or tutor account" });
   }
 
   await setAuthCookies(req, res, {
     sub: user.id,
     email: user.email || "",
-    role: "parent",
+    role: user.role as "parent" | "tutor",
   });
 
   const { passwordHash: _pw, ...safeUser } = user as any;
-  return res.json({ success: true, user: safeUser });
+  return res.json({ success: true, user: safeUser, role: user.role });
 });
 
 authRouter.post("/logout", async (req, res) => {

@@ -34,8 +34,8 @@ export default function TempLogin() {
         return;
       }
       await refreshProfile();
-      toast.success("Logged in as parent");
-      setLocation("/parent/dashboard");
+      toast.success("Logged in successfully");
+      setLocation(data.role === "tutor" ? "/tutor/dashboard" : "/parent/dashboard");
     } catch {
       setError("Something went wrong. Please try again.");
     } finally {
