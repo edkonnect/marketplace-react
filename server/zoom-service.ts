@@ -237,7 +237,7 @@ export async function getZoomRecording(meetingIdOrUuid: string): Promise<ZoomRec
 export async function findRecordingUuidBySessionTime(
   meetingId: string,
   sessionStartMs: number,
-  toleranceMs: number = 3 * 60 * 60 * 1000 // 3 hours — covers late starts and long sessions
+  toleranceMs: number = 40 * 60 * 1000 // 40 minutes — stricter shared-room matching window
 ): Promise<string | null> {
   const sessionDate = new Date(sessionStartMs);
 
