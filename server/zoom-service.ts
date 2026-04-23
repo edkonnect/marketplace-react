@@ -67,7 +67,7 @@ export async function getZoomAccessToken(): Promise<string> {
  * @param tutorEmail - Email of the tutor (not used but kept for future features)
  * @returns Object with meetingId, joinUrl, hostUrl, and password
  */
-export async function createPermanentZoomMeeting(tutorName: string, tutorEmail: string) {
+export async function createPermanentZoomMeeting(tutorName: string, _tutorEmail: string) {
   const accessToken = await getZoomAccessToken();
 
   const meetingData = {
@@ -242,25 +242,41 @@ export async function findRecordingUuidBySessionTime(
   const sessionDate = new Date(sessionStartMs);
 
   // Search ±1 day around the session date to catch timezone edge cases
-  const from = new Date(sessionStartMs - 24 * 60 * 60 * 1000)
-    .toISOString()
-    .slice(0, 10); // YYYY-MM-DD
-  const to = new Date(sessionStartMs + 24 * 60 * 60 * 1000)
-    .toISOString()
-    .slice(0, 10);
+  const from = new Date(sessionStartMs - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const to = new Date(sessionStartMs + 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
-  // Collect all recordings across paginated results
+  // Step 1: Resolve the meeting's host email via GET /meetings/{meetingId}
+  // This lets us query /users/{hostEmail}/recordings which returns all instances,
+  // regardless of whether this OAuth app is authenticated as the host.
+  const accessToken = await getZoomAccessToken();
+  const meetingInfoRes = await fetch(
+    `${ZOOM_API_BASE_URL}/meetings/${meetingId}`,
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  );
+
+  let userId = "me";
+  if (meetingInfoRes.ok) {
+    const meetingInfo = await meetingInfoRes.json();
+    if (meetingInfo.host_email) {
+      userId = meetingInfo.host_email;
+      console.log(`[ZoomService] Resolved host email=${userId} for meetingId=${meetingId}`);
+    }
+  } else {
+    console.warn(`[ZoomService] Could not resolve host for meetingId=${meetingId}, falling back to "me"`);
+  }
+
+  // Step 2: List all recordings for the host in the date range
   const allMeetings: ZoomRecording[] = [];
   let nextPageToken: string | undefined;
 
   do {
-    const accessToken = await getZoomAccessToken();
+    const token = await getZoomAccessToken();
     const params = new URLSearchParams({ page_size: "100", from, to });
     if (nextPageToken) params.append("next_page_token", nextPageToken);
 
     const response = await fetch(
-      `${ZOOM_API_BASE_URL}/users/me/recordings?${params.toString()}`,
-      { headers: { Authorization: `Bearer ${accessToken}` } }
+      `${ZOOM_API_BASE_URL}/users/${encodeURIComponent(userId)}/recordings?${params.toString()}`,
+      { headers: { Authorization: `Bearer ${token}` } }
     );
 
     if (!response.ok) {
@@ -273,17 +289,17 @@ export async function findRecordingUuidBySessionTime(
     nextPageToken = data.next_page_token;
   } while (nextPageToken);
 
-  // Filter to recordings for this specific meeting only
+  // Step 3: Filter to recordings for this specific meeting only
   const meetingRecordings = allMeetings.filter(
     (m) => String(m.id) === String(meetingId)
   );
 
   if (meetingRecordings.length === 0) {
-    console.warn(`[ZoomService] No recordings found for meetingId=${meetingId} in range ${from} → ${to}`);
+    console.warn(`[ZoomService] No recordings found for meetingId=${meetingId} user=${userId} in range ${from} → ${to}`);
     return null;
   }
 
-  // Pick the recording whose start_time is closest to sessionStartMs
+  // Step 4: Pick the recording whose start_time is closest to sessionStartMs
   let bestUuid: string | null = null;
   let bestDiff = Infinity;
 

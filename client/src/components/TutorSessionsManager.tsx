@@ -79,7 +79,7 @@ export function TutorSessionsManager({
 
     // Extract meeting ID from joinUrl
     // Format: https://us05web.zoom.us/j/85648346210?pwd=...
-    const urlMatch = session.joinUrl.match(/\/j\/(\d+)/);
+    const urlMatch = session.joinUrl.match(/\/[js]\/(\d+)/);
     if (!urlMatch) {
       toast.error("Could not extract meeting ID from URL");
       return;
@@ -91,6 +91,7 @@ export function TutorSessionsManager({
     fetchTranscriptMutation.mutate({
       meetingId,
       sessionId: session.id,
+      sessionScheduledAt: session.scheduledAt,
     });
   };
 
