@@ -192,6 +192,30 @@ export async function deleteCourseFileFromS3(fileKey: string): Promise<void> {
 }
 
 /**
+ * Generate a presigned PUT URL so the browser can upload a course file
+ * directly to S3 without passing through the server.
+ * Returns { uploadUrl, key, fileUrl } — uploadUrl is used by the browser,
+ * fileUrl is the public S3 URL to store in the DB after upload completes.
+ * Returns null in local dev (falls back to base64 upload path).
+ */
+export async function getCourseFileUploadPresignedUrl(
+  originalFileName: string,
+  mimeType: string
+): Promise<{ uploadUrl: string; key: string; fileUrl: string } | null> {
+  if (!hasS3Credentials()) return null;
+  const ext = originalFileName.split(".").pop()?.toLowerCase() ?? "bin";
+  const uuid = crypto.randomUUID();
+  const key = `course-files/${uuid}.${ext}`;
+  const uploadUrl = await getSignedUrl(
+    getS3Client(),
+    new PutObjectCommand({ Bucket: ENV.awsS3Bucket, Key: key, ContentType: mimeType }),
+    { expiresIn: 300 } // 5 minutes to complete the upload
+  );
+  const fileUrl = `https://${ENV.awsS3Bucket}.s3.${ENV.awsS3Region ?? "us-east-1"}.amazonaws.com/${key}`;
+  return { uploadUrl, key, fileUrl };
+}
+
+/**
  * Generate a pre-signed URL for a course file (valid for 1 hour).
  * Falls back to the original URL in local dev.
  */

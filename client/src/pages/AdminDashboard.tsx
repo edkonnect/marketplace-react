@@ -149,13 +149,10 @@ function CourseFilesAdminPanel() {
   const { data: coursesList = [] } = trpc.fileManagement.getCoursesList.useQuery();
   const uploadFileMutation = trpc.fileManagement.uploadFile.useMutation({
     onSuccess: () => { refetchFiles(); resetUpload(); toast.success("File uploaded successfully"); },
-    onError: (err) => {
-      if (err.data?.code === "CONFLICT" || err.data?.httpStatus === 409) {
-        toast.error(err.message, { duration: 6000 });
-      } else {
-        toast.error("Upload failed: " + err.message);
-      }
-    },
+  });
+  const getUploadUrlMutation = trpc.fileManagement.getUploadUrl.useMutation();
+  const registerFileMutation = trpc.fileManagement.registerFile.useMutation({
+    onSuccess: () => { refetchFiles(); resetUpload(); toast.success("File uploaded successfully"); },
   });
   const deleteFileMutation = trpc.fileManagement.deleteFile.useMutation({ onSuccess: () => { refetchFiles(); toast.success("File deleted"); } });
   const assignTutorsMutation = trpc.fileManagement.assignFileToTutors.useMutation({ onSuccess: () => { refetchFiles(); setAssignDialogFileId(null); toast.success("Tutors assigned"); } });
@@ -165,6 +162,7 @@ function CourseFilesAdminPanel() {
   const [uploadDescription, setUploadDescription] = useState("");
   const [uploadCourseId, setUploadCourseId] = useState<string>("");
   const [fileUploadKey, setFileUploadKey] = useState(0);
+  const [isUploading, setIsUploading] = useState(false);
   const [assignDialogFileId, setAssignDialogFileId] = useState<number | null>(null);
   const [selectedTutorIds, setSelectedTutorIds] = useState<number[]>([]);
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
@@ -204,21 +202,90 @@ function CourseFilesAdminPanel() {
       return;
     }
     const file = selectedFiles[0];
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const dataUrl = e.target?.result as string;
-      const base64Data = dataUrl.split(",")[1];
-      uploadFileMutation.mutate({
-        title: uploadTitle.trim(),
-        description: uploadDescription.trim() || undefined,
-        courseId: uploadCourseId ? parseInt(uploadCourseId) : undefined,
-        fileName: file.name,
-        fileType: file.type as any,
-        fileSize: file.size,
-        base64Data,
-      });
-    };
-    reader.readAsDataURL(file);
+    const mimeType = file.type || "application/octet-stream";
+    setIsUploading(true);
+    try {
+      // Try presigned S3 upload first (production) — bypasses server body limit
+      let presigned: { uploadUrl: string; key: string; fileUrl: string } | null = null;
+      try {
+        presigned = await getUploadUrlMutation.mutateAsync({
+          fileName: file.name,
+          fileType: mimeType,
+        });
+      } catch (err: any) {
+        // Extension validation errors should be shown immediately
+        toast.error(err?.message ?? "Failed to prepare upload");
+        return;
+      }
+
+      if (presigned) {
+        // Direct browser → S3 upload
+        let s3Ok = false;
+        try {
+          const res = await fetch(presigned.uploadUrl, {
+            method: "PUT",
+            body: file,
+            headers: { "Content-Type": mimeType },
+          });
+          s3Ok = res.ok;
+          if (!res.ok) throw new Error(`S3 upload failed (${res.status})`);
+        } catch (err: any) {
+          toast.error("Upload failed: Could not reach storage. Please try again.");
+          return;
+        }
+
+        // S3 succeeded — now register in DB. If this fails, log the orphaned key.
+        try {
+          await registerFileMutation.mutateAsync({
+            title: uploadTitle.trim(),
+            description: uploadDescription.trim() || undefined,
+            courseId: uploadCourseId ? parseInt(uploadCourseId) : undefined,
+            fileName: file.name,
+            fileType: mimeType,
+            fileSize: file.size,
+            fileKey: presigned.key,
+            fileUrl: presigned.fileUrl,
+          });
+        } catch (err: any) {
+          // File is in S3 but not in DB — log so admin can clean up manually
+          console.error("[uploadFile] S3 upload succeeded but DB registration failed. Orphaned S3 key:", presigned.key, err);
+          if (err?.data?.code === "CONFLICT") {
+            toast.error(err.message, { duration: 6000 });
+          } else {
+            toast.error("File was uploaded but could not be saved. Please contact support.");
+          }
+          return;
+        }
+      } else {
+        // Local dev fallback — base64 through server
+        const base64Data = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = (e) => resolve((e.target?.result as string).split(",")[1]);
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
+        try {
+          await uploadFileMutation.mutateAsync({
+            title: uploadTitle.trim(),
+            description: uploadDescription.trim() || undefined,
+            courseId: uploadCourseId ? parseInt(uploadCourseId) : undefined,
+            fileName: file.name,
+            fileType: mimeType,
+            fileSize: file.size,
+            base64Data,
+          });
+        } catch (err: any) {
+          if (err?.data?.code === "CONFLICT") {
+            toast.error(err.message, { duration: 6000 });
+          } else {
+            toast.error("Upload failed: " + (err?.message ?? "Unknown error"));
+          }
+          return;
+        }
+      }
+    } finally {
+      setIsUploading(false);
+    }
   }
 
   function formatFileSize(bytes: number) {
@@ -288,8 +355,8 @@ function CourseFilesAdminPanel() {
             maxSizeMB={20}
             acceptedTypes={["application/pdf", ".doc", ".docx", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", ".xls", ".xlsx", "application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", ".ppt", ".pptx", "application/vnd.ms-powerpoint", "application/vnd.openxmlformats-officedocument.presentationml.presentation"]}
           />
-          <Button onClick={handleUpload} disabled={uploadFileMutation.isPending || !selectedFiles[0] || !uploadTitle.trim()}>
-            {uploadFileMutation.isPending ? "Uploading..." : "Upload File"}
+          <Button onClick={handleUpload} disabled={isUploading || !selectedFiles[0] || !uploadTitle.trim()}>
+            {isUploading ? "Uploading..." : "Upload File"}
           </Button>
         </CardContent>
       </Card>

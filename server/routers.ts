@@ -7963,6 +7963,76 @@ For engagementData, describe ONLY the student's participation and behavior. The 
         return { fileId, fileUrl: url };
       }),
 
+    // Returns a presigned S3 PUT URL so the browser uploads directly to S3.
+    // Falls back to null in local dev (use uploadFile instead).
+    getUploadUrl: adminProcedure
+      .input(z.object({
+        fileName: z.string().max(255),
+        fileType: z.string(),
+      }))
+      .mutation(async ({ input }) => {
+        const allowedExtensions = [".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx"];
+        const fileExt = input.fileName.toLowerCase().slice(input.fileName.lastIndexOf("."));
+        if (!allowedExtensions.includes(fileExt)) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Only PDF, Word, Excel, and PowerPoint files are allowed." });
+        }
+        const { getCourseFileUploadPresignedUrl } = await import("./s3Storage");
+        const result = await getCourseFileUploadPresignedUrl(input.fileName, input.fileType);
+        return result; // null in local dev
+      }),
+
+    // Called after browser finishes uploading directly to S3 via presigned URL.
+    registerFile: adminProcedure
+      .input(z.object({
+        title: z.string().min(1).max(255),
+        description: z.string().max(2000).optional(),
+        courseId: z.number().int().optional(),
+        fileName: z.string().max(255),
+        fileType: z.string(),
+        fileSize: z.number().int().max(20 * 1024 * 1024),
+        fileKey: z.string(),
+        fileUrl: z.string(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const existing = await db.getCourseFileByNameAndCourse(input.fileName, input.courseId ?? null);
+        if (existing) {
+          // File is already in S3 but duplicate — clean up the orphaned S3 object
+          deleteCourseFileFromS3(input.fileKey).catch((e) =>
+            console.error("[registerFile] Failed to clean up duplicate S3 object:", input.fileKey, e)
+          );
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: `A file named "${input.fileName}" already exists${input.courseId ? " for this course" : ""}. Delete the existing file first or rename this one.`,
+          });
+        }
+        let fileId: number | null = null;
+        try {
+          fileId = await db.createCourseFile({
+            title: input.title,
+            description: input.description ?? null,
+            courseId: input.courseId ?? null,
+            fileUrl: input.fileUrl,
+            fileKey: input.fileKey,
+            fileType: input.fileType,
+            fileSize: input.fileSize,
+            fileName: input.fileName,
+            uploadedBy: ctx.user.id,
+          });
+        } catch (dbErr) {
+          // DB write failed — clean up the S3 object to avoid orphan
+          console.error("[registerFile] DB write failed, cleaning up S3 key:", input.fileKey, dbErr);
+          deleteCourseFileFromS3(input.fileKey).catch((e) =>
+            console.error("[registerFile] S3 cleanup also failed:", input.fileKey, e)
+          );
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to save file. The uploaded file has been removed." });
+        }
+        if (!fileId) {
+          deleteCourseFileFromS3(input.fileKey).catch(() => {});
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to save file." });
+        }
+        return { fileId, fileUrl: input.fileUrl };
+      }),
+
     getFiles: adminProcedure
       .query(async () => {
         return await db.getAllCourseFiles();
