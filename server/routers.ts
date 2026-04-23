@@ -7228,10 +7228,11 @@ For engagementData, describe ONLY the student's participation and behavior. The 
     fetchTranscript: protectedProcedure
       .input(z.object({
         meetingId: z.string(),
-        sessionId: z.number().optional(), // Link to session if provided
+        sessionId: z.number().optional(),
+        sessionScheduledAt: z.number().optional(), // Unix ms — used to find the correct recording instance
       }))
       .mutation(async ({ input }) => {
-        const { fetchZoomTranscript, getZoomRecording } = await import('./zoom-service');
+        const { fetchZoomTranscript, getZoomRecording, findRecordingUuidBySessionTime } = await import('./zoom-service');
         const { zoomMeetingRecordings } = await import('../drizzle/schema');
         const database = await db.getDb();
 
@@ -7263,11 +7264,13 @@ For engagementData, describe ONLY the student's participation and behavior. The 
             }
           }
 
-          // Determine the ID to use when fetching from Zoom.
-          // If we have a saved recording row for this session, use its UUID
-          // (a specific past instance) rather than the numeric meetingId
-          // which only returns the latest recording.
+          // Determine the correct recording UUID to fetch.
+          // Priority order:
+          // 1. UUID already saved in DB for this session (webhook already matched it)
+          // 2. Find UUID by session time — list all recordings and pick the closest one
+          // 3. Fall back to numeric meetingId (returns LATEST recording — may be wrong)
           let meetingIdToFetch = input.meetingId;
+
           if (input.sessionId) {
             const savedRecording = await database
               .select({ id: zoomMeetingRecordings.id })
@@ -7276,7 +7279,18 @@ For engagementData, describe ONLY the student's participation and behavior. The 
               .limit(1);
 
             if (savedRecording.length > 0 && savedRecording[0].id !== input.meetingId) {
+              // Webhook already matched this session to a UUID — use it
               meetingIdToFetch = savedRecording[0].id;
+              console.log(`[fetchTranscript] Using webhook-matched UUID=${meetingIdToFetch} for sessionId=${input.sessionId}`);
+            } else if (input.sessionScheduledAt) {
+              // No webhook match yet — find the recording closest to session time
+              const uuid = await findRecordingUuidBySessionTime(input.meetingId, input.sessionScheduledAt);
+              if (uuid) {
+                meetingIdToFetch = uuid;
+                console.log(`[fetchTranscript] Time-matched UUID=${uuid} for sessionId=${input.sessionId} scheduledAt=${new Date(input.sessionScheduledAt).toISOString()}`);
+              } else {
+                console.warn(`[fetchTranscript] Could not find recording by time for sessionId=${input.sessionId}, falling back to latest`);
+              }
             }
           }
 
@@ -7290,7 +7304,7 @@ For engagementData, describe ONLY the student's participation and behavior. The 
             set: { status: 'processing' }
           });
 
-          // Fetch transcript from Zoom (meetingIdToFetch may be a UUID for specific past instances)
+          // Fetch transcript from Zoom using the resolved UUID
           const transcriptData = await fetchZoomTranscript(meetingIdToFetch);
           const recording = await getZoomRecording(meetingIdToFetch);
 

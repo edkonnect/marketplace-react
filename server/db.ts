@@ -2009,6 +2009,12 @@ export async function resolveSessionForZoomRecording(params: {
   const windowStart = recordingMs - TOLERANCE_MS;
   const windowEnd = recordingMs + TOLERANCE_MS;
 
+  console.log(
+    `[ZoomMatch] meetingId=${params.meetingId} tutorId=${tutorId} ` +
+    `recordingMs=${recordingMs} (${new Date(recordingMs).toISOString()}) ` +
+    `window=[${new Date(windowStart).toISOString()} → ${new Date(windowEnd).toISOString()}]`
+  );
+
   const candidates = await db
     .select({ id: sessions.id, scheduledAt: sessions.scheduledAt })
     .from(sessions)
@@ -2018,11 +2024,10 @@ export async function resolveSessionForZoomRecording(params: {
       lte(sessions.scheduledAt, windowEnd),
       ne(sessions.status, 'cancelled'),
     ))
-    .orderBy(sql`ABS(${sessions.scheduledAt} - ${recordingMs})`);
+    .orderBy(sql`ABS(CAST(${sessions.scheduledAt} AS SIGNED) - ${sql.raw(String(recordingMs))})`);
 
   console.log(
-    `[ZoomMatch] meetingId=${params.meetingId} recordingMs=${recordingMs} tutorId=${tutorId} ` +
-    `candidates=${JSON.stringify(candidates.map(c => ({ id: c.id, scheduledAt: c.scheduledAt })))}`
+    `[ZoomMatch] candidates=${JSON.stringify(candidates.map(c => ({ id: c.id, scheduledAt: c.scheduledAt, iso: new Date(c.scheduledAt).toISOString() })))}`
   );
 
   // Step 3: Apply match / ambiguity rules
@@ -2034,8 +2039,8 @@ export async function resolveSessionForZoomRecording(params: {
   }
 
   // Multiple candidates: reject if the top two are equidistant (ambiguous)
-  const diffFirst = Math.abs(candidates[0].scheduledAt - recordingMs);
-  const diffSecond = Math.abs(candidates[1].scheduledAt - recordingMs);
+  const diffFirst = Math.abs(Number(candidates[0].scheduledAt) - recordingMs);
+  const diffSecond = Math.abs(Number(candidates[1].scheduledAt) - recordingMs);
   if (diffFirst === diffSecond) {
     console.warn(`[ZoomMatch] Ambiguous: sessions ${candidates[0].id} and ${candidates[1].id} are equidistant (${diffFirst}ms) from recording`);
     return { sessionId: null, tutorId, reason: 'ambiguous' };

@@ -227,6 +227,91 @@ export async function getZoomRecording(meetingIdOrUuid: string): Promise<ZoomRec
 }
 
 /**
+ * Given a numeric meetingId and a target session time, finds the specific
+ * recording UUID whose start_time is closest to that session.
+ *
+ * Zoom's GET /meetings/{numericId}/recordings always returns the LATEST
+ * recording. To get a specific past instance we must list all recordings
+ * for the date range and pick the closest one by start_time.
+ */
+export async function findRecordingUuidBySessionTime(
+  meetingId: string,
+  sessionStartMs: number,
+  toleranceMs: number = 3 * 60 * 60 * 1000 // 3 hours — covers late starts and long sessions
+): Promise<string | null> {
+  const sessionDate = new Date(sessionStartMs);
+
+  // Search ±1 day around the session date to catch timezone edge cases
+  const from = new Date(sessionStartMs - 24 * 60 * 60 * 1000)
+    .toISOString()
+    .slice(0, 10); // YYYY-MM-DD
+  const to = new Date(sessionStartMs + 24 * 60 * 60 * 1000)
+    .toISOString()
+    .slice(0, 10);
+
+  // Collect all recordings across paginated results
+  const allMeetings: ZoomRecording[] = [];
+  let nextPageToken: string | undefined;
+
+  do {
+    const accessToken = await getZoomAccessToken();
+    const params = new URLSearchParams({ page_size: "100", from, to });
+    if (nextPageToken) params.append("next_page_token", nextPageToken);
+
+    const response = await fetch(
+      `${ZOOM_API_BASE_URL}/users/me/recordings?${params.toString()}`,
+      { headers: { Authorization: `Bearer ${accessToken}` } }
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Failed to list recordings: ${response.status} - ${errorText}`);
+    }
+
+    const data: ZoomRecordingsListResponse = await response.json();
+    allMeetings.push(...data.meetings);
+    nextPageToken = data.next_page_token;
+  } while (nextPageToken);
+
+  // Filter to recordings for this specific meeting only
+  const meetingRecordings = allMeetings.filter(
+    (m) => String(m.id) === String(meetingId)
+  );
+
+  if (meetingRecordings.length === 0) {
+    console.warn(`[ZoomService] No recordings found for meetingId=${meetingId} in range ${from} → ${to}`);
+    return null;
+  }
+
+  // Pick the recording whose start_time is closest to sessionStartMs
+  let bestUuid: string | null = null;
+  let bestDiff = Infinity;
+
+  for (const rec of meetingRecordings) {
+    const diff = Math.abs(new Date(rec.start_time).getTime() - sessionStartMs);
+    if (diff < bestDiff) {
+      bestDiff = diff;
+      bestUuid = rec.uuid;
+    }
+  }
+
+  if (bestDiff > toleranceMs) {
+    console.warn(
+      `[ZoomService] Closest recording for meetingId=${meetingId} is ${Math.round(bestDiff / 60000)} min away ` +
+      `from session time ${sessionDate.toISOString()} — exceeds ${toleranceMs / 60000} min tolerance`
+    );
+    return null;
+  }
+
+  console.log(
+    `[ZoomService] Matched recording uuid=${bestUuid} for meetingId=${meetingId}, ` +
+    `diff=${Math.round(bestDiff / 60000)} min from session time ${sessionDate.toISOString()}`
+  );
+
+  return bestUuid;
+}
+
+/**
  * Fetch and parse transcript from Zoom recording
  * Returns plain text transcript (parses VTT format)
  */

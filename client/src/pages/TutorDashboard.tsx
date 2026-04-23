@@ -564,6 +564,7 @@ export default function TutorDashboard() {
   const [completionDialogOpen, setCompletionDialogOpen] = useState(false);
   const [selectedSessionId, setSelectedSessionId] = useState<number | null>(null);
   const [selectedSessionJoinUrl, setSelectedSessionJoinUrl] = useState<string | null>(null);
+  const [selectedSessionScheduledAt, setSelectedSessionScheduledAt] = useState<number | null>(null);
   const [completionType, setCompletionType] = useState<"completed" | "no_show">("completed");
   const [completionNotes, setCompletionNotes] = useState("");
   const [selectedYear, setSelectedYear] = useState<string>("all");
@@ -1026,9 +1027,10 @@ export default function TutorDashboard() {
     }
   };
 
-  const handleOpenCompletionDialog = (sessionId: number, existingNotes?: string | null, joinUrl?: string | null) => {
+  const handleOpenCompletionDialog = (sessionId: number, existingNotes?: string | null, joinUrl?: string | null, scheduledAt?: number | null) => {
     setSelectedSessionId(sessionId);
     setSelectedSessionJoinUrl(joinUrl || null);
+    setSelectedSessionScheduledAt(scheduledAt ?? null);
     setCompletionNotes(existingNotes || "");
     setCompletionType("completed");
     setCompletionDialogOpen(true);
@@ -1039,6 +1041,7 @@ export default function TutorDashboard() {
 
     const sessionId = selectedSessionId;
     const joinUrl = selectedSessionJoinUrl;
+    const scheduledAt = selectedSessionScheduledAt;
 
     updateSessionMutation.mutate({
       id: sessionId,
@@ -1049,6 +1052,7 @@ export default function TutorDashboard() {
         setCompletionDialogOpen(false);
         setSelectedSessionId(null);
         setSelectedSessionJoinUrl(null);
+        setSelectedSessionScheduledAt(null);
         setCompletionNotes("");
         setCompletionType("completed");
 
@@ -1058,13 +1062,13 @@ export default function TutorDashboard() {
             ...prev,
             [sessionId]: "Transcript being fetched to process...",
           }));
-          handleFetchTranscript(sessionId, joinUrl);
+          handleFetchTranscript(sessionId, joinUrl, scheduledAt);
         }
       }
     });
   };
 
-  const handleFetchTranscript = (sessionId: number, joinUrl: string | null) => {
+  const handleFetchTranscript = (sessionId: number, joinUrl: string | null, scheduledAt?: number | null) => {
     if (!joinUrl) {
       toast.error("No Zoom meeting URL found for this session");
       return;
@@ -1123,6 +1127,7 @@ export default function TutorDashboard() {
     fetchTranscriptMutation.mutate({
       meetingId,
       sessionId,
+      sessionScheduledAt: scheduledAt ?? undefined,
     });
   };
 
@@ -2128,7 +2133,7 @@ export default function TutorDashboard() {
                                 {canComplete(session) && (
                                   <Button
                                     size="sm"
-                                    onClick={() => handleOpenCompletionDialog(session.id, session.feedbackFromTutor, session.joinUrl)}
+                                    onClick={() => handleOpenCompletionDialog(session.id, session.feedbackFromTutor, session.joinUrl, session.scheduledAt)}
                                     disabled={updateSessionMutation.isPending}
                                   >
                                     Complete Session
@@ -2164,7 +2169,7 @@ export default function TutorDashboard() {
                                           <Button
                                             size="sm"
                                             variant="outline"
-                                            onClick={() => handleFetchTranscript(session.id, session.joinUrl)}
+                                            onClick={() => handleFetchTranscript(session.id, session.joinUrl, session.scheduledAt)}
                                             disabled={fetchingTranscripts[session.id] || false}
                                           >
                                             <FileText className="w-3 h-3 mr-1" />
