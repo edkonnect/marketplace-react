@@ -7250,10 +7250,11 @@ For engagementData, describe ONLY the student's participation and behavior. The 
           throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Database not available' });
         }
 
-        const { eq, and } = await import('drizzle-orm');
+        const { eq, and, sql: drizzleSql } = await import('drizzle-orm');
 
         try {
-          // If we have a sessionId, check if transcript is already saved — return it directly
+          // If we have a sessionId, check if transcript is already saved — return it directly.
+          // Only trust completed rows whose meetingId matches current credentials.
           if (input.sessionId) {
             const existing = await database
               .select()
@@ -7261,6 +7262,7 @@ For engagementData, describe ONLY the student's participation and behavior. The 
               .where(and(
                 eq(zoomMeetingRecordings.sessionId, input.sessionId),
                 eq(zoomMeetingRecordings.status, 'completed'),
+                eq(zoomMeetingRecordings.meetingId, input.meetingId),
               ))
               .limit(1);
 
@@ -7272,24 +7274,33 @@ For engagementData, describe ONLY the student's participation and behavior. The 
                 duration: existing[0].durationMinutes ?? 0,
               };
             }
+
+            // Auto-delete stale rows (processing/failed or from old credentials) so they
+            // don't interfere with a fresh fetch after Zoom credentials are changed.
+            await database.delete(zoomMeetingRecordings).where(
+              and(
+                eq(zoomMeetingRecordings.sessionId, input.sessionId),
+                drizzleSql`NOT (status = 'completed' AND transcriptText IS NOT NULL AND meetingId = ${input.meetingId})`
+              )
+            );
           }
 
           // Determine the correct recording UUID to fetch.
           // Priority order:
-          // 1. UUID already saved in DB for this session (webhook already matched it)
+          // 1. UUID already saved in DB for this session (webhook already matched it, same meetingId)
           // 2. Find UUID by session time — list all recordings and pick the closest one
           // 3. Fall back to numeric meetingId (returns LATEST recording — may be wrong)
           let meetingIdToFetch = input.meetingId;
 
           if (input.sessionId) {
             const savedRecording = await database
-              .select({ id: zoomMeetingRecordings.id })
+              .select({ id: zoomMeetingRecordings.id, meetingId: zoomMeetingRecordings.meetingId })
               .from(zoomMeetingRecordings)
               .where(eq(zoomMeetingRecordings.sessionId, input.sessionId))
               .limit(1);
 
-            if (savedRecording.length > 0 && savedRecording[0].id !== input.meetingId) {
-              // Webhook already matched this session to a UUID — use it
+            if (savedRecording.length > 0 && savedRecording[0].meetingId === input.meetingId && savedRecording[0].id !== input.meetingId) {
+              // Webhook already matched this session to a UUID with current credentials — use it
               meetingIdToFetch = savedRecording[0].id;
               console.log(`[fetchTranscript] Using webhook-matched UUID=${meetingIdToFetch} for sessionId=${input.sessionId}`);
             } else if (input.sessionScheduledAt) {
