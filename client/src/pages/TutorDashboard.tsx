@@ -2476,7 +2476,7 @@ export default function TutorDashboard() {
                                   );
                                 })()}
 
-                                {(session.status === "cancelled" || session.status === "completed" || session.status === "no_show") && (
+                                {(session.status === "cancelled" || session.status === "no_show") && (
                                   <div className="flex gap-2">
                                     <Button
                                       size="sm"
