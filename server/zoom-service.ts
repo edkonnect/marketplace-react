@@ -111,6 +111,25 @@ export async function createPermanentZoomMeeting(tutorName: string, _tutorEmail:
 }
 
 /**
+ * Fetch a fresh start_url for a meeting.
+ * ZAK tokens in stored host URLs expire within hours — always fetch live for hosts.
+ * Returns null on any error so callers can fall back to the stored URL.
+ */
+export async function getFreshHostUrl(meetingId: string): Promise<string | null> {
+  try {
+    const accessToken = await getZoomAccessToken();
+    const response = await fetch(`${ZOOM_API_BASE_URL}/meetings/${meetingId}`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (!response.ok) return null;
+    const meeting = await response.json();
+    return meeting.start_url || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Zoom API response types
  */
 export type ZoomRecording = {

@@ -153,6 +153,7 @@ async function getTutorZoomUrl(tutorId: number, isHost: boolean = false): Promis
     .select({
       joinUrl: tutorProfiles.zoomJoinUrl,
       hostUrl: tutorProfiles.zoomHostUrl,
+      meetingId: tutorProfiles.zoomMeetingId,
     })
     .from(tutorProfiles)
     .where(eq(tutorProfiles.userId, tutorId))
@@ -160,6 +161,15 @@ async function getTutorZoomUrl(tutorId: number, isHost: boolean = false): Promis
 
   if (profile.length === 0 || !profile[0].joinUrl) {
     return null; // Tutor doesn't have Zoom meeting yet
+  }
+
+  if (isHost && profile[0].meetingId) {
+    // ZAK tokens in stored host URLs expire within hours — fetch a fresh one from Zoom API.
+    // Falls back to stored URL if API call fails (e.g. network issue, rate limit).
+    const { getFreshHostUrl } = await import('./zoom-service');
+    const freshUrl = await getFreshHostUrl(profile[0].meetingId);
+    if (freshUrl) return freshUrl;
+    console.warn(`[ZoomUrl] Could not fetch fresh host URL for tutorId=${tutorId}, falling back to stored URL`);
   }
 
   return isHost ? profile[0].hostUrl : profile[0].joinUrl;
