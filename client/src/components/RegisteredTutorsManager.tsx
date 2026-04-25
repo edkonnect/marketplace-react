@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { CheckCircle2, XCircle, Clock, Mail, Phone, GraduationCap, DollarSign } from "lucide-react";
+import { CheckCircle2, XCircle, Clock, Mail, GraduationCap, DollarSign } from "lucide-react";
 import { Pagination } from "@/components/Pagination";
 
 export function RegisteredTutorsManager() {
@@ -17,14 +17,16 @@ export function RegisteredTutorsManager() {
   const [rejectionReason, setRejectionReason] = useState("");
   const formatPrice = useFormatPrice();
   const [isRejectDialogOpen, setIsRejectDialogOpen] = useState(false);
-  const [currentPage, setCurrentPage] = useState(1);
+  const [pendingPage, setPendingPage] = useState(1);
+  const [approvedPage, setApprovedPage] = useState(1);
+  const [rejectedPage, setRejectedPage] = useState(1);
   const [selectedTutorIds, setSelectedTutorIds] = useState<number[]>([]);
-  const ITEMS_PER_PAGE = 10;
+  const [activeFilter, setActiveFilter] = useState<'pending' | 'approved' | 'rejected'>('pending');
+  const PENDING_PER_PAGE = 5;
+  const APPROVED_PER_PAGE = 12;
+  const REJECTED_PER_PAGE = 12;
 
-  const { data: tutorsData, isLoading, refetch } = trpc.admin.getPendingTutors.useQuery({
-    limit: ITEMS_PER_PAGE,
-    offset: (currentPage - 1) * ITEMS_PER_PAGE,
-  });
+  const { data: tutorsData, isLoading, refetch } = trpc.admin.getPendingTutors.useQuery();
 
   const approveMutation = trpc.admin.approveTutor.useMutation({
     onSuccess: () => {
@@ -130,13 +132,17 @@ export function RegisteredTutorsManager() {
   }
 
   const tutors = tutorsData?.tutors || [];
-  const pendingTutors = tutors.filter((t: any) => t.approvalStatus === 'pending');
-  const approvedTutors = tutors.filter((t: any) => t.approvalStatus === 'approved');
-  const rejectedTutors = tutors.filter((t: any) => t.approvalStatus === 'rejected');
+  const allPendingTutors = tutors.filter((t: any) => t.approvalStatus === 'pending');
+  const allApprovedTutors = tutors.filter((t: any) => t.approvalStatus === 'approved');
+  const allRejectedTutors = tutors.filter((t: any) => t.approvalStatus === 'rejected');
+
+  const pendingTutors = allPendingTutors.slice((pendingPage - 1) * PENDING_PER_PAGE, pendingPage * PENDING_PER_PAGE);
+  const approvedTutors = allApprovedTutors.slice((approvedPage - 1) * APPROVED_PER_PAGE, approvedPage * APPROVED_PER_PAGE);
+  const rejectedTutors = allRejectedTutors.slice((rejectedPage - 1) * REJECTED_PER_PAGE, rejectedPage * REJECTED_PER_PAGE);
 
   // Find pending tutors whose name matches another pending tutor (possible duplicates)
   const pendingNameCounts: Record<string, number> = {};
-  pendingTutors.forEach((t: any) => {
+  allPendingTutors.forEach((t: any) => {
     const name = (t.userName || '').toLowerCase().trim();
     if (name) pendingNameCounts[name] = (pendingNameCounts[name] || 0) + 1;
   });
@@ -147,9 +153,49 @@ export function RegisteredTutorsManager() {
 
   return (
     <>
+      {/* Filter Tabs */}
+      <div className="flex gap-2 mb-6 flex-wrap">
+        <Button
+          variant={activeFilter === 'pending' ? 'default' : 'outline'}
+          size="sm"
+          onClick={() => { setActiveFilter('pending'); setPendingPage(1); }}
+          className="flex items-center gap-2"
+        >
+          <Clock className="w-4 h-4" />
+          Pending
+          <Badge variant={activeFilter === 'pending' ? 'secondary' : 'outline'} className="ml-1">
+            {allPendingTutors.length}
+          </Badge>
+        </Button>
+        <Button
+          variant={activeFilter === 'approved' ? 'default' : 'outline'}
+          size="sm"
+          onClick={() => { setActiveFilter('approved'); setApprovedPage(1); }}
+          className="flex items-center gap-2"
+        >
+          <CheckCircle2 className="w-4 h-4" />
+          Approved
+          <Badge variant={activeFilter === 'approved' ? 'secondary' : 'outline'} className="ml-1">
+            {allApprovedTutors.length}
+          </Badge>
+        </Button>
+        <Button
+          variant={activeFilter === 'rejected' ? 'default' : 'outline'}
+          size="sm"
+          onClick={() => { setActiveFilter('rejected'); setRejectedPage(1); }}
+          className="flex items-center gap-2"
+        >
+          <XCircle className="w-4 h-4" />
+          Rejected
+          <Badge variant={activeFilter === 'rejected' ? 'secondary' : 'outline'} className="ml-1">
+            {allRejectedTutors.length}
+          </Badge>
+        </Button>
+      </div>
+
       <div className="space-y-6">
         {/* Pending Applications */}
-        <Card>
+        {activeFilter === 'pending' && <Card>
           <CardHeader>
             <div className="flex items-center justify-between">
               <div>
@@ -162,12 +208,12 @@ export function RegisteredTutorsManager() {
                 </CardDescription>
               </div>
               <div className="flex items-center gap-4">
-                {pendingTutors.length > 0 && (
+                {allPendingTutors.length > 0 && (
                   <div className="flex items-center gap-2">
                     <input
                       type="checkbox"
-                      checked={selectedTutorIds.length === pendingTutors.length && pendingTutors.length > 0}
-                      onChange={() => toggleSelectAll(pendingTutors)}
+                      checked={selectedTutorIds.length === allPendingTutors.length && allPendingTutors.length > 0}
+                      onChange={() => toggleSelectAll(allPendingTutors)}
                       className="w-4 h-4 rounded border-input"
                     />
                     <span className="text-sm text-muted-foreground">Select All</span>
@@ -184,7 +230,7 @@ export function RegisteredTutorsManager() {
                   </Button>
                 )}
                 <Badge variant="secondary" className="text-lg px-3 py-1">
-                  {pendingTutors.length}
+                  {allPendingTutors.length}
                 </Badge>
               </div>
             </div>
@@ -204,8 +250,8 @@ export function RegisteredTutorsManager() {
                             ⚠️ Possible duplicate — another pending application exists with the same name
                           </div>
                         )}
-                        <div className="flex gap-4">
-                          <div className="flex items-start pt-1">
+                        <div className="flex gap-3">
+                          <div className="flex items-start pt-1 flex-shrink-0">
                             <input
                               type="checkbox"
                               checked={selectedTutorIds.includes(tutor.id)}
@@ -213,21 +259,22 @@ export function RegisteredTutorsManager() {
                               className="w-4 h-4 rounded border-input"
                             />
                           </div>
-                          <Avatar className="h-16 w-16 flex-shrink-0">
+                          <div className="flex-1 min-w-0 space-y-3">
+                          <div className="flex items-center gap-3">
+                          <Avatar className="h-12 w-12 flex-shrink-0">
                             <AvatarImage src={tutor.profileImageUrl || undefined} alt={tutor.userName || 'Tutor'} />
-                            <AvatarFallback className="text-lg">
+                            <AvatarFallback className="text-base">
                               {tutor.userName?.split(' ').map((n: string) => n[0]).join('').toUpperCase() || 'T'}
                             </AvatarFallback>
                           </Avatar>
-
-                          <div className="flex-1 space-y-3">
+                          <div className="min-w-0">
                             <div>
                               <h3 className="font-semibold text-lg">{tutor.userName}</h3>
                               <div className="flex flex-wrap gap-3 mt-2 text-sm text-muted-foreground">
                                 {tutor.email && (
-                                  <div className="flex items-center gap-1">
-                                    <Mail className="w-4 h-4" />
-                                    {tutor.email}
+                                  <div className="flex items-center gap-1 min-w-0">
+                                    <Mail className="w-4 h-4 flex-shrink-0" />
+                                    <span className="truncate">{tutor.email}</span>
                                   </div>
                                 )}
                                 {tutor.yearsOfExperience && (
@@ -244,6 +291,8 @@ export function RegisteredTutorsManager() {
                                 )}
                               </div>
                             </div>
+                          </div>
+                          </div>
 
                             {tutor.bio && (
                               <div>
@@ -310,11 +359,21 @@ export function RegisteredTutorsManager() {
             ) : (
               <p className="text-center text-muted-foreground py-8">No pending applications</p>
             )}
+            {allPendingTutors.length > PENDING_PER_PAGE && (
+              <div className="mt-4">
+                <Pagination
+                  currentPage={pendingPage}
+                  totalItems={allPendingTutors.length}
+                  itemsPerPage={PENDING_PER_PAGE}
+                  onPageChange={setPendingPage}
+                />
+              </div>
+            )}
           </CardContent>
-        </Card>
+        </Card>}
 
         {/* Approved Tutors */}
-        <Card>
+        {activeFilter === 'approved' && <Card>
           <CardHeader>
             <div className="flex items-center justify-between">
               <div>
@@ -327,7 +386,7 @@ export function RegisteredTutorsManager() {
                 </CardDescription>
               </div>
               <Badge variant="default" className="text-lg px-3 py-1">
-                {approvedTutors.length}
+                {allApprovedTutors.length}
               </Badge>
             </div>
           </CardHeader>
@@ -335,29 +394,39 @@ export function RegisteredTutorsManager() {
             {approvedTutors.length > 0 ? (
               <div className="grid md:grid-cols-2 gap-4">
                 {approvedTutors.map((tutor: any) => (
-                  <div key={tutor.id} className="p-4 border rounded-lg flex items-center gap-3">
-                    <Avatar className="h-12 w-12">
+                  <div key={tutor.id} className="p-4 border rounded-lg flex items-center gap-3 min-w-0">
+                    <Avatar className="h-12 w-12 flex-shrink-0">
                       <AvatarImage src={tutor.profileImageUrl || undefined} alt={tutor.userName || 'Tutor'} />
                       <AvatarFallback>
                         {tutor.userName?.split(' ').map((n: string) => n[0]).join('').toUpperCase() || 'T'}
                       </AvatarFallback>
                     </Avatar>
-                    <div className="flex-1">
-                      <p className="font-semibold">{tutor.userName}</p>
-                      <p className="text-sm text-muted-foreground">{tutor.email}</p>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold truncate">{tutor.userName}</p>
+                      <p className="text-sm text-muted-foreground truncate">{tutor.email}</p>
                     </div>
-                    <Badge variant="default">Approved</Badge>
+                    <Badge variant="default" className="flex-shrink-0">Approved</Badge>
                   </div>
                 ))}
               </div>
             ) : (
               <p className="text-center text-muted-foreground py-8">No approved tutors</p>
             )}
+            {allApprovedTutors.length > APPROVED_PER_PAGE && (
+              <div className="mt-4">
+                <Pagination
+                  currentPage={approvedPage}
+                  totalItems={allApprovedTutors.length}
+                  itemsPerPage={APPROVED_PER_PAGE}
+                  onPageChange={setApprovedPage}
+                />
+              </div>
+            )}
           </CardContent>
-        </Card>
+        </Card>}
 
         {/* Rejected Applications */}
-        {rejectedTutors.length > 0 && (
+        {activeFilter === 'rejected' && (
           <Card>
             <CardHeader>
               <div className="flex items-center justify-between">
@@ -371,26 +440,29 @@ export function RegisteredTutorsManager() {
                   </CardDescription>
                 </div>
                 <Badge variant="destructive" className="text-lg px-3 py-1">
-                  {rejectedTutors.length}
+                  {allRejectedTutors.length}
                 </Badge>
               </div>
             </CardHeader>
             <CardContent>
+              {allRejectedTutors.length === 0 ? (
+                <p className="text-center text-muted-foreground py-8">No rejected applications</p>
+              ) : (
               <div className="grid md:grid-cols-2 gap-4">
                 {rejectedTutors.map((tutor: any) => (
-                  <div key={tutor.id} className="p-4 border rounded-lg">
-                    <div className="flex items-center gap-3 mb-2">
-                      <Avatar className="h-10 w-10">
+                  <div key={tutor.id} className="p-4 border rounded-lg overflow-hidden">
+                    <div className="flex items-center gap-3 mb-2 min-w-0">
+                      <Avatar className="h-10 w-10 flex-shrink-0">
                         <AvatarImage src={tutor.profileImageUrl || undefined} alt={tutor.userName || 'Tutor'} />
                         <AvatarFallback className="text-sm">
                           {tutor.userName?.split(' ').map((n: string) => n[0]).join('').toUpperCase() || 'T'}
                         </AvatarFallback>
                       </Avatar>
-                      <div className="flex-1">
-                        <p className="font-semibold">{tutor.userName}</p>
-                        <p className="text-sm text-muted-foreground">{tutor.email}</p>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold truncate">{tutor.userName}</p>
+                        <p className="text-sm text-muted-foreground truncate">{tutor.email}</p>
                       </div>
-                      <Badge variant="destructive">Rejected</Badge>
+                      <Badge variant="destructive" className="flex-shrink-0">Rejected</Badge>
                     </div>
                     {tutor.rejectionReason && (
                       <div className="mt-2 p-2 bg-muted rounded text-sm">
@@ -401,22 +473,21 @@ export function RegisteredTutorsManager() {
                   </div>
                 ))}
               </div>
+              )}
+            {allRejectedTutors.length > REJECTED_PER_PAGE && (
+              <div className="mt-4">
+                <Pagination
+                  currentPage={rejectedPage}
+                  totalItems={allRejectedTutors.length}
+                  itemsPerPage={REJECTED_PER_PAGE}
+                  onPageChange={setRejectedPage}
+                />
+              </div>
+            )}
             </CardContent>
           </Card>
         )}
       </div>
-
-      {/* Pagination */}
-      {tutorsData && tutorsData.total > ITEMS_PER_PAGE && (
-        <div className="mt-6">
-          <Pagination
-            currentPage={currentPage}
-            totalItems={tutorsData.total}
-            itemsPerPage={ITEMS_PER_PAGE}
-            onPageChange={setCurrentPage}
-          />
-        </div>
-      )}
 
       {/* Rejection Dialog */}
       <Dialog open={isRejectDialogOpen} onOpenChange={setIsRejectDialogOpen}>

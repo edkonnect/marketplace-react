@@ -5030,17 +5030,9 @@ export const appRouter = router({
 
     // Tutor Registration Management
     getPendingTutors: adminProcedure
-      .input(z.object({
-        limit: z.number().optional().default(10),
-        offset: z.number().optional().default(0),
-      }))
-      .query(async ({ input }) => {
+      .query(async () => {
         const allTutors = await db.getAllTutorsWithStatus();
-        const paginatedTutors = allTutors.slice(input.offset, input.offset + input.limit);
-        return {
-          tutors: paginatedTutors,
-          total: allTutors.length,
-        };
+        return { tutors: allTutors };
       }),
 
     approveTutor: adminProcedure
@@ -7460,7 +7452,7 @@ For engagementData, describe ONLY the student's participation and behavior. The 
         await db.createInAppNotification({
           userId: input.parentId,
           title: "New Quiz Available",
-          message: "Your tutor has assigned a quiz for your recent session. Go to History to take it!",
+          message: "Your tutor has assigned a quiz for your recent session. Go to Notes to take it!",
           type: "quiz_assigned",
           relatedId: quizId,
         });
