@@ -1214,6 +1214,8 @@ export default function TutorDashboard() {
   const [historyEndDate, setHistoryEndDate] = useState("");
   const [historyPage, setHistoryPage] = useState(1);
   const HISTORY_PAGE_SIZE = 8;
+  const [coursesPage, setCoursesPage] = useState(1);
+  const COURSES_PAGE_SIZE = 6;
 
   const historyMonthOptions = useMemo(() => {
     const monthSet = new Set<string>();
@@ -1453,61 +1455,94 @@ export default function TutorDashboard() {
                       {[1, 2].map(i => <Skeleton key={i} className="h-48 w-full" />)}
                     </div>
                   ) : courses && courses.length > 0 ? (
-                    <div className="grid md:grid-cols-2 gap-6">
-                      {courses.map((course) => (
-                        <Card key={course.id} className="hover:shadow-elegant transition-all">
-                          <CardHeader>
-                            <div className="flex items-start justify-between">
-                              <div className="flex-1">
-                                <CardTitle className="text-lg mb-2">{course.title}</CardTitle>
-                                <CardDescription className="line-clamp-2">{course.description}</CardDescription>
-                              </div>
-                              <Badge variant={course.isActive ? "default" : "secondary"}>
-                                {course.isActive ? "Active" : "Inactive"}
-                              </Badge>
-                            </div>
-                          </CardHeader>
-                          <CardContent className="space-y-4">
-                            <div className="flex gap-2">
-                              <Badge variant="secondary">{course.subject}</Badge>
-                              {course.gradeLevel && <Badge variant="outline">{course.gradeLevel}</Badge>}
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-4 text-sm">
-                              <div>
-                                <p className="text-muted-foreground">Price</p>
-                                <p className="font-semibold text-lg">{formatPrice(course.price)}</p>
-                              </div>
-                              {course.duration && (
-                                <div>
-                                  <p className="text-muted-foreground">Duration</p>
-                                  <p className="font-medium">{course.duration} min</p>
+                    <div className="space-y-4">
+                      <div className="grid md:grid-cols-2 gap-6">
+                        {courses
+                          .slice((coursesPage - 1) * COURSES_PAGE_SIZE, coursesPage * COURSES_PAGE_SIZE)
+                          .map((course) => (
+                          <Card key={course.id} className="hover:shadow-elegant transition-all">
+                            <CardHeader>
+                              <div className="flex items-start justify-between">
+                                <div className="flex-1">
+                                  <CardTitle className="text-lg mb-2">{course.title}</CardTitle>
+                                  <CardDescription className="line-clamp-2">{course.description}</CardDescription>
                                 </div>
-                              )}
-                            </div>
-
-                            <div className="flex items-center justify-between p-2 rounded-md border bg-muted/30">
-                              <div>
-                                <p className="text-sm font-medium">Quiz Generation</p>
-                                <p className="text-xs text-muted-foreground">Allow quiz creation from transcripts</p>
+                                <Badge variant={course.isActive ? "default" : "secondary"}>
+                                  {course.isActive ? "Active" : "Inactive"}
+                                </Badge>
                               </div>
-                              <Checkbox
-                                checked={course.quizEnabled ?? false}
-                                onCheckedChange={(checked) =>
-                                  toggleCourseQuizMutation.mutate({ courseId: course.id, enabled: !!checked })
-                                }
-                                disabled={toggleCourseQuizMutation.isPending}
-                              />
-                            </div>
+                            </CardHeader>
+                            <CardContent className="space-y-4">
+                              <div className="flex gap-2">
+                                <Badge variant="secondary">{course.subject}</Badge>
+                                {course.gradeLevel && <Badge variant="outline">{course.gradeLevel}</Badge>}
+                              </div>
 
-                            <Button asChild variant="outline" size="sm" className="w-full">
-                              <Link href={`/course/${course.id}`}>
-                                View Course
-                              </Link>
+                              <div className="grid grid-cols-2 gap-4 text-sm">
+                                <div>
+                                  <p className="text-muted-foreground">Price</p>
+                                  <p className="font-semibold text-lg">{formatPrice(course.price)}</p>
+                                </div>
+                                {course.duration && (
+                                  <div>
+                                    <p className="text-muted-foreground">Duration</p>
+                                    <p className="font-medium">{course.duration} min</p>
+                                  </div>
+                                )}
+                              </div>
+
+                              <div className="flex items-center justify-between p-2 rounded-md border bg-muted/30">
+                                <div>
+                                  <p className="text-sm font-medium">Quiz Generation</p>
+                                  <p className="text-xs text-muted-foreground">Allow quiz creation from transcripts</p>
+                                </div>
+                                <Checkbox
+                                  checked={course.quizEnabled ?? false}
+                                  onCheckedChange={(checked) =>
+                                    toggleCourseQuizMutation.mutate({ courseId: course.id, enabled: !!checked })
+                                  }
+                                  disabled={toggleCourseQuizMutation.isPending}
+                                />
+                              </div>
+
+                              <Button asChild variant="outline" size="sm" className="w-full">
+                                <Link href={`/course/${course.id}`}>
+                                  View Course
+                                </Link>
+                              </Button>
+                            </CardContent>
+                          </Card>
+                        ))}
+                      </div>
+
+                      {courses.length > COURSES_PAGE_SIZE && (
+                        <div className="flex items-center justify-between pt-2">
+                          <p className="text-sm text-muted-foreground">
+                            Showing {(coursesPage - 1) * COURSES_PAGE_SIZE + 1}–{Math.min(coursesPage * COURSES_PAGE_SIZE, courses.length)} of {courses.length} courses
+                          </p>
+                          <div className="flex items-center gap-2">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => setCoursesPage((p) => Math.max(1, p - 1))}
+                              disabled={coursesPage === 1}
+                            >
+                              Previous
                             </Button>
-                          </CardContent>
-                        </Card>
-                      ))}
+                            <span className="text-sm text-muted-foreground">
+                              Page {coursesPage} of {Math.ceil(courses.length / COURSES_PAGE_SIZE)}
+                            </span>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => setCoursesPage((p) => Math.min(Math.ceil(courses.length / COURSES_PAGE_SIZE), p + 1))}
+                              disabled={coursesPage === Math.ceil(courses.length / COURSES_PAGE_SIZE)}
+                            >
+                              Next
+                            </Button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   ) : (
                     <div className="text-center text-muted-foreground py-6">

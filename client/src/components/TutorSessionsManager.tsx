@@ -4,7 +4,9 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Calendar, Clock, ChevronDown, ChevronUp, FileText, Download, Sparkles } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Calendar, Clock, ChevronDown, ChevronUp, FileText, Download, Sparkles, Search, X } from "lucide-react";
 import { formatSessionTime } from "@/../../shared/timezone-utils";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
@@ -33,6 +35,10 @@ export function TutorSessionsManager({
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
   const [fetchingTranscripts, setFetchingTranscripts] = useState<Record<number, boolean>>({});
   const [summarizingSessionId, setSummarizingSessionId] = useState<number | null>(null);
+  const [studentFilter, setStudentFilter] = useState("");
+  const [courseFilter, setCourseFilter] = useState("all");
+  const [trialFilter, setTrialFilter] = useState<"all" | "trial" | "regular">("all");
+  const [dateFilter, setDateFilter] = useState<"all" | "today" | "week" | "next7" | "month">("all");
 
   const summarizeMutation = trpc.ai.summarizeText.useMutation({
     onSuccess: (data) => {
@@ -152,6 +158,90 @@ export function TutorSessionsManager({
     return grouped;
   }, [upcomingSessions]);
 
+  const courseOptions = useMemo(() => {
+    const titles = new Set(upcomingSessions.map((s) => s.courseTitle || "Course"));
+    return Array.from(titles).sort();
+  }, [upcomingSessions]);
+
+  const filteredGroups = useMemo(() => {
+    const now = Date.now();
+    const tz = timezone;
+
+    const getDateRange = (): [number, number] | null => {
+      if (dateFilter === "all") return null;
+      const d = new Date(now);
+      const year = parseInt(formatSessionTime(now, tz, "yyyy"));
+      const month = parseInt(formatSessionTime(now, tz, "M")) - 1;
+      const day = parseInt(formatSessionTime(now, tz, "d"));
+      const dow = d.getDay(); // 0=Sun
+
+      if (dateFilter === "today") {
+        const start = new Date(year, month, day, 0, 0, 0, 0).getTime();
+        const end = new Date(year, month, day, 23, 59, 59, 999).getTime();
+        return [start, end];
+      }
+      if (dateFilter === "week") {
+        const diffToMon = (dow === 0 ? -6 : 1 - dow);
+        const monStart = new Date(year, month, day + diffToMon, 0, 0, 0, 0).getTime();
+        const sunEnd = monStart + 7 * 24 * 60 * 60 * 1000 - 1;
+        return [monStart, sunEnd];
+      }
+      if (dateFilter === "next7") {
+        const start = new Date(year, month, day, 0, 0, 0, 0).getTime();
+        return [start, start + 7 * 24 * 60 * 60 * 1000 - 1];
+      }
+      if (dateFilter === "month") {
+        const start = new Date(year, month, 1, 0, 0, 0, 0).getTime();
+        const end = new Date(year, month + 1, 0, 23, 59, 59, 999).getTime();
+        return [start, end];
+      }
+      return null;
+    };
+
+    const dateRange = getDateRange();
+
+    return Object.entries(groupedSessions).filter(([, group]) => {
+      if (studentFilter.trim()) {
+        const q = studentFilter.trim().toLowerCase();
+        if (!group.student.toLowerCase().includes(q)) return false;
+      }
+
+      if (courseFilter !== "all") {
+        const baseTitle = group.course.replace(/ \(Trial\)$/, "");
+        if (baseTitle !== courseFilter) return false;
+      }
+
+      if (trialFilter !== "all") {
+        const isGroupTrial = group.sessions[0]?.isTrial ?? false;
+        if (trialFilter === "trial" && !isGroupTrial) return false;
+        if (trialFilter === "regular" && isGroupTrial) return false;
+      }
+
+      if (dateRange) {
+        const [start, end] = dateRange;
+        const hasSessionInRange = group.sessions.some(
+          (s) => s.scheduledAt >= start && s.scheduledAt <= end
+        );
+        if (!hasSessionInRange) return false;
+      }
+
+      return true;
+    });
+  }, [groupedSessions, studentFilter, courseFilter, trialFilter, dateFilter, timezone]);
+
+  const hasActiveFilters =
+    studentFilter.trim() !== "" ||
+    courseFilter !== "all" ||
+    trialFilter !== "all" ||
+    dateFilter !== "all";
+
+  const clearFilters = () => {
+    setStudentFilter("");
+    setCourseFilter("all");
+    setTrialFilter("all");
+    setDateFilter("all");
+  };
+
   const formatDate = (timestamp: number) => {
     return formatSessionTime(timestamp, timezone, 'MMM d, yyyy');
   };
@@ -174,9 +264,120 @@ export function TutorSessionsManager({
     );
   }
 
+  const totalFilteredSessions = filteredGroups.reduce(
+    (sum, [, g]) => sum + g.sessions.length,
+    0
+  );
+
   return (
-    <div className="space-y-6">
-      {Object.entries(groupedSessions).map(([key, group]) => {
+    <div className="space-y-4">
+      {/* Filter bar */}
+      <div className="space-y-3">
+        <div className="flex flex-col sm:flex-row gap-2">
+          {/* Student search */}
+          <div className="relative flex-1">
+            <Search className="w-4 h-4 text-muted-foreground absolute left-3 top-1/2 -translate-y-1/2" />
+            <Input
+              value={studentFilter}
+              onChange={(e) => setStudentFilter(e.target.value)}
+              placeholder="Search student..."
+              className="pl-9"
+            />
+          </div>
+
+          {/* Course dropdown */}
+          <Select value={courseFilter} onValueChange={setCourseFilter}>
+            <SelectTrigger className="sm:w-48">
+              <SelectValue placeholder="All courses" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All courses</SelectItem>
+              {courseOptions.map((title) => (
+                <SelectItem key={title} value={title}>
+                  {title}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          {/* Trial / Regular toggle */}
+          <div className="flex rounded-md border overflow-hidden">
+            {(["all", "trial", "regular"] as const).map((v) => (
+              <button
+                key={v}
+                onClick={() => setTrialFilter(v)}
+                className={`px-3 py-1.5 text-sm font-medium transition-colors ${
+                  trialFilter === v
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-background hover:bg-muted text-muted-foreground"
+                } ${v !== "all" ? "border-l" : ""}`}
+              >
+                {v === "all" ? "All" : v === "trial" ? "Trial" : "Regular"}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Date presets */}
+        <div className="flex flex-wrap gap-1.5">
+          {(
+            [
+              { value: "all", label: "All dates" },
+              { value: "today", label: "Today" },
+              { value: "week", label: "This Week" },
+              { value: "next7", label: "Next 7 Days" },
+              { value: "month", label: "This Month" },
+            ] as const
+          ).map(({ value, label }) => (
+            <Button
+              key={value}
+              size="sm"
+              variant={dateFilter === value ? "default" : "outline"}
+              onClick={() => setDateFilter(value)}
+              className="text-xs h-7"
+            >
+              {label}
+            </Button>
+          ))}
+        </div>
+
+        {/* Results count + clear */}
+        {hasActiveFilters && (
+          <div className="flex items-center justify-between text-sm text-muted-foreground">
+            <span>
+              {filteredGroups.length} {filteredGroups.length === 1 ? "group" : "groups"} &middot;{" "}
+              {totalFilteredSessions} {totalFilteredSessions === 1 ? "session" : "sessions"}
+            </span>
+            <button
+              onClick={clearFilters}
+              className="flex items-center gap-1 text-xs hover:text-foreground transition-colors"
+            >
+              <X className="w-3 h-3" />
+              Clear filters
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* No match empty state */}
+      {filteredGroups.length === 0 && hasActiveFilters && (
+        <Card>
+          <CardContent className="py-12 text-center">
+            <Search className="w-12 h-12 mx-auto mb-3 text-muted-foreground" />
+            <h3 className="text-lg font-semibold mb-1">No sessions match your filters</h3>
+            <p className="text-muted-foreground text-sm mb-4">
+              Try adjusting or clearing the filters above
+            </p>
+            <Button variant="outline" size="sm" onClick={clearFilters}>
+              Clear filters
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Scrollable session list */}
+      <div className="max-h-[600px] overflow-y-auto pr-1 space-y-6">
+      {filteredGroups.map(([key, group]) => {
         const isExpanded = expandedGroups[key];
         const firstSession = group.sessions[0];
         const lastSession = group.sessions[group.sessions.length - 1];
@@ -410,6 +611,7 @@ export function TutorSessionsManager({
           </Card>
         );
       })}
+      </div>
     </div>
   );
 }
