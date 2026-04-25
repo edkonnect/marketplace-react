@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
 import { trpc } from "@/lib/trpc";
+import { useAuth } from "@/_core/hooks/useAuth";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -42,9 +43,9 @@ export function AvailabilityManager() {
   const [endTime, setEndTime] = useState("17:00");
 
   const { data: availability, isLoading, refetch } = trpc.tutorAvailability.getAvailability.useQuery();
-  const { data: tutorProfile } = trpc.tutorProfile.getMy.useQuery();
 
-  const tutorTimezone = tutorProfile?.timezone || 'America/New_York';
+  const { user } = useAuth();
+  const tutorTimezone = user?.timezone || 'America/New_York';
   const timezoneAbbr = useMemo(() => {
     // Extract abbreviation from label e.g. "India Standard Time (IST)" → "IST"
     const tz = COMMON_TIMEZONES.find(t => t.value === tutorTimezone);

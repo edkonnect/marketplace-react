@@ -72,7 +72,7 @@ export function AppointmentScheduler({ subscriptions, onScheduleComplete }: Appo
   const tutorTimezone = tutorProfile?.timezone || detectUserTimezone();
   // user.timezone is kept up-to-date by Settings page (refreshProfile called on save)
   // parentProfile.timezone may be stale if the tRPC cache hasn't been invalidated yet
-  const parentTimezone = user?.timezone || parentProfile?.timezone || detectUserTimezone();
+  const parentTimezone = user?.timezone || detectUserTimezone();
 
   // Get timezone abbreviation for parent e.g. "EST", "IST"
   const parentTimezoneAbbr = useMemo(() => {

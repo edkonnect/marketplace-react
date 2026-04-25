@@ -223,15 +223,7 @@ export const appRouter = router({
           throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to update profile' });
         }
         if (timezone) {
-          // Update users.timezone (drives INR/USD pricing)
           await db.updateUserTimezone(ctx.user.id, timezone);
-          // Also sync to profile tables so session/scheduling components pick it up
-          const role = ctx.user.role;
-          if (role === "tutor") {
-            await db.updateTutorProfile(ctx.user.id, { timezone }).catch(() => {});
-          } else if (role === "parent") {
-            await db.updateParentProfile(ctx.user.id, { timezone }).catch(() => {});
-          }
         }
         return { success: true };
       }),
@@ -472,7 +464,6 @@ export const appRouter = router({
           hourlyRate: input.hourlyRate.toString(),
           subjects: JSON.stringify(input.subjects),
           gradeLevels: JSON.stringify(input.gradeLevels),
-          timezone: input.timezone || 'America/New_York',
           approvalStatus: 'pending' as const,
         };
 
@@ -490,6 +481,11 @@ export const appRouter = router({
             throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to create tutor profile' });
           }
           profileId = created;
+        }
+
+        // Save timezone to users table if provided
+        if (input.timezone) {
+          await db.updateUserTimezone(userId, input.timezone).catch(() => {});
         }
 
         // Upload profile image to S3 (or local dev storage) — non-fatal if it fails

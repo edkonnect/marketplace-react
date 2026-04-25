@@ -115,7 +115,6 @@ export const tutorProfiles = mysqlTable("tutor_profiles", {
   rejectionReason: text("rejectionReason"), // Optional reason for rejection
   rating: decimal("rating", { precision: 3, scale: 2 }).default("0.00"),
   totalReviews: int("totalReviews").default(0),
-  timezone: varchar("timezone", { length: 100 }),
   businessTimezone: varchar("businessTimezone", { length: 100 }),
   // Zoom meeting fields - permanent meeting room for each tutor
   zoomMeetingId: varchar("zoomMeetingId", { length: 255 }), // Zoom meeting ID
@@ -144,7 +143,6 @@ export const parentProfiles = mysqlTable("parent_profiles", {
   emergencyContactName: varchar("emergencyContactName", { length: 255 }),
   emergencyContactPhone: varchar("emergencyContactPhone", { length: 20 }),
   bestTimeToContact: varchar("bestTimeToContact", { length: 100 }),
-  timezone: varchar("timezone", { length: 100 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 }, (table) => ({

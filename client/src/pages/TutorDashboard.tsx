@@ -654,7 +654,7 @@ export default function TutorDashboard() {
         activeTab: "transcript",
         courseTitle: (session as any)?.courseTitle || (session as any)?.courseSubject || "Course",
         studentName,
-        sessionDate: session?.scheduledAt ? new Date(session.scheduledAt).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) : undefined,
+        sessionDate: session?.scheduledAt ? formatSessionTime(session.scheduledAt, tutorTimezone, 'EEEE, MMMM d, yyyy') : undefined,
         courseId: session?.courseId ?? undefined,
         parentId: session?.parentId ?? undefined,
         quizEnabled: !!(session as any)?.courseQuizEnabled && !(session as any)?.hasQuiz,
@@ -915,8 +915,8 @@ export default function TutorDashboard() {
     return new Set(keys).size;
   }, [activeSubscriptions]);
 
-  // Get tutor's timezone for displaying session times correctly
-  const tutorTimezone = tutorProfile?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+  // Get tutor's timezone — single source of truth is users.timezone from auth context
+  const tutorTimezone = user?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
 
   // Get friendly timezone label
   const timezoneFriendlyName = useMemo(() => {
@@ -1228,7 +1228,7 @@ export default function TutorDashboard() {
       .map((key) => {
         const [y, m] = key.split("-").map(Number);
         const d = new Date(y, m - 1, 1);
-        return { value: key, label: d.toLocaleDateString(undefined, { month: "long", year: "numeric" }) };
+        return { value: key, label: formatSessionTime(d.getTime(), tutorTimezone, 'MMMM yyyy') };
       });
     return [{ value: "all", label: "All time" }, ...options];
   }, [historySessions]);
@@ -1745,11 +1745,7 @@ export default function TutorDashboard() {
                         // Format dates
                         const formatDate = (date: Date | null) => {
                           if (!date) return "N/A";
-                          return date.toLocaleDateString("en-US", {
-                            month: "short",
-                            day: "numeric",
-                            year: "numeric",
-                          });
+                          return formatSessionTime(date.getTime(), tutorTimezone, 'MMM d, yyyy');
                         };
 
                         // Determine status badge
@@ -2890,7 +2886,7 @@ export default function TutorDashboard() {
 	                        <div key={row.sessionId} className="px-3 py-2 text-sm flex items-start justify-between gap-3">
 	                          <div className="min-w-0">
 	                            <p className="font-medium truncate">
-	                              {row.scheduledAt ? new Date(row.scheduledAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "Session"}
+	                              {row.scheduledAt ? formatSessionTime(row.scheduledAt, tutorTimezone, 'MMM d, yyyy') : "Session"}
 	                            </p>
 	                            <p className="text-xs text-muted-foreground">
 	                              {row.overallScore != null ? `Score ${row.overallScore}/4` : "Score n/a"}

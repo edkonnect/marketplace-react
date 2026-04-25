@@ -3,6 +3,7 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
 import { useFormatPrice } from "@/hooks/useFormatPrice";
+import { formatSessionTime } from "@/../../shared/timezone-utils";
 import { toast } from "sonner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -176,6 +177,7 @@ function ParentFilesPanel() {
 
 export default function ParentDashboard() {
   const { user, isAuthenticated, loading, previousLastSignedIn } = useAuth();
+  const parentTimezone = user?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
   const [, setLocation] = useLocation();
   const formatPrice = useFormatPrice();
   const tabContentClass =
@@ -475,7 +477,7 @@ export default function ParentDashboard() {
       .map((key) => {
         const [y, m] = key.split("-").map(Number);
         const d = new Date(y, m - 1, 1);
-        return { value: key, label: d.toLocaleDateString(undefined, { month: "long", year: "numeric" }) };
+        return { value: key, label: formatSessionTime(d.getTime(), parentTimezone, 'MMMM yyyy') };
       });
     return [{ value: "all", label: "All time" }, ...options];
   }, [sessionHistory, selectedHistoryStudent]);
@@ -899,7 +901,7 @@ export default function ParentDashboard() {
     const options = sorted.map(key => {
       const [y, m] = key.split("-");
       const d = new Date(Number(y), Number(m) - 1, 1);
-      return { value: key, label: d.toLocaleDateString(undefined, { month: "short", year: "numeric" }) };
+      return { value: key, label: formatSessionTime(d.getTime(), parentTimezone, 'MMM yyyy') };
     });
     return [{ value: "all", label: "View all" }, ...options];
   }, [sessionHistory, subscriptions, parentQuizzes, parentGrades]);
@@ -1665,7 +1667,7 @@ export default function ParentDashboard() {
                           <div className="flex items-center gap-3 mb-2">
                             <div className="text-sm text-muted-foreground">{session.courseTitle || "Course"}</div>
                             <p className="font-semibold">
-                              {new Date(session.scheduledAt).toLocaleDateString()} • {new Date(session.scheduledAt).toLocaleTimeString()}
+                              {formatSessionTime(session.scheduledAt, parentTimezone, 'MMM d, yyyy')} • {formatSessionTime(session.scheduledAt, parentTimezone, 'h:mm a')}
                             </p>
                             <Badge
                               variant={
@@ -2481,7 +2483,7 @@ export default function ParentDashboard() {
                               </div>
                               <div>
                                 <p className="font-semibold text-base leading-tight">{name}</p>
-                                <p className="text-xs text-muted-foreground">{lastSession ? `Last session ${new Date(lastSession).toLocaleDateString()}` : "No sessions yet"}</p>
+                                <p className="text-xs text-muted-foreground">{lastSession ? `Last session ${formatSessionTime(lastSession, parentTimezone, 'MMM d, yyyy')}` : "No sessions yet"}</p>
                               </div>
                             </div>
                             <div className="grid grid-cols-3 gap-2">
@@ -3055,7 +3057,7 @@ export default function ParentDashboard() {
                         <div key={name} className="flex items-center justify-between gap-3 text-sm">
                           <div>
                             <p className="font-medium">{name}</p>
-                            <p className="text-xs text-muted-foreground">{lastSession ? `Last session ${new Date(lastSession).toLocaleDateString()}` : "No sessions yet"}</p>
+                            <p className="text-xs text-muted-foreground">{lastSession ? `Last session ${formatSessionTime(lastSession, parentTimezone, 'MMM d, yyyy')}` : "No sessions yet"}</p>
                           </div>
                           <div className="flex gap-3 text-right shrink-0">
                             <div>

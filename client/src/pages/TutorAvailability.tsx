@@ -16,7 +16,7 @@ export default function TutorAvailability() {
     enabled: isAuthenticated && user?.role === "tutor",
   });
 
-  const tutorTimezone = tutorProfile?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const tutorTimezone = user?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
 
   const timezoneFriendlyName = useMemo(() => {
     const found = COMMON_TIMEZONES.find(tz => tz.value === tutorTimezone);

@@ -629,11 +629,11 @@ export async function getTutorProfileByUserId(userId: number) {
       rating: tutorProfiles.rating,
       totalReviews: tutorProfiles.totalReviews,
       approvalStatus: tutorProfiles.approvalStatus,
-      timezone: tutorProfiles.timezone,
       createdAt: tutorProfiles.createdAt,
       updatedAt: tutorProfiles.updatedAt,
       name: users.name,
       email: users.email,
+      timezone: users.timezone,
     })
     .from(tutorProfiles)
     .leftJoin(users, eq(tutorProfiles.userId, users.id))
@@ -662,11 +662,11 @@ export async function getTutorProfileById(profileId: number) {
       rating: tutorProfiles.rating,
       totalReviews: tutorProfiles.totalReviews,
       approvalStatus: tutorProfiles.approvalStatus,
-      timezone: tutorProfiles.timezone,
       createdAt: tutorProfiles.createdAt,
       updatedAt: tutorProfiles.updatedAt,
       name: users.name,
       email: users.email,
+      timezone: users.timezone,
     })
     .from(tutorProfiles)
     .leftJoin(users, eq(tutorProfiles.userId, users.id))
@@ -739,7 +739,24 @@ export async function getParentProfileByUserId(userId: number) {
   const db = await getDb();
   if (!db) return null;
 
-  const result = await db.select().from(parentProfiles).where(eq(parentProfiles.userId, userId)).limit(1);
+  const result = await db
+    .select({
+      id: parentProfiles.id,
+      userId: parentProfiles.userId,
+      childrenInfo: parentProfiles.childrenInfo,
+      preferences: parentProfiles.preferences,
+      preferredContactMethod: parentProfiles.preferredContactMethod,
+      emergencyContactName: parentProfiles.emergencyContactName,
+      emergencyContactPhone: parentProfiles.emergencyContactPhone,
+      bestTimeToContact: parentProfiles.bestTimeToContact,
+      createdAt: parentProfiles.createdAt,
+      updatedAt: parentProfiles.updatedAt,
+      timezone: users.timezone,
+    })
+    .from(parentProfiles)
+    .leftJoin(users, eq(parentProfiles.userId, users.id))
+    .where(eq(parentProfiles.userId, userId))
+    .limit(1);
   return result.length > 0 ? result[0] : null;
 }
 
@@ -1911,8 +1928,30 @@ export async function getSessionEmailData(sessionId: number) {
       coursePrice: sql<string>`COALESCE(${subscriptionCourses.price}, ${sessionCourses.price})`.as('coursePrice'),
       tutorUser: tutorUser,
       parentUser: parentUser,
-      tutorProfile: tutorProfiles,
-      parentProfile: parentProfiles,
+      tutorProfile: {
+        id: tutorProfiles.id,
+        userId: tutorProfiles.userId,
+        bio: tutorProfiles.bio,
+        qualifications: tutorProfiles.qualifications,
+        subjects: tutorProfiles.subjects,
+        gradeLevels: tutorProfiles.gradeLevels,
+        hourlyRate: tutorProfiles.hourlyRate,
+        yearsOfExperience: tutorProfiles.yearsOfExperience,
+        availability: tutorProfiles.availability,
+        profileImageUrl: tutorProfiles.profileImageUrl,
+        isActive: tutorProfiles.isActive,
+        rating: tutorProfiles.rating,
+        totalReviews: tutorProfiles.totalReviews,
+        approvalStatus: tutorProfiles.approvalStatus,
+        timezone: tutorUser.timezone,
+      },
+      parentProfile: {
+        id: parentProfiles.id,
+        userId: parentProfiles.userId,
+        childrenInfo: parentProfiles.childrenInfo,
+        preferences: parentProfiles.preferences,
+        timezone: parentUser.timezone,
+      },
       subscription: subscriptions,
     })
     .from(sessions)

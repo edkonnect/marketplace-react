@@ -110,7 +110,6 @@ authRouter.post("/signup", async (req, res) => {
         userId: user.id,
         childrenInfo: null,
         preferences: null,
-        timezone: timezone || 'America/New_York',
       });
     } else if (role === "tutor") {
       await db.createTutorProfile({
@@ -121,7 +120,6 @@ authRouter.post("/signup", async (req, res) => {
         gradeLevels: JSON.stringify([]),
         hourlyRate: "0",
         yearsOfExperience: 0,
-        timezone: timezone || 'America/New_York',
         approvalStatus: "pending",
         isActive: false,
       });
