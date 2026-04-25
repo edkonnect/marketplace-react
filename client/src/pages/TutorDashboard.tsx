@@ -360,7 +360,7 @@ export default function TutorDashboard() {
   const tabContentClass =
     "space-y-6 w-full data-[state=inactive]:hidden";
 
-  const { data: tutorProfile } = trpc.tutorProfile.getMy.useQuery(
+  const { data: tutorProfile, isLoading: tutorProfileLoading } = trpc.tutorProfile.getMy.useQuery(
     undefined,
     { enabled: isAuthenticated && user?.role === "tutor" }
   );
@@ -1338,7 +1338,16 @@ export default function TutorDashboard() {
 
         <div className="container py-8">
           {/* Check if tutor profile exists */}
-          {!tutorProfile ? (
+          {tutorProfileLoading ? (
+            <Card className="mb-8">
+              <CardContent className="py-12 text-center">
+                <div className="flex items-center justify-center gap-3 text-muted-foreground">
+                  <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                  <span>Loading your dashboard...</span>
+                </div>
+              </CardContent>
+            </Card>
+          ) : !tutorProfile ? (
             <Card className="mb-8">
               <CardContent className="py-12 text-center">
                 <h3 className="text-xl font-semibold mb-2">Complete Your Tutor Profile</h3>
