@@ -7,7 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Calendar, Clock, ChevronDown, ChevronUp, FileText, Download, Sparkles, Search, X } from "lucide-react";
-import { formatSessionTime } from "@/../../shared/timezone-utils";
+import { formatSessionTime, convertFromUTC, createTimestamp } from "@/../../shared/timezone-utils";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 
@@ -169,32 +169,45 @@ export function TutorSessionsManager({
 
     const getDateRange = (): [number, number] | null => {
       if (dateFilter === "all") return null;
-      const d = new Date(now);
-      const year = parseInt(formatSessionTime(now, tz, "yyyy"));
-      const month = parseInt(formatSessionTime(now, tz, "M")) - 1;
-      const day = parseInt(formatSessionTime(now, tz, "d"));
-      const dow = d.getDay(); // 0=Sun
+
+      // Convert "now" to a Date whose year/month/day/dow reflect the tutor's timezone
+      const zonedNow = convertFromUTC(now, tz);
+      const y = zonedNow.getFullYear();
+      const m = zonedNow.getMonth(); // 0-based
+      const d = zonedNow.getDate();
+      const dow = zonedNow.getDay(); // 0=Sun
+
+      // createTimestamp builds a UTC ms value from a local y/m/d/h/min in `tz`
+      const dayStart = (year: number, month: number, day: number) =>
+        createTimestamp(year, month, day, 0, 0, tz);
+      const dayEnd = (year: number, month: number, day: number) =>
+        createTimestamp(year, month, day, 23, 59, tz) + 59_999; // +59s 999ms
 
       if (dateFilter === "today") {
-        const start = new Date(year, month, day, 0, 0, 0, 0).getTime();
-        const end = new Date(year, month, day, 23, 59, 59, 999).getTime();
-        return [start, end];
+        return [dayStart(y, m, d), dayEnd(y, m, d)];
       }
+
       if (dateFilter === "week") {
-        const diffToMon = (dow === 0 ? -6 : 1 - dow);
-        const monStart = new Date(year, month, day + diffToMon, 0, 0, 0, 0).getTime();
-        const sunEnd = monStart + 7 * 24 * 60 * 60 * 1000 - 1;
-        return [monStart, sunEnd];
+        // Mon–Sun week; shift back to Monday
+        const diffToMon = dow === 0 ? -6 : 1 - dow;
+        const monMs = dayStart(y, m, d + diffToMon);
+        // Sunday is 6 days after Monday
+        const sunDate = convertFromUTC(monMs + 6 * 86_400_000, tz);
+        return [monMs, dayEnd(sunDate.getFullYear(), sunDate.getMonth(), sunDate.getDate())];
       }
+
       if (dateFilter === "next7") {
-        const start = new Date(year, month, day, 0, 0, 0, 0).getTime();
-        return [start, start + 7 * 24 * 60 * 60 * 1000 - 1];
+        // today through 6 days later (7 days inclusive)
+        const endDate = convertFromUTC(now + 6 * 86_400_000, tz);
+        return [dayStart(y, m, d), dayEnd(endDate.getFullYear(), endDate.getMonth(), endDate.getDate())];
       }
+
       if (dateFilter === "month") {
-        const start = new Date(year, month, 1, 0, 0, 0, 0).getTime();
-        const end = new Date(year, month + 1, 0, 23, 59, 59, 999).getTime();
-        return [start, end];
+        // First day of this month → last day of this month
+        const lastDay = new Date(y, m + 1, 0).getDate(); // day 0 of next month = last day of this month
+        return [dayStart(y, m, 1), dayEnd(y, m, lastDay)];
       }
+
       return null;
     };
 
