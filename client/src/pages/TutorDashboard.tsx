@@ -243,7 +243,7 @@ function TutorFilesPanel({ tutorId }: { tutorId: number }) {
     const subject = row.courseSubject ?? "Other";
     const matchesSubject =
       filterSubject === "all" ||
-      (filterSubject === "none" ? !row.courseName : subject === filterSubject);
+      subject === filterSubject;
     return matchesSearch && matchesSubject;
   });
 
@@ -268,7 +268,6 @@ function TutorFilesPanel({ tutorId }: { tutorId: number }) {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All subjects</SelectItem>
-              <SelectItem value="none">No course</SelectItem>
               {availableSubjects.map(subject => (
                 <SelectItem key={subject} value={subject}>{subject}</SelectItem>
               ))}
@@ -293,6 +292,7 @@ function TutorFilesPanel({ tutorId }: { tutorId: number }) {
       ) : filteredFiles.length === 0 ? (
         <p className="text-muted-foreground text-sm">No files match your search.</p>
       ) : (
+        <div className="max-h-[600px] overflow-y-auto pr-1">
         <div className="grid gap-4 md:grid-cols-2">
           {filteredFiles.map((row: any) => (
             <Card key={row.file.id} className="hover:shadow-md transition-shadow">
@@ -326,6 +326,7 @@ function TutorFilesPanel({ tutorId }: { tutorId: number }) {
               </CardContent>
             </Card>
           ))}
+        </div>
         </div>
       )}
 
@@ -1216,6 +1217,28 @@ export default function TutorDashboard() {
   const HISTORY_PAGE_SIZE = 8;
   const [coursesPage, setCoursesPage] = useState(1);
   const COURSES_PAGE_SIZE = 6;
+  const [studentsPage, setStudentsPage] = useState(1);
+  const STUDENTS_PAGE_SIZE = 6;
+  const [studentsStudentFilter, setStudentsStudentFilter] = useState("");
+  const [studentsCourseFilter, setStudentsCourseFilter] = useState("all");
+
+  const studentsCourseOptions = useMemo(() => {
+    const titles = new Set((subscriptions || []).map((s: any) => s.course?.title || "").filter(Boolean));
+    return Array.from(titles).sort() as string[];
+  }, [subscriptions]);
+
+  const studentsFiltered = useMemo(() => {
+    return (filteredSubscriptions || []).filter(({ subscription, course }: any) => {
+      if (studentsStudentFilter.trim()) {
+        const fullName = `${subscription.studentFirstName ?? ""} ${subscription.studentLastName ?? ""}`.toLowerCase();
+        if (!fullName.includes(studentsStudentFilter.trim().toLowerCase())) return false;
+      }
+      if (studentsCourseFilter !== "all") {
+        if ((course?.title || "") !== studentsCourseFilter) return false;
+      }
+      return true;
+    });
+  }, [filteredSubscriptions, studentsStudentFilter, studentsCourseFilter]);
 
   const historyMonthOptions = useMemo(() => {
     const monthSet = new Set<string>();
@@ -1728,27 +1751,49 @@ export default function TutorDashboard() {
 
                 {/* Students Tab */}
                 <TabsContent value="students" forceMount className={tabContentClass}>
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+                  <div className="flex items-center justify-between mb-4">
                     <h2 className="text-2xl font-bold">My Students</h2>
+                  </div>
 
-                    {/* Year Filter Dropdown */}
+                  {/* Filter bar */}
+                  <div className="flex flex-col sm:flex-row gap-2 mb-4">
+                    <div className="relative flex-1">
+                      <Search className="w-4 h-4 text-muted-foreground absolute left-3 top-1/2 -translate-y-1/2" />
+                      <Input
+                        value={studentsStudentFilter}
+                        onChange={(e) => { setStudentsStudentFilter(e.target.value); setStudentsPage(1); }}
+                        placeholder="Search student..."
+                        className="pl-9"
+                      />
+                    </div>
+                    <Select value={studentsCourseFilter} onValueChange={(v) => { setStudentsCourseFilter(v); setStudentsPage(1); }}>
+                      <SelectTrigger className="sm:w-48">
+                        <SelectValue placeholder="All courses" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All courses</SelectItem>
+                        {studentsCourseOptions.map((title) => (
+                          <SelectItem key={title} value={title}>{title}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                     {availableYears.length > 0 && (
-                      <div className="flex items-center gap-2">
-                        <Filter className="h-4 w-4 text-muted-foreground" />
-                        <Select value={selectedYear} onValueChange={setSelectedYear}>
-                          <SelectTrigger className="w-[180px]">
-                            <SelectValue placeholder="Filter by year" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="all">All Years</SelectItem>
-                            {availableYears.map((year) => (
-                              <SelectItem key={year} value={year.toString()}>
-                                {year}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
+                      <Select value={selectedYear} onValueChange={(v) => { setSelectedYear(v); setStudentsPage(1); }}>
+                        <SelectTrigger className="sm:w-36">
+                          <SelectValue placeholder="All years" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Years</SelectItem>
+                          {availableYears.map((year) => (
+                            <SelectItem key={year} value={year.toString()}>{year}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                    {(studentsStudentFilter.trim() || studentsCourseFilter !== "all" || selectedYear !== "all") && (
+                      <Button variant="ghost" size="sm" onClick={() => { setStudentsStudentFilter(""); setStudentsCourseFilter("all"); setSelectedYear("all"); setStudentsPage(1); }}>
+                        <X className="w-4 h-4 mr-1" /> Clear
+                      </Button>
                     )}
                   </div>
 
@@ -1756,9 +1801,11 @@ export default function TutorDashboard() {
                     <div className="space-y-4">
                       {[1, 2].map(i => <Skeleton key={i} className="h-32 w-full" />)}
                     </div>
-                  ) : filteredSubscriptions && filteredSubscriptions.length > 0 ? (
+                  ) : studentsFiltered.length > 0 ? (
                     <div className="space-y-4">
-                      {filteredSubscriptions.map(({ subscription, course, parent, sessionStats }) => {
+                      {studentsFiltered
+                        .slice((studentsPage - 1) * STUDENTS_PAGE_SIZE, studentsPage * STUDENTS_PAGE_SIZE)
+                        .map(({ subscription, course, parent, sessionStats }: any) => {
                         // Calculate course duration and progress
                         const totalSessions = course.totalSessions || 0;
                         const sessionsPerWeek = course.sessionsPerWeek || 1;
@@ -1965,29 +2012,35 @@ export default function TutorDashboard() {
                           </Card>
                         );
                       })}
+
+                      {studentsFiltered.length > STUDENTS_PAGE_SIZE && (
+                        <div className="flex items-center justify-between pt-2">
+                          <p className="text-sm text-muted-foreground">
+                            Showing {(studentsPage - 1) * STUDENTS_PAGE_SIZE + 1}–{Math.min(studentsPage * STUDENTS_PAGE_SIZE, studentsFiltered.length)} of {studentsFiltered.length} students
+                          </p>
+                          <div className="flex items-center gap-2">
+                            <Button size="sm" variant="outline" onClick={() => setStudentsPage(p => Math.max(1, p - 1))} disabled={studentsPage === 1}>Previous</Button>
+                            <span className="text-sm text-muted-foreground">Page {studentsPage} of {Math.ceil(studentsFiltered.length / STUDENTS_PAGE_SIZE)}</span>
+                            <Button size="sm" variant="outline" onClick={() => setStudentsPage(p => Math.min(Math.ceil(studentsFiltered.length / STUDENTS_PAGE_SIZE), p + 1))} disabled={studentsPage === Math.ceil(studentsFiltered.length / STUDENTS_PAGE_SIZE)}>Next</Button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   ) : (
                     <Card>
                       <CardContent className="py-16 text-center">
                         <Users className="w-16 h-16 mx-auto mb-4 text-muted-foreground" />
                         <h3 className="text-xl font-semibold mb-2">
-                          {selectedYear !== "all" && subscriptions && subscriptions.length > 0
-                            ? `No Students Enrolled in ${selectedYear}`
-                            : "No Students Yet"}
+                          {subscriptions && subscriptions.length > 0 ? "No students match your filters" : "No Students Yet"}
                         </h3>
                         <p className="text-muted-foreground">
-                          {selectedYear !== "all" && subscriptions && subscriptions.length > 0
-                            ? `No students enrolled in ${selectedYear}. Try selecting a different year or "All Years".`
+                          {subscriptions && subscriptions.length > 0
+                            ? "Try adjusting or clearing the filters above"
                             : "Students who enroll in your courses will appear here"}
                         </p>
-                        {selectedYear !== "all" && subscriptions && subscriptions.length > 0 && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => setSelectedYear("all")}
-                            className="mt-4"
-                          >
-                            View All Years
+                        {subscriptions && subscriptions.length > 0 && (
+                          <Button variant="outline" size="sm" className="mt-4" onClick={() => { setStudentsStudentFilter(""); setStudentsCourseFilter("all"); setSelectedYear("all"); setStudentsPage(1); }}>
+                            Clear filters
                           </Button>
                         )}
                       </CardContent>
