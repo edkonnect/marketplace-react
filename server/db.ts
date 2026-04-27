@@ -2025,83 +2025,80 @@ export async function resolveSessionForZoomRecording(params: {
   const db = await getDb();
   if (!db) return { sessionId: null, tutorId: null, reason: 'no_tutor_found' };
 
-  // Step 1: Resolve tutorId via tutorProfiles.zoomMeetingId
+  // Step 1: Resolve all tutorIds sharing this zoomMeetingId (some tutors share a room)
   const profileRows = await db
     .select({ userId: tutorProfiles.userId })
     .from(tutorProfiles)
-    .where(eq(tutorProfiles.zoomMeetingId, params.meetingId))
-    .limit(2); // fetch 2 to detect misconfiguration
+    .where(eq(tutorProfiles.zoomMeetingId, params.meetingId));
 
   if (profileRows.length === 0) {
     console.warn(`[ZoomMatch] No tutorProfile found for zoomMeetingId=${params.meetingId} hostId=${params.hostId}`);
     return { sessionId: null, tutorId: null, reason: 'no_tutor_found' };
   }
-  if (profileRows.length > 1) {
-    console.warn(`[ZoomMatch] Multiple tutorProfiles share zoomMeetingId=${params.meetingId}, using first`);
+
+  // Deduplicate userIds (a tutor may have multiple profile rows)
+  const tutorIds = Array.from(new Set(profileRows.map(r => r.userId)));
+  if (tutorIds.length > 1) {
+    console.log(`[ZoomMatch] ${tutorIds.length} tutors share zoomMeetingId=${params.meetingId}, will try all`);
   }
 
-  const tutorId = profileRows[0].userId;
-
-  // Step 2: Query sessions within ±30 min of recording start time
-  // Window is widened by 2h on the left to catch long sessions (e.g. 120-min) whose
-  // scheduledAt is far before the recording start but the session is still running.
   const recordingMs = params.recordingStartTime.getTime();
   const TOLERANCE_MS = 30 * 60 * 1000;
   const windowStart = recordingMs - TOLERANCE_MS - 2 * 60 * 60 * 1000; // look back up to 2.5h
   const windowEnd = recordingMs + TOLERANCE_MS;
 
-  console.log(
-    `[ZoomMatch] meetingId=${params.meetingId} tutorId=${tutorId} ` +
-    `recordingMs=${recordingMs} (${new Date(recordingMs).toISOString()}) ` +
-    `window=[${new Date(windowStart).toISOString()} → ${new Date(windowEnd).toISOString()}]`
-  );
+  // Step 2: Try each tutorId until one finds a viable session match
+  for (const tutorId of tutorIds) {
+    console.log(
+      `[ZoomMatch] meetingId=${params.meetingId} trying tutorId=${tutorId} ` +
+      `recordingMs=${recordingMs} (${new Date(recordingMs).toISOString()}) ` +
+      `window=[${new Date(windowStart).toISOString()} → ${new Date(windowEnd).toISOString()}]`
+    );
 
-  const candidates = await db
-    .select({ id: sessions.id, scheduledAt: sessions.scheduledAt, duration: sessions.duration })
-    .from(sessions)
-    .where(and(
-      eq(sessions.tutorId, tutorId),
-      gte(sessions.scheduledAt, windowStart),
-      lte(sessions.scheduledAt, windowEnd),
-      ne(sessions.status, 'cancelled'),
-    ))
-    .orderBy(sql`ABS(CAST(${sessions.scheduledAt} AS SIGNED) - ${sql.raw(String(recordingMs))})`);
+    const candidates = await db
+      .select({ id: sessions.id, scheduledAt: sessions.scheduledAt, duration: sessions.duration })
+      .from(sessions)
+      .where(and(
+        eq(sessions.tutorId, tutorId),
+        gte(sessions.scheduledAt, windowStart),
+        lte(sessions.scheduledAt, windowEnd),
+        ne(sessions.status, 'cancelled'),
+      ))
+      .orderBy(sql`ABS(CAST(${sessions.scheduledAt} AS SIGNED) - ${sql.raw(String(recordingMs))})`);
 
-  console.log(
-    `[ZoomMatch] candidates=${JSON.stringify(candidates.map(c => ({ id: c.id, scheduledAt: c.scheduledAt, duration: c.duration, iso: new Date(c.scheduledAt).toISOString() })))}`
-  );
+    console.log(
+      `[ZoomMatch] candidates for tutorId=${tutorId}: ${JSON.stringify(candidates.map(c => ({ id: c.id, scheduledAt: c.scheduledAt, duration: c.duration, iso: new Date(c.scheduledAt).toISOString() })))}`
+    );
 
-  // Step 3: Filter out sessions that have clearly ended before the recording started.
-  // A session "clearly ended" if: recordingStart > sessionEnd + TOLERANCE
-  // This prevents a 30-min session at T from beating a 60-min session at T+30 when
-  // the recording starts at T+31 (after the 30-min session has already finished).
-  const viable = candidates.filter(c => {
-    const sessionEndMs = Number(c.scheduledAt) + c.duration * 60 * 1000;
-    return recordingMs <= sessionEndMs + TOLERANCE_MS;
-  });
+    // Step 3: Filter out sessions that have clearly ended before the recording started.
+    const viable = candidates.filter(c => {
+      const sessionEndMs = Number(c.scheduledAt) + c.duration * 60 * 1000;
+      return recordingMs <= sessionEndMs + TOLERANCE_MS;
+    });
 
-  console.log(
-    `[ZoomMatch] viable after end-time filter=${JSON.stringify(viable.map(c => ({ id: c.id, iso: new Date(c.scheduledAt).toISOString(), dur: c.duration })))}`
-  );
+    console.log(
+      `[ZoomMatch] viable for tutorId=${tutorId}: ${JSON.stringify(viable.map(c => ({ id: c.id, iso: new Date(c.scheduledAt).toISOString(), dur: c.duration })))}`
+    );
 
-  // Step 4: Apply match / ambiguity rules on viable candidates
-  if (viable.length === 0) {
-    return { sessionId: null, tutorId, reason: 'no_match' };
-  }
-  if (viable.length === 1) {
+    if (viable.length === 0) continue; // try next tutor
+
+    if (viable.length === 1) {
+      return { sessionId: viable[0].id, tutorId, reason: 'matched' };
+    }
+
+    // Multiple viable candidates: pick closest, reject if equidistant
+    const diffFirst = Math.abs(Number(viable[0].scheduledAt) - recordingMs);
+    const diffSecond = Math.abs(Number(viable[1].scheduledAt) - recordingMs);
+    if (diffFirst === diffSecond) {
+      console.warn(`[ZoomMatch] Ambiguous: sessions ${viable[0].id} and ${viable[1].id} are equidistant (${diffFirst}ms) from recording`);
+      return { sessionId: null, tutorId, reason: 'ambiguous' };
+    }
+
     return { sessionId: viable[0].id, tutorId, reason: 'matched' };
   }
 
-  // Multiple viable candidates: pick closest by scheduledAt distance
-  // Reject if the top two are equidistant (ambiguous)
-  const diffFirst = Math.abs(Number(viable[0].scheduledAt) - recordingMs);
-  const diffSecond = Math.abs(Number(viable[1].scheduledAt) - recordingMs);
-  if (diffFirst === diffSecond) {
-    console.warn(`[ZoomMatch] Ambiguous: sessions ${viable[0].id} and ${viable[1].id} are equidistant (${diffFirst}ms) from recording`);
-    return { sessionId: null, tutorId, reason: 'ambiguous' };
-  }
-
-  return { sessionId: viable[0].id, tutorId, reason: 'matched' };
+  // No tutorId found a match
+  return { sessionId: null, tutorId: tutorIds[0], reason: 'no_match' };
 }
 
 export async function getSessionsByParentId(parentId: number) {
