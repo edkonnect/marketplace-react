@@ -172,6 +172,39 @@ export async function uploadCourseFileToS3(
 }
 
 /**
+ * Upload a messaging attachment to S3.
+ * Same pattern as uploadCourseFileToS3 but stored under message-files/ prefix.
+ */
+export async function uploadMessageFileToS3(
+  buffer: Buffer,
+  mimeType: string,
+  originalFileName: string
+): Promise<{ url: string; key: string }> {
+  const ext = originalFileName.split(".").pop()?.toLowerCase() ?? "bin";
+  const uuid = crypto.randomUUID();
+  const key = `message-files/${uuid}.${ext}`;
+
+  if (hasS3Credentials()) {
+    await getS3Client().send(
+      new PutObjectCommand({
+        Bucket: ENV.awsS3Bucket,
+        Key: key,
+        Body: buffer,
+        ContentType: mimeType,
+      })
+    );
+    return {
+      url: `https://${ENV.awsS3Bucket}.s3.${ENV.awsS3Region}.amazonaws.com/${key}`,
+      key,
+    };
+  }
+
+  // Local dev fallback
+  const url = saveLocally(key, buffer, mimeType);
+  return { url, key };
+}
+
+/**
  * Delete a course file from S3 using its stored key.
  * Silently ignores errors so a failed delete never blocks the user.
  *

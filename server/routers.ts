@@ -3390,11 +3390,12 @@ export const appRouter = router({
           throw new TRPCError({ code: 'BAD_REQUEST', message: 'File size exceeds 10MB limit' });
         }
 
-        // Store as a base64 data URL directly in the database
-        const dataUrl = `data:${input.fileType};base64,${input.file}`;
+        // Upload to S3 (falls back to local disk in dev)
+        const { uploadMessageFileToS3 } = await import('./s3Storage');
+        const { url } = await uploadMessageFileToS3(buffer, input.fileType, input.fileName);
 
         return {
-          fileUrl: dataUrl,
+          fileUrl: url,
           fileName: input.fileName,
           fileType: input.fileType,
           fileSize,
