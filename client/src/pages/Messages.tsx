@@ -102,6 +102,7 @@ export default function Messages() {
   const [selectedConversationId, setSelectedConversationId] = useState<number | null>(null);
   const [messageContent, setMessageContent] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [selectedFileType, setSelectedFileType] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [globalSearch, setGlobalSearch] = useState("");
   const [readConversationIds, setReadConversationIds] = useState<Set<number>>(new Set());
@@ -397,23 +398,36 @@ export default function Messages() {
       return;
     }
 
-    // Validate file type
+    // Resolve MIME type — Windows browsers may report PDFs as application/octet-stream or empty string
+    const resolveFileType = (f: File): string => {
+      if (f.type && f.type !== 'application/octet-stream') return f.type;
+      const ext = f.name.split('.').pop()?.toLowerCase();
+      if (ext === 'pdf') return 'application/pdf';
+      if (ext === 'docx') return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+      if (ext === 'xlsx') return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+      return f.type;
+    };
+
+    const resolvedType = resolveFileType(file);
+
     const allowedTypes = [
       'application/pdf',
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     ];
 
-    if (!allowedTypes.includes(file.type)) {
+    if (!allowedTypes.includes(resolvedType)) {
       toast.error("Only PDF, DOCX, and XLSX files are supported.");
       return;
     }
 
     setSelectedFile(file);
+    setSelectedFileType(resolvedType);
   };
 
   const handleRemoveFile = () => {
     setSelectedFile(null);
+    setSelectedFileType(null);
   };
 
   const handleSendMessage = async () => {
@@ -438,7 +452,7 @@ export default function Messages() {
         fileData = await uploadFileMutation.mutateAsync({
           file: base64,
           fileName: selectedFile.name,
-          fileType: selectedFile.type as "image/jpeg" | "image/png" | "image/gif" | "image/webp" | "application/pdf" | "application/msword" | "application/vnd.openxmlformats-officedocument.wordprocessingml.document" | "application/vnd.ms-excel" | "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          fileType: (selectedFileType || selectedFile.type) as "image/jpeg" | "image/png" | "image/gif" | "image/webp" | "application/pdf" | "application/msword" | "application/vnd.openxmlformats-officedocument.wordprocessingml.document" | "application/vnd.ms-excel" | "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         });
       }
 
@@ -454,6 +468,7 @@ export default function Messages() {
 
       setMessageContent("");
       setSelectedFile(null);
+      setSelectedFileType(null);
       refetchMessages();
 
       // Refresh conversation lists for all roles
@@ -465,8 +480,15 @@ export default function Messages() {
       utils.messaging.getParentTutorInquiryConversations.invalidate();
 
       toast.success("Message sent");
-    } catch (error) {
-      toast.error("Failed to send message");
+    } catch (error: any) {
+      const msg = error?.message || '';
+      if (msg.includes('file type') || msg.includes('Invalid') || msg.includes('enum')) {
+        toast.error("File type not supported. Please use PDF, DOCX, or XLSX.");
+      } else if (msg.includes('10MB') || msg.includes('size')) {
+        toast.error("File too large. Maximum size is 10MB.");
+      } else {
+        toast.error("Failed to send message. Please try again.");
+      }
     } finally {
       setUploading(false);
     }
