@@ -46,8 +46,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [previousLastSignedIn, setPreviousLastSignedIn] = useState<string | null>(null);
   const refreshIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const refreshInFlightRef = useRef(false);
 
   const silentRefresh = useCallback(async () => {
+    if (refreshInFlightRef.current) return;
+    refreshInFlightRef.current = true;
     try {
       await request("/api/auth/refresh-token", { method: "POST" });
     } catch {
@@ -57,6 +60,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         clearInterval(refreshIntervalRef.current);
         refreshIntervalRef.current = null;
       }
+    } finally {
+      refreshInFlightRef.current = false;
     }
   }, []);
 
@@ -99,17 +104,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     fetchProfile();
   }, [fetchProfile]);
-
-  // Refresh token when tab becomes visible again after being hidden
-  useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === "visible" && user) {
-        silentRefresh();
-      }
-    };
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
-  }, [user, silentRefresh]);
 
   // Cleanup interval on unmount
   useEffect(() => {
