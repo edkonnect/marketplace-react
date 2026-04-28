@@ -40,6 +40,8 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 
 // Refresh access token ~1 min before it expires (access token = 15 min, so refresh every 13 min)
 const TOKEN_REFRESH_INTERVAL_MS = 13 * 60 * 1000;
+const IDLE_TIMEOUT_MS = 15 * 60 * 1000; // log out after 15 min of no activity
+const ACTIVITY_EVENTS = ["mousemove", "mousedown", "keydown", "touchstart", "scroll"] as const;
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -47,19 +49,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [previousLastSignedIn, setPreviousLastSignedIn] = useState<string | null>(null);
   const refreshIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const refreshInFlightRef = useRef(false);
+  const lastActivityRef = useRef<number>(Date.now());
+
+  // Update last activity timestamp on any user interaction
+  useEffect(() => {
+    const onActivity = () => { lastActivityRef.current = Date.now(); };
+    ACTIVITY_EVENTS.forEach(e => window.addEventListener(e, onActivity, { passive: true }));
+    return () => ACTIVITY_EVENTS.forEach(e => window.removeEventListener(e, onActivity));
+  }, []);
 
   const silentRefresh = useCallback(async () => {
     if (refreshInFlightRef.current) return;
-    refreshInFlightRef.current = true;
-    try {
-      await request("/api/auth/refresh-token", { method: "POST" });
-    } catch {
-      // Refresh failed — user's session has fully expired; clear state
-      setUser(null);
+
+    // If idle for 15+ min, log out instead of refreshing
+    if (Date.now() - lastActivityRef.current >= IDLE_TIMEOUT_MS) {
       if (refreshIntervalRef.current) {
         clearInterval(refreshIntervalRef.current);
         refreshIntervalRef.current = null;
       }
+      await request("/api/auth/logout", { method: "POST" }).catch(() => {});
+      setUser(null);
+      return;
+    }
+
+    refreshInFlightRef.current = true;
+    try {
+      await request("/api/auth/refresh-token", { method: "POST" });
+    } catch {
+      // Transient failure — keep interval running, will retry next tick
+      console.warn("[Auth] Silent token refresh failed, will retry");
     } finally {
       refreshInFlightRef.current = false;
     }
