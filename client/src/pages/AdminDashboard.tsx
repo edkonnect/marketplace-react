@@ -1,4 +1,5 @@
 import { useAuth } from "@/_core/hooks/useAuth";
+import { AdminSessionNotes } from "@/components/AdminSessionNotes";
 import { LOGIN_PATH } from "@/const";
 import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -1373,6 +1374,7 @@ export function AdminDashboard() {
           {activeSection === "testimonials" && <TestimonialsManager />}
 
           {activeSection === "course-files" && <CourseFilesAdminPanel />}
+          {activeSection === "session-notes" && <AdminSessionNotes />}
         </div>
       </DashboardLayout>
     </div>

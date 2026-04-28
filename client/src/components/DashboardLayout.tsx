@@ -61,7 +61,8 @@ export type AdminSection =
   | "testimonials"
   | "coordinators"
   | "email"
-  | "referrals";
+  | "referrals"
+  | "session-notes";
 
 type NavItem = {
   icon: React.ElementType;
@@ -88,6 +89,7 @@ const navGroups: NavGroup[] = [
       { icon: BookOpen, label: "Enrollments", section: "enrollments" },
       { icon: CalendarDays, label: "Sessions", section: "sessions" },
       { icon: Wallet, label: "Payout Requests", section: "payout-requests" },
+      { icon: FileText, label: "Session Notes", section: "session-notes" },
     ],
   },
   {
