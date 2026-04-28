@@ -122,7 +122,7 @@ export default function CoordinatorMessages() {
         fileData = await uploadFileMutation.mutateAsync({
           file: base64,
           fileName: selectedFile.name,
-          fileType: selectedFile.type,
+          fileType: selectedFile.type as any,
         });
       }
 

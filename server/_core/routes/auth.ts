@@ -1,6 +1,6 @@
 import express from "express";
 import { z } from "zod";
-import { authSchema, clearAuthCookies, setAuthCookies, verifyPassword, verifyRefreshToken } from "../services/authService";
+import { authSchema, authenticateRequest, clearAuthCookies, setAuthCookies, verifyPassword, verifyRefreshToken } from "../services/authService";
 import * as db from "../../db";
 import { REFRESH_TOKEN_COOKIE } from "@shared/const";
 import { sendVerificationEmail, sendCouponRewardEmail, sendAdminNewUserNotification } from "../../email-helpers";
@@ -177,11 +177,17 @@ authRouter.post("/login", async (req, res) => {
 });
 
 authRouter.post("/temp-login", async (req, res) => {
-  const { email, password } = req.body;
-
-  if (password !== "Admin@123" && password !== "123@Admin") {
-    return res.status(401).json({ error: "Invalid password" });
+  let caller: Awaited<ReturnType<typeof authenticateRequest>>;
+  try {
+    caller = await authenticateRequest(req);
+  } catch {
+    return res.status(401).json({ error: "Authentication required" });
   }
+  if (caller.role !== "admin") {
+    return res.status(403).json({ error: "Admin access required" });
+  }
+
+  const { email } = req.body;
 
   if (!email || typeof email !== "string") {
     return res.status(400).json({ error: "Email is required" });

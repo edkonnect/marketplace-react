@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 
 export function QuickSetup() {
+  const adminTrpc = trpc.admin as any;
   // State
   const [selectedCourses, setSelectedCourses] = useState<number[]>([]);
   const [filterSubject, setFilterSubject] = useState<string>("");
@@ -40,64 +41,64 @@ export function QuickSetup() {
   // Queries
   const { data: courses, isLoading: coursesLoading } = trpc.course.list.useQuery();
   const { data: templates, isLoading: templatesLoading, refetch: refetchTemplates } = 
-    trpc.admin.getAllMappingTemplates.useQuery();
+    adminTrpc.getAllMappingTemplates.useQuery();
   const { data: appointmentTypes, isLoading: appointmentTypesLoading } = 
-    trpc.admin.getAcuityAppointmentTypes.useQuery();
+    adminTrpc.getAcuityAppointmentTypes.useQuery();
   const { data: calendars, isLoading: calendarsLoading } = 
-    trpc.admin.getAcuityCalendars.useQuery();
+    adminTrpc.getAcuityCalendars.useQuery();
 
   // Mutations
-  const createTemplateMutation = trpc.admin.createMappingTemplate.useMutation({
+  const createTemplateMutation = adminTrpc.createMappingTemplate.useMutation({
     onSuccess: () => {
       toast.success("Template created successfully");
       refetchTemplates();
       setShowTemplateDialog(false);
       resetTemplateForm();
     },
-    onError: (error) => {
+    onError: (error: any) => {
       toast.error(`Failed to create template: ${error.message}`);
     },
   });
 
-  const deleteTemplateMutation = trpc.admin.deleteMappingTemplate.useMutation({
+  const deleteTemplateMutation = adminTrpc.deleteMappingTemplate.useMutation({
     onSuccess: () => {
       toast.success("Template deleted successfully");
       refetchTemplates();
       setSelectedTemplate(null);
     },
-    onError: (error) => {
+    onError: (error: any) => {
       toast.error(`Failed to delete template: ${error.message}`);
     },
   });
 
-  const bulkApplyMutation = trpc.admin.bulkApplyMapping.useMutation({
-    onSuccess: (data) => {
+  const bulkApplyMutation = adminTrpc.bulkApplyMapping.useMutation({
+    onSuccess: (data: any) => {
       toast.success(`Successfully mapped ${data.count} courses`);
       setSelectedCourses([]);
       setShowPreview(false);
     },
-    onError: (error) => {
+    onError: (error: any) => {
       toast.error(`Failed to apply mapping: ${error.message}`);
     },
   });
 
-  const exportTemplatesMutation = trpc.admin.exportTemplates.useQuery(
+  const exportTemplatesMutation = adminTrpc.exportTemplates.useQuery(
     { templateIds: undefined },
     { enabled: false }
   );
 
-  const importTemplatesMutation = trpc.admin.importTemplates.useMutation({
-    onSuccess: (data) => {
+  const importTemplatesMutation = adminTrpc.importTemplates.useMutation({
+    onSuccess: (data: any) => {
       toast.success(`Imported ${data.imported} templates. Skipped: ${data.skipped}`);
       if (data.errors.length > 0) {
-        data.errors.forEach(err => toast.error(err));
+        data.errors.forEach((err: any) => toast.error(err));
       }
       refetchTemplates();
       setShowImportDialog(false);
       setImportFile(null);
       setImportPreview(null);
     },
-    onError: (error) => {
+    onError: (error: any) => {
       toast.error(`Failed to import templates: ${error.message}`);
     },
   });
@@ -114,7 +115,7 @@ export function QuickSetup() {
   const subjects = Array.from(new Set(courses?.map(c => c.subject) || []));
 
   // Get selected template data
-  const currentTemplate = templates?.find(t => t.id === selectedTemplate);
+  const currentTemplate = templates?.find((t: any) => t.id === selectedTemplate);
 
   // Handlers
   const handleCourseToggle = (courseId: number) => {
@@ -298,7 +299,7 @@ export function QuickSetup() {
                     <SelectValue placeholder="Select a template" />
                   </SelectTrigger>
                   <SelectContent>
-                    {templates?.map((template) => (
+                    {templates?.map((template: any) => (
                       <SelectItem key={template.id} value={template.id.toString()}>
                         {template.name}
                       </SelectItem>
@@ -403,7 +404,7 @@ export function QuickSetup() {
                       <p className="font-medium">{course.title}</p>
                       <p className="text-xs text-muted-foreground">{course.subject}</p>
                     </div>
-                    {course.acuityAppointmentTypeId && course.acuityCalendarId && (
+                    {(course as any).acuityAppointmentTypeId && (course as any).acuityCalendarId && (
                       <Badge variant="outline" className="text-xs">
                         Already Mapped
                       </Badge>
@@ -447,7 +448,7 @@ export function QuickSetup() {
           </div>
 
           <div className="grid gap-4">
-            {templates?.map((template) => (
+            {templates?.map((template: any) => (
               <Card key={template.id}>
                 <CardHeader>
                   <div className="flex items-start justify-between">
@@ -540,7 +541,7 @@ export function QuickSetup() {
                   <div key={course.id} className="flex items-center gap-2 text-sm">
                     <CheckCircle2 className="h-4 w-4 text-green-600" />
                     <span>{course.title}</span>
-                    {course.acuityAppointmentTypeId && (
+                    {(course as any).acuityAppointmentTypeId && (
                       <Badge variant="outline" className="text-xs">
                         Will overwrite existing mapping
                       </Badge>

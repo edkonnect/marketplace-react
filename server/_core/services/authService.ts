@@ -18,7 +18,7 @@ const authSchema = {
     password: z.string().min(8).max(100),
     firstName: z.string().min(1).max(100),
     lastName: z.string().min(1).max(100),
-    role: z.enum(["parent", "tutor", "admin", "coordinator"]).default("parent"),
+    role: z.enum(["parent", "tutor"]).default("parent"),
     timezone: z.string().optional(),
   }),
   login: z.object({
@@ -38,7 +38,7 @@ const refreshSecret = new TextEncoder().encode(ENV.refreshSecret || ENV.cookieSe
 
 async function signJwt(payload: JwtPayload, expiresInMs: number, secret: Uint8Array) {
   const now = Math.floor(Date.now() / 1000);
-  return new SignJWT(payload)
+  return new SignJWT({ ...payload, sub: String(payload.sub) })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt(now)
     .setExpirationTime(now + Math.floor(expiresInMs / 1000))
@@ -81,7 +81,7 @@ export async function authenticateRequest(req: Request) {
 
   try {
     const { payload } = await jwtVerify(token, accessSecret);
-    const data = payload as JwtPayload;
+    const data = payload as unknown as JwtPayload;
     const user = await db.getUserById(data.sub);
     if (!user) throw new Error("User not found");
     return user;
@@ -92,7 +92,7 @@ export async function authenticateRequest(req: Request) {
 
 export async function verifyRefreshToken(token: string) {
   const { payload } = await jwtVerify(token, refreshSecret);
-  return payload as JwtPayload & { exp: number };
+  return payload as unknown as JwtPayload & { exp: number };
 }
 
 export { authSchema };

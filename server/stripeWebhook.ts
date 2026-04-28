@@ -835,7 +835,7 @@ export async function handleStripeWebhook(req: Request, res: Response) {
             console.log(`[Webhook] ✓ Usage cycle payment recorded: sub=${localSubId}, cycle=${billingCycleId || "unknown"}`);
           }
 
-          for (const billingCycleId of cycleIds) {
+          for (const billingCycleId of Array.from(cycleIds)) {
             await db.updateBillingCycle(billingCycleId, {
               status: "paid",
               stripeInvoiceId: invoice.id,
@@ -1096,7 +1096,7 @@ export async function handleStripeWebhook(req: Request, res: Response) {
             const billingCycleId = parseInt(((line as any).metadata ?? {}).billing_cycle_id || "0");
             if (billingCycleId) cycleIds.add(billingCycleId);
           }
-          for (const billingCycleId of cycleIds) {
+          for (const billingCycleId of Array.from(cycleIds)) {
             await db.updateBillingCycle(billingCycleId, { status: "failed" });
             console.log(`[Webhook] Usage cycle ${billingCycleId} payment failed`);
           }
