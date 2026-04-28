@@ -45,8 +45,6 @@ export default function SetupPassword() {
     setIsLoading(true);
 
     try {
-      console.log("Sending setup request with token:", token);
-
       const response = await fetch("/api/auth/setup-password", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -54,10 +52,7 @@ export default function SetupPassword() {
         body: JSON.stringify({ token, password }),
       });
 
-      console.log("Response status:", response.status);
-
       const data = await response.json();
-      console.log("Response data:", data);
 
       if (!response.ok) {
         throw new Error(data.error || "Failed to set up account");

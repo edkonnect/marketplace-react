@@ -48,8 +48,8 @@ function verifyZoomWebhookSignature(
   timestamp: string | undefined
 ): boolean {
   if (!ENV.zoomWebhookSecret) {
-    console.warn('[Zoom Webhook] No webhook secret configured, skipping verification');
-    return true; // Allow in dev if no secret is set
+    console.error('[Zoom Webhook] ZOOM_WEBHOOK_SECRET is not configured');
+    return false;
   }
 
   if (!signature || !timestamp) {

@@ -65,13 +65,8 @@ export async function handleStripeWebhook(req: Request, res: Response) {
       return res.status(400).send(`Webhook Error: ${err.message}`);
     }
   } else {
-    // No webhook secret configured — parse event directly (dev/testing only)
-    console.warn("[Webhook] No STRIPE_WEBHOOK_SECRET set — skipping signature verification");
-    try {
-      event = JSON.parse(req.body.toString()) as Stripe.Event;
-    } catch (err: any) {
-      return res.status(400).send("Invalid JSON body");
-    }
+    console.error("[Webhook] STRIPE_WEBHOOK_SECRET is not configured");
+    return res.status(500).send("Webhook secret not configured");
   }
 
   // Handle test events

@@ -198,7 +198,7 @@ export const appRouter = router({
       clearAuthCookies(ctx.req as any, ctx.res as any);
       return { success: true } as const;
     }),
-    updateRole: protectedProcedure
+    updateRole: adminProcedure
       .input(z.object({ role: z.enum(['parent', 'tutor', 'coordinator']) }))
       .mutation(async ({ ctx, input }) => {
         const success = await db.updateUserRole(ctx.user.id, input.role as 'parent' | 'tutor' | 'admin');
