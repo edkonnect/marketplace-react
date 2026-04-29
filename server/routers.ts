@@ -7262,7 +7262,7 @@ For engagementData, describe ONLY the student's participation and behavior. The 
           throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Database not available' });
         }
 
-        const { eq, and, sql: drizzleSql } = await import('drizzle-orm');
+        const { eq, and, isNull, sql: drizzleSql } = await import('drizzle-orm');
 
         try {
           // If we have a sessionId, check if transcript is already saved — return it directly.
@@ -7287,6 +7287,38 @@ For engagementData, describe ONLY the student's participation and behavior. The 
               };
             }
 
+            // Fix 3: Check for unlinked (sessionId=NULL) completed rows for this meetingId
+            // that are close in time to this session. Historical webhook rows have NULL sessionId
+            // but contain valid transcripts — link and return them instead of re-fetching from Zoom.
+            if (input.sessionScheduledAt) {
+              const unlinked = await database
+                .select()
+                .from(zoomMeetingRecordings)
+                .where(and(
+                  eq(zoomMeetingRecordings.meetingId, input.meetingId),
+                  isNull(zoomMeetingRecordings.sessionId),
+                  eq(zoomMeetingRecordings.status, 'completed'),
+                  drizzleSql`${zoomMeetingRecordings.transcriptText} IS NOT NULL`,
+                  drizzleSql`ABS(UNIX_TIMESTAMP(${zoomMeetingRecordings.recordedAt}) * 1000 - ${input.sessionScheduledAt}) < 2700000`,
+                ))
+                .orderBy(drizzleSql`ABS(UNIX_TIMESTAMP(${zoomMeetingRecordings.recordedAt}) * 1000 - ${input.sessionScheduledAt}) ASC`)
+                .limit(1);
+
+              if (unlinked.length > 0 && unlinked[0].transcriptText) {
+                // Link the historical row to this session and return it
+                await database.update(zoomMeetingRecordings)
+                  .set({ sessionId: input.sessionId })
+                  .where(eq(zoomMeetingRecordings.id, unlinked[0].id));
+                console.log(`[fetchTranscript] Linked historical NULL row id=${unlinked[0].id} to sessionId=${input.sessionId}`);
+                return {
+                  success: true,
+                  recordingId: unlinked[0].id,
+                  transcript: unlinked[0].transcriptText,
+                  duration: unlinked[0].durationMinutes ?? 0,
+                };
+              }
+            }
+
             // Auto-delete stale rows (processing/failed or from old credentials) so they
             // don't interfere with a fresh fetch after Zoom credentials are changed.
             await database.delete(zoomMeetingRecordings).where(
@@ -7301,7 +7333,6 @@ For engagementData, describe ONLY the student's participation and behavior. The 
           // Priority order:
           // 1. UUID already saved in DB for this session (webhook already matched it, same meetingId)
           // 2. Find UUID by session time — list all recordings and pick the closest one
-          // 3. Fall back to numeric meetingId (returns LATEST recording — may be wrong)
           let meetingIdToFetch = input.meetingId;
 
           if (input.sessionId) {
@@ -7322,26 +7353,37 @@ For engagementData, describe ONLY the student's participation and behavior. The 
                 meetingIdToFetch = uuid;
                 console.log(`[fetchTranscript] Time-matched UUID=${uuid} for sessionId=${input.sessionId} scheduledAt=${new Date(input.sessionScheduledAt).toISOString()}`);
               } else {
-                console.warn(`[fetchTranscript] Could not find recording by time for sessionId=${input.sessionId}, falling back to latest`);
+                // Fix 4: No matching recording found — don't fall back to latest (wrong session)
+                throw new TRPCError({
+                  code: 'NOT_FOUND',
+                  message: 'No recording found for this session. Please check that cloud recording was enabled and the session was recorded in Zoom.',
+                });
               }
+            } else {
+              // Fix 4: No scheduledAt provided and no saved match — can't safely pick a recording
+              throw new TRPCError({
+                code: 'NOT_FOUND',
+                message: 'No recording found for this session. Please check that cloud recording was enabled and the session was recorded in Zoom.',
+              });
             }
           }
 
-          // Mark as processing
+          // Fix 1: Mark as processing — include sessionId so duplicate rows get linked
           await database.insert(zoomMeetingRecordings).values({
             id: meetingIdToFetch,
             meetingId: input.meetingId,
             sessionId: input.sessionId,
             status: 'processing',
           } as typeof zoomMeetingRecordings.$inferInsert).onDuplicateKeyUpdate({
-            set: { status: 'processing' }
+            set: { status: 'processing', sessionId: input.sessionId }
           });
 
           // Fetch transcript from Zoom using the resolved UUID
           const transcriptData = await fetchZoomTranscript(meetingIdToFetch);
           const recording = await getZoomRecording(meetingIdToFetch);
 
-          // Save to database
+          // Fix 1: Save to database — include sessionId in onDuplicateKeyUpdate so existing
+          // NULL rows (saved by webhook) get linked when tutor manually fetches
           await database.insert(zoomMeetingRecordings).values({
             id: recording.uuid,
             meetingId: input.meetingId,
@@ -7357,6 +7399,7 @@ For engagementData, describe ONLY the student's participation and behavior. The 
             shareUrl: recording.share_url,
           } as typeof zoomMeetingRecordings.$inferInsert).onDuplicateKeyUpdate({
             set: {
+              sessionId: input.sessionId,
               transcriptText: transcriptData.transcript,
               rawTranscript: transcriptData.rawTranscript,
               durationMinutes: Math.round(recording.duration),
@@ -7364,6 +7407,18 @@ For engagementData, describe ONLY the student's participation and behavior. The 
               status: 'completed',
             }
           });
+
+          // Fix 2: Backfill — link any other NULL-sessionId rows for the same meetingId
+          // that are close in time to this session (handles historical webhook-saved rows)
+          if (input.sessionId && input.sessionScheduledAt) {
+            await database.update(zoomMeetingRecordings)
+              .set({ sessionId: input.sessionId })
+              .where(and(
+                eq(zoomMeetingRecordings.meetingId, input.meetingId),
+                isNull(zoomMeetingRecordings.sessionId),
+                drizzleSql`ABS(UNIX_TIMESTAMP(${zoomMeetingRecordings.recordedAt}) * 1000 - ${input.sessionScheduledAt}) < 2700000`,
+              ));
+          }
 
           return {
             success: true,
