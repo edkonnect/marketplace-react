@@ -38,9 +38,9 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-// Refresh access token ~1 min before it expires (access token = 15 min, so refresh every 13 min)
-const TOKEN_REFRESH_INTERVAL_MS = 13 * 60 * 1000;
-const IDLE_TIMEOUT_MS = 15 * 60 * 1000; // log out after 15 min of no activity
+// Refresh access token ~2 min before it expires (access token = 30 min, so refresh every 28 min)
+const TOKEN_REFRESH_INTERVAL_MS = 28 * 60 * 1000;
+const IDLE_TIMEOUT_MS = 30 * 60 * 1000; // log out after 30 min of no activity
 const ACTIVITY_EVENTS = ["mousemove", "mousedown", "keydown", "touchstart", "scroll"] as const;
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {

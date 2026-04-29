@@ -144,6 +144,10 @@ export async function findValidRefreshToken(token: string) {
   if (!db) return null;
   const tokenHash = hashToken(token);
   const now = new Date();
+  // Allow a 30-second grace window after revocation to handle race conditions
+  // where two concurrent refresh calls (e.g. interval + 401 retry) both fire
+  // with the same token — the second one arrives just after the first rotated it.
+  const graceWindow = new Date(now.getTime() - 30 * 1000);
   const results = await db
     .select()
     .from(refreshTokens)
@@ -151,7 +155,7 @@ export async function findValidRefreshToken(token: string) {
       and(
         eq(refreshTokens.tokenHash, tokenHash),
         sql`( ${refreshTokens.expiresAt} > ${now} )`,
-        sql`( ${refreshTokens.revokedAt} IS NULL )`
+        sql`( ${refreshTokens.revokedAt} IS NULL OR ${refreshTokens.revokedAt} > ${graceWindow} )`
       )
     )
     .limit(1);
