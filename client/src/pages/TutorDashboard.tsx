@@ -1051,6 +1051,13 @@ export default function TutorDashboard() {
     }, {
       onSuccess: () => {
         setCompletionDialogOpen(false);
+
+        // Sync modal notes into sessionNotes so the textarea reflects the saved value
+        // and the Save Notes button starts disabled (no unsaved changes)
+        if (completionNotes) {
+          setSessionNotes((prev) => ({ ...prev, [sessionId]: completionNotes }));
+        }
+
         setSelectedSessionId(null);
         setSelectedSessionJoinUrl(null);
         setSelectedSessionScheduledAt(null);
@@ -1172,12 +1179,11 @@ export default function TutorDashboard() {
   const handleUseThisSummary = () => {
     if (!transcriptModal?.summary) return;
     const { sessionId, summary } = transcriptModal;
-    setSessionNotes((prev) => ({
-      ...prev,
-      [sessionId]: summary,
-    }));
-    setTranscriptModal(null);
-    toast.success("Summary saved to session notes. Don't forget to save!");
+    setSessionNotes((prev) => ({ ...prev, [sessionId]: summary }));
+    updateSessionMutation.mutate(
+      { id: sessionId, feedbackFromTutor: summary },
+      { onSuccess: () => { setTranscriptModal(null); toast.success("Session notes saved!"); } }
+    );
   };
 
   const hiddenStorageKey = user ? `tutor_hidden_sessions_${user.id}` : "tutor_hidden_sessions";
@@ -2255,7 +2261,7 @@ export default function TutorDashboard() {
                                           className="bg-white dark:bg-gray-900 min-h-[100px] text-sm"
                                         />
                                         <div className="flex flex-wrap gap-2">
-                                          <Button size="sm" onClick={saveNotes} disabled={updateSessionMutation.isPending}>
+                                          <Button size="sm" onClick={saveNotes} disabled={updateSessionMutation.isPending || noteRaw === (session.feedbackFromTutor ?? "")}>
                                             <FileText className="w-3 h-3 mr-1" />
                                             Save Notes
                                           </Button>
@@ -2332,7 +2338,7 @@ export default function TutorDashboard() {
                                             onClick={saveNotes}
                                             disabled={
                                               updateSessionMutation.isPending ||
-                                              noteValue === (session.feedbackFromTutor ?? "")
+                                              noteRaw === (session.feedbackFromTutor ?? "")
                                             }
                                           >
                                             <FileText className="w-3 h-3 mr-1" />
@@ -2569,7 +2575,7 @@ export default function TutorDashboard() {
                                   );
                                 })()}
 
-                                {(session.status === "cancelled" || session.status === "no_show") && (
+                                {(
                                   <div className="flex gap-2">
                                     <Button
                                       size="sm"

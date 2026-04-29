@@ -3038,13 +3038,13 @@ export const appRouter = router({
           throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to update session' });
         }
 
-        // Send session notes email when tutor saves notes on a completed session (only once - first time notes are saved)
+        // Send session notes email + in-app notification when tutor saves notes on a completed session
         const isFirstTimeNotes = input.feedbackFromTutor && !session.feedbackFromTutor;
-        if (
-          isFirstTimeNotes &&
+        const isNotesUpdate = input.feedbackFromTutor !== undefined &&
           ctx.user.role === 'tutor' &&
-          (input.status === 'completed' || (!input.status && session.status === 'completed'))
-        ) {
+          (input.status === 'completed' || (!input.status && session.status === 'completed'));
+
+        if (isNotesUpdate) {
           try {
             const parent = await db.getUserById(session.parentId);
             const tutor = await db.getUserById(session.tutorId);
@@ -3067,27 +3067,40 @@ export const appRouter = router({
                 if (course?.title) courseName = course.title;
               }
 
-              const emailHtml = await sendSessionNotesEmail({
-                parentName: parent.name || parent.email,
-                studentName,
-                tutorName: tutor.name || `${(tutor as any).firstName || ''} ${(tutor as any).lastName || ''}`.trim() || 'Your tutor',
-                courseName,
-                sessionDate: formatEmailDate(sessionDate, parentProfile?.timezone || undefined),
-                sessionTime: formatEmailTime(sessionDate, parentProfile?.timezone || undefined),
-                progressSummary: input.feedbackFromTutor || "",
-                notesUrl: `${process.env.VITE_FRONTEND_FORGE_API_URL || ''}/session-notes`,
-              });
+              // Send email only on first save
+              if (isFirstTimeNotes) {
+                const emailHtml = await sendSessionNotesEmail({
+                  parentName: parent.name || parent.email,
+                  studentName,
+                  tutorName: tutor.name || `${(tutor as any).firstName || ''} ${(tutor as any).lastName || ''}`.trim() || 'Your tutor',
+                  courseName,
+                  sessionDate: formatEmailDate(sessionDate, parentProfile?.timezone || undefined),
+                  sessionTime: formatEmailTime(sessionDate, parentProfile?.timezone || undefined),
+                  progressSummary: input.feedbackFromTutor || "",
+                  notesUrl: `${process.env.VITE_FRONTEND_FORGE_API_URL || ''}/session-notes`,
+                });
 
-              await emailService.sendEmail({
-                to: parent.email,
-                subject: `Session Notes for ${studentName} — ${courseName}`,
-                html: emailHtml,
-              });
+                await emailService.sendEmail({
+                  to: parent.email,
+                  subject: `Session Notes for ${studentName} — ${courseName}`,
+                  html: emailHtml,
+                });
 
-              console.log('[Session Notes Email] Sent to parent:', parent.email);
+                console.log('[Session Notes Email] Sent to parent:', parent.email);
+              }
+
+              // Send in-app notification on every save (first time or update)
+              const tutorName = `${(tutor as any).firstName || ''} ${(tutor as any).lastName || ''}`.trim() || tutor.name || 'Your tutor';
+              await db.createInAppNotification({
+                userId: session.parentId,
+                title: 'Session Notes Updated',
+                message: `${tutorName} has ${isFirstTimeNotes ? 'added' : 'updated'} session notes for ${studentName} — ${courseName}`,
+                type: 'session_reminder',
+                relatedId: session.id,
+              });
             }
           } catch (emailError) {
-            console.error('[Session Notes Email] Failed to send:', emailError);
+            console.error('[Session Notes] Failed to send notification:', emailError);
           }
         }
 
