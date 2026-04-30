@@ -169,8 +169,8 @@ export default function ParentPayments() {
               const isCancelled = inv.status === "void" || inv.status === "uncollectible";
               const isOpen = expanded[inv.id] ?? false;
               const invoiceDate = inv.created ? new Date(inv.created * 1000) : new Date();
-              const periodStartDate = inv.periodStart ? new Date(inv.periodStart * 1000) : invoiceDate;
-              const billingPeriod = format(periodStartDate, "MMMM yyyy");
+              const dueDateObj = inv.dueDate ? new Date(inv.dueDate * 1000) : null;
+              const paidAtObj = inv.paidAt ? new Date(inv.paidAt * 1000) : null;
 
               return (
                 <div
@@ -192,7 +192,11 @@ export default function ParentPayments() {
                             {format(invoiceDate, "MMMM d, yyyy")}
                           </span>
                         </div>
-                        <p className="text-sm text-muted-foreground">{billingPeriod}</p>
+                        <div className="flex items-center gap-3 text-sm text-muted-foreground flex-wrap">
+                          {dueDateObj && (
+                            <span>Due: {format(dueDateObj, "MMM d, yyyy")}</span>
+                          )}
+                        </div>
                         <div className="flex items-center gap-1.5 text-sm text-muted-foreground flex-wrap">
                           {inv.lines.length > 1 ? (
                             <>
@@ -245,7 +249,7 @@ export default function ParentPayments() {
                         </div>
                         {isPaid && (
                           <p className="text-sm text-green-600 font-medium">
-                            ✓ Paid {format(invoiceDate, "MMM d, yyyy")}
+                            ✓ Paid {format(paidAtObj ?? invoiceDate, "MMM d, yyyy")}
                           </p>
                         )}
                         {isUpcoming && (

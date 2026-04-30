@@ -3606,6 +3606,8 @@ export const appRouter = router({
           periodStart: number;
           periodEnd: number;
           created: number;
+          dueDate: number | null;
+          paidAt: number | null;
           hostedInvoiceUrl: string | null;
           invoicePdf: string | null;
           source: "stripe" | "local";
@@ -3762,6 +3764,8 @@ export const appRouter = router({
                 periodStart: inv.period_start,
                 periodEnd: inv.period_end,
                 created: inv.created,
+                dueDate: inv.due_date ?? null,
+                paidAt: (inv.status_transitions as any)?.paid_at ?? null,
                 hostedInvoiceUrl: inv.hosted_invoice_url ?? null,
                 invoicePdf: inv.invoice_pdf ?? null,
                 source: "stripe",
@@ -3863,6 +3867,8 @@ export const appRouter = router({
                   periodStart: nextBillingTs,
                   periodEnd: nextBillingTs,
                   created: nextBillingTs,
+                  dueDate: nextBillingTs,
+                  paidAt: null,
                   hostedInvoiceUrl: null,
                   invoicePdf: null,
                   source: "stripe",
@@ -3912,6 +3918,8 @@ export const appRouter = router({
             periodStart: createdTs,
             periodEnd: createdTs,
             created: createdTs,
+            dueDate: null,
+            paidAt: createdTs,
             hostedInvoiceUrl: null,
             invoicePdf: null,
             source: "local",
