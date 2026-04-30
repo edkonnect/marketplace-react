@@ -355,7 +355,8 @@ export default function ParentDashboard() {
 
   const activeSubscriptions = subscriptions?.filter(s => s.subscription.status === "active") || [];
   const inactiveSubscriptions = subscriptions?.filter(s => s.subscription.status !== "active") || [];
-  const completedSessions = sessionHistory?.filter(s => s.status === "completed") || [];
+  const completedSessions = sessionHistory?.filter(s => s.status === "completed" || s.status === "cancelled") || [];
+  const cancelledSessions = sessionHistory?.filter(s => s.status === "cancelled") || [];
 
   const [selectedHistoryStudent, setSelectedHistoryStudent] = useState<string>("all");
   const [selectedHistoryTime, setSelectedHistoryTime] = useState<string>("all");
@@ -1008,7 +1009,12 @@ export default function ParentDashboard() {
                   <div className="w-10 h-10 rounded-lg bg-success/10 flex items-center justify-center">
                     <Clock className="w-5 h-5 text-success" />
                   </div>
-                  <span className="text-3xl font-bold">{completedSessions.length}</span>
+                  <div>
+                    <span className="text-3xl font-bold">{completedSessions.length}</span>
+                    {cancelledSessions.length > 0 && (
+                      <p className="text-xs text-muted-foreground mt-0.5">{cancelledSessions.length} cancelled</p>
+                    )}
+                  </div>
                 </div>
               </CardContent>
             </Card>
