@@ -3606,8 +3606,9 @@ export const appRouter = router({
           periodStart: number;
           periodEnd: number;
           created: number;
-          dueDate: number | null;
-          paidAt: number | null;
+          issuedDate: string;
+          dueDate: string | null;
+          paidAt: string | null;
           hostedInvoiceUrl: string | null;
           invoicePdf: string | null;
           source: "stripe" | "local";
@@ -3629,6 +3630,11 @@ export const appRouter = router({
             perSessionRateCents?: number | null;
           }>;
         }> = [];
+
+        const fmtET = (ts: number | null | undefined): string | null => {
+          if (!ts) return null;
+          return new Date(ts * 1000).toLocaleDateString("en-CA", { timeZone: "UTC" });
+        };
 
         // Track which Stripe subscription IDs have at least one real paid invoice (amount > 0)
         const paidStripeSubIds = new Set<string>();
@@ -3764,8 +3770,9 @@ export const appRouter = router({
                 periodStart: inv.period_start,
                 periodEnd: inv.period_end,
                 created: inv.created,
-                dueDate: inv.due_date ?? null,
-                paidAt: (inv.status_transitions as any)?.paid_at ?? null,
+                issuedDate: fmtET(inv.created)!,
+                dueDate: fmtET(inv.due_date ?? null),
+                paidAt: fmtET((inv.status_transitions as any)?.paid_at ?? null),
                 hostedInvoiceUrl: inv.hosted_invoice_url ?? null,
                 invoicePdf: inv.invoice_pdf ?? null,
                 source: "stripe",
@@ -3867,7 +3874,8 @@ export const appRouter = router({
                   periodStart: nextBillingTs,
                   periodEnd: nextBillingTs,
                   created: nextBillingTs,
-                  dueDate: nextBillingTs,
+                  issuedDate: fmtET(nextBillingTs)!,
+                  dueDate: fmtET(nextBillingTs),
                   paidAt: null,
                   hostedInvoiceUrl: null,
                   invoicePdf: null,
@@ -3918,8 +3926,9 @@ export const appRouter = router({
             periodStart: createdTs,
             periodEnd: createdTs,
             created: createdTs,
+            issuedDate: fmtET(createdTs)!,
             dueDate: null,
-            paidAt: createdTs,
+            paidAt: fmtET(createdTs),
             hostedInvoiceUrl: null,
             invoicePdf: null,
             source: "local",

@@ -168,9 +168,10 @@ export default function ParentPayments() {
               const isUpcoming = inv.status === "upcoming";
               const isCancelled = inv.status === "void" || inv.status === "uncollectible";
               const isOpen = expanded[inv.id] ?? false;
+              const issuedDisplay = inv.issuedDate ? format(new Date(inv.issuedDate + "T00:00:00"), "MMMM d, yyyy") : "";
+              const dueDateDisplay = inv.dueDate ? format(new Date(inv.dueDate + "T00:00:00"), "MMM d, yyyy") : null;
+              const paidAtDisplay = inv.paidAt ? format(new Date(inv.paidAt + "T00:00:00"), "MMM d, yyyy") : null;
               const invoiceDate = inv.created ? new Date(inv.created * 1000) : new Date();
-              const dueDateObj = inv.dueDate ? new Date(inv.dueDate * 1000) : null;
-              const paidAtObj = inv.paidAt ? new Date(inv.paidAt * 1000) : null;
 
               return (
                 <div
@@ -189,12 +190,12 @@ export default function ParentPayments() {
                             {isUpcoming ? "Next Billing Date" : "Invoice Date"}
                           </span>
                           <span className="text-xl font-bold">
-                            {format(invoiceDate, "MMMM d, yyyy")}
+                            {issuedDisplay}
                           </span>
                         </div>
                         <div className="flex items-center gap-3 text-sm text-muted-foreground flex-wrap">
-                          {dueDateObj && (
-                            <span>Due: {format(dueDateObj, "MMM d, yyyy")}</span>
+                          {dueDateDisplay && (
+                            <span>Due: {dueDateDisplay}</span>
                           )}
                         </div>
                         <div className="flex items-center gap-1.5 text-sm text-muted-foreground flex-wrap">
@@ -249,12 +250,12 @@ export default function ParentPayments() {
                         </div>
                         {isPaid && (
                           <p className="text-sm text-green-600 font-medium">
-                            ✓ Paid {format(paidAtObj ?? invoiceDate, "MMM d, yyyy")}
+                            ✓ Paid {paidAtDisplay ?? issuedDisplay}
                           </p>
                         )}
                         {isUpcoming && (
                           <p className="text-sm text-blue-600 font-medium">
-                            ⏳ Scheduled — will be charged on {format(invoiceDate, "MMM d, yyyy")}
+                            ⏳ Scheduled — will be charged on {issuedDisplay}
                           </p>
                         )}
                       </div>
