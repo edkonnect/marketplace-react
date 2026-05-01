@@ -353,6 +353,7 @@ export default function TutorDashboard() {
   const { user, isAuthenticated, loading } = useAuth();
   const [, setLocation] = useLocation();
   const formatPrice = useFormatPrice();
+  const utils = trpc.useUtils();
 
   // Get tab from URL query parameter
   const urlParams = new URLSearchParams(window.location.search);
@@ -682,38 +683,8 @@ export default function TutorDashboard() {
     },
   });
 
-  const listRecordingInstancesQuery = trpc.zoom.listRecordingInstances.useQuery(
-    { sessionId: fixTranscriptSession?.sessionId ?? 0 },
-    { enabled: !!fixTranscriptSession }
-  );
-
-  // When instances load: if only 1, proceed automatically; if >1, show the modal for manual selection.
-  useEffect(() => {
-    const instances = listRecordingInstancesQuery.data;
-    const ctx = fixTranscriptSession;
-    if (!instances || !ctx || listRecordingInstancesQuery.isFetching) return;
-
-    if (instances.length === 1) {
-      // Only one recording — fetch normally (let server use cache or auto-detect)
-      setFixTranscriptSession(null);
-      setCheckingInstances((prev) => ({ ...prev, [ctx.sessionId]: false }));
-      fetchTranscriptMutation.mutate({
-        meetingId: ctx.meetingId,
-        sessionId: ctx.sessionId,
-        sessionScheduledAt: ctx.sessionScheduledAt,
-      });
-    } else if (instances.length === 0) {
-      // No recordings found — fall back to normal auto-detection
-      setFixTranscriptSession(null);
-      setCheckingInstances((prev) => ({ ...prev, [ctx.sessionId]: false }));
-      fetchTranscriptMutation.mutate({
-        meetingId: ctx.meetingId,
-        sessionId: ctx.sessionId,
-        sessionScheduledAt: ctx.sessionScheduledAt,
-      });
-    }
-    // If >1, leave fixTranscriptSession set so the modal shows
-  }, [listRecordingInstancesQuery.data, listRecordingInstancesQuery.isFetching, fixTranscriptSession]);
+  // Populated only when >1 recording instances exist — drives the picker modal
+  const [recordingInstances, setRecordingInstances] = useState<Array<{ uuid: string; startTime: string; durationMinutes: number; hasTranscript: boolean }>>([]);
 
   const summarizeMutation = trpc.ai.summarizeText.useMutation({
     onSuccess: (data) => {
@@ -1117,7 +1088,7 @@ export default function TutorDashboard() {
     });
   };
 
-  const handleFetchTranscript = (sessionId: number, joinUrl: string | null, scheduledAt?: number | null) => {
+  const handleFetchTranscript = async (sessionId: number, joinUrl: string | null, scheduledAt?: number | null) => {
     if (!joinUrl) {
       toast.error("No Zoom meeting URL found for this session");
       return;
@@ -1135,12 +1106,36 @@ export default function TutorDashboard() {
       return;
     }
 
-    // Check how many recording instances exist for this session's time window.
-    // If only 1 → the useEffect will auto-fetch it.
-    // If >1 → the modal will appear for manual selection.
     setCheckingInstances((prev) => ({ ...prev, [sessionId]: true }));
     setFixSelectedUuid("");
-    setFixTranscriptSession({ sessionId, meetingId, sessionScheduledAt: scheduledAt ?? 0 });
+
+    try {
+      // Fetch recording instances for this session imperatively — no useEffect race conditions
+      const instances = await utils.zoom.listRecordingInstances.fetch({ sessionId });
+
+      if (instances.length > 1) {
+        // Multiple recordings — show picker modal
+        setFixTranscriptSession({ sessionId, meetingId, sessionScheduledAt: scheduledAt ?? 0 });
+        setRecordingInstances(instances);
+        setCheckingInstances((prev) => ({ ...prev, [sessionId]: false }));
+      } else {
+        // 0 or 1 recording — proceed directly (server auto-detects or uses the one found)
+        setCheckingInstances((prev) => ({ ...prev, [sessionId]: false }));
+        fetchTranscriptMutation.mutate({
+          meetingId,
+          sessionId,
+          sessionScheduledAt: scheduledAt ?? undefined,
+        });
+      }
+    } catch {
+      // If instance check fails, fall back to normal fetch
+      setCheckingInstances((prev) => ({ ...prev, [sessionId]: false }));
+      fetchTranscriptMutation.mutate({
+        meetingId,
+        sessionId,
+        sessionScheduledAt: scheduledAt ?? undefined,
+      });
+    }
   };
 
   const handlePasteTranscript = (sessionId: number) => {
@@ -2273,7 +2268,7 @@ export default function TutorDashboard() {
                                             size="sm"
                                             variant="outline"
                                             onClick={() => handleFetchTranscript(session.id, session.joinUrl, session.scheduledAt)}
-                                            disabled={fetchingTranscripts[session.id] || checkingInstances[session.id] || listRecordingInstancesQuery.isFetching}
+                                            disabled={fetchingTranscripts[session.id] || checkingInstances[session.id] || fetchTranscriptMutation.isPending}
                                           >
                                             <FileText className="w-3 h-3 mr-1" />
                                             {fetchingTranscripts[session.id] || checkingInstances[session.id] ? "Fetching..." : "Fetch Transcript"}
@@ -3038,7 +3033,7 @@ export default function TutorDashboard() {
 	        </Dialog>
 	      )}
 	      {/* Wrong Transcript — pick correct recording instance */}
-	      <Dialog open={!!fixTranscriptSession && (listRecordingInstancesQuery.data?.length ?? 0) > 1} onOpenChange={open => { if (!open) { if (fixTranscriptSession) setCheckingInstances((prev) => ({ ...prev, [fixTranscriptSession.sessionId]: false })); setFixTranscriptSession(null); setFixSelectedUuid(""); } }}>
+	      <Dialog open={!!fixTranscriptSession && recordingInstances.length > 1} onOpenChange={open => { if (!open) { setFixTranscriptSession(null); setRecordingInstances([]); setFixSelectedUuid(""); } }}>
 	        <DialogContent className="max-w-lg">
 	          <DialogHeader>
 	            <DialogTitle>Select the Correct Recording</DialogTitle>
@@ -3047,10 +3042,7 @@ export default function TutorDashboard() {
 	            <p className="text-sm text-muted-foreground">
 	              Pick the recording for the actual class (usually the longest one).
 	            </p>
-	            {listRecordingInstancesQuery.isLoading && <p className="text-sm text-muted-foreground">Loading recordings from Zoom…</p>}
-	            {listRecordingInstancesQuery.error && <p className="text-sm text-destructive">Failed to load: {listRecordingInstancesQuery.error.message}</p>}
-	            {listRecordingInstancesQuery.data?.length === 0 && <p className="text-sm text-muted-foreground">No recordings found for this date.</p>}
-	            {listRecordingInstancesQuery.data?.map(instance => (
+	            {recordingInstances.map(instance => (
 	              <div
 	                key={instance.uuid}
 	                className={`flex items-start gap-3 p-3 border rounded-lg cursor-pointer transition-colors ${fixSelectedUuid === instance.uuid ? "border-primary bg-primary/5" : "hover:bg-accent"}`}
@@ -3065,7 +3057,7 @@ export default function TutorDashboard() {
 	            ))}
 	          </div>
 	          <DialogFooter>
-	            <Button variant="outline" onClick={() => { setFixTranscriptSession(null); setFixSelectedUuid(""); if (fixTranscriptSession) setCheckingInstances((prev) => ({ ...prev, [fixTranscriptSession.sessionId]: false })); }}>Cancel</Button>
+	            <Button variant="outline" onClick={() => { setFixTranscriptSession(null); setRecordingInstances([]); setFixSelectedUuid(""); }}>Cancel</Button>
 	            <Button
 	              disabled={!fixSelectedUuid || fetchTranscriptMutation.isPending}
 	              onClick={() => {
