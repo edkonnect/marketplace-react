@@ -575,8 +575,9 @@ export default function TutorDashboard() {
   const [fetchingTranscripts, setFetchingTranscripts] = useState<Record<number, boolean>>({});
   type PreferenceState = { preferred: boolean; hourlyRate: string; approvalStatus?: string };
   const [preferenceState, setPreferenceState] = useState<Record<number, PreferenceState>>({});
-  const [fixTranscriptSession, setFixTranscriptSession] = useState<null | { sessionId: number; meetingId: string; sessionScheduledAt: number; }>(null);
+  const [fixTranscriptSession, setFixTranscriptSession] = useState<null | { sessionId: number; meetingId: string; sessionScheduledAt: number }>(null);
   const [fixSelectedUuid, setFixSelectedUuid] = useState<string>("");
+  const [checkingInstances, setCheckingInstances] = useState<Record<number, boolean>>({});
 
   // Transcript processing state
   const [transcriptText, setTranscriptText] = useState<Record<number, string>>({});
@@ -644,6 +645,9 @@ export default function TutorDashboard() {
     onSuccess: (data, variables) => {
       const sessionId = variables.sessionId || 0;
       setFetchingTranscripts((prev) => ({ ...prev, [sessionId]: false }));
+      setCheckingInstances((prev) => ({ ...prev, [sessionId]: false }));
+      setFixTranscriptSession(null);
+      setFixSelectedUuid("");
       if (!data.transcript || data.transcript.trim().length === 0) {
         toast.warning("No transcript text found for this session. Audio transcript may not be enabled on Zoom.");
         return;
@@ -673,6 +677,8 @@ export default function TutorDashboard() {
         toast.error(message);
       }
       setFetchingTranscripts((prev) => ({ ...prev, [sessionId]: false }));
+      setCheckingInstances((prev) => ({ ...prev, [sessionId]: false }));
+      setFixTranscriptSession(null);
     },
   });
 
@@ -681,32 +687,33 @@ export default function TutorDashboard() {
     { enabled: !!fixTranscriptSession }
   );
 
-  const forceRefetchTranscriptMutation = trpc.zoom.fetchTranscript.useMutation({
-    onSuccess: (data, variables) => {
-      const sessionId = variables.sessionId || 0;
+  // When instances load: if only 1, proceed automatically; if >1, show the modal for manual selection.
+  useEffect(() => {
+    const instances = listRecordingInstancesQuery.data;
+    const ctx = fixTranscriptSession;
+    if (!instances || !ctx || listRecordingInstancesQuery.isFetching) return;
+
+    if (instances.length === 1) {
+      // Only one recording — fetch normally (let server use cache or auto-detect)
       setFixTranscriptSession(null);
-      setFixSelectedUuid("");
-      if (!data.transcript || data.transcript.trim().length === 0) {
-        toast.warning("No transcript text found for the selected recording.");
-        return;
-      }
-      const session = historySessions?.find((s) => s.id === sessionId);
-      const studentName = [session?.studentFirstName, session?.studentLastName].filter(Boolean).join(" ") || "Student";
-      setTranscriptModal({
-        sessionId,
-        transcript: data.transcript,
-        activeTab: "transcript",
-        courseTitle: (session as any)?.courseTitle || (session as any)?.courseSubject || "Course",
-        studentName,
-        sessionDate: session?.scheduledAt ? formatSessionTime(session.scheduledAt, tutorTimezone, 'EEEE, MMMM d, yyyy') : undefined,
-        courseId: session?.courseId ?? undefined,
-        parentId: session?.parentId ?? undefined,
-        quizEnabled: !!(session as any)?.courseQuizEnabled && !(session as any)?.hasQuiz,
+      setCheckingInstances((prev) => ({ ...prev, [ctx.sessionId]: false }));
+      fetchTranscriptMutation.mutate({
+        meetingId: ctx.meetingId,
+        sessionId: ctx.sessionId,
+        sessionScheduledAt: ctx.sessionScheduledAt,
       });
-      toast.success("Correct transcript loaded. Review it in the popup.");
-    },
-    onError: (e) => toast.error(e.message || "Failed to re-fetch transcript"),
-  });
+    } else if (instances.length === 0) {
+      // No recordings found — fall back to normal auto-detection
+      setFixTranscriptSession(null);
+      setCheckingInstances((prev) => ({ ...prev, [ctx.sessionId]: false }));
+      fetchTranscriptMutation.mutate({
+        meetingId: ctx.meetingId,
+        sessionId: ctx.sessionId,
+        sessionScheduledAt: ctx.sessionScheduledAt,
+      });
+    }
+    // If >1, leave fixTranscriptSession set so the modal shows
+  }, [listRecordingInstancesQuery.data, listRecordingInstancesQuery.isFetching, fixTranscriptSession]);
 
   const summarizeMutation = trpc.ai.summarizeText.useMutation({
     onSuccess: (data) => {
@@ -1116,61 +1123,24 @@ export default function TutorDashboard() {
       return;
     }
 
-    console.log("Attempting to extract meeting ID from:", joinUrl);
-
-    // Extract meeting ID from Zoom URL
-    // Support multiple formats:
-    // - https://zoom.us/j/85648346210
-    // - https://us05web.zoom.us/j/85648346210
-    // - https://us05web.zoom.us/s/85648346210 (start URL format)
-    // - https://zoom.us/j/85648346210?pwd=...
-    // - https://us05web.zoom.us/wc/join/85648346210
-    let meetingId: string | null = null;
-
-    // Try pattern 1: /j/NUMBER (join URL)
-    const pattern1 = joinUrl.match(/\/j\/(\d+)/);
-    if (pattern1) {
-      meetingId = pattern1[1];
-    }
-
-    // Try pattern 2: /s/NUMBER (start/host URL)
-    if (!meetingId) {
-      const pattern2 = joinUrl.match(/\/s\/(\d+)/);
-      if (pattern2) {
-        meetingId = pattern2[1];
-      }
-    }
-
-    // Try pattern 3: /join/NUMBER
-    if (!meetingId) {
-      const pattern3 = joinUrl.match(/\/join\/(\d+)/);
-      if (pattern3) {
-        meetingId = pattern3[1];
-      }
-    }
-
-    // Try pattern 4: Meeting ID in query params
-    if (!meetingId) {
-      const pattern4 = joinUrl.match(/[?&]confno=(\d+)/);
-      if (pattern4) {
-        meetingId = pattern4[1];
-      }
-    }
+    // Extract meeting ID from Zoom URL (supports /j/, /s/, /join/, ?confno= formats)
+    const meetingId = joinUrl.match(/\/j\/(\d+)/)?.[1]
+      ?? joinUrl.match(/\/s\/(\d+)/)?.[1]
+      ?? joinUrl.match(/\/join\/(\d+)/)?.[1]
+      ?? joinUrl.match(/[?&]confno=(\d+)/)?.[1]
+      ?? null;
 
     if (!meetingId) {
-      console.error("Failed to extract meeting ID from URL:", joinUrl);
       toast.error(`Could not extract meeting ID from URL: ${joinUrl}`);
       return;
     }
 
-    console.log("Extracted meeting ID:", meetingId);
-    setFetchingTranscripts((prev) => ({ ...prev, [sessionId]: true }));
-
-    fetchTranscriptMutation.mutate({
-      meetingId,
-      sessionId,
-      sessionScheduledAt: scheduledAt ?? undefined,
-    });
+    // Check how many recording instances exist for this session's time window.
+    // If only 1 → the useEffect will auto-fetch it.
+    // If >1 → the modal will appear for manual selection.
+    setCheckingInstances((prev) => ({ ...prev, [sessionId]: true }));
+    setFixSelectedUuid("");
+    setFixTranscriptSession({ sessionId, meetingId, sessionScheduledAt: scheduledAt ?? 0 });
   };
 
   const handlePasteTranscript = (sessionId: number) => {
@@ -2303,25 +2273,11 @@ export default function TutorDashboard() {
                                             size="sm"
                                             variant="outline"
                                             onClick={() => handleFetchTranscript(session.id, session.joinUrl, session.scheduledAt)}
-                                            disabled={fetchingTranscripts[session.id] || false}
+                                            disabled={fetchingTranscripts[session.id] || checkingInstances[session.id] || listRecordingInstancesQuery.isFetching}
                                           >
                                             <FileText className="w-3 h-3 mr-1" />
-                                            {fetchingTranscripts[session.id] ? "Fetching..." : "Fetch Transcript"}
+                                            {fetchingTranscripts[session.id] || checkingInstances[session.id] ? "Fetching..." : "Fetch Transcript"}
                                           </Button>
-                                          {(transcriptText[session.id] || session.feedbackFromTutor) && session.joinUrl && (
-                                            <Button
-                                              size="sm"
-                                              variant="ghost"
-                                              onClick={() => {
-                                                const urlMatch = session.joinUrl!.match(/\/[js]\/(\d+)/);
-                                                if (!urlMatch) { toast.error("Could not extract meeting ID from URL"); return; }
-                                                setFixTranscriptSession({ sessionId: session.id, meetingId: urlMatch[1], sessionScheduledAt: session.scheduledAt });
-                                                setFixSelectedUuid("");
-                                              }}
-                                            >
-                                              Wrong transcript?
-                                            </Button>
-                                          )}
                                           <Button
                                             size="sm"
                                             variant="outline"
@@ -3082,7 +3038,7 @@ export default function TutorDashboard() {
 	        </Dialog>
 	      )}
 	      {/* Wrong Transcript — pick correct recording instance */}
-	      <Dialog open={!!fixTranscriptSession} onOpenChange={open => { if (!open) { setFixTranscriptSession(null); setFixSelectedUuid(""); } }}>
+	      <Dialog open={!!fixTranscriptSession && (listRecordingInstancesQuery.data?.length ?? 0) > 1} onOpenChange={open => { if (!open) { if (fixTranscriptSession) setCheckingInstances((prev) => ({ ...prev, [fixTranscriptSession.sessionId]: false })); setFixTranscriptSession(null); setFixSelectedUuid(""); } }}>
 	        <DialogContent className="max-w-lg">
 	          <DialogHeader>
 	            <DialogTitle>Select the Correct Recording</DialogTitle>
@@ -3109,12 +3065,12 @@ export default function TutorDashboard() {
 	            ))}
 	          </div>
 	          <DialogFooter>
-	            <Button variant="outline" onClick={() => { setFixTranscriptSession(null); setFixSelectedUuid(""); }}>Cancel</Button>
+	            <Button variant="outline" onClick={() => { setFixTranscriptSession(null); setFixSelectedUuid(""); if (fixTranscriptSession) setCheckingInstances((prev) => ({ ...prev, [fixTranscriptSession.sessionId]: false })); }}>Cancel</Button>
 	            <Button
-	              disabled={!fixSelectedUuid || forceRefetchTranscriptMutation.isPending}
+	              disabled={!fixSelectedUuid || fetchTranscriptMutation.isPending}
 	              onClick={() => {
 	                if (!fixTranscriptSession || !fixSelectedUuid) return;
-	                forceRefetchTranscriptMutation.mutate({
+	                fetchTranscriptMutation.mutate({
 	                  meetingId: fixTranscriptSession.meetingId,
 	                  sessionId: fixTranscriptSession.sessionId,
 	                  sessionScheduledAt: fixTranscriptSession.sessionScheduledAt,
@@ -3122,7 +3078,7 @@ export default function TutorDashboard() {
 	                });
 	              }}
 	            >
-	              {forceRefetchTranscriptMutation.isPending ? "Re-fetching…" : "Re-fetch Transcript"}
+	              {fetchTranscriptMutation.isPending ? "Re-fetching…" : "Re-fetch Transcript"}
 	            </Button>
 	          </DialogFooter>
 	        </DialogContent>
