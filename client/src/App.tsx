@@ -49,10 +49,21 @@ function ScrollToTop() {
   return null;
 }
 
+function Analytics() {
+  const [location] = useLocation();
+  useEffect(() => {
+    if (typeof window.gtag === 'function' && import.meta.env.VITE_GA_MEASUREMENT_ID) {
+      window.gtag('event', 'page_view', { page_path: location });
+    }
+  }, [location]);
+  return null;
+}
+
 function Router() {
   return (
     <>
       <ScrollToTop />
+      <Analytics />
       <Switch>
       <Route path={"/"} component={Home} />
       <Route path={"/signup"} component={SignUp} />
