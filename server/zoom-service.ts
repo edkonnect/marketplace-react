@@ -318,32 +318,39 @@ export async function findRecordingUuidBySessionTime(
     return null;
   }
 
-  // Step 4: Pick the recording whose start_time is closest to sessionStartMs
-  let bestUuid: string | null = null;
-  let bestDiff = Infinity;
+  // Step 4: Among recordings within the tolerance window, prefer the LONGEST.
+  // When a session has multiple instances (e.g., participants left and rejoined due to
+  // audio issues), the longer recording is almost always the actual class.
+  // Ties within 2 minutes of duration fall back to closest start_time.
+  const DURATION_TIE_THRESHOLD_MINUTES = 2;
 
-  for (const rec of meetingRecordings) {
-    const diff = Math.abs(new Date(rec.start_time).getTime() - sessionStartMs);
-    if (diff < bestDiff) {
-      bestDiff = diff;
-      bestUuid = rec.uuid;
-    }
-  }
+  const withinTolerance = meetingRecordings.filter(rec =>
+    Math.abs(new Date(rec.start_time).getTime() - sessionStartMs) <= toleranceMs
+  );
 
-  if (bestDiff > toleranceMs) {
+  if (withinTolerance.length === 0) {
     console.warn(
-      `[ZoomService] Closest recording for meetingId=${meetingId} is ${Math.round(bestDiff / 60000)} min away ` +
-      `from session time ${sessionDate.toISOString()} — exceeds ${toleranceMs / 60000} min tolerance`
+      `[ZoomService] No recordings within ${toleranceMs / 60000} min of session ` +
+      `${sessionDate.toISOString()} for meetingId=${meetingId}`
     );
     return null;
   }
 
+  withinTolerance.sort((a, b) => {
+    const durationDiff = b.duration - a.duration;
+    if (Math.abs(durationDiff) > DURATION_TIE_THRESHOLD_MINUTES) return durationDiff;
+    const diffA = Math.abs(new Date(a.start_time).getTime() - sessionStartMs);
+    const diffB = Math.abs(new Date(b.start_time).getTime() - sessionStartMs);
+    return diffA - diffB;
+  });
+
+  const best = withinTolerance[0];
   console.log(
-    `[ZoomService] Matched recording uuid=${bestUuid} for meetingId=${meetingId}, ` +
-    `diff=${Math.round(bestDiff / 60000)} min from session time ${sessionDate.toISOString()}`
+    `[ZoomService] Matched recording uuid=${best.uuid} (duration=${best.duration}min) ` +
+    `for meetingId=${meetingId}, ${withinTolerance.length} candidate(s) in window`
   );
 
-  return bestUuid;
+  return best.uuid;
 }
 
 /**

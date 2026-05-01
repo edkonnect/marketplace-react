@@ -635,6 +635,7 @@ export async function getTutorProfileByUserId(userId: number) {
       approvalStatus: tutorProfiles.approvalStatus,
       createdAt: tutorProfiles.createdAt,
       updatedAt: tutorProfiles.updatedAt,
+      zoomMeetingId: tutorProfiles.zoomMeetingId,
       name: users.name,
       email: users.email,
       timezone: users.timezone,
@@ -3859,12 +3860,14 @@ export async function getAllSessionsWithDetails() {
       course: courses,
       tutorUser: { id: tutorUsers.id, name: tutorUsers.name, email: tutorUsers.email },
       parentUser: { id: parentUsers.id, name: parentUsers.name, email: parentUsers.email },
+      tutorProfile: { zoomMeetingId: tutorProfiles.zoomMeetingId },
     })
     .from(sessions)
     .leftJoin(subscriptions, eq(sessions.subscriptionId, subscriptions.id))
     .leftJoin(courses, eq(subscriptions.courseId, courses.id))
     .leftJoin(tutorUsers, eq(sessions.tutorId, tutorUsers.id))
     .leftJoin(parentUsers, eq(sessions.parentId, parentUsers.id))
+    .leftJoin(tutorProfiles, eq(sessions.tutorId, tutorProfiles.userId))
     .orderBy(desc(sessions.scheduledAt));
 
   return result.map(row => ({
@@ -3886,6 +3889,7 @@ export async function getAllSessionsWithDetails() {
     tutorEmail: row.tutorUser?.email || null,
     parentName: row.parentUser?.name || null,
     parentEmail: row.parentUser?.email || null,
+    zoomMeetingId: row.tutorProfile?.zoomMeetingId || null,
   }));
 }
 

@@ -7262,6 +7262,86 @@ For engagementData, describe ONLY the student's participation and behavior. The 
       }),
 
     /**
+     * List all recording instances for a meetingId on a given date.
+     * Used to identify the correct recording when a session has multiple instances
+     * (e.g., participants left and rejoined, creating a short failed attempt + a longer real class).
+     */
+    listRecordingInstances: protectedProcedure
+      .input(z.object({
+        sessionId: z.number(),
+      }))
+      .query(async ({ input, ctx }) => {
+        // Verify session ownership and derive meetingId from tutor's profile server-side.
+        const session = await db.getSessionById(input.sessionId);
+        if (!session) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'Session not found' });
+        }
+        const userId = ctx.user.id;
+        const role = ctx.user.role;
+        if (role !== 'admin' && session.tutorId !== userId && session.parentId !== userId) {
+          throw new TRPCError({ code: 'FORBIDDEN', message: 'You do not have access to this session' });
+        }
+
+        // Get meetingId from the tutor's profile — not from the client
+        const tutorProfile = await db.getTutorProfileByUserId(session.tutorId!);
+        if (!tutorProfile?.zoomMeetingId) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'No Zoom meeting configured for this tutor' });
+        }
+        const meetingId = tutorProfile.zoomMeetingId;
+        const sessionScheduledAt = Number(session.scheduledAt);
+
+        const { getZoomAccessToken } = await import('./zoom-service');
+        const ZOOM_API_BASE_URL = 'https://api.zoom.us/v2';
+
+        const from = new Date(sessionScheduledAt - 86400000).toISOString().slice(0, 10);
+        const to   = new Date(sessionScheduledAt + 86400000).toISOString().slice(0, 10);
+
+        // Resolve host email so we can list all instances (not just latest)
+        const accessToken = await getZoomAccessToken();
+        const infoRes = await fetch(`${ZOOM_API_BASE_URL}/meetings/${meetingId}`, {
+          headers: { Authorization: `Bearer ${accessToken}` }
+        });
+        let zoomUserId = 'me';
+        if (infoRes.ok) {
+          const info = await infoRes.json();
+          if (info.host_email) zoomUserId = info.host_email;
+        }
+
+        // Paginate through all recordings for that date range
+        const allMeetings: any[] = [];
+        let nextPageToken: string | undefined;
+        do {
+          const token = await getZoomAccessToken();
+          const params = new URLSearchParams({ page_size: '100', from, to });
+          if (nextPageToken) params.append('next_page_token', nextPageToken);
+          const res = await fetch(
+            `${ZOOM_API_BASE_URL}/users/${encodeURIComponent(zoomUserId)}/recordings?${params}`,
+            { headers: { Authorization: `Bearer ${token}` } }
+          );
+          if (!res.ok) {
+            const errText = await res.text();
+            throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: `Zoom API error: ${errText}` });
+          }
+          const data = await res.json();
+          allMeetings.push(...(data.meetings ?? []));
+          nextPageToken = data.next_page_token;
+        } while (nextPageToken);
+
+        const TOLERANCE_MS = 40 * 60 * 1000; // same window as auto-detection
+
+        return allMeetings
+          .filter(m => String(m.id) === String(meetingId))
+          .filter(m => Math.abs(new Date(m.start_time).getTime() - sessionScheduledAt) <= TOLERANCE_MS)
+          .map(m => ({
+            uuid: m.uuid as string,
+            startTime: m.start_time as string,
+            durationMinutes: m.duration as number,
+            hasTranscript: (m.recording_files as any[])?.some((f: any) => f.file_type === 'TRANSCRIPT') ?? false,
+          }))
+          .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
+      }),
+
+    /**
      * Fetch transcript for a specific meeting
      */
     fetchTranscript: protectedProcedure
@@ -7269,8 +7349,9 @@ For engagementData, describe ONLY the student's participation and behavior. The 
         meetingId: z.string(),
         sessionId: z.number().optional(),
         sessionScheduledAt: z.number().optional(), // Unix ms — used to find the correct recording instance
+        forceUuid: z.string().optional(), // Admin override: bypass cache + auto-detection, use this UUID
       }))
-      .mutation(async ({ input }) => {
+      .mutation(async ({ input, ctx }) => {
         const { fetchZoomTranscript, getZoomRecording, findRecordingUuidBySessionTime } = await import('./zoom-service');
         const { zoomMeetingRecordings } = await import('../drizzle/schema');
         const database = await db.getDb();
@@ -7282,9 +7363,35 @@ For engagementData, describe ONLY the student's participation and behavior. The 
         const { eq, and, isNull, sql: drizzleSql } = await import('drizzle-orm');
 
         try {
+          // Ownership check: verify the session belongs to the calling user before any mutation.
+          if (input.sessionId) {
+            const session = await db.getSessionById(input.sessionId);
+            if (!session) {
+              throw new TRPCError({ code: 'NOT_FOUND', message: 'Session not found' });
+            }
+            const userId = ctx.user.id;
+            const role = ctx.user.role;
+            if (role !== 'admin' && session.tutorId !== userId && session.parentId !== userId) {
+              throw new TRPCError({ code: 'FORBIDDEN', message: 'You do not have access to this session' });
+            }
+          }
+
+          // Admin override: delete the existing (wrong) row and re-fetch using the specified UUID,
+          // bypassing both the cache check and auto-detection below.
+          if (input.forceUuid && input.sessionId) {
+            await database.delete(zoomMeetingRecordings).where(
+              and(
+                eq(zoomMeetingRecordings.sessionId, input.sessionId),
+                eq(zoomMeetingRecordings.meetingId, input.meetingId),
+              )
+            );
+            console.log(`[fetchTranscript] forceUuid=${input.forceUuid} — cleared existing rows for sessionId=${input.sessionId}`);
+          }
+
           // If we have a sessionId, check if transcript is already saved — return it directly.
           // Only trust completed rows whose meetingId matches current credentials.
-          if (input.sessionId) {
+          // Skipped when forceUuid is set (row was just deleted above).
+          if (input.sessionId && !input.forceUuid) {
             const existing = await database
               .select()
               .from(zoomMeetingRecordings)
@@ -7347,12 +7454,12 @@ For engagementData, describe ONLY the student's participation and behavior. The 
           }
 
           // Determine the correct recording UUID to fetch.
-          // Priority order:
+          // forceUuid takes top priority; otherwise:
           // 1. UUID already saved in DB for this session (webhook already matched it, same meetingId)
-          // 2. Find UUID by session time — list all recordings and pick the closest one
-          let meetingIdToFetch = input.meetingId;
+          // 2. Find UUID by session time — list all recordings and pick longest within tolerance
+          let meetingIdToFetch = input.forceUuid || input.meetingId;
 
-          if (input.sessionId) {
+          if (!input.forceUuid && input.sessionId) {
             const savedRecording = await database
               .select({ id: zoomMeetingRecordings.id, meetingId: zoomMeetingRecordings.meetingId })
               .from(zoomMeetingRecordings)
@@ -7364,20 +7471,18 @@ For engagementData, describe ONLY the student's participation and behavior. The 
               meetingIdToFetch = savedRecording[0].id;
               console.log(`[fetchTranscript] Using webhook-matched UUID=${meetingIdToFetch} for sessionId=${input.sessionId}`);
             } else if (input.sessionScheduledAt) {
-              // No webhook match yet — find the recording closest to session time
+              // No webhook match yet — find the recording longest within the tolerance window
               const uuid = await findRecordingUuidBySessionTime(input.meetingId, input.sessionScheduledAt);
               if (uuid) {
                 meetingIdToFetch = uuid;
                 console.log(`[fetchTranscript] Time-matched UUID=${uuid} for sessionId=${input.sessionId} scheduledAt=${new Date(input.sessionScheduledAt).toISOString()}`);
               } else {
-                // Fix 4: No matching recording found — don't fall back to latest (wrong session)
                 throw new TRPCError({
                   code: 'NOT_FOUND',
                   message: 'No recording found for this session. Please check that cloud recording was enabled and the session was recorded in Zoom.',
                 });
               }
             } else {
-              // Fix 4: No scheduledAt provided and no saved match — can't safely pick a recording
               throw new TRPCError({
                 code: 'NOT_FOUND',
                 message: 'No recording found for this session. Please check that cloud recording was enabled and the session was recorded in Zoom.',

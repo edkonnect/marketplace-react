@@ -575,6 +575,8 @@ export default function TutorDashboard() {
   const [fetchingTranscripts, setFetchingTranscripts] = useState<Record<number, boolean>>({});
   type PreferenceState = { preferred: boolean; hourlyRate: string; approvalStatus?: string };
   const [preferenceState, setPreferenceState] = useState<Record<number, PreferenceState>>({});
+  const [fixTranscriptSession, setFixTranscriptSession] = useState<null | { sessionId: number; meetingId: string; sessionScheduledAt: number; }>(null);
+  const [fixSelectedUuid, setFixSelectedUuid] = useState<string>("");
 
   // Transcript processing state
   const [transcriptText, setTranscriptText] = useState<Record<number, string>>({});
@@ -672,6 +674,38 @@ export default function TutorDashboard() {
       }
       setFetchingTranscripts((prev) => ({ ...prev, [sessionId]: false }));
     },
+  });
+
+  const listRecordingInstancesQuery = trpc.zoom.listRecordingInstances.useQuery(
+    { sessionId: fixTranscriptSession?.sessionId ?? 0 },
+    { enabled: !!fixTranscriptSession }
+  );
+
+  const forceRefetchTranscriptMutation = trpc.zoom.fetchTranscript.useMutation({
+    onSuccess: (data, variables) => {
+      const sessionId = variables.sessionId || 0;
+      setFixTranscriptSession(null);
+      setFixSelectedUuid("");
+      if (!data.transcript || data.transcript.trim().length === 0) {
+        toast.warning("No transcript text found for the selected recording.");
+        return;
+      }
+      const session = historySessions?.find((s) => s.id === sessionId);
+      const studentName = [session?.studentFirstName, session?.studentLastName].filter(Boolean).join(" ") || "Student";
+      setTranscriptModal({
+        sessionId,
+        transcript: data.transcript,
+        activeTab: "transcript",
+        courseTitle: (session as any)?.courseTitle || (session as any)?.courseSubject || "Course",
+        studentName,
+        sessionDate: session?.scheduledAt ? formatSessionTime(session.scheduledAt, tutorTimezone, 'EEEE, MMMM d, yyyy') : undefined,
+        courseId: session?.courseId ?? undefined,
+        parentId: session?.parentId ?? undefined,
+        quizEnabled: !!(session as any)?.courseQuizEnabled && !(session as any)?.hasQuiz,
+      });
+      toast.success("Correct transcript loaded. Review it in the popup.");
+    },
+    onError: (e) => toast.error(e.message || "Failed to re-fetch transcript"),
   });
 
   const summarizeMutation = trpc.ai.summarizeText.useMutation({
@@ -2274,6 +2308,20 @@ export default function TutorDashboard() {
                                             <FileText className="w-3 h-3 mr-1" />
                                             {fetchingTranscripts[session.id] ? "Fetching..." : "Fetch Transcript"}
                                           </Button>
+                                          {(transcriptText[session.id] || session.feedbackFromTutor) && session.joinUrl && (
+                                            <Button
+                                              size="sm"
+                                              variant="ghost"
+                                              onClick={() => {
+                                                const urlMatch = session.joinUrl!.match(/\/[js]\/(\d+)/);
+                                                if (!urlMatch) { toast.error("Could not extract meeting ID from URL"); return; }
+                                                setFixTranscriptSession({ sessionId: session.id, meetingId: urlMatch[1], sessionScheduledAt: session.scheduledAt });
+                                                setFixSelectedUuid("");
+                                              }}
+                                            >
+                                              Wrong transcript?
+                                            </Button>
+                                          )}
                                           <Button
                                             size="sm"
                                             variant="outline"
@@ -3033,6 +3081,53 @@ export default function TutorDashboard() {
 	          </DialogContent>
 	        </Dialog>
 	      )}
+	      {/* Wrong Transcript — pick correct recording instance */}
+	      <Dialog open={!!fixTranscriptSession} onOpenChange={open => { if (!open) { setFixTranscriptSession(null); setFixSelectedUuid(""); } }}>
+	        <DialogContent className="max-w-lg">
+	          <DialogHeader>
+	            <DialogTitle>Select the Correct Recording</DialogTitle>
+	          </DialogHeader>
+	          <div className="py-2 space-y-3">
+	            <p className="text-sm text-muted-foreground">
+	              Pick the recording for the actual class (usually the longest one).
+	            </p>
+	            {listRecordingInstancesQuery.isLoading && <p className="text-sm text-muted-foreground">Loading recordings from Zoom…</p>}
+	            {listRecordingInstancesQuery.error && <p className="text-sm text-destructive">Failed to load: {listRecordingInstancesQuery.error.message}</p>}
+	            {listRecordingInstancesQuery.data?.length === 0 && <p className="text-sm text-muted-foreground">No recordings found for this date.</p>}
+	            {listRecordingInstancesQuery.data?.map(instance => (
+	              <div
+	                key={instance.uuid}
+	                className={`flex items-start gap-3 p-3 border rounded-lg cursor-pointer transition-colors ${fixSelectedUuid === instance.uuid ? "border-primary bg-primary/5" : "hover:bg-accent"}`}
+	                onClick={() => setFixSelectedUuid(instance.uuid)}
+	              >
+	                <input type="radio" readOnly checked={fixSelectedUuid === instance.uuid} className="mt-1 cursor-pointer" />
+	                <div className="flex-1 text-sm">
+	                  <p className="font-medium">{new Date(instance.startTime).toLocaleString()} — {instance.durationMinutes} min</p>
+	                  {instance.hasTranscript && <span className="text-xs text-muted-foreground">Has transcript file</span>}
+	                </div>
+	              </div>
+	            ))}
+	          </div>
+	          <DialogFooter>
+	            <Button variant="outline" onClick={() => { setFixTranscriptSession(null); setFixSelectedUuid(""); }}>Cancel</Button>
+	            <Button
+	              disabled={!fixSelectedUuid || forceRefetchTranscriptMutation.isPending}
+	              onClick={() => {
+	                if (!fixTranscriptSession || !fixSelectedUuid) return;
+	                forceRefetchTranscriptMutation.mutate({
+	                  meetingId: fixTranscriptSession.meetingId,
+	                  sessionId: fixTranscriptSession.sessionId,
+	                  sessionScheduledAt: fixTranscriptSession.sessionScheduledAt,
+	                  forceUuid: fixSelectedUuid,
+	                });
+	              }}
+	            >
+	              {forceRefetchTranscriptMutation.isPending ? "Re-fetching…" : "Re-fetch Transcript"}
+	            </Button>
+	          </DialogFooter>
+	        </DialogContent>
+	      </Dialog>
+
 	      <Footer />
 	    </div>
 	  );

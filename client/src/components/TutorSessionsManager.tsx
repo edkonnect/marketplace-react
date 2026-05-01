@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Calendar, Clock, ChevronDown, ChevronUp, FileText, Download, Sparkles, Search, X } from "lucide-react";
 import { formatSessionTime, convertFromUTC, createTimestamp } from "@/../../shared/timezone-utils";
 import { trpc } from "@/lib/trpc";
@@ -35,6 +36,12 @@ export function TutorSessionsManager({
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
   const [fetchingTranscripts, setFetchingTranscripts] = useState<Record<number, boolean>>({});
   const [summarizingSessionId, setSummarizingSessionId] = useState<number | null>(null);
+  const [fixTranscriptSession, setFixTranscriptSession] = useState<null | {
+    sessionId: number;
+    meetingId: string;
+    sessionScheduledAt: number;
+  }>(null);
+  const [selectedUuid, setSelectedUuid] = useState<string>("");
   const [studentFilter, setStudentFilter] = useState("");
   const [courseFilter, setCourseFilter] = useState("all");
   const [trialFilter, setTrialFilter] = useState<"all" | "trial" | "regular">("all");
@@ -75,6 +82,20 @@ export function TutorSessionsManager({
       }
       setFetchingTranscripts((prev) => ({ ...prev, [variables.sessionId || 0]: false }));
     },
+  });
+
+  const listInstancesQuery = trpc.zoom.listRecordingInstances.useQuery(
+    { sessionId: fixTranscriptSession?.sessionId ?? 0 },
+    { enabled: !!fixTranscriptSession }
+  );
+
+  const forceRefetchMutation = trpc.zoom.fetchTranscript.useMutation({
+    onSuccess: () => {
+      toast.success("Transcript re-fetched successfully!");
+      setFixTranscriptSession(null);
+      setSelectedUuid("");
+    },
+    onError: (e) => toast.error(e.message),
   });
 
   const handleFetchTranscript = async (session: any) => {
@@ -548,6 +569,24 @@ export function TutorSessionsManager({
                               </>
                             )}
                           </Button>
+                          {session.joinUrl && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => {
+                                const urlMatch = session.joinUrl.match(/\/[js]\/(\d+)/);
+                                if (!urlMatch) { toast.error("Could not extract meeting ID from URL"); return; }
+                                setFixTranscriptSession({
+                                  sessionId: session.id,
+                                  meetingId: urlMatch[1],
+                                  sessionScheduledAt: session.scheduledAt,
+                                });
+                                setSelectedUuid("");
+                              }}
+                            >
+                              Wrong transcript?
+                            </Button>
+                          )}
                           <Button
                             size="sm"
                             variant="outline"
@@ -625,6 +664,52 @@ export function TutorSessionsManager({
         );
       })}
       </div>
+
+      <Dialog open={!!fixTranscriptSession} onOpenChange={open => { if (!open) { setFixTranscriptSession(null); setSelectedUuid(""); } }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Select the Correct Recording</DialogTitle>
+          </DialogHeader>
+          <div className="py-2 space-y-3">
+            <p className="text-sm text-muted-foreground">
+              Pick the recording for the actual class session (usually the longest one).
+            </p>
+            {listInstancesQuery.isLoading && <p className="text-sm text-muted-foreground">Loading recordings from Zoom…</p>}
+            {listInstancesQuery.error && <p className="text-sm text-destructive">Failed to load: {listInstancesQuery.error.message}</p>}
+            {listInstancesQuery.data?.length === 0 && <p className="text-sm text-muted-foreground">No recordings found for this date.</p>}
+            {listInstancesQuery.data?.map(instance => (
+              <div
+                key={instance.uuid}
+                className={`flex items-start gap-3 p-3 border rounded-lg cursor-pointer transition-colors ${selectedUuid === instance.uuid ? "border-primary bg-primary/5" : "hover:bg-accent"}`}
+                onClick={() => setSelectedUuid(instance.uuid)}
+              >
+                <input type="radio" readOnly checked={selectedUuid === instance.uuid} className="mt-1 cursor-pointer" />
+                <div className="flex-1 text-sm">
+                  <p className="font-medium">{new Date(instance.startTime).toLocaleString()} — {instance.durationMinutes} min</p>
+                  {instance.hasTranscript && <Badge variant="outline" className="mt-1 text-xs">Has transcript file</Badge>}
+                </div>
+              </div>
+            ))}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setFixTranscriptSession(null); setSelectedUuid(""); }}>Cancel</Button>
+            <Button
+              disabled={!selectedUuid || forceRefetchMutation.isPending}
+              onClick={() => {
+                if (!fixTranscriptSession || !selectedUuid) return;
+                forceRefetchMutation.mutate({
+                  meetingId: fixTranscriptSession.meetingId,
+                  sessionId: fixTranscriptSession.sessionId,
+                  sessionScheduledAt: fixTranscriptSession.sessionScheduledAt,
+                  forceUuid: selectedUuid,
+                });
+              }}
+            >
+              {forceRefetchMutation.isPending ? "Re-fetching…" : "Re-fetch Transcript"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
