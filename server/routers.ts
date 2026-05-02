@@ -4370,11 +4370,37 @@ export const appRouter = router({
             (p.status || '').toLowerCase() === 'completed'
         );
         const totalPayments = completedPayments.length;
-        const totalRevenue = completedPayments.reduce((sum, p) => {
+        let totalRevenue = completedPayments.reduce((sum, p) => {
           const amt = parseFloat(p.amount);
           return sum + (isFinite(amt) ? amt : 0);
         }, 0);
-        
+
+        // Add Stripe revenue for migrated parents (paid subs with no payment row)
+        const paymentSubIds = new Set(completedPayments.map(p => p.subscriptionId));
+        const migratedSubs = allSubscriptions.filter(
+          ({ subscription }) =>
+            !paymentSubIds.has(subscription.id) &&
+            (subscription.paymentStatus === 'paid' || subscription.paymentStatus === 'completed')
+        );
+        const migratedParentIds = [...new Set(migratedSubs.map(({ subscription }) => subscription.parentId))];
+        if (migratedParentIds.length > 0) {
+          const { listStripeInvoicesForCustomer } = await import("./stripe");
+          const allUsers2 = allUsers; // already fetched above
+          await Promise.all(migratedParentIds.map(async (parentId) => {
+            const parent = allUsers2.find((u: any) => u.id === parentId) as any;
+            if (!parent?.stripeCustomerId) return;
+            try {
+              const invoices = await listStripeInvoicesForCustomer(parent.stripeCustomerId, 100);
+              const rev = invoices
+                .filter((inv: any) => inv.status === 'paid' && inv.amount_paid > 0)
+                .reduce((sum: number, inv: any) => sum + inv.amount_paid / 100, 0);
+              totalRevenue += rev;
+            } catch {
+              // Stripe fetch failed — skip
+            }
+          }));
+        }
+
         return {
           totalUsers,
           totalParents,
@@ -5014,6 +5040,26 @@ export const appRouter = router({
       ].filter(Boolean))];
       const courseCache = await batchFetch(uniqueCourseIds, id => db.getCourseById(id) as Promise<any>);
 
+      // Fetch real Stripe revenue for migrated parents that have a stripeCustomerId
+      const migratedParentIds = [...new Set(migratedPaidSubs.map(({ subscription }) => subscription.parentId))];
+      const stripeRevenueByParent = new Map<number, number>();
+      if (migratedParentIds.length > 0) {
+        const { listStripeInvoicesForCustomer } = await import("./stripe");
+        await Promise.all(migratedParentIds.map(async (parentId) => {
+          const parent = parentCache.get(parentId) as any;
+          if (!parent?.stripeCustomerId) return;
+          try {
+            const invoices = await listStripeInvoicesForCustomer(parent.stripeCustomerId, 100);
+            const revenue = invoices
+              .filter((inv: any) => inv.status === 'paid' && inv.amount_paid > 0)
+              .reduce((sum: number, inv: any) => sum + inv.amount_paid / 100, 0);
+            if (revenue > 0) stripeRevenueByParent.set(parentId, revenue);
+          } catch {
+            // Stripe fetch failed — leave at 0
+          }
+        }));
+      }
+
       const parentMap = new Map<number, ParentEntry>();
 
       function ensureParent(parentId: number) {
@@ -5064,15 +5110,24 @@ export const appRouter = router({
         addToStudent(entry, studentName, course?.title ?? null, safeAmt);
       }
 
-      // Migrated paid subscriptions: course.price is unreliable (may be INR).
-      // Count enrollments for context but mark them so the UI can distinguish them.
+      // Migrated paid subscriptions: use real Stripe revenue where available.
+      // Revenue is attributed at the parent level (can't split invoices per-student),
+      // so per-student rows still show migrated badge with $0.
+      const migratedParentRevenueCredited = new Set<number>();
       for (const { subscription, course } of migratedPaidSubs) {
         const entry = ensureParent(subscription.parentId);
         entry.count += 1;
 
+        // Credit Stripe revenue once per parent (first migrated sub encountered)
+        if (!migratedParentRevenueCredited.has(subscription.parentId)) {
+          migratedParentRevenueCredited.add(subscription.parentId);
+          const stripeRev = stripeRevenueByParent.get(subscription.parentId) ?? 0;
+          entry.total += stripeRev;
+        }
+
         const studentName = `${subscription.studentFirstName || ''} ${subscription.studentLastName || ''}`.trim() || 'Unknown Student';
         const courseName = course?.title ?? null;
-        // Use -1 as sentinel to indicate "migrated — amount unknown"
+        // Per-student still shows migrated badge — amounts can't be split per invoice
         addToStudent(entry, studentName, courseName, -1);
       }
 
