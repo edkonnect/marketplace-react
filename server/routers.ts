@@ -4961,16 +4961,6 @@ export const appRouter = router({
       }),
 
     getParentRevenueBreakdown: superAdminProcedure.query(async () => {
-      const allPayments = await db.getAllPayments();
-      const completed = allPayments.filter(
-        p => p.subscriptionId != null && (p.status || '').toLowerCase() === 'completed'
-      ) as (typeof allPayments[number] & { subscriptionId: number })[];
-
-      // Pre-fetch all unique parents, subscriptions, and courses in parallel batches
-      // to avoid thousands of concurrent DB calls
-      const uniqueParentIds = [...new Set(completed.map(p => p.parentId))];
-      const uniqueSubIds    = [...new Set(completed.map(p => p.subscriptionId))];
-
       const BATCH = 50;
       async function batchFetch<T>(ids: number[], fetcher: (id: number) => Promise<T | undefined>) {
         const results = new Map<number, T>();
@@ -4984,57 +4974,100 @@ export const appRouter = router({
         return results;
       }
 
+      type StudentEntry = { studentName: string; courseName: string | null; total: number; count: number };
+      type ParentEntry  = { parentId: number; parentName: string; parentEmail: string; total: number; count: number; students: StudentEntry[] };
+
+      // --- Source 1: real completed payment rows ---
+      const allPayments = await db.getAllPayments();
+      const completedPayments = allPayments.filter(
+        p => p.subscriptionId != null && (p.status || '').toLowerCase() === 'completed'
+      ) as (typeof allPayments[number] & { subscriptionId: number })[];
+
+      // --- Source 2: paid subscriptions with NO payment row (migrated parents) ---
+      const allSubs = await db.getAllSubscriptions();
+      const paymentSubIds = new Set(completedPayments.map(p => p.subscriptionId));
+      const migratedPaidSubs = allSubs.filter(
+        ({ subscription }) =>
+          !paymentSubIds.has(subscription.id) &&
+          (subscription.paymentStatus === 'paid' || subscription.paymentStatus === 'completed')
+      );
+
+      // Pre-fetch all unique parents + courses needed
+      const uniqueParentIds = [...new Set([
+        ...completedPayments.map(p => p.parentId),
+        ...migratedPaidSubs.map(({ subscription }) => subscription.parentId),
+      ])];
+      const uniqueSubIds = [...new Set(completedPayments.map(p => p.subscriptionId))];
+
       const [parentCache, subCache] = await Promise.all([
         batchFetch(uniqueParentIds, id => db.getUserById(id) as Promise<any>),
         batchFetch(uniqueSubIds,    id => db.getSubscriptionById(id) as Promise<any>),
       ]);
 
-      // Pre-fetch unique courses from resolved subscriptions
-      const uniqueCourseIds = [...new Set(
-        [...subCache.values()].map((s: any) => s?.courseId).filter(Boolean)
-      )];
+      // Course cache: from payment subscriptions + migrated subs
+      const uniqueCourseIds = [...new Set([
+        ...[...subCache.values()].map((s: any) => s?.courseId),
+        ...migratedPaidSubs.map(({ subscription }) => subscription.courseId),
+      ].filter(Boolean))];
       const courseCache = await batchFetch(uniqueCourseIds, id => db.getCourseById(id) as Promise<any>);
-
-      // Group synchronously — no more async inside the loop
-      type StudentEntry = { studentName: string; courseName: string | null; total: number; count: number };
-      type ParentEntry  = { parentId: number; parentName: string; parentEmail: string; total: number; count: number; students: StudentEntry[] };
 
       const parentMap = new Map<number, ParentEntry>();
 
-      for (const p of completed) {
-        const amt     = parseFloat(p.amount);
-        const safeAmt = isFinite(amt) ? amt : 0;
-
-        if (!parentMap.has(p.parentId)) {
-          const parent = parentCache.get(p.parentId) as any;
-          parentMap.set(p.parentId, {
-            parentId:   p.parentId,
+      function ensureParent(parentId: number) {
+        if (!parentMap.has(parentId)) {
+          const parent = parentCache.get(parentId) as any;
+          parentMap.set(parentId, {
+            parentId,
             parentName: parent?.name || `${parent?.firstName ?? ''} ${parent?.lastName ?? ''}`.trim() || 'Unknown',
             parentEmail: parent?.email || '',
             total: 0, count: 0, students: [],
           });
         }
+        return parentMap.get(parentId)!;
+      }
 
-        const entry = parentMap.get(p.parentId)!;
-        entry.total += safeAmt;
-        entry.count += 1;
-
-        const sub        = subCache.get(p.subscriptionId) as any;
-        const studentName = sub
-          ? `${sub.studentFirstName || ''} ${sub.studentLastName || ''}`.trim() || 'Unknown Student'
-          : 'Unknown Student';
-        const course     = sub ? courseCache.get(sub.courseId) as any : null;
-        const courseName: string | null = course?.title ?? null;
-
-        // Stable composite key — use tab character which cannot appear in names
+      function addToStudent(entry: ParentEntry, studentName: string, courseName: string | null, amt: number) {
         const key = `${studentName}\t${courseName ?? ''}`;
         const existing = entry.students.find(s => `${s.studentName}\t${s.courseName ?? ''}` === key);
         if (existing) {
-          existing.total += safeAmt;
+          existing.total += amt;
           existing.count += 1;
         } else {
-          entry.students.push({ studentName, courseName, total: safeAmt, count: 1 });
+          entry.students.push({ studentName, courseName, total: amt, count: 1 });
         }
+      }
+
+      // Process real payment rows
+      for (const p of completedPayments) {
+        const amt = parseFloat(p.amount);
+        const safeAmt = isFinite(amt) ? amt : 0;
+        if (safeAmt === 0) continue; // skip $0 payments — no revenue contribution
+
+        const entry = ensureParent(p.parentId);
+        entry.total += safeAmt;
+        entry.count += 1;
+
+        const sub = subCache.get(p.subscriptionId) as any;
+        const studentName = sub
+          ? `${sub.studentFirstName || ''} ${sub.studentLastName || ''}`.trim() || 'Unknown Student'
+          : 'Unknown Student';
+        const course = sub ? courseCache.get(sub.courseId) as any : null;
+        addToStudent(entry, studentName, course?.title ?? null, safeAmt);
+      }
+
+      // Process migrated paid subscriptions (no payment row)
+      for (const { subscription, course, parent } of migratedPaidSubs) {
+        const coursePrice = parseFloat(course?.price ?? '0');
+        const safeAmt = isFinite(coursePrice) ? coursePrice : 0;
+        if (safeAmt === 0) continue;
+
+        const entry = ensureParent(subscription.parentId);
+        entry.total += safeAmt;
+        entry.count += 1;
+
+        const studentName = `${subscription.studentFirstName || ''} ${subscription.studentLastName || ''}`.trim() || 'Unknown Student';
+        const courseName = course?.title ?? null;
+        addToStudent(entry, studentName, courseName, safeAmt);
       }
 
       return Array.from(parentMap.values())
