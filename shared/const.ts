@@ -9,3 +9,7 @@ export const NOT_ADMIN_ERR_MSG = 'You do not have required permission (10002)';
 
 // Backwards-compatible export used by legacy code paths; maps to access token cookie
 export const COOKIE_NAME = ACCESS_TOKEN_COOKIE;
+
+export const SUPER_USER_TOKEN_COOKIE = "tc_su";
+export const SUPER_USER_TOKEN_EXPIRY_MS = 1000 * 60 * 60; // 60 minutes
+export const NOT_SUPER_USER_ERR_MSG = 'Super-user verification required (10003)';

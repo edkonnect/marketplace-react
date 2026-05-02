@@ -4,6 +4,7 @@ import { validateReferralPromo, redeemReferralPromo } from "./integrations/refer
 import { systemRouter } from "./_core/systemRouter";
 import { notifyOwner } from "./_core/notification";
 import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
+import { NOT_SUPER_USER_ERR_MSG } from "@shared/const";
 import { z } from "zod";
 import * as db from "./db";
 import { TRPCError } from "@trpc/server";
@@ -41,6 +42,14 @@ const parentProcedure = protectedProcedure.use(({ ctx, next }) => {
 const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
   if (ctx.user.role !== 'admin') {
     throw new TRPCError({ code: 'FORBIDDEN', message: 'Only administrators can access this resource' });
+  }
+  return next({ ctx });
+});
+
+// Admin + super-user second-password verification required
+const superAdminProcedure = adminProcedure.use(({ ctx, next }) => {
+  if (!ctx.superUserVerified) {
+    throw new TRPCError({ code: 'FORBIDDEN', message: NOT_SUPER_USER_ERR_MSG });
   }
   return next({ ctx });
 });
@@ -4510,7 +4519,7 @@ export const appRouter = router({
         };
       }),
 
-    getAllPayments: adminProcedure
+    getAllPayments: superAdminProcedure
       .input(z.object({
         limit: z.number().optional().default(50),
         offset: z.number().optional().default(0),
@@ -4820,7 +4829,7 @@ export const appRouter = router({
         return enrichedPayments;
       }),
 
-    getAnalytics: adminProcedure
+    getAnalytics: superAdminProcedure
       .input(z.object({
         startDate: z.string().optional(),
         endDate: z.string().optional(),
@@ -4950,6 +4959,94 @@ export const appRouter = router({
           },
         };
       }),
+
+    getParentRevenueBreakdown: superAdminProcedure.query(async () => {
+      const allPayments = await db.getAllPayments();
+      const completed = allPayments.filter(
+        p => p.subscriptionId != null && (p.status || '').toLowerCase() === 'completed'
+      ) as (typeof allPayments[number] & { subscriptionId: number })[];
+
+      // Pre-fetch all unique parents, subscriptions, and courses in parallel batches
+      // to avoid thousands of concurrent DB calls
+      const uniqueParentIds = [...new Set(completed.map(p => p.parentId))];
+      const uniqueSubIds    = [...new Set(completed.map(p => p.subscriptionId))];
+
+      const BATCH = 50;
+      async function batchFetch<T>(ids: number[], fetcher: (id: number) => Promise<T | undefined>) {
+        const results = new Map<number, T>();
+        for (let i = 0; i < ids.length; i += BATCH) {
+          const slice = ids.slice(i, i + BATCH);
+          const rows = await Promise.all(slice.map(id => fetcher(id).then(r => [id, r] as const)));
+          for (const [id, row] of rows) {
+            if (row !== undefined) results.set(id, row);
+          }
+        }
+        return results;
+      }
+
+      const [parentCache, subCache] = await Promise.all([
+        batchFetch(uniqueParentIds, id => db.getUserById(id) as Promise<any>),
+        batchFetch(uniqueSubIds,    id => db.getSubscriptionById(id) as Promise<any>),
+      ]);
+
+      // Pre-fetch unique courses from resolved subscriptions
+      const uniqueCourseIds = [...new Set(
+        [...subCache.values()].map((s: any) => s?.courseId).filter(Boolean)
+      )];
+      const courseCache = await batchFetch(uniqueCourseIds, id => db.getCourseById(id) as Promise<any>);
+
+      // Group synchronously — no more async inside the loop
+      type StudentEntry = { studentName: string; courseName: string | null; total: number; count: number };
+      type ParentEntry  = { parentId: number; parentName: string; parentEmail: string; total: number; count: number; students: StudentEntry[] };
+
+      const parentMap = new Map<number, ParentEntry>();
+
+      for (const p of completed) {
+        const amt     = parseFloat(p.amount);
+        const safeAmt = isFinite(amt) ? amt : 0;
+
+        if (!parentMap.has(p.parentId)) {
+          const parent = parentCache.get(p.parentId) as any;
+          parentMap.set(p.parentId, {
+            parentId:   p.parentId,
+            parentName: parent?.name || `${parent?.firstName ?? ''} ${parent?.lastName ?? ''}`.trim() || 'Unknown',
+            parentEmail: parent?.email || '',
+            total: 0, count: 0, students: [],
+          });
+        }
+
+        const entry = parentMap.get(p.parentId)!;
+        entry.total += safeAmt;
+        entry.count += 1;
+
+        const sub        = subCache.get(p.subscriptionId) as any;
+        const studentName = sub
+          ? `${sub.studentFirstName || ''} ${sub.studentLastName || ''}`.trim() || 'Unknown Student'
+          : 'Unknown Student';
+        const course     = sub ? courseCache.get(sub.courseId) as any : null;
+        const courseName: string | null = course?.title ?? null;
+
+        // Stable composite key — use tab character which cannot appear in names
+        const key = `${studentName}\t${courseName ?? ''}`;
+        const existing = entry.students.find(s => `${s.studentName}\t${s.courseName ?? ''}` === key);
+        if (existing) {
+          existing.total += safeAmt;
+          existing.count += 1;
+        } else {
+          entry.students.push({ studentName, courseName, total: safeAmt, count: 1 });
+        }
+      }
+
+      return Array.from(parentMap.values())
+        .sort((a, b) => b.total - a.total)
+        .map(r => ({
+          ...r,
+          total: parseFloat(r.total.toFixed(2)),
+          students: r.students
+            .sort((a, b) => b.total - a.total)
+            .map(s => ({ ...s, total: parseFloat(s.total.toFixed(2)) })),
+        }));
+    }),
 
     // Tutor Availability Management
     getTutorAvailability: adminProcedure
@@ -6013,6 +6110,35 @@ export const appRouter = router({
       }),
   }),
 
+  // Super-user password management (admin only, no super-user cookie required)
+  adminSuperUser: router({
+    getPasswordStatus: adminProcedure.query(async ({ ctx }) => {
+      const hash = await db.getSuperUserPasswordHash(ctx.user.id);
+      return { isSet: hash !== null };
+    }),
+
+    setPassword: adminProcedure
+      .input(z.object({
+        newPassword: z.string().min(8, "Password must be at least 8 characters"),
+        currentSuperPassword: z.string().nullable(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const existingHash = await db.getSuperUserPasswordHash(ctx.user.id);
+        if (existingHash) {
+          if (!input.currentSuperPassword) {
+            throw new TRPCError({ code: 'BAD_REQUEST', message: 'Current super-user password is required' });
+          }
+          const valid = await verifyPassword(input.currentSuperPassword, existingHash);
+          if (!valid) {
+            throw new TRPCError({ code: 'FORBIDDEN', message: 'Incorrect current super-user password' });
+          }
+        }
+        const newHash = await hashPassword(input.newPassword);
+        await db.setSuperUserPasswordHash(ctx.user.id, newHash);
+        return { success: true };
+      }),
+  }),
+
   // Course Management (Admin)
   adminCourses: router({
     getAllCoursesWithTutors: adminProcedure
@@ -6120,11 +6246,11 @@ export const appRouter = router({
         return tutors;
       }),
 
-    getPayoutRequests: adminProcedure.query(async () => {
+    getPayoutRequests: superAdminProcedure.query(async () => {
       return await db.getAllTutorPayoutRequests();
     }),
 
-    updatePayoutRequest: adminProcedure
+    updatePayoutRequest: superAdminProcedure
       .input(z.object({
         id: z.number(),
         status: z.enum(["approved", "rejected"]),
@@ -6135,7 +6261,7 @@ export const appRouter = router({
         return { success: true };
       }),
 
-    triggerUsageBilling: adminProcedure
+    triggerUsageBilling: superAdminProcedure
       .mutation(async () => {
         const { processUsageBilling } = await import("./cron");
         await processUsageBilling();

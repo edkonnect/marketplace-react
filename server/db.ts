@@ -123,6 +123,21 @@ export async function getUserById(id: number) {
   return result.length > 0 ? result[0] : undefined;
 }
 
+// ============ Super-User Password Management ============
+
+export async function getSuperUserPasswordHash(userId: number): Promise<string | null> {
+  const db = await getDb();
+  if (!db) return null;
+  const result = await db.select({ hash: users.superUserPasswordHash }).from(users).where(eq(users.id, userId)).limit(1);
+  return result[0]?.hash ?? null;
+}
+
+export async function setSuperUserPasswordHash(userId: number, hash: string): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(users).set({ superUserPasswordHash: hash }).where(eq(users.id, userId));
+}
+
 // ============ Refresh Token Management ============
 
 export async function storeRefreshToken(userId: number, token: string, expiresAt: Date) {

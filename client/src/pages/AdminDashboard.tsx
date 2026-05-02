@@ -28,11 +28,33 @@ import { TutorAssignmentDialog } from "@/components/TutorAssignmentDialog";
 import { TestimonialsManager } from "@/components/TestimonialsManager";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { FileUpload } from "@/components/FileUpload";
 import DashboardLayout, { AdminSection } from "@/components/DashboardLayout";
+import { SuperUserGate } from "@/components/SuperUserGate";
+import { SuperUserSettings } from "@/components/SuperUserSettings";
+import { useSuperUser } from "@/contexts/SuperUserContext";
+import { NOT_SUPER_USER_ERR_MSG } from "@shared/const";
+
+function RevenueBreakdownButton({ isUnlocked, onOpen, onLockAndOpen }: {
+  isUnlocked: boolean;
+  onOpen: () => void;
+  onLockAndOpen: () => void;
+}) {
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      className="mt-3 w-full text-xs"
+      onClick={isUnlocked ? onOpen : onLockAndOpen}
+    >
+      {isUnlocked ? "View Parent Breakdown" : "🔒 View Parent Breakdown"}
+    </Button>
+  );
+}
 
 function ReferralSettingsPanel() {
   const { data: tiers = [], refetch: refetchTiers } = trpc.referral.getReferralSettings.useQuery();
@@ -499,7 +521,9 @@ function CourseFilesAdminPanel() {
 
 export function AdminDashboard() {
   const { user, isAuthenticated, loading } = useAuth();
+  const { isUnlocked, lock } = useSuperUser();
   const [activeSection, setActiveSection] = useState<AdminSection>("analytics");
+  const [showRevenueBreakdown, setShowRevenueBreakdown] = useState(false);
 
   // Course management state
   const [selectedCourseId, setSelectedCourseId] = useState<number | null>(null);
@@ -552,6 +576,11 @@ export function AdminDashboard() {
     { enabled: isAuthenticated && user?.role === "admin" }
   );
 
+  const { data: revenueBreakdown, isLoading: revenueBreakdownLoading } = trpc.admin.getParentRevenueBreakdown.useQuery(
+    undefined,
+    { enabled: isAuthenticated && user?.role === "admin" && isUnlocked && showRevenueBreakdown }
+  );
+
   const { data: usersData, isLoading: usersLoading } = trpc.admin.getAllUsers.useQuery(
     { limit: ITEMS_PER_PAGE, offset: (usersPage - 1) * ITEMS_PER_PAGE, ...userFilters },
     { enabled: isAuthenticated && user?.role === "admin" }
@@ -564,7 +593,7 @@ export function AdminDashboard() {
 
   const { data: paymentsData, isLoading: paymentsLoading } = trpc.admin.getAllPayments.useQuery(
     { limit: ITEMS_PER_PAGE, offset: (paymentsPage - 1) * ITEMS_PER_PAGE, ...paymentFilters },
-    { enabled: isAuthenticated && user?.role === "admin" }
+    { enabled: isAuthenticated && user?.role === "admin" && isUnlocked }
   );
 
   const { data: sessionsData, isLoading: sessionsLoading } = trpc.admin.getAllSessions.useQuery(
@@ -597,7 +626,7 @@ export function AdminDashboard() {
 
   const { data: analyticsData, isLoading: analyticsLoading } = trpc.admin.getAnalytics.useQuery(
     dateRange,
-    { enabled: isAuthenticated && user?.role === "admin" }
+    { enabled: isAuthenticated && user?.role === "admin" && isUnlocked }
   );
 
   const { data: tutorOptions, isLoading: tutorOptionsLoading } = trpc.admin.getTutorsForCourseApproval.useQuery(
@@ -623,7 +652,7 @@ export function AdminDashboard() {
   const { data: payoutRequests = [], isLoading: payoutRequestsLoading, refetch: refetchPayoutRequests } =
     trpc.adminCourses.getPayoutRequests.useQuery(
       undefined,
-      { enabled: isAuthenticated && user?.role === "admin" }
+      { enabled: isAuthenticated && user?.role === "admin" && isUnlocked }
     );
 
   const updatePayoutMutation = trpc.adminCourses.updatePayoutRequest.useMutation({
@@ -760,6 +789,11 @@ export function AdminDashboard() {
                   <>
                     <div className="text-2xl font-bold">${stats?.totalRevenue || "0.00"}</div>
                     <p className="text-xs text-muted-foreground mt-1">{stats?.totalPayments || 0} transactions</p>
+                    <RevenueBreakdownButton
+                      isUnlocked={isUnlocked}
+                      onOpen={() => setShowRevenueBreakdown(true)}
+                      onLockAndOpen={() => { lock(); setShowRevenueBreakdown(true); }}
+                    />
                   </>
                 )}
               </CardContent>
@@ -768,6 +802,7 @@ export function AdminDashboard() {
 
           {/* Section content */}
           {activeSection === "analytics" && (
+            <SuperUserGate>
             <div className="space-y-6">
               <DateRangeSelector onDateRangeChange={(startDate, endDate) => setDateRange({ startDate, endDate })} />
               {analyticsLoading ? (
@@ -821,6 +856,7 @@ export function AdminDashboard() {
                 <p className="text-center text-muted-foreground py-8">No analytics data available</p>
               )}
             </div>
+            </SuperUserGate>
           )}
 
           {activeSection === "users" && (
@@ -994,6 +1030,7 @@ export function AdminDashboard() {
           )}
 
           {activeSection === "payments" && (
+            <SuperUserGate>
             <div className="space-y-4">
               <Card>
                 <CardHeader>
@@ -1084,6 +1121,7 @@ export function AdminDashboard() {
                 </CardContent>
               </Card>
             </div>
+            </SuperUserGate>
           )}
 
           {activeSection === "sessions" && (
@@ -1210,6 +1248,7 @@ export function AdminDashboard() {
           )}
 
           {activeSection === "payout-requests" && (
+            <SuperUserGate>
             <div className="space-y-4">
               <div className="flex items-center gap-3">
                 <Select value={payoutStatusFilter} onValueChange={v => setPayoutStatusFilter(v as any)}>
@@ -1269,6 +1308,7 @@ export function AdminDashboard() {
                 );
               })()}
             </div>
+            </SuperUserGate>
           )}
 
           {activeSection === "courses" && (
@@ -1375,8 +1415,84 @@ export function AdminDashboard() {
 
           {activeSection === "course-files" && <CourseFilesAdminPanel />}
           {activeSection === "session-notes" && <AdminSessionNotes />}
+          {activeSection === "security" && <SuperUserSettings />}
         </div>
       </DashboardLayout>
+
+      {/* Parent Revenue Breakdown Dialog */}
+      <Dialog open={showRevenueBreakdown} onOpenChange={open => { if (!open) setShowRevenueBreakdown(false); }}>
+        <DialogContent className="max-w-4xl w-full max-h-[85vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="text-xl">Revenue Breakdown by Parent</DialogTitle>
+            {!revenueBreakdownLoading && isUnlocked && (revenueBreakdown ?? []).length > 0 && (
+              <p className="text-sm text-muted-foreground">
+                {(revenueBreakdown ?? []).length} parents · {(revenueBreakdown ?? []).reduce((s, r) => s + r.count, 0)} transactions ·
+                <span className="font-semibold text-foreground"> ${(revenueBreakdown ?? []).reduce((s, r) => s + r.total, 0).toFixed(2)} total</span>
+              </p>
+            )}
+          </DialogHeader>
+
+          {!isUnlocked ? (
+            <SuperUserGate><span /></SuperUserGate>
+          ) : revenueBreakdownLoading ? (
+            <div className="flex items-center justify-center py-16">
+              <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+            </div>
+          ) : (revenueBreakdown ?? []).length === 0 ? (
+            <p className="text-center text-muted-foreground py-12">No completed payments found</p>
+          ) : (
+            <div className="overflow-y-auto flex-1 pr-1">
+              {/* Column headers */}
+              <div className="grid grid-cols-[1.5rem_1fr_auto_auto] gap-x-4 px-4 py-2 text-xs font-medium text-muted-foreground border-b sticky top-0 bg-background z-10">
+                <span>#</span>
+                <span>Parent / Student</span>
+                <span className="text-right w-16">Txns</span>
+                <span className="text-right w-24">Revenue</span>
+              </div>
+
+              <Accordion type="multiple" className="w-full">
+                {(revenueBreakdown ?? []).map((row, idx) => (
+                  <AccordionItem key={row.parentId} value={String(row.parentId)} className="border-b">
+                    <AccordionTrigger className="hover:no-underline hover:bg-muted/40 px-4 py-3 [&>svg]:ml-2">
+                      <div className="grid grid-cols-[1.5rem_1fr_auto_auto] gap-x-4 w-full text-left items-center">
+                        <span className="text-xs text-muted-foreground">{idx + 1}</span>
+                        <div>
+                          <p className="font-medium text-sm">{row.parentName}</p>
+                          <p className="text-xs text-muted-foreground">{row.parentEmail}</p>
+                        </div>
+                        <span className="text-sm text-right w-16">{row.count}</span>
+                        <span className="text-sm font-semibold text-right w-24">${row.total.toFixed(2)}</span>
+                      </div>
+                    </AccordionTrigger>
+                    <AccordionContent className="pb-0">
+                      <div className="bg-muted/30 border-t">
+                        {/* Student sub-header */}
+                        <div className="grid grid-cols-[1fr_auto_auto_auto] gap-x-4 px-8 py-1.5 text-xs font-medium text-muted-foreground border-b border-muted">
+                          <span>Student · Course</span>
+                          <span className="text-right w-16">Txns</span>
+                          <span className="text-right w-24">Revenue</span>
+                          <span className="w-4" />
+                        </div>
+                        {row.students.map((s, si) => (
+                          <div key={si} className="grid grid-cols-[1fr_auto_auto_auto] gap-x-4 px-8 py-2.5 border-b border-muted/60 last:border-0 hover:bg-muted/50">
+                            <div>
+                              <p className="text-sm font-medium">{s.studentName}</p>
+                              {s.courseName && <p className="text-xs text-muted-foreground">{s.courseName}</p>}
+                            </div>
+                            <span className="text-sm text-right w-16 self-center">{s.count}</span>
+                            <span className="text-sm font-semibold text-right w-24 self-center">${s.total.toFixed(2)}</span>
+                            <span className="w-4" />
+                          </div>
+                        ))}
+                      </div>
+                    </AccordionContent>
+                  </AccordionItem>
+                ))}
+              </Accordion>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

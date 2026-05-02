@@ -38,6 +38,7 @@ import {
   MessageSquareQuote,
   PanelLeft,
   Share2,
+  ShieldCheck,
   Users,
   UserSquare2,
   Wallet,
@@ -62,7 +63,8 @@ export type AdminSection =
   | "coordinators"
   | "email"
   | "referrals"
-  | "session-notes";
+  | "session-notes"
+  | "security";
 
 type NavItem = {
   icon: React.ElementType;
@@ -120,6 +122,7 @@ const navGroups: NavGroup[] = [
       { icon: UserSquare2, label: "Coordinators", section: "coordinators" },
       { icon: Mail, label: "Email Settings", section: "email" },
       { icon: Share2, label: "Referrals", section: "referrals" },
+      { icon: ShieldCheck, label: "Security", section: "security" },
     ],
   },
 ];

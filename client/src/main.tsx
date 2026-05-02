@@ -6,7 +6,8 @@ import { createRoot } from "react-dom/client";
 import superjson from "superjson";
 import App from "./App";
 import "./index.css";
-import { AuthProvider } from "./contexts/AuthContext";
+import { AuthProvider, useAuthContext } from "./contexts/AuthContext";
+import { SuperUserProvider } from "./contexts/SuperUserContext";
 
 const queryClient = new QueryClient();
 
@@ -68,11 +69,20 @@ const trpcClient = trpc.createClient({
   ],
 });
 
+function SuperUserBridge() {
+  const { user } = useAuthContext();
+  return (
+    <SuperUserProvider userId={user?.id ?? null}>
+      <App />
+    </SuperUserProvider>
+  );
+}
+
 createRoot(document.getElementById("root")!).render(
   <trpc.Provider client={trpcClient} queryClient={queryClient}>
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        <App />
+        <SuperUserBridge />
       </AuthProvider>
     </QueryClientProvider>
   </trpc.Provider>

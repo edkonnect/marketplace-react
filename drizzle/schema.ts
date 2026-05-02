@@ -10,6 +10,7 @@ export const users = mysqlTable("users", {
   openId: varchar("openId", { length: 64 }).notNull().unique(),
   email: varchar("email", { length: 320 }).notNull().unique(),
   passwordHash: varchar("passwordHash", { length: 255 }),
+  superUserPasswordHash: varchar("superUserPasswordHash", { length: 255 }),
   firstName: varchar("firstName", { length: 100 }).notNull(),
   lastName: varchar("lastName", { length: 100 }).notNull(),
   role: mysqlEnum("role", ["parent", "tutor", "admin", "coordinator"]).default("parent").notNull(),

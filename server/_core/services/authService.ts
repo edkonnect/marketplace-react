@@ -7,6 +7,8 @@ import {
   ACCESS_TOKEN_EXPIRY_MS,
   REFRESH_TOKEN_COOKIE,
   REFRESH_TOKEN_EXPIRY_MS,
+  SUPER_USER_TOKEN_COOKIE,
+  SUPER_USER_TOKEN_EXPIRY_MS,
 } from "@shared/const";
 import { ENV } from "../env";
 import { getCookieOptions } from "../cookies";
@@ -35,6 +37,7 @@ type JwtPayload = {
 
 const accessSecret = new TextEncoder().encode(ENV.cookieSecret);
 const refreshSecret = new TextEncoder().encode(ENV.refreshSecret || ENV.cookieSecret);
+const suSecret = new TextEncoder().encode(process.env.JWT_SU_SECRET ?? `su_${ENV.cookieSecret}`);
 
 async function signJwt(payload: JwtPayload, expiresInMs: number, secret: Uint8Array) {
   const now = Math.floor(Date.now() / 1000);
@@ -93,6 +96,31 @@ export async function authenticateRequest(req: Request) {
 export async function verifyRefreshToken(token: string) {
   const { payload } = await jwtVerify(token, refreshSecret);
   return payload as unknown as JwtPayload & { exp: number };
+}
+
+export async function setSuperUserCookie(req: Request, res: Response, userId: number) {
+  const now = Math.floor(Date.now() / 1000);
+  const token = await new SignJWT({ type: "su" })
+    .setProtectedHeader({ alg: "HS256" })
+    .setSubject(String(userId))
+    .setIssuedAt(now)
+    .setExpirationTime(now + Math.floor(SUPER_USER_TOKEN_EXPIRY_MS / 1000))
+    .sign(suSecret);
+  const options = getCookieOptions(req, "/");
+  res.cookie(SUPER_USER_TOKEN_COOKIE, token, { ...options, maxAge: SUPER_USER_TOKEN_EXPIRY_MS });
+}
+
+export async function verifySuperUserCookie(req: Request) {
+  const token = (req as any).cookies?.[SUPER_USER_TOKEN_COOKIE];
+  if (!token) throw new Error("Missing super-user token");
+  const { payload } = await jwtVerify(token, suSecret);
+  if ((payload as any).type !== "su") throw new Error("Invalid super-user token type");
+  return payload;
+}
+
+export async function clearSuperUserCookie(req: Request, res: Response) {
+  const options = getCookieOptions(req, "/");
+  res.clearCookie(SUPER_USER_TOKEN_COOKIE, { ...options, maxAge: 0 });
 }
 
 export { authSchema };

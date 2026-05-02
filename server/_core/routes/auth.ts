@@ -1,6 +1,6 @@
 import express from "express";
 import { z } from "zod";
-import { authSchema, authenticateRequest, clearAuthCookies, setAuthCookies, verifyPassword, verifyRefreshToken } from "../services/authService";
+import { authSchema, authenticateRequest, clearAuthCookies, clearSuperUserCookie, hashPassword, setSuperUserCookie, setAuthCookies, verifyPassword, verifyRefreshToken, verifySuperUserCookie } from "../services/authService";
 import * as db from "../../db";
 import { REFRESH_TOKEN_COOKIE } from "@shared/const";
 import { sendVerificationEmail, sendCouponRewardEmail, sendAdminNewUserNotification } from "../../email-helpers";
@@ -515,4 +515,87 @@ authRouter.post("/resend-setup-link", async (req, res) => {
     success: true,
     message: "If an approved account exists for this email, a setup link has been sent."
   });
+});
+
+// Per-admin brute-force protection: 5 failed attempts locks out for 15 minutes
+const superUnlockAttempts = new Map<number, { failures: number; lockedUntil: number }>();
+const SU_MAX_FAILURES = 5;
+const SU_LOCKOUT_MS   = 15 * 60 * 1000;
+
+authRouter.post("/super-unlock", async (req, res) => {
+  let user: Awaited<ReturnType<typeof authenticateRequest>>;
+  try {
+    user = await authenticateRequest(req);
+  } catch {
+    return res.status(401).json({ error: "Authentication required" });
+  }
+  if (user.role !== "admin") {
+    return res.status(403).json({ error: "Admin access required" });
+  }
+
+  // Brute-force protection
+  const now = Date.now();
+  const attempts = superUnlockAttempts.get(user.id);
+  if (attempts && attempts.lockedUntil > now) {
+    const remainingMin = Math.ceil((attempts.lockedUntil - now) / 60000);
+    return res.status(429).json({ error: `Too many failed attempts. Try again in ${remainingMin} minute${remainingMin !== 1 ? 's' : ''}.` });
+  }
+
+  const schema = z.object({ password: z.string().min(1) });
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Password is required" });
+  }
+
+  const hash = await db.getSuperUserPasswordHash(user.id);
+  if (!hash) {
+    return res.status(403).json({ error: "Super-user password not set. Please set it in Settings → Security." });
+  }
+
+  const valid = await verifyPassword(parsed.data.password, hash);
+  if (!valid) {
+    const current = superUnlockAttempts.get(user.id) ?? { failures: 0, lockedUntil: 0 };
+    current.failures += 1;
+    if (current.failures >= SU_MAX_FAILURES) {
+      current.lockedUntil = now + SU_LOCKOUT_MS;
+      current.failures = 0;
+    }
+    superUnlockAttempts.set(user.id, current);
+    return res.status(401).json({ error: "Incorrect super-user password" });
+  }
+
+  // Success — clear any previous failure count
+  superUnlockAttempts.delete(user.id);
+  await setSuperUserCookie(req, res, user.id);
+  return res.json({ success: true });
+});
+
+authRouter.post("/super-lock", async (req, res) => {
+  let user: Awaited<ReturnType<typeof authenticateRequest>>;
+  try {
+    user = await authenticateRequest(req);
+  } catch {
+    return res.status(401).json({ error: "Authentication required" });
+  }
+  if (user.role !== "admin") {
+    return res.status(403).json({ error: "Admin access required" });
+  }
+  await clearSuperUserCookie(req, res);
+  return res.json({ success: true });
+});
+
+authRouter.get("/super-verify", async (req, res) => {
+  let user: Awaited<ReturnType<typeof authenticateRequest>>;
+  try {
+    user = await authenticateRequest(req);
+  } catch {
+    return res.json({ verified: false });
+  }
+  try {
+    const suPayload = await verifySuperUserCookie(req);
+    const verified = Number(suPayload.sub) === user.id;
+    return res.json({ verified });
+  } catch {
+    return res.json({ verified: false });
+  }
 });
