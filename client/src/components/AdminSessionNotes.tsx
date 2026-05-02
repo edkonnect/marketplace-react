@@ -103,7 +103,7 @@ export function AdminSessionNotes() {
             </div>
             <div>
               <label className="text-sm font-medium mb-2 block">Tutor</label>
-              <Select value={selectedTutorName} onValueChange={setSelectedTutorName}>
+              <Select key={selectedTutorName} value={selectedTutorName} onValueChange={(v) => { setSelectedTutorName(v); setAppliedTutor(v); }}>
                 <SelectTrigger>
                   <SelectValue placeholder="All tutors" />
                 </SelectTrigger>
@@ -162,7 +162,7 @@ export function AdminSessionNotes() {
                     <th className="py-2 font-medium">Notes</th>
                   </tr>
                 </thead>
-                <tbody>
+                <tbody key={appliedTutor}>
                   {notesOnly.map((s) => {
                     const studentName = [s.studentFirstName, s.studentLastName].filter(Boolean).join(" ") || "—";
                     return (

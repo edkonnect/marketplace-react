@@ -2,6 +2,7 @@ import cron from "node-cron";
 import * as db from "./db";
 import { createCombinedUsageInvoice } from "./stripe";
 import { sendSessionReminders } from "./notification-service";
+import { sendSessionNotesReminders } from "./session-notes-reminder";
 
 export function startReminderCron() {
   // Run every 5 minutes — matches the ±5 min window in getUpcomingSessionsForNotifications()
@@ -162,4 +163,13 @@ export async function processUsageBilling() {
   }
 
   console.log("[Cron] Monthly usage billing job complete");
+}
+
+export function startSessionNotesReminderCron() {
+  // Run daily at 9:00 AM IST (3:30 AM UTC)
+  cron.schedule("30 3 * * *", async () => {
+    console.log("[Cron] Running session notes reminder job...");
+    await sendSessionNotesReminders();
+  });
+  console.log("[Cron] Session notes reminder cron scheduled (09:00 AM IST daily)");
 }

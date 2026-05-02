@@ -2,9 +2,9 @@
  * Acuity Scheduling Webhook Handler
  *
  * Receives real-time appointment events from Acuity:
- *   - appointment.scheduled  → INSERT new session
- *   - appointment.canceled   → UPDATE status = 'cancelled'
- *   - appointment.rescheduled / appointment.changed → UPDATE scheduledAt + meetingUrl
+ *   - appointment.scheduled  -> INSERT new session
+ *   - appointment.canceled   -> UPDATE status = 'cancelled'
+ *   - appointment.rescheduled / appointment.changed -> UPDATE scheduledAt + meetingUrl
  *
  * Signature verification: base64 HMAC-SHA256 of raw body using ACUITY_API_KEY,
  * compared against the x-acuity-signature header.
@@ -21,46 +21,46 @@ import { sessions, subscriptions, users } from "../drizzle/schema";
 const ACUITY_USER_ID = process.env.ACUITY_USER_ID!;
 const ACUITY_API_KEY = process.env.ACUITY_API_KEY!;
 
-// ── Calendar ID → Platform Tutor ID ──────────────────────────────────────────
+// ── Calendar ID -> Platform Tutor ID ──────────────────────────────────────────
 
 const CALENDAR_TUTOR_MAP: Record<number, number> = {
   9518516:  50, // Ms. Dolon
   9344460:  3,  // Mr. Ashwin Siva (Arunn)
-  13134669: 3,  // Mr. Bichu S Kumar → Arunn
-  12924725: 3,  // Mr. Gerard → Arunn
+  13134669: 54,  // Mr. Bichu S Kumar
+  12924725: 75,  // Mr. Gerard
   7992988:  72, // Mr. Gopi
   10639379: 53, // Mr. Kalyan
   6631240:  61, // Mr. Mustaq
   8838338:  76, // Mr. Naushad
   7722765:  66, // Mr. Prasenjith
-  13611648: 3,  // Mr. Ramesh → Arunn
-  8111305:  3,  // Mr. Shreyas Lenkala → Arunn
-  12765565: 3,  // Mr. Surya Tiwari → Arunn
-  8509330:  3,  // Mr. Wajendra T → Arunn
-  8397933:  3,  // Ms. Aditi Tambe → Arunn
+  13611648: 56,  // Mr. Ramesh
+  8111305:  3,  // Mr. Shreyas Lenkala -> Arunn
+  12765565: 3,  // Mr. Surya Tiwari -> Arunn
+  8509330:  3,  // Mr. Wajendra T -> Arunn
+  8397933:  3,  // Ms. Aditi Tambe -> Arunn
   9584519:  69, // Ms. Aishwarya
   12748025: 51, // Ms. Anita Dominic
   7203343:  24, // Ms. Apoorva / Mercy Rani (Apoorva primary)
-  11328467: 3,  // Ms. Lavanya → Arunn
+  11328467: 3,  // Ms. Lavanya -> Arunn
   5824683:  47, // Ms. Maya
   9886816:  30, // Ms. Mercy Rani
   12804136: 59, // Ms. Nalini Sharma
-  4000884:  3,  // Ms. Sheela → Arunn
+  4000884:  3,  // Ms. Sheela -> Arunn
   4056973:  23, // Ms. Shriti
-  7129143:  3,  // Ms. Shriya B → Arunn
-  8255661:  3,  // Ms. Shweta → Arunn
+  7129143:  3,  // Ms. Shriya B -> Arunn
+  8255661:  3,  // Ms. Shweta -> Arunn
   7137621:  57, // Ms. Sivasankaree
-  13204478: 3,  // Ms. Vasudha → Arunn
+  13204478: 3,  // Ms. Vasudha -> Arunn
   11083164: 71, // Ms. Vinayabala
-  13821319: 3,  // SriAditya → Arunn
+  13821319: 3,  // SriAditya -> Arunn
   12585605: 52, // Sriilalit Narayana
-  13222214: 3,  // Ms. Jisha Mani → Arunn
-  13518317: 3,  // Manisha Ubale → Arunn
-  13801030: 3,  // Mr. Goury Shankar → Arunn
-  12986707: 3,  // Ms. Shafia → Arunn
+  13222214: 3,  // Ms. Jisha Mani -> Arunn
+  13518317: 3,  // Manisha Ubale -> Arunn
+  13801030: 70,  // Mr. Goury Shankar
+  12986707: 58,  // Ms. Shafia
 };
 
-// ── Appointment Type ID → Platform Course ID ─────────────────────────────────
+// ── Appointment Type ID -> Platform Course ID ─────────────────────────────────
 // null = skip (unmapped or generic type)
 
 const APPOINTMENT_TYPE_COURSE_MAP: Record<number, number | null> = {
@@ -89,8 +89,8 @@ const APPOINTMENT_TYPE_COURSE_MAP: Record<number, number | null> = {
   26804440: 4,    // Elementary School Mathematics (CBSE/ICSE/IG/IB/State)
   55339864: 276,  // Spoken English - Private Sessions
   34108709: 25,   // On-Demand English Private Tutoring
-  63049663: 274,  // High School Hindi → Math Olympiad placeholder
-  74079295: 139,  // Middle School Hindi
+  63049663: 179,  // High School Hindi 
+  74079295: 176,  // Middle School Hindi
   27561406: 251,  // A Level Math - Private Session
   30219038: 252,  // A Level English - Private Session
   31263147: 42,  // IELTS/TOEFL - Private Session
@@ -255,6 +255,8 @@ export async function upsertAcuityAppointment(apt: AcuityAppointment): Promise<v
         scheduledAt,
         meetingUrl,
         tutorId,
+        courseId: courseId ?? undefined,
+        subscriptionId: subscriptionId ?? undefined,
         updatedAt: new Date(),
       },
     });

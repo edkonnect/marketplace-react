@@ -1,0 +1,1 @@
+ALTER TABLE `subscriptions` MODIFY COLUMN `paymentStatus` enum('paid','pending','failed','completed') NOT NULL DEFAULT 'pending';
