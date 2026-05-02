@@ -1476,11 +1476,18 @@ export function AdminDashboard() {
                         {row.students.map((s, si) => (
                           <div key={si} className="grid grid-cols-[1fr_auto_auto_auto] gap-x-4 px-8 py-2.5 border-b border-muted/60 last:border-0 hover:bg-muted/50">
                             <div>
-                              <p className="text-sm font-medium">{s.studentName}</p>
+                              <div className="flex items-center gap-2">
+                                <p className="text-sm font-medium">{s.studentName}</p>
+                                {(s as any).migrated && (
+                                  <span className="text-xs bg-amber-100 text-amber-700 border border-amber-200 rounded px-1.5 py-0.5 leading-none">migrated</span>
+                                )}
+                              </div>
                               {s.courseName && <p className="text-xs text-muted-foreground">{s.courseName}</p>}
                             </div>
                             <span className="text-sm text-right w-16 self-center">{s.count}</span>
-                            <span className="text-sm font-semibold text-right w-24 self-center">${s.total.toFixed(2)}</span>
+                            <span className="text-sm font-semibold text-right w-24 self-center">
+                              {(s as any).migrated ? <span className="text-muted-foreground text-xs">—</span> : `$${s.total.toFixed(2)}`}
+                            </span>
                             <span className="w-4" />
                           </div>
                         ))}

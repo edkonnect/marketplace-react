@@ -4974,7 +4974,7 @@ export const appRouter = router({
         return results;
       }
 
-      type StudentEntry = { studentName: string; courseName: string | null; total: number; count: number };
+      type StudentEntry = { studentName: string; courseName: string | null; total: number; count: number; migrated?: boolean };
       type ParentEntry  = { parentId: number; parentName: string; parentEmail: string; total: number; count: number; students: StudentEntry[] };
 
       // --- Source 1: real completed payment rows ---
@@ -4986,6 +4986,9 @@ export const appRouter = router({
       // --- Source 2: paid subscriptions with NO payment row (migrated parents) ---
       const allSubs = await db.getAllSubscriptions();
       const paymentSubIds = new Set(completedPayments.map(p => p.subscriptionId));
+
+      // Migrated paid subs: no reliable USD amount available (course.price may be INR),
+      // so we include them for enrollment counts but contribute $0 revenue.
       const migratedPaidSubs = allSubs.filter(
         ({ subscription }) =>
           !paymentSubIds.has(subscription.id) &&
@@ -5027,13 +5030,19 @@ export const appRouter = router({
       }
 
       function addToStudent(entry: ParentEntry, studentName: string, courseName: string | null, amt: number) {
+        const isMigrated = amt === -1;
+        const safeAmt = isMigrated ? 0 : amt;
+        // Only add to parent total for real amounts
+        if (!isMigrated) {
+          // (already added in caller)
+        }
         const key = `${studentName}\t${courseName ?? ''}`;
         const existing = entry.students.find(s => `${s.studentName}\t${s.courseName ?? ''}` === key);
         if (existing) {
-          existing.total += amt;
+          if (!isMigrated) existing.total += safeAmt;
           existing.count += 1;
         } else {
-          entry.students.push({ studentName, courseName, total: amt, count: 1 });
+          entry.students.push({ studentName, courseName, total: safeAmt, count: 1, migrated: isMigrated });
         }
       }
 
@@ -5055,19 +5064,16 @@ export const appRouter = router({
         addToStudent(entry, studentName, course?.title ?? null, safeAmt);
       }
 
-      // Process migrated paid subscriptions (no payment row)
-      for (const { subscription, course, parent } of migratedPaidSubs) {
-        const coursePrice = parseFloat(course?.price ?? '0');
-        const safeAmt = isFinite(coursePrice) ? coursePrice : 0;
-        if (safeAmt === 0) continue;
-
+      // Migrated paid subscriptions: course.price is unreliable (may be INR).
+      // Count enrollments for context but mark them so the UI can distinguish them.
+      for (const { subscription, course } of migratedPaidSubs) {
         const entry = ensureParent(subscription.parentId);
-        entry.total += safeAmt;
         entry.count += 1;
 
         const studentName = `${subscription.studentFirstName || ''} ${subscription.studentLastName || ''}`.trim() || 'Unknown Student';
         const courseName = course?.title ?? null;
-        addToStudent(entry, studentName, courseName, safeAmt);
+        // Use -1 as sentinel to indicate "migrated — amount unknown"
+        addToStudent(entry, studentName, courseName, -1);
       }
 
       return Array.from(parentMap.values())
