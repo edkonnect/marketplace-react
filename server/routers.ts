@@ -4349,7 +4349,7 @@ export const appRouter = router({
 
   // Admin Management
   admin: router({
-    getOverviewStats: adminProcedure
+    getOverviewStats: superAdminProcedure
       .query(async () => {
         // Get total users count
         const allUsers = await db.getAllUsers();

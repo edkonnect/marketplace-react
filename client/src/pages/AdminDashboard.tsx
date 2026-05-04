@@ -573,7 +573,7 @@ export function AdminDashboard() {
 
   const { data: stats, isLoading: statsLoading } = trpc.admin.getOverviewStats.useQuery(
     undefined,
-    { enabled: isAuthenticated && user?.role === "admin" }
+    { enabled: isAuthenticated && user?.role === "admin" && isUnlocked }
   );
 
   const { data: revenueBreakdown, isLoading: revenueBreakdownLoading } = trpc.admin.getParentRevenueBreakdown.useQuery(
