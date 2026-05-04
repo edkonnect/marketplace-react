@@ -118,3 +118,4 @@ temp/
 
 # Drizzle metadata (auto-generated)
 drizzle/meta/
+ecosystem.config.cjs
