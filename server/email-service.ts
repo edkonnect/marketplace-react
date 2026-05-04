@@ -11,6 +11,7 @@ interface EmailOptions {
   subject: string;
   html: string;
   text?: string;
+  cc?: string;
 }
 
 class EmailService {
@@ -62,7 +63,7 @@ class EmailService {
    * Send an email
    */
   async sendEmail(options: EmailOptions): Promise<boolean> {
-    const { to, subject, html, text } = options;
+    const { to, subject, html, text, cc } = options;
 
     // If not configured, log the email instead of sending
     if (!this.isConfigured || !this.transporter) {
@@ -86,6 +87,7 @@ class EmailService {
       const info = await this.transporter.sendMail({
         from,
         to,
+        ...(cc ? { cc } : {}),
         subject,
         text: text || this.stripHtml(html),
         html,

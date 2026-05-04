@@ -46,6 +46,7 @@ export async function sendSessionNotesReminders() {
 
       const sent = await emailService.sendEmail({
         to: tutorEmail,
+        cc: "admin@edkonnect-academy.com",
         subject: `Reminder: ${tutorSessions.length} Session Note${tutorSessions.length > 1 ? "s" : ""} Pending — EdKonnect Academy`,
         html,
       });
