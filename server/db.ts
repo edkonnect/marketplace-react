@@ -1607,7 +1607,6 @@ export async function getSubscriptionsByParentId(parentId: number) {
     .select({
       subscription: subscriptions,
       course: courses,
-      sessionCourse: sessionCourses,
       tutor: users,
       isPrimary: courseTutors.isPrimary,
     })
@@ -1680,7 +1679,6 @@ export async function getAllSubscriptions() {
     })
     .from(subscriptions)
     .leftJoin(courses, eq(subscriptions.courseId, courses.id))
-    .leftJoin(sessionCourses, eq(sessions.courseId, sessionCourses.id))
     .leftJoin(users, eq(subscriptions.parentId, users.id))
     .leftJoin(tutorUsers, eq(subscriptions.preferredTutorId, tutorUsers.id))
     .orderBy(desc(subscriptions.createdAt));
