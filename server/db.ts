@@ -3875,7 +3875,7 @@ export async function getAllSessionsWithDetails() {
       subscription: subscriptions,
       course: courses,
       sessionCourse: sessionCourses,
-      tutorUser: { id: tutorUsers.id, name: tutorUsers.name, email: tutorUsers.email },
+      tutorUser: { id: tutorUsers.id, name: tutorUsers.name, email: tutorUsers.email, role: tutorUsers.role },
       parentUser: { id: parentUsers.id, name: parentUsers.name, email: parentUsers.email },
       tutorProfile: { zoomMeetingId: tutorProfiles.zoomMeetingId },
     })
@@ -3910,6 +3910,7 @@ export async function getAllSessionsWithDetails() {
       courseSubject: row.course?.subject || row.sessionCourse?.subject || null,
       tutorName: row.tutorUser?.name || null,
       tutorEmail: row.tutorUser?.email || null,
+      tutorRole: row.tutorUser?.role || null,
       parentName: row.parentUser?.name || null,
       parentEmail: row.parentUser?.email || null,
       zoomMeetingId: row.tutorProfile?.zoomMeetingId || null,

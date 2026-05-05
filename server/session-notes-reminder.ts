@@ -28,6 +28,7 @@ export async function sendSessionNotesReminders() {
       const email = s.tutorEmail;
       const name = s.tutorName || "Tutor";
       if (!email) continue;
+      if (s.tutorRole && s.tutorRole !== "tutor") continue;
       if (!byTutor.has(email)) byTutor.set(email, { tutorName: name, tutorEmail: email, sessions: [] });
       byTutor.get(email)!.sessions.push(s);
     }
