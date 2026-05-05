@@ -37,6 +37,8 @@ export default function SessionNotesHistory() {
   const [selectedCourse, setSelectedCourse] = useState<string>("all");
   const [selectedYear, setSelectedYear] = useState<string>("all");
   const [selectedStudent, setSelectedStudent] = useState<string>("all");
+  const [currentPage, setCurrentPage] = useState(1);
+  const PAGE_SIZE = 8;
 
   const tutorNotesWithFeedback = useMemo(() => {
     const fromSessions = (tutorHistory || [])
@@ -106,17 +108,26 @@ export default function SessionNotesHistory() {
   }, [tutorNotesWithFeedback]);
 
   const filteredTutorNotes = useMemo(() => {
-    return tutorNotesWithFeedback.filter((n) => {
-      const yearMatch = selectedYear === "all" || new Date(n.scheduledAt).getFullYear().toString() === selectedYear;
-      const courseMatch = selectedCourse === "all" || n.courseTitle === selectedCourse;
-      const studentMatch = selectedStudent === "all" || n.studentName === selectedStudent;
-      return yearMatch && courseMatch && studentMatch;
-    });
+    setCurrentPage(1);
+    return tutorNotesWithFeedback
+      .filter((n) => {
+        const yearMatch = selectedYear === "all" || new Date(n.scheduledAt).getFullYear().toString() === selectedYear;
+        const courseMatch = selectedCourse === "all" || n.courseTitle === selectedCourse;
+        const studentMatch = selectedStudent === "all" || n.studentName === selectedStudent;
+        return yearMatch && courseMatch && studentMatch;
+      })
+      .sort((a, b) => new Date(b.scheduledAt).getTime() - new Date(a.scheduledAt).getTime());
   }, [tutorNotesWithFeedback, selectedCourse, selectedYear, selectedStudent]);
 
+  const totalPages = Math.ceil(filteredTutorNotes.length / PAGE_SIZE);
+  const pagedNotes = useMemo(() => {
+    const start = (currentPage - 1) * PAGE_SIZE;
+    return filteredTutorNotes.slice(start, start + PAGE_SIZE);
+  }, [filteredTutorNotes, currentPage]);
+
   const groupedByMonth = useMemo(() => {
-    const map = new Map<string, typeof filteredTutorNotes>();
-    filteredTutorNotes.forEach((n) => {
+    const map = new Map<string, typeof pagedNotes>();
+    pagedNotes.forEach((n) => {
       const key = format(new Date(n.scheduledAt), "MMMM yyyy");
       if (!map.has(key)) map.set(key, []);
       map.get(key)!.push(n);
@@ -128,7 +139,7 @@ export default function SessionNotesHistory() {
         return dateB.getTime() - dateA.getTime();
       }
     );
-  }, [filteredTutorNotes]);
+  }, [pagedNotes]);
 
   useEffect(() => {
     if (!loading && !isAuthenticated) {
@@ -270,6 +281,33 @@ export default function SessionNotesHistory() {
                   </div>
                 </div>
               ))}
+
+              {totalPages > 1 && (
+                <div className="flex items-center justify-between pt-4 border-t">
+                  <p className="text-sm text-muted-foreground">
+                    Showing {(currentPage - 1) * PAGE_SIZE + 1}–{Math.min(currentPage * PAGE_SIZE, filteredTutorNotes.length)} of {filteredTutorNotes.length} notes
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                      disabled={currentPage === 1}
+                    >
+                      Previous
+                    </Button>
+                    <span className="text-sm font-medium">Page {currentPage} of {totalPages}</span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                      disabled={currentPage === totalPages}
+                    >
+                      Next
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
           ) : (
             <Card>
