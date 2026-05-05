@@ -1,7 +1,7 @@
 import Navigation from "@/components/Navigation";
+import { CoursePrice } from "@/components/CoursePrice";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
-import { useFormatPrice } from "@/hooks/useFormatPrice";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -352,7 +352,6 @@ function TutorFilesPanel({ tutorId }: { tutorId: number }) {
 export default function TutorDashboard() {
   const { user, isAuthenticated, loading } = useAuth();
   const [, setLocation] = useLocation();
-  const formatPrice = useFormatPrice();
   const utils = trpc.useUtils();
 
   // Get tab from URL query parameter
@@ -1509,7 +1508,7 @@ export default function TutorDashboard() {
                               <div className="grid grid-cols-2 gap-4 text-sm">
                                 <div>
                                   <p className="text-muted-foreground">Price</p>
-                                  <p className="font-semibold text-lg">{formatPrice(course.price)}</p>
+                                  <CoursePrice price={course.price} priceInr={course.priceInr} region={course.region as any} priceClassName="font-semibold text-lg" />
                                 </div>
                                 {course.duration && (
                                   <div>
