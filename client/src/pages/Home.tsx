@@ -702,7 +702,7 @@ export default function Home() {
 
               return (
                 <Card key={course.id} className="border-border/50 hover:border-primary/50 transition-all duration-300 hover:shadow-elegant group h-full">
-                  <CardContent className="pt-6">
+                  <CardContent className="pt-6 flex flex-col h-full">
                     <div
                       className={`w-14 h-14 rounded-xl bg-gradient-to-br ${
                         isAccent ? "from-accent/20 to-accent/10" : "from-primary/20 to-primary/10"
@@ -711,7 +711,7 @@ export default function Home() {
                       <IconComponent className={`w-7 h-7 ${isAccent ? "text-accent" : "text-primary"}`} />
                     </div>
                     <h3 className="text-xl font-semibold mb-2">{course.title}</h3>
-                    <p className="text-sm text-muted-foreground mb-4">{course.description}</p>
+                    <p className="text-sm text-muted-foreground mb-4 flex-1">{course.description}</p>
                     <div className="flex items-center justify-end pt-4 border-t border-border">
                       <div className="flex items-baseline gap-1">
                         <span className="text-xs text-muted-foreground font-normal">from</span>
