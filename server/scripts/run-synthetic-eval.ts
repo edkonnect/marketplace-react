@@ -1,4 +1,4 @@
-import { searchFaq } from "../faq-search.js";
+import { searchFaq } from "../faq/faq-search.js";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";

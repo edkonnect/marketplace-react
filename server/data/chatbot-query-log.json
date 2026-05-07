@@ -1,0 +1,106 @@
+[
+  {
+    "question": "Become a tutor",
+    "matched": true,
+    "matchedFaqId": 35,
+    "score": 0,
+    "intent": "become_tutor",
+    "category": "tutor",
+    "timestamp": "2026-03-10T17:16:37.784Z",
+    "url": "/login"
+  },
+  {
+    "question": "how can I become a parent?",
+    "matched": false,
+    "timestamp": "2026-03-10T17:16:50.358Z",
+    "url": "/login"
+  },
+  {
+    "question": "how can I look for courses?",
+    "matched": true,
+    "matchedFaqId": 3,
+    "score": 0.221,
+    "intent": "browse_courses",
+    "category": "homepage",
+    "timestamp": "2026-03-10T17:37:23.586Z",
+    "url": "/login"
+  },
+  {
+    "question": "how can I login as a parent",
+    "matched": true,
+    "matchedFaqId": 9,
+    "score": 0.493,
+    "intent": "login",
+    "category": "account",
+    "timestamp": "2026-03-10T17:37:40.478Z",
+    "url": "/login"
+  },
+  {
+    "question": "how can I sign up as a parent?",
+    "matched": true,
+    "matchedFaqId": 7,
+    "score": 0.475,
+    "intent": "create_account",
+    "category": "account",
+    "timestamp": "2026-03-10T17:38:18.392Z",
+    "url": "/login"
+  },
+  {
+    "question": "how can I take help from coordinator?",
+    "matched": false,
+    "timestamp": "2026-03-10T17:39:47.875Z",
+    "url": "/login"
+  },
+  {
+    "question": "coordinator",
+    "matched": true,
+    "matchedFaqId": 60,
+    "score": 0,
+    "intent": "coordinator_role",
+    "category": "admin",
+    "timestamp": "2026-03-10T17:40:21.584Z",
+    "url": "/login"
+  },
+  {
+    "question": "how should I access for course?",
+    "matched": false,
+    "timestamp": "2026-03-10T20:13:22.544Z",
+    "url": "/"
+  },
+  {
+    "question": "how do I access a course",
+    "matched": false,
+    "timestamp": "2026-03-10T20:15:11.089Z",
+    "url": "/"
+  },
+  {
+    "question": "how do I view courses",
+    "matched": true,
+    "matchedFaqId": 3,
+    "score": 0.127,
+    "intent": "browse_courses",
+    "category": "homepage",
+    "timestamp": "2026-03-10T20:15:24.077Z",
+    "url": "/"
+  },
+  {
+    "question": "show me my current enrollments",
+    "matched": true,
+    "matchedFaqId": 49,
+    "score": 0.443,
+    "intent": "view_subscriptions",
+    "category": "parent",
+    "timestamp": "2026-03-10T20:17:43.963Z",
+    "url": "/login"
+  },
+  {
+    "question": "Book a tutor",
+    "matched": true,
+    "matchedFaqId": 13,
+    "score": 0.054,
+    "intent": "book_tutor",
+    "category": "booking",
+    "timestamp": "2026-03-13T13:43:00.703Z",
+    "url": "/"
+  }
+]

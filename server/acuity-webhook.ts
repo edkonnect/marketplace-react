@@ -25,7 +25,7 @@ const ACUITY_API_KEY = process.env.ACUITY_API_KEY!;
 
 const CALENDAR_TUTOR_MAP: Record<number, number> = {
   9518516:  50, // Ms. Dolon
-  9344460:  3,  // Mr. Ashwin Siva (Arunn)
+  9344460:  55, // Mr. Brian Olsen
   13134669: 54,  // Mr. Bichu S Kumar
   12924725: 75,  // Mr. Gerard
   7992988:  72, // Mr. Gopi

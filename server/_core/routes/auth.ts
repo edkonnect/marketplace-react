@@ -3,7 +3,7 @@ import { z } from "zod";
 import { authSchema, authenticateRequest, clearAuthCookies, clearSuperUserCookie, hashPassword, setSuperUserCookie, setAuthCookies, verifyPassword, verifyRefreshToken, verifySuperUserCookie } from "../services/authService";
 import * as db from "../../db";
 import { REFRESH_TOKEN_COOKIE } from "@shared/const";
-import { sendVerificationEmail, sendCouponRewardEmail, sendAdminNewUserNotification } from "../../email-helpers";
+import { sendVerificationEmail, sendCouponRewardEmail, sendAdminNewUserNotification } from "../../emails/email-helpers";
 
 export const authRouter = express.Router();
 
@@ -389,7 +389,7 @@ authRouter.post("/forgot-password", async (req, res) => {
   const resetUrl = `${process.env.VITE_FRONTEND_FORGE_API_URL || "http://localhost:3000"}/reset-password?token=${token}`;
 
   try {
-    const { sendPasswordResetEmail } = await import("../../email-helpers");
+    const { sendPasswordResetEmail } = await import("../../emails/email-helpers");
     await sendPasswordResetEmail({
       userEmail: user.email,
       userName: user.name || user.firstName || "there",
@@ -491,7 +491,7 @@ authRouter.post("/resend-setup-link", async (req, res) => {
 
   // Send email
   try {
-    const { sendPasswordSetupEmail } = await import('../../email-helpers');
+    const { sendPasswordSetupEmail } = await import('../../emails/email-helpers');
     const emailSent = await sendPasswordSetupEmail({
       tutorEmail: user.email,
       tutorName: user.name || 'Tutor',

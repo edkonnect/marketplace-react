@@ -56,7 +56,7 @@ async function startServer() {
   );
   // Stripe webhook MUST be registered before CORS and express.json() middleware
   // Stripe sends from its own servers so CORS must not apply here
-  const { handleStripeWebhook } = await import("../stripeWebhook");
+  const { handleStripeWebhook } = await import("../payments/stripeWebhook");
   app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), handleStripeWebhook);
 
   // Acuity webhook requires raw body for HMAC-SHA256 signature verification.
@@ -83,7 +83,7 @@ async function startServer() {
     const localPrefixes = ["http://localhost", "http://127.0.0.1", ""];
     const isLocalForge = localPrefixes.some(p => forgeUrl === p || forgeUrl.startsWith(p + ":"));
     if (isLocalForge) {
-      const { createLocalDevStorageRouter, createLocalDevStaticRouter } = await import("../localDevStorage");
+      const { createLocalDevStorageRouter, createLocalDevStaticRouter } = await import("../storage/localDevStorage");
       const preferredPort = parseInt(process.env.PORT || "3000");
       const devBaseUrl = forgeUrl || `http://localhost:${preferredPort}`;
       app.use(createLocalDevStorageRouter(devBaseUrl));
@@ -97,7 +97,7 @@ async function startServer() {
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
   // Zoom webhook for recording notifications
-  const { handleZoomWebhook } = await import("../zoom-webhook");
+  const { handleZoomWebhook } = await import("../zoom/zoom-webhook");
   app.post("/api/webhooks/zoom", handleZoomWebhook);
 
   // Auth routes
@@ -105,7 +105,7 @@ async function startServer() {
   app.use("/api/users", userRouter);
   
   // PDF download route
-  const { pdfRouter } = await import("../pdfRoute");
+  const { pdfRouter } = await import("../pdf/pdfRoute");
   app.use("/api/pdf", pdfRouter);
 
   // Course file proxy — streams S3 files without exposing S3 URLs
@@ -145,11 +145,19 @@ async function startServer() {
 
   // Start monthly usage billing cron
   const { startBillingCron, processUsageBilling, startReminderCron, startSessionNotesReminderCron } = await import("../cron");
-  startBillingCron();
+  if (process.env.NODE_ENV === 'production') {
+    startBillingCron();
+  } else {
+    console.log("[Cron] Billing cron SKIPPED (not production)");
+  }
 
   // Start session reminder cron (24h, 1h, 15min before sessions)
   // startReminderCron(); // DISABLED — re-enable when ready to send reminders
-  startSessionNotesReminderCron();
+  if (process.env.NODE_ENV === 'production') {
+    startSessionNotesReminderCron();
+  } else {
+    console.log("[Cron] Session notes reminder cron SKIPPED (not production)");
+  }
 
   // Catch-up: if any billing cycles were missed (e.g. server was down on the 1st), run immediately
   const { getUsageBasedSubscriptionsDue } = await import("../db");

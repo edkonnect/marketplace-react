@@ -8,7 +8,7 @@
 import { getDb } from "../db";
 import { users, tutorProfiles } from "../../drizzle/schema";
 import { eq, isNull } from "drizzle-orm";
-import { createPermanentZoomMeeting } from "../zoom-service";
+import { createPermanentZoomMeeting } from "../zoom/zoom-service";
 
 async function createZoomMeetingsForExistingTutors() {
   console.log("🚀 Starting Zoom meeting creation for existing tutors...\n");

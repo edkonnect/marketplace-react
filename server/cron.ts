@@ -1,8 +1,8 @@
 import cron from "node-cron";
 import * as db from "./db";
-import { createCombinedUsageInvoice } from "./stripe";
+import { createCombinedUsageInvoice } from "./payments/stripe";
 import { sendSessionReminders } from "./notification-service";
-import { sendSessionNotesReminders } from "./session-notes-reminder";
+import { sendSessionNotesReminders } from "./emails/session-notes-reminder";
 
 export function startReminderCron() {
   // Run every 5 minutes — matches the ±5 min window in getUpcomingSessionsForNotifications()

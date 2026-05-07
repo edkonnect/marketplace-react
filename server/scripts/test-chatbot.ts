@@ -11,7 +11,7 @@
 import path from "path";
 import { fileURLToPath } from "url";
 import fs from "fs";
-import { searchFaq } from "../faq-search.js";
+import { searchFaq } from "../faq/faq-search.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -30,7 +30,7 @@ interface EvalCase {
   expectedIntent: string;
 }
 
-const evalPath = path.join(__dirname, "..", "faq-eval.json");
+const evalPath = path.join(__dirname, "../data/faq-eval.json");
 const evalCases: EvalCase[] = JSON.parse(fs.readFileSync(evalPath, "utf-8"));
 
 // ---------------------------------------------------------------------------

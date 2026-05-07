@@ -1,5 +1,5 @@
 import * as db from "./db";
-import { emailService } from "./email-service";
+import { emailService } from "./emails/email-service";
 
 /**
  * Send session reminder notifications based on user preferences

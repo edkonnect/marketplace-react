@@ -8,16 +8,16 @@ import { NOT_SUPER_USER_ERR_MSG } from "@shared/const";
 import { z } from "zod";
 import * as db from "./db";
 import { TRPCError } from "@trpc/server";
-import { searchFaq, logUnansweredQuestion, logQuery } from "./faq-search";
-import { checkChatbotRateLimit, bookingRateLimiter } from "./chatbot-rate-limiter";
-import { sendWelcomeEmail, sendBookingConfirmation, sendEnrollmentConfirmation, sendTutorEnrollmentNotification, sendNoShowNotification, formatEmailDate, formatEmailTime, formatEmailPrice, sendTutorApplicationReceivedEmail, sendReferralInviteEmail, sendCouponRewardEmail, sendAdminNewUserNotification } from "./email-helpers";
+import { searchFaq, logUnansweredQuestion, logQuery } from "./faq/faq-search";
+import { checkChatbotRateLimit, bookingRateLimiter } from "./faq/chatbot-rate-limiter";
+import { sendWelcomeEmail, sendBookingConfirmation, sendEnrollmentConfirmation, sendTutorEnrollmentNotification, sendNoShowNotification, formatEmailDate, formatEmailTime, formatEmailPrice, sendTutorApplicationReceivedEmail, sendReferralInviteEmail, sendCouponRewardEmail, sendAdminNewUserNotification } from "./emails/email-helpers";
 import { generateBookingToken, isValidBookingToken } from "./booking-management";
-import { sendCancellationConfirmationEmail } from "./cancellation-email";
-import { generateCurriculumPDF } from "./pdf-generator";
-import { sendSessionNotesEmail } from "./session-notes-email";
-import { emailService } from "./email-service";
-import { storagePut } from "./storage";
-import { uploadProfileImageToS3, deleteProfileImageFromS3, uploadCourseFileToS3, deleteCourseFileFromS3, getCourseFilePresignedUrl } from "./s3Storage";
+import { sendCancellationConfirmationEmail } from "./emails/cancellation-email";
+import { generateCurriculumPDF } from "./pdf/pdf-generator";
+import { sendSessionNotesEmail } from "./emails/session-notes-email";
+import { emailService } from "./emails/email-service";
+import { storagePut } from "./storage/storage";
+import { uploadProfileImageToS3, deleteProfileImageFromS3, uploadCourseFileToS3, deleteCourseFileFromS3, getCourseFilePresignedUrl } from "./storage/s3Storage";
 import crypto from "crypto";
 import { and, eq } from "drizzle-orm";
 import { subscriptions as subscriptionsTable, tutorProfiles, users } from "../drizzle/schema";
@@ -175,7 +175,7 @@ async function getTutorZoomUrl(tutorId: number, isHost: boolean = false): Promis
   if (isHost && profile[0].meetingId) {
     // ZAK tokens in stored host URLs expire within hours — fetch a fresh one from Zoom API.
     // Falls back to stored URL if API call fails (e.g. network issue, rate limit).
-    const { getFreshHostUrl } = await import('./zoom-service');
+    const { getFreshHostUrl } = await import('./zoom/zoom-service');
     const freshUrl = await getFreshHostUrl(profile[0].meetingId);
     if (freshUrl) return freshUrl;
     console.warn(`[ZoomUrl] Could not fetch fresh host URL for tutorId=${tutorId}, falling back to stored URL`);
@@ -337,7 +337,7 @@ export const appRouter = router({
       const { firstName, lastName, email } = tutor[0];
       const fullName = `${firstName} ${lastName}`;
 
-      const { createPermanentZoomMeeting } = await import('./zoom-service');
+      const { createPermanentZoomMeeting } = await import('./zoom/zoom-service');
       const zoomMeeting = await createPermanentZoomMeeting(fullName, email);
 
       // Update profile
@@ -629,7 +629,7 @@ export const appRouter = router({
         }
 
         // Upload to S3
-        const { storagePut } = await import('./storage');
+        const { storagePut } = await import('./storage/storage');
         const buffer = Buffer.from(input.base64Data, 'base64');
         const fileKey = `tutor-videos/${ctx.user.id}-${Date.now()}-${input.fileName}`;
         
@@ -1145,7 +1145,7 @@ export const appRouter = router({
         let subscriptionId: number | null = null;
 
         try {
-          const { createCheckoutSession: stripeCheckout } = await import("./stripe");
+          const { createCheckoutSession: stripeCheckout } = await import("./payments/stripe");
 
           // Get course details
           const course = await db.getCourseById(input.courseId);
@@ -1446,7 +1446,7 @@ export const appRouter = router({
         let setupUrl: string | null = null;
         if (ctx.user.email) {
           try {
-            const { getOrCreateStripeCustomer, createSetupCheckoutSession, createUsageEnrollmentCheckout } = await import("./stripe");
+            const { getOrCreateStripeCustomer, createSetupCheckoutSession, createUsageEnrollmentCheckout } = await import("./payments/stripe");
             const parentUser = await db.getUserById(ctx.user.id);
             const stripeCustomerId = await getOrCreateStripeCustomer({
               userId: ctx.user.id,
@@ -1611,8 +1611,8 @@ export const appRouter = router({
         let setupUrl: string | null = null;
         if (ctx.user.email) {
           try {
-            const { getOrCreateStripeCustomer } = await import("./stripe");
-            const stripe = (await import("./stripe")).getStripe();
+            const { getOrCreateStripeCustomer } = await import("./payments/stripe");
+            const stripe = (await import("./payments/stripe")).getStripe();
             const parentUser = await db.getUserById(ctx.user.id);
             const stripeCustomerId = await getOrCreateStripeCustomer({
               userId: ctx.user.id,
@@ -1654,7 +1654,7 @@ export const appRouter = router({
         origin: z.string(),
       }))
       .mutation(async ({ ctx, input }) => {
-        const { createCheckoutSession: stripeCheckout } = await import("./stripe");
+        const { createCheckoutSession: stripeCheckout } = await import("./payments/stripe");
 
         const localSub = await db.getSubscriptionById(input.subscriptionId);
         if (!localSub || localSub.parentId !== ctx.user.id) {
@@ -1720,7 +1720,7 @@ export const appRouter = router({
         const course = await db.getCourseById(localSub.courseId);
         if (!course) throw new TRPCError({ code: "NOT_FOUND", message: "Course not found" });
 
-        const { getOrCreateStripeCustomer, getStripe } = await import("./stripe");
+        const { getOrCreateStripeCustomer, getStripe } = await import("./payments/stripe");
         const parentUser = await db.getUserById(ctx.user.id);
         const stripeCustomerId = await getOrCreateStripeCustomer({
           userId: ctx.user.id,
@@ -1759,7 +1759,7 @@ export const appRouter = router({
         origin: z.string(),
       }))
       .mutation(async ({ ctx, input }) => {
-        const { getOrCreateStripeCustomer, createSetupCheckoutSession, createUsageEnrollmentCheckout } = await import("./stripe");
+        const { getOrCreateStripeCustomer, createSetupCheckoutSession, createUsageEnrollmentCheckout } = await import("./payments/stripe");
 
         const localSub = await db.getSubscriptionById(input.subscriptionId);
         if (!localSub || localSub.parentId !== ctx.user.id) {
@@ -1891,7 +1891,7 @@ export const appRouter = router({
             sub.subscription.stripeSubscriptionId
           ) {
             try {
-              const { getStripe } = await import("./stripe");
+              const { getStripe } = await import("./payments/stripe");
               const stripe = getStripe();
               const stripeSub = await stripe.subscriptions.retrieve(
                 sub.subscription.stripeSubscriptionId
@@ -3413,7 +3413,7 @@ export const appRouter = router({
         }
 
         // Upload to S3 (falls back to local disk in dev)
-        const { uploadMessageFileToS3 } = await import('./s3Storage');
+        const { uploadMessageFileToS3 } = await import('./storage/s3Storage');
         const { url } = await uploadMessageFileToS3(buffer, input.fileType, input.fileName);
 
         return {
@@ -3574,7 +3574,7 @@ export const appRouter = router({
   payment: router({
     getPaymentHistory: parentProcedure
       .query(async ({ ctx }) => {
-        const { listStripeInvoicesForCustomer } = await import("./stripe");
+        const { listStripeInvoicesForCustomer } = await import("./payments/stripe");
 
         // Fetch enriched payments from local DB (single query with joins)
         const localPayments = await db.getParentPayments(ctx.user.id);
@@ -3651,7 +3651,7 @@ export const appRouter = router({
         // Fetch Stripe invoices if customer exists
         if (parentUser?.stripeCustomerId) {
           try {
-            const { listStripeInvoicesForCustomer } = await import("./stripe");
+            const { listStripeInvoicesForCustomer } = await import("./payments/stripe");
             const invoices = await listStripeInvoicesForCustomer(parentUser.stripeCustomerId);
 
             // Helper to extract subscription ID from new Invoice parent structure
@@ -3802,7 +3802,7 @@ export const appRouter = router({
         // so parents can see what's coming before real invoices are generated
         if (parentUser?.stripeCustomerId) {
           try {
-            const { getStripe } = await import("./stripe");
+            const { getStripe } = await import("./payments/stripe");
             const stripe = getStripe();
             const activeSubs = await db.getSubscriptionsByParentId(ctx.user.id);
             const monthlyActive = activeSubs.filter((s: any) =>
@@ -3994,7 +3994,7 @@ export const appRouter = router({
           throw new TRPCError({ code: "NOT_FOUND", message: "Course not found" });
         }
 
-        const { createCheckoutSession } = await import("./stripe");
+        const { createCheckoutSession } = await import("./payments/stripe");
         const session = await createCheckoutSession({
           priceAmount: parseFloat(course.price),
           courseName: course.title,
@@ -4384,7 +4384,7 @@ export const appRouter = router({
         );
         const migratedParentIds = [...new Set(migratedSubs.map(({ subscription }) => subscription.parentId))];
         if (migratedParentIds.length > 0) {
-          const { listStripeInvoicesForCustomer } = await import("./stripe");
+          const { listStripeInvoicesForCustomer } = await import("./payments/stripe");
           const allUsers2 = allUsers; // already fetched above
           await Promise.all(migratedParentIds.map(async (parentId) => {
             const parent = allUsers2.find((u: any) => u.id === parentId) as any;
@@ -4392,7 +4392,7 @@ export const appRouter = router({
             try {
               const invoices = await listStripeInvoicesForCustomer(parent.stripeCustomerId, 100);
               const rev = invoices
-                .filter((inv: any) => inv.status === 'paid' && inv.amount_paid > 0)
+                .filter((inv: any) => inv.status === 'paid' && inv.amount_paid > 0 && inv.currency === 'usd')
                 .reduce((sum: number, inv: any) => sum + inv.amount_paid / 100, 0);
               totalRevenue += rev;
             } catch {
@@ -5044,14 +5044,14 @@ export const appRouter = router({
       const migratedParentIds = [...new Set(migratedPaidSubs.map(({ subscription }) => subscription.parentId))];
       const stripeRevenueByParent = new Map<number, number>();
       if (migratedParentIds.length > 0) {
-        const { listStripeInvoicesForCustomer } = await import("./stripe");
+        const { listStripeInvoicesForCustomer } = await import("./payments/stripe");
         await Promise.all(migratedParentIds.map(async (parentId) => {
           const parent = parentCache.get(parentId) as any;
           if (!parent?.stripeCustomerId) return;
           try {
             const invoices = await listStripeInvoicesForCustomer(parent.stripeCustomerId, 100);
             const revenue = invoices
-              .filter((inv: any) => inv.status === 'paid' && inv.amount_paid > 0)
+              .filter((inv: any) => inv.status === 'paid' && inv.amount_paid > 0 && inv.currency === 'usd')
               .reduce((sum: number, inv: any) => sum + inv.amount_paid / 100, 0);
             if (revenue > 0) stripeRevenueByParent.set(parentId, revenue);
           } catch {
@@ -5300,7 +5300,7 @@ export const appRouter = router({
                 const setupUrl = `${process.env.VITE_FRONTEND_FORGE_API_URL || 'http://localhost:3000'}/setup-password?token=${setupToken}`;
                 const expiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000);
 
-                const { sendPasswordSetupEmail } = await import('./email-helpers');
+                const { sendPasswordSetupEmail } = await import('./emails/email-helpers');
                 await sendPasswordSetupEmail({
                   tutorEmail: tutorProfile.email,
                   tutorName: tutorProfile.name,
@@ -5316,7 +5316,7 @@ export const appRouter = router({
           } else {
             // User already has password - send regular approval email
             try {
-              const { sendTutorApprovalEmail } = await import('./email-helpers');
+              const { sendTutorApprovalEmail } = await import('./emails/email-helpers');
               await sendTutorApprovalEmail({
                 tutorEmail: tutorProfile.email,
                 tutorName: tutorProfile.name,
@@ -6417,7 +6417,7 @@ export const appRouter = router({
             const setupUrl = `${process.env.VITE_FRONTEND_FORGE_API_URL || 'http://localhost:3000'}/setup-password?token=${setupToken}`;
             const expiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000); // 48 hours from now
 
-            const { sendCoordinatorPasswordSetupEmail } = await import('./email-helpers');
+            const { sendCoordinatorPasswordSetupEmail } = await import('./emails/email-helpers');
             const emailSent = await sendCoordinatorPasswordSetupEmail({
               coordinatorEmail: user.email,
               coordinatorName: `${user.firstName} ${user.lastName}`,
@@ -6462,7 +6462,7 @@ export const appRouter = router({
           const setupUrl = `${process.env.VITE_FRONTEND_FORGE_API_URL || 'http://localhost:3000'}/setup-password?token=${setupToken}`;
           const expiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000); // 48 hours from now
 
-          const { sendCoordinatorPasswordSetupEmail } = await import('./email-helpers');
+          const { sendCoordinatorPasswordSetupEmail } = await import('./emails/email-helpers');
           await sendCoordinatorPasswordSetupEmail({
             coordinatorEmail: user.email,
             coordinatorName: `${user.firstName} ${user.lastName}`,
@@ -7463,7 +7463,7 @@ For engagementData, describe ONLY the student's participation and behavior. The 
         pageSize: z.number().min(1).max(100).optional(),
       }))
       .query(async ({ input }) => {
-        const { listZoomRecordings } = await import('./zoom-service');
+        const { listZoomRecordings } = await import('./zoom/zoom-service');
 
         try {
           const recordings = await listZoomRecordings({
@@ -7510,7 +7510,7 @@ For engagementData, describe ONLY the student's participation and behavior. The 
         const meetingId = tutorProfile.zoomMeetingId;
         const sessionScheduledAt = Number(session.scheduledAt);
 
-        const { getZoomAccessToken } = await import('./zoom-service');
+        const { getZoomAccessToken } = await import('./zoom/zoom-service');
         const ZOOM_API_BASE_URL = 'https://api.zoom.us/v2';
 
         const from = new Date(sessionScheduledAt - 86400000).toISOString().slice(0, 10);
@@ -7572,7 +7572,7 @@ For engagementData, describe ONLY the student's participation and behavior. The 
         forceUuid: z.string().optional(), // Admin override: bypass cache + auto-detection, use this UUID
       }))
       .mutation(async ({ input, ctx }) => {
-        const { fetchZoomTranscript, getZoomRecording, findRecordingUuidBySessionTime } = await import('./zoom-service');
+        const { fetchZoomTranscript, getZoomRecording, findRecordingUuidBySessionTime } = await import('./zoom/zoom-service');
         const { zoomMeetingRecordings } = await import('../drizzle/schema');
         const database = await db.getDb();
 
@@ -8316,7 +8316,7 @@ For engagementData, describe ONLY the student's participation and behavior. The 
         const uuid = crypto.randomUUID();
         const key = `testimonial-images/${uuid}.${ext}`;
         const imageBuffer = Buffer.from(stripped, 'base64');
-        const { uploadProfileImageToS3 } = await import('./s3Storage');
+        const { uploadProfileImageToS3 } = await import('./storage/s3Storage');
         // Re-use uploadProfileImageToS3 with a pseudo userId of 0 for the key prefix override
         // Instead, build the upload manually using the same helpers
         const { ENV } = await import('./_core/env');
@@ -8420,7 +8420,7 @@ For engagementData, describe ONLY the student's participation and behavior. The 
         if (!allowedExtensions.includes(fileExt)) {
           throw new TRPCError({ code: "BAD_REQUEST", message: "Only PDF, Word, Excel, and PowerPoint files are allowed." });
         }
-        const { getCourseFileUploadPresignedUrl } = await import("./s3Storage");
+        const { getCourseFileUploadPresignedUrl } = await import("./storage/s3Storage");
         const result = await getCourseFileUploadPresignedUrl(input.fileName, input.fileType);
         return result; // null in local dev
       }),

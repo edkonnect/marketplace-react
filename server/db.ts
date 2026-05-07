@@ -593,7 +593,7 @@ export async function createTutorProfile(profile: InsertTutorProfile) {
         const user = tutorUser[0];
         const fullName = `${user.firstName} ${user.lastName}`;
 
-        const { createPermanentZoomMeeting } = await import('./zoom-service');
+        const { createPermanentZoomMeeting } = await import('./zoom/zoom-service');
         const zoomMeeting = await createPermanentZoomMeeting(fullName, user.email);
 
         // Update tutor profile with Zoom details

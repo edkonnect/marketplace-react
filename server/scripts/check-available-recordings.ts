@@ -6,7 +6,7 @@
  *   pnpm tsx server/scripts/check-available-recordings.ts
  */
 
-import { listZoomRecordings } from "../zoom-service";
+import { listZoomRecordings } from "../zoom/zoom-service";
 
 async function checkRecordings() {
   try {
