@@ -7,7 +7,7 @@ export async function sendSessionNotesReminders() {
   try {
     const now = Date.now();
     const oneDayAgo = now - 24 * 60 * 60 * 1000;
-    const sevenDaysAgo = now - 7 * 24 * 60 * 60 * 1000;
+    const sevenDaysAgo = now - 30 * 24 * 60 * 60 * 1000;
 
     const sessions = await db.getAllSessionsWithDetails();
 
@@ -15,7 +15,8 @@ export async function sendSessionNotesReminders() {
       const isCompleted = s.status === "completed";
       const noNotes = !s.feedbackFromTutor || s.feedbackFromTutor.trim() === "";
       const isOldEnough = s.scheduledAt < oneDayAgo;
-      return isCompleted && noNotes && isOldEnough;
+      const isWithin30Days = s.scheduledAt > sevenDaysAgo;
+      return isCompleted && noNotes && isOldEnough && isWithin30Days;
     });
 
     if (missingSessions.length === 0) {
@@ -28,6 +29,7 @@ export async function sendSessionNotesReminders() {
       const email = s.tutorEmail;
       const name = s.tutorName || "Tutor";
       if (!email) continue;
+      if (!s.tutorRole || s.tutorRole !== "tutor") continue;
       if (!byTutor.has(email)) byTutor.set(email, { tutorName: name, tutorEmail: email, sessions: [] });
       byTutor.get(email)!.sessions.push(s);
     }
