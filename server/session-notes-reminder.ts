@@ -15,7 +15,8 @@ export async function sendSessionNotesReminders() {
       const isCompleted = s.status === "completed";
       const noNotes = !s.feedbackFromTutor || s.feedbackFromTutor.trim() === "";
       const isOldEnough = s.scheduledAt < oneDayAgo;
-      return isCompleted && noNotes && isOldEnough;
+      const isWithin30Days = s.scheduledAt > sevenDaysAgo;
+      return isCompleted && noNotes && isOldEnough && isWithin30Days;
     });
 
     if (missingSessions.length === 0) {
