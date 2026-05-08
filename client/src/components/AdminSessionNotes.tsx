@@ -75,18 +75,18 @@ export function AdminSessionNotes() {
   // Only fetch when user has applied filters or selected a parent
   const shouldFetch = hasApplied || selectedParent !== null;
 
-  const { data: sessionsData, isLoading } = trpc.admin.getAllSessions.useQuery(
-    {
-      limit: 2000,
-      offset: 0,
-      startDate: appliedFrom,
-      endDate: appliedTo,
-    },
-    {
-      // ✅ FIX 2: Don't run query until user applies filters
-      enabled: shouldFetch,
-    }
-  );
+ const { data: sessionsData, isLoading } = trpc.admin.getAllSessions.useQuery(
+  {
+    limit: 2000,
+    offset: 0,
+    startDate: appliedFrom,
+    endDate: appliedTo,
+    parentName: selectedParent?.name || undefined,
+  },
+  {
+    enabled: shouldFetch,
+  }
+);
 
   const notesOnly = useMemo(() => {
     if (!shouldFetch) return [];
