@@ -3647,7 +3647,7 @@ export const appRouter = router({
   payment: router({
     getPaymentHistory: parentProcedure
       .query(async ({ ctx }) => {
-        const { listStripeInvoicesForCustomer } = await import("./payments/stripe");
+        const { listStripeInvoicesForCustomer, isAsiaTz: isAsiaTzPayHist } = await import("./payments/stripe");
 
         // Fetch enriched payments from local DB (single query with joins)
         const localPayments = await db.getParentPayments(ctx.user.id);
@@ -3655,10 +3655,11 @@ export const appRouter = router({
         // Optionally enrich with Stripe invoice PDF URLs
         const parentUser = await db.getUserById(ctx.user.id);
         const stripeInvoiceMap: Record<string, string> = {};
+        const payHistCurrency = isAsiaTzPayHist(parentUser?.timezone) ? "inr" : "usd";
 
         if (parentUser?.stripeCustomerId) {
           try {
-            const invoices = await listStripeInvoicesForCustomer(parentUser.stripeCustomerId);
+            const invoices = await listStripeInvoicesForCustomer(parentUser.stripeCustomerId, 24, payHistCurrency);
             for (const inv of invoices) {
               if (inv.id && inv.invoice_pdf) {
                 stripeInvoiceMap[inv.id] = inv.invoice_pdf;
@@ -3722,10 +3723,12 @@ export const appRouter = router({
         const paidStripeSubIds = new Set<string>();
 
         // Fetch Stripe invoices if customer exists
+        const { isAsiaTz: isAsiaTzInv } = await import("./payments/stripe");
+        const invCurrency = isAsiaTzInv(parentUser?.timezone) ? "inr" : "usd";
         if (parentUser?.stripeCustomerId) {
           try {
             const { listStripeInvoicesForCustomer } = await import("./payments/stripe");
-            const invoices = await listStripeInvoicesForCustomer(parentUser.stripeCustomerId);
+            const invoices = await listStripeInvoicesForCustomer(parentUser.stripeCustomerId, 24, invCurrency);
 
             // Helper to extract subscription ID from new Invoice parent structure
             const getInvSubId = (inv: any): string | null => {
