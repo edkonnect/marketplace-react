@@ -11,6 +11,19 @@ function today() {
   return new Date().toISOString().slice(0, 10);
 }
 
+// Fix timezone issue: parse YYYY-MM-DD as local date, not UTC
+function parseLocalDate(dateStr: string) {
+  if (!dateStr) return null;
+  const [year, month, day] = dateStr.split("-").map(Number);
+  return new Date(year, month - 1, day);
+}
+
+function formatLocalDate(dateStr: string) {
+  const d = parseLocalDate(dateStr);
+  if (!d) return "All time";
+  return d.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+}
+
 export function AdminSessionNotes() {
   // Filter input state (what user types/selects)
   const [fromDate, setFromDate] = useState("");
@@ -26,8 +39,11 @@ export function AdminSessionNotes() {
   const [appliedTo, setAppliedTo] = useState("");
   const [appliedTutor, setAppliedTutor] = useState<string>("all");
 
-  // ✅ FIX 1: Gate — only show results after user explicitly applies or selects a parent
+  // Gate — only show results after user explicitly applies AND selects a parent
   const [hasApplied, setHasApplied] = useState(false);
+
+  // Date selection is required before parent search is enabled
+  const isDateSelected = fromDate.trim() !== "" && toDate.trim() !== "";
 
   const searchRef = useRef<HTMLDivElement>(null);
 
@@ -72,21 +88,21 @@ export function AdminSessionNotes() {
     ).slice(0, 10);
   }, [parentsData, parentSearch]);
 
-  // Only fetch when user has applied filters or selected a parent
-  const shouldFetch = hasApplied || selectedParent !== null;
+  // Only fetch when user has applied filters AND selected a parent
+  const shouldFetch = hasApplied && selectedParent !== null;
 
- const { data: sessionsData, isLoading } = trpc.admin.getAllSessions.useQuery(
-  {
-    limit: 2000,
-    offset: 0,
-    startDate: appliedFrom,
-    endDate: appliedTo,
-    parentName: selectedParent?.name || undefined,
-  },
-  {
-    enabled: shouldFetch,
-  }
-);
+  const { data: sessionsData, isLoading } = trpc.admin.getAllSessions.useQuery(
+    {
+      limit: 2000,
+      offset: 0,
+      startDate: appliedFrom,
+      endDate: appliedTo,
+      parentName: selectedParent?.name || undefined,
+    },
+    {
+      enabled: shouldFetch,
+    }
+  );
 
   const notesOnly = useMemo(() => {
     if (!shouldFetch) return [];
@@ -98,15 +114,15 @@ export function AdminSessionNotes() {
     });
   }, [sessionsData, appliedTutor, selectedParent, shouldFetch]);
 
-  // ✅ FIX 3: Apply sets the gate
   const handleApply = () => {
+    if (!isDateSelected) return;
+    if (!selectedParent) return;
     setAppliedFrom(fromDate);
     setAppliedTo(toDate);
     setAppliedTutor(selectedTutorName);
     setHasApplied(true);
   };
 
-  // ✅ FIX 4: Reset clears everything including the gate, dates go to empty
   const handleReset = () => {
     setFromDate("");
     setToDate("");
@@ -116,31 +132,19 @@ export function AdminSessionNotes() {
     setAppliedFrom("");
     setAppliedTo("");
     setAppliedTutor("all");
-    setHasApplied(false); // ← hides results again
+    setHasApplied(false);
   };
 
-  // ✅ FIX 5: Selecting a parent shows their sessions immediately
   const handleSelectParent = (p: { email: string; name: string }) => {
     setSelectedParent(p);
     setParentSearch(p.name);
     setShowSuggestions(false);
-    // Clear date filters so ALL sessions for this parent show
-    setAppliedFrom("");
-    setAppliedTo("");
-    setFromDate("");
-    setToDate("");
-    setAppliedTutor("all");
-    setSelectedTutorName("all");
-    setHasApplied(true); // ← trigger results display
   };
 
   const handleClearParent = () => {
     setSelectedParent(null);
     setParentSearch("");
-    // If no other filters are active, hide results
-    if (!appliedFrom && !appliedTo && appliedTutor === "all") {
-      setHasApplied(false);
-    }
+    setHasApplied(false);
   };
 
   const handleGeneratePdf = async () => {
@@ -150,16 +154,18 @@ export function AdminSessionNotes() {
     try {
       const parentLabel = selectedParent ? selectedParent.name : "All Parents";
 
-      const fromLabel = appliedFrom
-        ? new Date(appliedFrom).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })
-        : "All time";
-      const toLabel = appliedTo
-        ? new Date(appliedTo).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })
-        : "Today";
+      // Use the applied (confirmed) date range for PDF label
+      const fromLabel = appliedFrom ? formatLocalDate(appliedFrom) : "All time";
+      const toLabel = appliedTo ? formatLocalDate(appliedTo) : "Today";
 
       const sessionRows = notesOnly.map(s => {
         const studentName = [s.studentFirstName, s.studentLastName].filter(Boolean).join(" ") || "—";
-        const date = new Date(s.scheduledAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+        const date = new Date(s.scheduledAt).toLocaleDateString("en-IN", {
+          day: "numeric",
+          month: "short",
+          year: "numeric",
+          timeZone: "Asia/Kolkata",
+        });
         const notes = (s.feedbackFromTutor || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
         return `
           <div class="session-card">
@@ -167,7 +173,9 @@ export function AdminSessionNotes() {
               <div>
                 <div class="session-date">${date}</div>
                 <div class="session-meta" style="margin-top:4px;">
-                  <strong>Student:</strong> ${studentName} &nbsp;|&nbsp; <strong>Tutor:</strong> ${s.tutorName || "—"}
+                  <strong>Student:</strong> ${studentName} &nbsp;|&nbsp;
+                  <strong>Tutor:</strong> ${s.tutorName || "—"} &nbsp;|&nbsp;
+                  <strong>Parent:</strong> ${selectedParent ? selectedParent.name : (s.parentEmail || "—")}
                 </div>
               </div>
               <div class="course-badge">${s.courseTitle || "—"}</div>
@@ -195,20 +203,22 @@ export function AdminSessionNotes() {
     .header p { font-size: 14px; opacity: 0.85; }
     .meta { display: flex; gap: 32px; margin-top: 16px; flex-wrap: wrap; }
     .meta-item { font-size: 13px; }
-    .meta-item span { font-weight: 600; display: block; font-size: 11px; opacity: 0.75; text-transform: uppercase; letter-spacing: 0.5px; }
+    .meta-label { font-weight: 600; font-size: 11px; opacity: 0.75; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+    .meta-value { font-size: 13px; font-weight: 500; }
     .content { padding: 32px 40px; }
     .session-card { border: 1px solid #e5e7eb; border-radius: 10px; margin-bottom: 20px; overflow: hidden; page-break-inside: avoid; }
     .session-header { background: #f8fafc; padding: 14px 20px; border-bottom: 1px solid #e5e7eb; display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 8px; }
     .session-date { font-size: 13px; font-weight: 600; color: #2563eb; }
     .session-meta { font-size: 13px; color: #374151; }
     .session-meta strong { color: #111827; }
-    .course-badge { display: inline-block; background: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe; border-radius: 20px; padding: 2px 10px; font-size: 12px; font-weight: 500; }
+    .course-badge { display: inline-block; background: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe; border-radius: 20px; padding: 2px 10px; font-size: 12px; font-weight: 500; white-space: nowrap; }
     .session-body { padding: 16px 20px; }
     .notes-text { font-size: 13px; line-height: 1.75; color: #374151; white-space: pre-wrap; }
     .footer { margin-top: 40px; padding: 20px 40px; border-top: 1px solid #e5e7eb; text-align: center; font-size: 12px; color: #9ca3af; }
     .summary { background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 10px; padding: 16px 20px; margin-bottom: 28px; display: flex; gap: 32px; flex-wrap: wrap; }
     .summary-item { font-size: 13px; color: #374151; }
     .summary-item strong { display: block; font-size: 22px; color: #16a34a; font-weight: 700; }
+    .date-range-banner { background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 10px 16px; margin-bottom: 20px; font-size: 13px; color: #1d4ed8; font-weight: 500; }
     @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
   </style>
 </head>
@@ -217,12 +227,15 @@ export function AdminSessionNotes() {
     <h1>EdKonnect Academy</h1>
     <p>Session Notes Report</p>
     <div class="meta">
-      <div class="meta-item"><span>Parent</span>${parentLabel}</div>
-      <div class="meta-item"><span>Period</span>${fromLabel} — ${toLabel}</div>
-      <div class="meta-item"><span>Generated</span>${new Date().toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}</div>
+      <div class="meta-item"><div class="meta-label">Parent</div><div class="meta-value">${parentLabel}</div></div>
+      <div class="meta-item"><div class="meta-label">Date Range</div><div class="meta-value">${fromLabel} — ${toLabel}</div></div>
+      <div class="meta-item"><div class="meta-label">Generated</div><div class="meta-value">${new Date().toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric", timeZone: "Asia/Kolkata" })}</div></div>
     </div>
   </div>
   <div class="content">
+    <div class="date-range-banner">
+      📅 Showing session notes from <strong>${fromLabel}</strong> to <strong>${toLabel}</strong>
+    </div>
     <div class="summary">
       <div class="summary-item"><strong>${notesOnly.length}</strong>Total Sessions</div>
       <div class="summary-item"><strong>${totalTutors}</strong>Tutors</div>
@@ -253,6 +266,9 @@ export function AdminSessionNotes() {
     }
   };
 
+  // Determine if Apply button should be enabled
+  const canApply = isDateSelected && selectedParent !== null;
+
   return (
     <div className="space-y-4">
       <Card>
@@ -261,35 +277,54 @@ export function AdminSessionNotes() {
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            {/* Step 1: From Date */}
             <div>
-              <label className="text-sm font-medium mb-2 block">From Date</label>
+              <label className="text-sm font-medium mb-2 block">
+                From Date <span className="text-red-500">*</span>
+              </label>
               <input
                 type="date"
                 value={fromDate}
                 max={toDate || today()}
-                onChange={(e) => setFromDate(e.target.value)}
+                onChange={(e) => {
+                  setFromDate(e.target.value);
+                  // Reset parent if date changes
+                  setSelectedParent(null);
+                  setParentSearch("");
+                  setHasApplied(false);
+                }}
                 className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
               />
             </div>
+
+            {/* Step 2: To Date */}
             <div>
-              <label className="text-sm font-medium mb-2 block">To Date</label>
+              <label className="text-sm font-medium mb-2 block">
+                To Date <span className="text-red-500">*</span>
+              </label>
               <input
                 type="date"
                 value={toDate}
                 min={fromDate}
                 max={today()}
-                onChange={(e) => setToDate(e.target.value)}
+                onChange={(e) => {
+                  setToDate(e.target.value);
+                  // Reset parent if date changes
+                  setSelectedParent(null);
+                  setParentSearch("");
+                  setHasApplied(false);
+                }}
                 className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
               />
             </div>
+
+            {/* Tutor filter */}
             <div>
               <label className="text-sm font-medium mb-2 block">Tutor</label>
               <Select
                 key={selectedTutorName}
                 value={selectedTutorName}
-                onValueChange={(v) => {
-                  setSelectedTutorName(v);
-                }}
+                onValueChange={(v) => setSelectedTutorName(v)}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="All tutors" />
@@ -304,25 +339,30 @@ export function AdminSessionNotes() {
                 </SelectContent>
               </Select>
             </div>
+
+            {/* Step 3: Parent search — only enabled after both dates are selected */}
             <div ref={searchRef} className="relative">
-              <label className="text-sm font-medium mb-2 block">Search Parent</label>
+              <label className="text-sm font-medium mb-2 block">
+                Search Parent <span className="text-red-500">*</span>
+              </label>
+              {!isDateSelected && (
+                <p className="text-xs text-amber-600 mb-1">⚠ Select From & To date first</p>
+              )}
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
                 <input
                   type="text"
                   value={parentSearch}
-                  placeholder="Type parent name..."
+                  placeholder={isDateSelected ? "Type parent name..." : "Select dates first"}
+                  disabled={!isDateSelected}
                   onChange={(e) => {
                     setParentSearch(e.target.value);
                     setSelectedParent(null);
                     setShowSuggestions(true);
-                    // If user clears the parent search, hide results if no other filters
-                    if (!e.target.value.trim() && !appliedFrom && !appliedTo && appliedTutor === "all") {
-                      setHasApplied(false);
-                    }
+                    setHasApplied(false);
                   }}
-                  onFocus={() => setShowSuggestions(true)}
-                  className="w-full h-9 rounded-md border border-input bg-background pl-9 pr-8 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                  onFocus={() => isDateSelected && setShowSuggestions(true)}
+                  className="w-full h-9 rounded-md border border-input bg-background pl-9 pr-8 text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50 disabled:cursor-not-allowed"
                 />
                 {parentSearch && (
                   <button
@@ -333,7 +373,7 @@ export function AdminSessionNotes() {
                   </button>
                 )}
               </div>
-              {showSuggestions && parentSearch && filteredParents.length > 0 && (
+              {showSuggestions && parentSearch && filteredParents.length > 0 && isDateSelected && (
                 <div className="absolute z-50 w-full mt-1 bg-background border border-input rounded-md shadow-lg max-h-48 overflow-y-auto">
                   {filteredParents.map(p => (
                     <button
@@ -355,8 +395,15 @@ export function AdminSessionNotes() {
               )}
             </div>
           </div>
+
           <div className="flex gap-2 mt-4">
-            <Button size="sm" onClick={handleApply} className="gap-2">
+            <Button
+              size="sm"
+              onClick={handleApply}
+              disabled={!canApply}
+              className="gap-2"
+              title={!isDateSelected ? "Select date range first" : !selectedParent ? "Select a parent first" : ""}
+            >
               <Search className="h-4 w-4" /> Apply
             </Button>
             <Button size="sm" variant="outline" onClick={handleReset} className="gap-2">
@@ -382,17 +429,25 @@ export function AdminSessionNotes() {
           {shouldFetch && !isLoading && (
             <p className="text-sm text-muted-foreground">
               {notesOnly.length} session{notesOnly.length !== 1 ? "s" : ""} with notes found
+              {appliedFrom && appliedTo && (
+                <span className="ml-2 text-blue-600 font-medium">
+                  ({formatLocalDate(appliedFrom)} — {formatLocalDate(appliedTo)})
+                </span>
+              )}
             </p>
           )}
         </CardHeader>
         <CardContent>
-          {/* ✅ FIX: Show prompt when nothing applied yet */}
           {!shouldFetch ? (
             <div className="flex flex-col items-center justify-center py-14 text-center">
               <Search className="h-8 w-8 text-muted-foreground/40 mb-2" />
               <p className="font-medium">No filters applied</p>
               <p className="text-sm text-muted-foreground mt-1">
-                Select a date range and click Apply, or search for a parent to view session notes
+                {!isDateSelected
+                  ? "Start by selecting a From and To date, then search for a parent"
+                  : !selectedParent
+                  ? "Now search and select a parent to view session notes"
+                  : "Click Apply to load session notes"}
               </p>
             </div>
           ) : isLoading ? (
@@ -430,6 +485,7 @@ export function AdminSessionNotes() {
                             day: "2-digit",
                             month: "2-digit",
                             year: "numeric",
+                            timeZone: "Asia/Kolkata",
                           })}
                         </td>
                         <td className="py-3 pr-4 font-medium whitespace-nowrap">{studentName}</td>
