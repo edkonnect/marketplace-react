@@ -3,6 +3,8 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
 import { useFormatPrice } from "@/hooks/useFormatPrice";
+import { useIsIndianUser } from "@/hooks/useIsIndianUser";
+import { useExchangeRate } from "@/hooks/useExchangeRate";
 import { formatSessionTime } from "@/../../shared/timezone-utils";
 import { toast } from "sonner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -180,6 +182,8 @@ export default function ParentDashboard() {
   const parentTimezone = user?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
   const [, setLocation] = useLocation();
   const formatPrice = useFormatPrice();
+  const isIndian = useIsIndianUser();
+  const exchangeRate = useExchangeRate();
   const tabContentClass =
     "space-y-6 w-full data-[state=inactive]:hidden";
 
@@ -1167,7 +1171,7 @@ export default function ParentDashboard() {
                             : "grid gap-3 lg:grid-cols-2",
                         )}
                       >
-                        {items.map(({ subscription, course, tutor, sessionStats, nextBillingDate, nextBillingAmount }: any) => {
+                        {items.map(({ subscription, course, tutor, sessionStats, nextBillingDate, nextBillingAmount, nextBillingCurrency }: any) => {
                           const totalSessions = course.totalSessions || 0;
                           const completedCount = sessionStats?.completedCount || 0;
                           const scheduledCount = sessionStats?.scheduledCount || 0;
@@ -1257,7 +1261,9 @@ export default function ParentDashboard() {
                                       <span className="font-medium text-blue-900 dark:text-blue-100">
                                         {new Date(nextBillingDate).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
                                         {nextBillingAmount != null && (
-                                          <span className="ml-2">{formatPrice(nextBillingAmount as number)}</span>
+                                          <span className="ml-2">{(nextBillingCurrency as any) === "inr"
+                                            ? new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(nextBillingAmount as number)
+                                            : formatPrice(nextBillingAmount as number)}</span>
                                         )}
                                       </span>
                                     </div>
@@ -1271,7 +1277,9 @@ export default function ParentDashboard() {
                                       <span className="font-medium text-blue-900 dark:text-blue-100">
                                         {new Date(nextBillingDate).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
                                         {nextBillingAmount != null && (
-                                          <span className="ml-2">{formatPrice(nextBillingAmount as number)}</span>
+                                          <span className="ml-2">{(nextBillingCurrency as any) === "inr"
+                                            ? new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(nextBillingAmount as number)
+                                            : formatPrice(nextBillingAmount as number)}</span>
                                         )}
                                       </span>
                                     </div>
@@ -1384,7 +1392,7 @@ export default function ParentDashboard() {
                           ? "grid grid-flow-col auto-cols-[85%] gap-3 overflow-x-auto pb-2 pr-1 snap-x snap-mandatory [scrollbar-width:thin] sm:auto-cols-[calc((100%-0.75rem)/2)]"
                           : "grid gap-3 lg:grid-cols-2",
                       )}>
-                        {items.map(({ subscription, course, tutor, sessionStats, nextBillingDate, nextBillingAmount }: any) => {
+                        {items.map(({ subscription, course, tutor, sessionStats, nextBillingDate, nextBillingAmount, nextBillingCurrency }: any) => {
                           const totalSessions = course.totalSessions || 0;
                           const completedCount = sessionStats?.completedCount || 0;
                           const scheduledCount = sessionStats?.scheduledCount || 0;
@@ -2276,7 +2284,9 @@ export default function ParentDashboard() {
                 {/* Card 2 — Billing & Spend Analyzer */}
                 {(() => {
                   const getSubAmount = (item: NonNullable<typeof subscriptions>[number]): number => {
-                    if (item.nextBillingAmount != null) return Number(item.nextBillingAmount);
+                    // nextBillingAmount is already in the subscription's currency (INR or USD)
+                    // For INR subs, skip it and fall through to course.price (USD) so totalSpend stays in USD
+                    if (item.nextBillingAmount != null && item.nextBillingCurrency !== "inr") return Number(item.nextBillingAmount);
                     const s = item.subscription;
                     if (s.paymentPlan === "installment" && s.firstInstallmentAmount != null) return Number(s.firstInstallmentAmount);
                     const coursePrice = Number(item.course?.price ?? 0);
@@ -2594,7 +2604,9 @@ export default function ParentDashboard() {
                             {item.nextBillingAmount != null && (
                               <div>
                                 <p className="text-muted-foreground">Billing Amount</p>
-                                <p className="font-medium">${Number(item.nextBillingAmount).toFixed(2)}</p>
+                                <p className="font-medium">{item.nextBillingCurrency === "inr"
+                                  ? new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(Number(item.nextBillingAmount))
+                                  : `$${Number(item.nextBillingAmount).toFixed(2)}`}</p>
                               </div>
                             )}
                             {s.startDate && (
@@ -2636,7 +2648,7 @@ export default function ParentDashboard() {
       {/* Modal 2 — Billing & Spend */}
       {(() => {
         const getSubAmount = (item: NonNullable<typeof subscriptions>[number]): number => {
-          if (item.nextBillingAmount != null) return Number(item.nextBillingAmount);
+          if (item.nextBillingAmount != null && item.nextBillingCurrency !== "inr") return Number(item.nextBillingAmount);
           const s = item.subscription;
           if (s.paymentPlan === "installment" && s.firstInstallmentAmount != null) return Number(s.firstInstallmentAmount);
           const coursePrice = Number(item.course?.price ?? 0);
@@ -3131,9 +3143,16 @@ export default function ParentDashboard() {
             <div className="space-y-3 py-2">
               {/* Test Prep: Full OR Installments */}
               {paymentModalSub.course.courseType === "test_prep" && (() => {
-                const price = parseFloat(paymentModalSub.course.price || "0");
+                const priceUsd = parseFloat(paymentModalSub.course.price || "0");
+                const priceInr = paymentModalSub.course.priceInr ? parseFloat(paymentModalSub.course.priceInr) : null;
+                const price = isIndian ? (priceInr ?? Math.round(priceUsd * exchangeRate)) : priceUsd;
+                const fmtModal = (amt: number) => isIndian
+                  ? new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(amt)
+                  : `$${amt % 1 === 0 ? amt.toFixed(0) : amt.toFixed(2)}`;
                 const siblingPct = paymentModalSub.subscription.siblingDiscountApplied ? 5 : 0;
-                const promoAmt = parseFloat(paymentModalSub.subscription.promoDiscountAmount ?? "0");
+                const promoAmtUsd = parseFloat(paymentModalSub.subscription.promoDiscountAmount ?? "0");
+                const promoAmt = isIndian && promoAmtUsd > 0 ? Math.round(promoAmtUsd * exchangeRate) : promoAmtUsd;
+                const promoLabel = promoAmt > 0 ? `${fmtModal(promoAmt)} promo` : null;
                 // Loyalty discount always applies when paying in full (even if original plan was installment)
                 const loyaltyPct = 5;
                 const fullTotalPct = Math.min(100, siblingPct + loyaltyPct);
@@ -3164,11 +3183,11 @@ export default function ParentDashboard() {
                       }}
                     >
                       <div className="font-semibold text-sm">Pay in Full</div>
-                      <div className="text-primary font-bold text-lg">{formatPrice(discountedTotal)}
-                        {price > discountedTotal && <span className="ml-2 text-sm line-through text-muted-foreground">{formatPrice(price)}</span>}
+                      <div className="text-primary font-bold text-lg">{fmtModal(discountedTotal)}
+                        {price > discountedTotal && <span className="ml-2 text-sm line-through text-muted-foreground">{fmtModal(price)}</span>}
                       </div>
                       <div className="text-xs text-muted-foreground">
-                        {[loyaltyPct > 0 && `${loyaltyPct}% loyalty`, siblingPct > 0 && `${siblingPct}% sibling`, promoAmt > 0 && `$${promoAmt} promo`].filter(Boolean).join(" + ") || "One-time payment"}
+                        {[loyaltyPct > 0 && `${loyaltyPct}% loyalty`, siblingPct > 0 && `${siblingPct}% sibling`, promoLabel].filter(Boolean).join(" + ") || "One-time payment"}
                       </div>
                     </button>
 
@@ -3193,9 +3212,9 @@ export default function ParentDashboard() {
                       }}
                     >
                       <div className="font-semibold text-sm">Pay in 3 Installments</div>
-                      <div className="font-bold text-lg">{formatPrice(installmentAmt)}<span className="text-sm font-normal text-muted-foreground">/month × 3</span></div>
+                      <div className="font-bold text-lg">{fmtModal(installmentAmt)}<span className="text-sm font-normal text-muted-foreground">/month × 3</span></div>
                       <div className="text-xs text-muted-foreground">
-                        {[siblingPct > 0 && `${siblingPct}% sibling`, promoAmt > 0 && `$${promoAmt} promo`].filter(Boolean).join(" + ") || "Spread the cost over 3 months"}
+                        {[siblingPct > 0 && `${siblingPct}% sibling`, promoLabel].filter(Boolean).join(" + ") || "Spread the cost over 3 months"}
                       </div>
                     </button>
                   </>
@@ -3204,11 +3223,18 @@ export default function ParentDashboard() {
 
               {/* Tutor / Homework: Monthly usage billing + Pay in Full */}
               {(paymentModalSub.course.courseType === "tutor" || paymentModalSub.course.courseType === "homework") && (() => {
-                const price = parseFloat(paymentModalSub.course.price || "0");
+                const priceUsd = parseFloat(paymentModalSub.course.price || "0");
+                const priceInr = paymentModalSub.course.priceInr ? parseFloat(paymentModalSub.course.priceInr) : null;
+                const price = isIndian ? (priceInr ?? Math.round(priceUsd * exchangeRate)) : priceUsd;
+                const fmtModal = (amt: number) => isIndian
+                  ? new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(amt)
+                  : `$${amt % 1 === 0 ? amt.toFixed(0) : amt.toFixed(2)}`;
                 const siblingPct = paymentModalSub.subscription.siblingDiscountApplied ? 5 : 0;
                 const loyaltyPct = 5; // loyalty always applies when paying in full
                 const totalPct = Math.min(100, siblingPct + loyaltyPct);
-                const promoAmt = parseFloat(paymentModalSub.subscription.promoDiscountAmount ?? "0");
+                const promoAmtUsd = parseFloat(paymentModalSub.subscription.promoDiscountAmount ?? "0");
+                const promoAmt = isIndian && promoAmtUsd > 0 ? Math.round(promoAmtUsd * exchangeRate) : promoAmtUsd;
+                const promoLabel = promoAmt > 0 ? `${fmtModal(promoAmt)} promo` : null;
                 const discountedTotal = Math.max(0, price * (1 - totalPct / 100) - promoAmt);
                 return (
                   <>
@@ -3235,7 +3261,7 @@ export default function ParentDashboard() {
                       <div className="font-semibold text-sm">Pay First Month & Set Up Billing</div>
                       {(siblingPct > 0 || promoAmt > 0) && (
                         <div className="text-xs text-amber-700 mt-1">
-                          {[siblingPct > 0 && `${siblingPct}% sibling`, promoAmt > 0 && `$${promoAmt} promo`].filter(Boolean).join(" + ")} applied to monthly charges
+                          {[siblingPct > 0 && `${siblingPct}% sibling`, promoLabel].filter(Boolean).join(" + ")} applied to monthly charges
                         </div>
                       )}
                       <div className="text-xs text-muted-foreground mt-1">Charges the first month now and saves your card for future billing based on completed sessions</div>
@@ -3262,11 +3288,11 @@ export default function ParentDashboard() {
                       }}
                     >
                       <div className="font-semibold text-sm">Pay in Full</div>
-                      <div className="font-bold text-lg">{formatPrice(discountedTotal)}
-                        {price > discountedTotal && <span className="ml-2 text-sm line-through text-muted-foreground font-normal">{formatPrice(price)}</span>}
+                      <div className="font-bold text-lg">{fmtModal(discountedTotal)}
+                        {price > discountedTotal && <span className="ml-2 text-sm line-through text-muted-foreground font-normal">{fmtModal(price)}</span>}
                       </div>
                       <div className="text-xs text-muted-foreground">
-                        {[loyaltyPct > 0 && `${loyaltyPct}% loyalty`, siblingPct > 0 && `${siblingPct}% sibling`, promoAmt > 0 && `$${promoAmt} promo`].filter(Boolean).join(" + ") || "One-time payment"}
+                        {[loyaltyPct > 0 && `${loyaltyPct}% loyalty`, siblingPct > 0 && `${siblingPct}% sibling`, promoLabel].filter(Boolean).join(" + ") || "One-time payment"}
                       </div>
                     </button>
                   </>

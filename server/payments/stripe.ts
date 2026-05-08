@@ -2,6 +2,7 @@ import Stripe from "stripe";
 import { ENV } from "../_core/env";
 
 let _stripe: Stripe | null = null;
+let _stripeInr: Stripe | null = null;
 
 export function getStripe(): Stripe {
   if (!_stripe) {
@@ -15,14 +16,36 @@ export function getStripe(): Stripe {
   return _stripe;
 }
 
+export function getStripeInr(): Stripe {
+  if (!_stripeInr) {
+    if (!ENV.stripeInrSecretKey) {
+      throw new Error("STRIPE_INR_SECRET_KEY is not configured");
+    }
+    _stripeInr = new Stripe(ENV.stripeInrSecretKey, {
+      apiVersion: "2025-12-15.clover",
+    });
+  }
+  return _stripeInr;
+}
+
+export function getStripeClient(currency: "usd" | "inr"): Stripe {
+  return currency === "inr" ? getStripeInr() : getStripe();
+}
+
+// Returns true if the parent's timezone is in Asia — used to route to INR Stripe account
+export function isAsiaTz(timezone: string | null | undefined): boolean {
+  return typeof timezone === "string" && timezone.startsWith("Asia/");
+}
+
 export async function createCheckoutSession(params: {
-  priceAmount: number; // Amount in dollars
+  priceAmount: number; // Amount in dollars (or rupees for INR)
   courseName: string;
   courseId: number;
   userId: number;
   userEmail: string | null;
   userName: string | null;
   origin: string;
+  currency?: "usd" | "inr";
   subscriptionId?: number;
   tutorId?: number;
   discountPercent?: number; // sibling discount % (still percentage-based)
@@ -32,7 +55,8 @@ export async function createCheckoutSession(params: {
   externalPromoCode?: string;
   externalPromoEmail?: string;
 }) {
-  const stripe = getStripe();
+  const currency = params.currency ?? "usd";
+  const stripe = getStripeClient(currency);
 
   // Apply sibling % discount first, then subtract fixed coupon amount
   const afterSibling = params.discountPercent
@@ -45,7 +69,7 @@ export async function createCheckoutSession(params: {
     line_items: [
       {
         price_data: {
-          currency: "usd",
+          currency,
           product_data: {
             name: params.courseName,
             description: (params.discountPercent || params.discountAmountUsd)
@@ -83,8 +107,9 @@ export async function createCustomer(params: {
   email: string;
   name?: string;
   userId: number;
+  currency?: "usd" | "inr";
 }) {
-  const stripe = getStripe();
+  const stripe = getStripeClient(params.currency ?? "usd");
 
   const customer = await stripe.customers.create({
     email: params.email,
@@ -102,8 +127,10 @@ export async function getOrCreateStripeCustomer(params: {
   email: string;
   name?: string | null;
   existingStripeCustomerId?: string | null;
+  currency?: "usd" | "inr";
 }): Promise<string> {
-  const stripe = getStripe();
+  const currency = params.currency ?? "usd";
+  const stripe = getStripeClient(currency);
 
   if (params.existingStripeCustomerId) {
     try {
@@ -121,6 +148,7 @@ export async function getOrCreateStripeCustomer(params: {
     email: params.email,
     name: params.name ?? undefined,
     userId: params.userId,
+    currency,
   });
 
   return customer.id;
@@ -133,8 +161,10 @@ export async function createStripePrice(params: {
   courseId: number;
   localSubscriptionId: number;
   monthlyAmountCents: number;
+  currency?: "usd" | "inr";
 }): Promise<Stripe.Price> {
-  const stripe = getStripe();
+  const currency = params.currency ?? "usd";
+  const stripe = getStripeClient(currency);
   const product = await stripe.products.create({
     name: params.courseName,
     description: params.studentName,
@@ -145,7 +175,7 @@ export async function createStripePrice(params: {
   });
   return await stripe.prices.create({
     product: product.id,
-    currency: "usd",
+    currency,
     unit_amount: params.monthlyAmountCents,
     recurring: { interval: "month" },
   });
@@ -170,9 +200,10 @@ export function computeTrialEndTs(): number {
 // so same-day enrollments share one subscription (combined invoice).
 // Different enrollment days produce different trial_end timestamps → separate subscriptions.
 export async function getParentStripeSubscriptionForToday(
-  stripeCustomerId: string
+  stripeCustomerId: string,
+  currency: "usd" | "inr" = "usd"
 ): Promise<Stripe.Subscription | null> {
-  const stripe = getStripe();
+  const stripe = getStripeClient(currency);
 
   const expectedTrialEnd = computeTrialEndTs();
 
@@ -192,8 +223,9 @@ export async function addCourseToStripeSubscription(params: {
   stripeSubscriptionId: string;
   priceId: string;
   localSubscriptionId: number;
+  currency?: "usd" | "inr";
 }): Promise<Stripe.SubscriptionItem> {
-  const stripe = getStripe();
+  const stripe = getStripeClient(params.currency ?? "usd");
   return await stripe.subscriptionItems.create({
     subscription: params.stripeSubscriptionId,
     price: params.priceId,
@@ -211,8 +243,9 @@ export async function createStripeSubscription(params: {
   priceId: string;
   parentId: number;
   localSubscriptionId: number;
+  currency?: "usd" | "inr";
 }): Promise<Stripe.Subscription> {
-  const stripe = getStripe();
+  const stripe = getStripeClient(params.currency ?? "usd");
   return await stripe.subscriptions.create({
     customer: params.stripeCustomerId,
     items: [{ price: params.priceId, metadata: { local_subscription_id: params.localSubscriptionId.toString() } }],
@@ -229,14 +262,16 @@ export async function createSetupCheckoutSession(params: {
   origin: string;
   courseId: number;
   subscriptionId: number;
+  currency?: "usd" | "inr";
   externalPromoCode?: string;
   externalPromoEmail?: string;
 }): Promise<Stripe.Checkout.Session> {
-  const stripe = getStripe();
+  const currency = params.currency ?? "usd";
+  const stripe = getStripeClient(currency);
   return await stripe.checkout.sessions.create({
     mode: "setup",
     customer: params.stripeCustomerId,
-    currency: "usd",
+    currency,
     metadata: {
       type: "payment_method_setup",
       subscription_id: params.subscriptionId.toString(),
@@ -251,9 +286,10 @@ export async function createSetupCheckoutSession(params: {
 
 export async function listStripeInvoicesForCustomer(
   stripeCustomerId: string,
-  limit = 24
+  limit = 24,
+  currency: "usd" | "inr" = "usd"
 ): Promise<Stripe.Invoice[]> {
-  const stripe = getStripe();
+  const stripe = getStripeClient(currency);
   const response = await stripe.invoices.list({
     customer: stripeCustomerId,
     limit,
@@ -262,13 +298,13 @@ export async function listStripeInvoicesForCustomer(
   return response.data.filter((inv) => inv.status !== "draft");
 }
 
-export async function getPaymentIntent(paymentIntentId: string) {
-  const stripe = getStripe();
+export async function getPaymentIntent(paymentIntentId: string, currency: "usd" | "inr" = "usd") {
+  const stripe = getStripeClient(currency);
   return await stripe.paymentIntents.retrieve(paymentIntentId);
 }
 
-export async function getCustomer(customerId: string) {
-  const stripe = getStripe();
+export async function getCustomer(customerId: string, currency: "usd" | "inr" = "usd") {
+  const stripe = getStripeClient(currency);
   return await stripe.customers.retrieve(customerId);
 }
 
@@ -280,8 +316,9 @@ export async function createInstallmentStripeSubscription(params: {
   parentId: number;
   localSubscriptionId: number;
   numberOfInstallments: number;
+  currency?: "usd" | "inr";
 }): Promise<Stripe.Subscription> {
-  const stripe = getStripe();
+  const stripe = getStripeClient(params.currency ?? "usd");
   const trialEndTs = computeTrialEndTs();
   // cancel_at = trial_end + (numberOfInstallments months) in seconds
   const cancelAt = trialEndTs + params.numberOfInstallments * 30 * 24 * 60 * 60;
@@ -312,11 +349,13 @@ export async function createUsageInvoice(params: {
   studentName: string;
   cycleStart: Date;
   cycleEnd: Date;
+  currency?: "usd" | "inr";
 }): Promise<Stripe.Invoice> {
   return createCombinedUsageInvoice({
     stripeCustomerId: params.stripeCustomerId,
     cycleEnd: params.cycleEnd,
     billingCycleIds: [params.billingCycleId],
+    currency: params.currency,
     lines: [{
       subscriptionId: params.localSubscriptionId,
       billingCycleId: params.billingCycleId,
@@ -334,6 +373,7 @@ export async function createCombinedUsageInvoice(params: {
   stripeCustomerId: string;
   cycleEnd: Date;
   billingCycleIds: number[];
+  currency?: "usd" | "inr";
   lines: Array<{
     subscriptionId: number;
     billingCycleId: number;
@@ -345,7 +385,8 @@ export async function createCombinedUsageInvoice(params: {
     cycleEnd: Date;
   }>;
 }): Promise<Stripe.Invoice> {
-  const stripe = getStripe();
+  const currency = params.currency ?? "usd";
+  const stripe = getStripeClient(currency);
   const { format } = await import("date-fns");
 
   const invoice = await stripe.invoices.create({
@@ -365,7 +406,7 @@ export async function createCombinedUsageInvoice(params: {
       customer: params.stripeCustomerId,
       invoice: invoice.id,
       amount: line.sessionCount * line.perSessionRateCents,
-      currency: "usd",
+      currency,
       description,
       metadata: {
         local_subscription_id: line.subscriptionId.toString(),
@@ -377,7 +418,6 @@ export async function createCombinedUsageInvoice(params: {
   }
 
   const finalized = await stripe.invoices.finalizeInvoice(invoice.id);
-
 
   if (finalized.status === "paid") {
     return finalized;
@@ -404,17 +444,19 @@ export async function createUsageEnrollmentCheckout(params: {
   userId: number;
   subscriptionId: number;
   origin: string;
+  currency?: "usd" | "inr";
   externalPromoCode?: string;
   externalPromoEmail?: string;
 }) {
-  const stripe = getStripe();
+  const currency = params.currency ?? "usd";
+  const stripe = getStripeClient(currency);
   const session = await stripe.checkout.sessions.create({
     customer: params.stripeCustomerId,
     payment_method_types: ["card"],
     line_items: [
       {
         price_data: {
-          currency: "usd",
+          currency,
           product_data: { name: `${params.courseName} — First Month` },
           unit_amount: params.amountCents,
         },

@@ -1145,13 +1145,19 @@ export const appRouter = router({
         let subscriptionId: number | null = null;
 
         try {
-          const { createCheckoutSession: stripeCheckout } = await import("./payments/stripe");
+          const { createCheckoutSession: stripeCheckout, isAsiaTz } = await import("./payments/stripe");
+          const { getUsdToInrRate } = await import("./utils/exchangeRate");
 
           // Get course details
           const course = await db.getCourseById(input.courseId);
           if (!course) {
             throw new TRPCError({ code: 'NOT_FOUND', message: 'Course not found' });
           }
+
+          // Determine currency based on parent timezone
+          const parentUser = await db.getUserById(ctx.user.id);
+          const useInr = isAsiaTz(parentUser?.timezone);
+          const currency = useInr ? "inr" : "usd";
 
           // Prevent duplicate enrollment for the same student + same course
           const normalize = (v: string | null | undefined) => (v || "").trim().toLowerCase();
@@ -1190,7 +1196,11 @@ export const appRouter = router({
             input.studentFirstName,
             input.studentLastName
           );
-          const coursePrice = parseFloat(course.price);
+          const usdPrice = parseFloat(course.price);
+          const inrRate = useInr ? await getUsdToInrRate() : 1;
+          const coursePrice = useInr
+            ? (course.priceInr != null ? parseFloat(course.priceInr) : Math.round(usdPrice * inrRate))
+            : usdPrice;
           // 5% loyalty discount for ALL course types on pay-in-full
           const LOYALTY_DISCOUNT_PERCENT = 5;
           const totalPercentDiscount = Math.min(100,
@@ -1261,11 +1271,17 @@ export const appRouter = router({
             return { success: true, subscriptionId, checkoutUrl: null };
           }
 
+          // For INR users convert promo discount to INR for Stripe
+          let promoDiscountForStripe = promoDiscountUsd;
+          if (useInr && promoDiscountUsd > 0) {
+            promoDiscountForStripe = Math.round(promoDiscountUsd * inrRate);
+          }
+
           // Build discount label
           const discountParts: string[] = [];
           discountParts.push(`${LOYALTY_DISCOUNT_PERCENT}% loyalty`);
           if (hasSiblingDiscount) discountParts.push(`${SIBLING_DISCOUNT_PERCENT}% sibling`);
-          if (promoDiscountUsd > 0) discountParts.push(`$${promoDiscountUsd} promo`);
+          if (promoDiscountForStripe > 0) discountParts.push(useInr ? `₹${promoDiscountForStripe} promo` : `$${promoDiscountUsd} promo`);
           const discountLabel = discountParts.length > 0 ? discountParts.join(" + ") : undefined;
 
           // Create Stripe Checkout session (one-time payment)
@@ -1277,10 +1293,11 @@ export const appRouter = router({
             userEmail: ctx.user.email,
             userName: ctx.user.name,
             origin: input.origin,
+            currency,
             subscriptionId,
             tutorId: selectedTutorId,
             discountPercent: totalPercentDiscount > 0 ? totalPercentDiscount : undefined,
-            discountAmountUsd: promoDiscountUsd > 0 ? promoDiscountUsd : undefined,
+            discountAmountUsd: promoDiscountForStripe > 0 ? promoDiscountForStripe : undefined,
             discountLabel,
             externalPromoCode: input.promoCode?.toUpperCase().startsWith("EDK-") ? input.promoCode.toUpperCase() : undefined,
             externalPromoEmail: input.promoCode?.toUpperCase().startsWith("EDK-") ? ctx.user.email ?? undefined : undefined,
@@ -1350,7 +1367,18 @@ export const appRouter = router({
           input.studentFirstName,
           input.studentLastName
         );
-        const coursePrice = parseFloat(course.price);
+        // Determine currency based on parent timezone
+        const { isAsiaTz: isAsiaTzFn } = await import("./payments/stripe");
+        const { getUsdToInrRate: getInrRateEnroll } = await import("./utils/exchangeRate");
+        const parentUserForCurrency = await db.getUserById(ctx.user.id);
+        const useInrEnroll = isAsiaTzFn(parentUserForCurrency?.timezone);
+        const enrollCurrency = useInrEnroll ? "inr" as const : "usd" as const;
+
+        const usdPriceEnroll = parseFloat(course.price);
+        const inrRateEnroll = useInrEnroll ? await getInrRateEnroll() : 1;
+        const coursePrice = useInrEnroll
+          ? (course.priceInr != null ? parseFloat(course.priceInr) : Math.round(usdPriceEnroll * inrRateEnroll))
+          : usdPriceEnroll;
         const discountAmount = hasSiblingDiscount
           ? Math.round(coursePrice * SIBLING_DISCOUNT_PERCENT) / 100
           : 0;
@@ -1453,6 +1481,7 @@ export const appRouter = router({
               email: ctx.user.email,
               name: ctx.user.name,
               existingStripeCustomerId: parentUser?.stripeCustomerId,
+              currency: enrollCurrency,
             });
 
             // Always persist — handles case where old customer ID was stale/deleted
@@ -1470,6 +1499,7 @@ export const appRouter = router({
                 userId: ctx.user.id,
                 subscriptionId,
                 origin: input.origin,
+                currency: enrollCurrency,
                 externalPromoCode: edkPromoCode,
                 externalPromoEmail: edkPromoEmail,
               });
@@ -1481,6 +1511,7 @@ export const appRouter = router({
                 origin: input.origin,
                 courseId: input.courseId,
                 subscriptionId,
+                currency: enrollCurrency,
                 externalPromoCode: edkPromoCode,
                 externalPromoEmail: edkPromoEmail,
               });
@@ -1540,7 +1571,16 @@ export const appRouter = router({
         const selectedTutorId = input.preferredTutorId || primaryTutor.tutorId;
 
         const hasSiblingDiscount = await checkSiblingDiscount(ctx.user.id, input.studentFirstName, input.studentLastName);
-        const coursePrice = parseFloat(course.price);
+        const { isAsiaTz: isAsiaTzInstallment } = await import("./payments/stripe");
+        const { getUsdToInrRate: getInrRateInstallment } = await import("./utils/exchangeRate");
+        const parentUserInstallment = await db.getUserById(ctx.user.id);
+        const useInrInstallment = isAsiaTzInstallment(parentUserInstallment?.timezone);
+        const installmentCurrency = useInrInstallment ? "inr" as const : "usd" as const;
+        const usdPriceInstallment = parseFloat(course.price);
+        const inrRateInstallment = useInrInstallment ? await getInrRateInstallment() : 1;
+        const coursePrice = useInrInstallment
+          ? (course.priceInr != null ? parseFloat(course.priceInr) : Math.round(usdPriceInstallment * inrRateInstallment))
+          : usdPriceInstallment;
 
         // Validate promo code
         let promoDiscountUsd = 0;
@@ -1611,14 +1651,14 @@ export const appRouter = router({
         let setupUrl: string | null = null;
         if (ctx.user.email) {
           try {
-            const { getOrCreateStripeCustomer } = await import("./payments/stripe");
-            const stripe = (await import("./payments/stripe")).getStripe();
+            const { getOrCreateStripeCustomer, getStripeClient } = await import("./payments/stripe");
             const parentUser = await db.getUserById(ctx.user.id);
             const stripeCustomerId = await getOrCreateStripeCustomer({
               userId: ctx.user.id,
               email: ctx.user.email,
               name: ctx.user.name,
               existingStripeCustomerId: parentUser?.stripeCustomerId,
+              currency: installmentCurrency,
             });
             if (stripeCustomerId !== parentUser?.stripeCustomerId) {
               await db.updateUserStripeCustomerId(ctx.user.id, stripeCustomerId);
@@ -1626,10 +1666,11 @@ export const appRouter = router({
 
             // Use a setup checkout with type=installment_setup so the webhook
             // creates an installment Stripe subscription (not a standard monthly one)
-            const setupSession = await stripe.checkout.sessions.create({
+            const stripeForInstallment = getStripeClient(installmentCurrency);
+            const setupSession = await stripeForInstallment.checkout.sessions.create({
               mode: "setup",
               customer: stripeCustomerId,
-              currency: "usd",
+              currency: installmentCurrency,
               metadata: {
                 type: "installment_setup",
                 subscription_id: subscriptionId.toString(),
@@ -1684,14 +1725,26 @@ export const appRouter = router({
           return parts.length > 0 ? parts.join(" + ") : undefined;
         })();
 
+        const { isAsiaTz: isAsiaTzRetry } = await import("./payments/stripe");
+        const { getUsdToInrRate: getInrRateRetry } = await import("./utils/exchangeRate");
+        const parentUserRetry = await db.getUserById(ctx.user.id);
+        const useInrRetry = isAsiaTzRetry(parentUserRetry?.timezone);
+        const retryCurrency = useInrRetry ? "inr" as const : "usd" as const;
+        const usdPriceRetry = parseFloat(course.price);
+        const inrRateRetry = useInrRetry ? await getInrRateRetry() : 1;
+        const retryPrice = useInrRetry
+          ? (course.priceInr != null ? parseFloat(course.priceInr) : Math.round(usdPriceRetry * inrRateRetry))
+          : usdPriceRetry;
+
         const session = await stripeCheckout({
-          priceAmount: parseFloat(course.price),
+          priceAmount: retryPrice,
           courseName: course.title,
           courseId: course.id,
           userId: ctx.user.id,
           userEmail: ctx.user.email,
           userName: ctx.user.name,
           origin: input.origin,
+          currency: retryCurrency,
           subscriptionId: input.subscriptionId,
           tutorId: localSub.preferredTutorId ?? undefined,
           discountPercent: totalPct > 0 ? totalPct : undefined,
@@ -1720,17 +1773,25 @@ export const appRouter = router({
         const course = await db.getCourseById(localSub.courseId);
         if (!course) throw new TRPCError({ code: "NOT_FOUND", message: "Course not found" });
 
-        const { getOrCreateStripeCustomer, getStripe } = await import("./payments/stripe");
+        const { getOrCreateStripeCustomer, getStripeClient, isAsiaTz: isAsiaTzInstallRetry } = await import("./payments/stripe");
+        const { getUsdToInrRate: getInrRateInstallRetry } = await import("./utils/exchangeRate");
         const parentUser = await db.getUserById(ctx.user.id);
+        const useInrInstallRetry = isAsiaTzInstallRetry(parentUser?.timezone);
+        const installRetryCurrency = useInrInstallRetry ? "inr" as const : "usd" as const;
         const stripeCustomerId = await getOrCreateStripeCustomer({
           userId: ctx.user.id,
           email: ctx.user.email,
           name: ctx.user.name,
           existingStripeCustomerId: parentUser?.stripeCustomerId,
+          currency: installRetryCurrency,
         });
-        const stripe = getStripe();
+        const stripe = getStripeClient(installRetryCurrency);
 
-        const rawPrice = parseFloat(course.price);
+        const usdPriceInstallRetry = parseFloat(course.price);
+        const inrRateInstallRetry = useInrInstallRetry ? await getInrRateInstallRetry() : 1;
+        const rawPrice = useInrInstallRetry
+          ? (course.priceInr != null ? parseFloat(course.priceInr) : Math.round(usdPriceInstallRetry * inrRateInstallRetry))
+          : usdPriceInstallRetry;
         const siblingPct = localSub.siblingDiscountApplied ? SIBLING_DISCOUNT_PERCENT : 0;
         const promoAmt = parseFloat(localSub.promoDiscountAmount ?? "0");
         const discountedTotal = Math.max(0, rawPrice * (1 - siblingPct / 100) - promoAmt);
@@ -1739,7 +1800,7 @@ export const appRouter = router({
         const session = await stripe.checkout.sessions.create({
           mode: "setup",
           customer: stripeCustomerId,
-          currency: "usd",
+          currency: installRetryCurrency,
           metadata: {
             type: "installment_setup",
             subscription_id: input.subscriptionId.toString(),
@@ -1771,20 +1832,25 @@ export const appRouter = router({
         }
 
         const parentUser = await db.getUserById(ctx.user.id);
+        const course = await db.getCourseById(localSub.courseId);
+        if (!course) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Course not found" });
+        }
+
+        const { isAsiaTz: isAsiaTzSetup } = await import("./payments/stripe");
+        const useInrSetup = isAsiaTzSetup(parentUser?.timezone);
+        const setupCurrency = useInrSetup ? "inr" as const : "usd" as const;
+
         const stripeCustomerId = await getOrCreateStripeCustomer({
           userId: ctx.user.id,
           email: ctx.user.email,
           name: ctx.user.name,
           existingStripeCustomerId: parentUser?.stripeCustomerId,
+          currency: setupCurrency,
         });
 
         if (stripeCustomerId !== parentUser?.stripeCustomerId) {
           await db.updateUserStripeCustomerId(ctx.user.id, stripeCustomerId);
-        }
-
-        const course = await db.getCourseById(localSub.courseId);
-        if (!course) {
-          throw new TRPCError({ code: "NOT_FOUND", message: "Course not found" });
         }
 
         const isPendingUsageEnrollment = (
@@ -1808,6 +1874,7 @@ export const appRouter = router({
             userId: ctx.user.id,
             subscriptionId: input.subscriptionId,
             origin: input.origin,
+            currency: setupCurrency,
           });
 
           return { setupUrl: checkoutSession.url };
@@ -1818,6 +1885,7 @@ export const appRouter = router({
           origin: input.origin,
           courseId: localSub.courseId,
           subscriptionId: input.subscriptionId,
+          currency: setupCurrency,
         });
 
         return { setupUrl: setupSession.url };
@@ -1883,6 +1951,7 @@ export const appRouter = router({
 
           let nextBillingDate: number | null = null;
           let nextBillingAmount: number | null = null;
+          let nextBillingCurrency: string | null = null;
 
           // For monthly/installment subs with a linked Stripe subscription, fetch next billing cycle
           if (
@@ -1891,8 +1960,10 @@ export const appRouter = router({
             sub.subscription.stripeSubscriptionId
           ) {
             try {
-              const { getStripe } = await import("./payments/stripe");
-              const stripe = getStripe();
+              const { getStripeClient, isAsiaTz: isAsiaTzBilling } = await import("./payments/stripe");
+              const parentForBilling = await db.getUserById(sub.subscription.parentId);
+              const billCurrency = isAsiaTzBilling(parentForBilling?.timezone) ? "inr" : "usd";
+              const stripe = getStripeClient(billCurrency);
               const stripeSub = await stripe.subscriptions.retrieve(
                 sub.subscription.stripeSubscriptionId
               );
@@ -1906,7 +1977,8 @@ export const appRouter = router({
                 (i) => i.id === sub.subscription.stripeItemId
               ) || stripeSub.items.data[0];
               if (item?.price?.unit_amount) {
-                nextBillingAmount = item.price.unit_amount / 100; // cents → dollars
+                nextBillingAmount = item.price.unit_amount / 100; // smallest unit → major unit
+                nextBillingCurrency = (stripeSub as any).currency ?? billCurrency;
               }
             } catch (err) {
               // Non-fatal — just won't show next billing info
@@ -1930,6 +2002,7 @@ export const appRouter = router({
             },
             nextBillingDate,
             nextBillingAmount,
+            nextBillingCurrency,
             installmentsPaidCount,
           };
         })
@@ -3994,15 +4067,25 @@ export const appRouter = router({
           throw new TRPCError({ code: "NOT_FOUND", message: "Course not found" });
         }
 
-        const { createCheckoutSession } = await import("./payments/stripe");
+        const { createCheckoutSession, isAsiaTz: isAsiaTzCheckout } = await import("./payments/stripe");
+        const { getUsdToInrRate: getInrRateCheckout } = await import("./utils/exchangeRate");
+        const parentUserCheckout = await db.getUserById(ctx.user.id);
+        const useInrCheckout = isAsiaTzCheckout(parentUserCheckout?.timezone);
+        const checkoutCurrency = useInrCheckout ? "inr" as const : "usd" as const;
+        const usdPriceCheckout = parseFloat(course.price);
+        const inrRateCheckout = useInrCheckout ? await getInrRateCheckout() : 1;
+        const checkoutPrice = useInrCheckout
+          ? (course.priceInr != null ? parseFloat(course.priceInr) : Math.round(usdPriceCheckout * inrRateCheckout))
+          : usdPriceCheckout;
         const session = await createCheckoutSession({
-          priceAmount: parseFloat(course.price),
+          priceAmount: checkoutPrice,
           courseName: course.title,
           courseId: course.id,
           userId: ctx.user.id,
           userEmail: ctx.user.email,
           userName: ctx.user.name,
           origin: `${ctx.req.protocol}://${ctx.req.get("host")}`,
+          currency: checkoutCurrency,
           subscriptionId: input.subscriptionId,
         });
 

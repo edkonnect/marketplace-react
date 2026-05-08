@@ -4,6 +4,8 @@ import Navigation from "@/components/Navigation";
 import Footer from "@/components/Footer";
 import { CoursePrice } from "@/components/CoursePrice";
 import { useFormatPrice } from "@/hooks/useFormatPrice";
+import { useIsIndianUser } from "@/hooks/useIsIndianUser";
+import { useExchangeRate } from "@/hooks/useExchangeRate";
 import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -26,6 +28,8 @@ export default function CourseDetail() {
   const { id } = useParams();
   const courseId = parseInt(id || "0");
   const formatPrice = useFormatPrice();
+  const isIndian = useIsIndianUser();
+  const exchangeRate = useExchangeRate();
   const { user, isAuthenticated } = useAuth();
   const [, setLocation] = useLocation();
   const [isEnrollDialogOpen, setIsEnrollDialogOpen] = React.useState(false);
@@ -370,17 +374,25 @@ export default function CourseDetail() {
     );
   }
 
-  const price = parseFloat(course.price);
+  const priceUsd = parseFloat(course.price);
+  const priceInrStored = course.priceInr ? parseFloat(course.priceInr) : null;
+  const price = isIndian ? (priceInrStored ?? Math.round(priceUsd * exchangeRate)) : priceUsd;
+  // fmt formats an already-currency-correct amount — avoids double-conversion when price is already INR
+  const fmt = (amt: number) => isIndian
+    ? new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(amt)
+    : `$${amt % 1 === 0 ? amt.toFixed(0) : amt.toFixed(2)}`;
+  // For display: convert USD promo discount to INR when showing INR prices
+  const promoDiscountDisplay = isIndian && promoDiscountUsd > 0 ? Math.round(promoDiscountUsd * exchangeRate) : promoDiscountUsd;
   const isTestPrep = course.courseType === "test_prep";
   const isUsageBased = course.courseType === "tutor" || course.courseType === "homework";
   const LOYALTY_DISCOUNT_PCT = 5;
   // 5% loyalty discount on full payment for all course types + sibling discount stack, capped at 100%
   const totalPctDiscount = Math.min(100, LOYALTY_DISCOUNT_PCT + (siblingDiscount ? discountPercent : 0));
   const pctDiscountAmount = totalPctDiscount > 0 ? price * totalPctDiscount / 100 : 0;
-  const effectiveTotal = Math.max(0, price - pctDiscountAmount - promoDiscountUsd);
+  const effectiveTotal = Math.max(0, price - pctDiscountAmount - promoDiscountDisplay);
   // Per-session rate for Tutor/Homework — applies sibling + promo discounts (loyalty is pay-in-full only)
   const siblingOnlyDiscountAmount = siblingDiscount ? price * discountPercent / 100 : 0;
-  const discountedMonthlyBase = Math.max(0, price - siblingOnlyDiscountAmount - promoDiscountUsd);
+  const discountedMonthlyBase = Math.max(0, price - siblingOnlyDiscountAmount - promoDiscountDisplay);
   const perSessionRate = course.totalSessions ? discountedMonthlyBase / course.totalSessions : null;
   // Installment amount (3 equal parts of discounted price, sibling+promo only)
   const installmentAmount = discountedMonthlyBase / 3;
@@ -523,7 +535,7 @@ export default function CourseDetail() {
                   </div>
                   <CardDescription>
                     {course.totalSessions
-                      ? `${formatPrice(price / course.totalSessions)} per session`
+                      ? `${fmt(price / course.totalSessions)} per session`
                       : "Course package pricing"
                     }
                   </CardDescription>
@@ -638,7 +650,7 @@ export default function CourseDetail() {
                                 {discountPercent}% Sibling Discount
                               </Badge>
                               <p className="text-sm text-green-800 dark:text-green-200">
-                                First enrollment for this child — {formatPrice(price * discountPercent / 100)} off applied automatically.
+                                First enrollment for this child — {fmt(price * discountPercent / 100)} off applied automatically.
                               </p>
                             </div>
                           )}
@@ -668,8 +680,8 @@ export default function CourseDetail() {
                                 promoValidation.valid ? (
                                   <p className="text-sm text-green-600 font-medium">
                                     ✓ {promoValidation.isExternalPromo
-                                      ? `10% discount applied — you save ${formatPrice(promoDiscountUsd)}!`
-                                      : `${formatPrice(promoDiscountUsd)} discount applied!`}
+                                      ? `10% discount applied — you save ${fmt(promoDiscountDisplay)}!`
+                                      : `${fmt(promoDiscountDisplay)} discount applied!`}
                                   </p>
                                 ) : (
                                   <p className="text-sm text-destructive">{promoValidation.reason}</p>
@@ -682,32 +694,32 @@ export default function CourseDetail() {
                           <div className="p-3 bg-primary/5 rounded-lg border border-primary/20 text-sm space-y-1.5">
                             <div className="flex items-center justify-between">
                               <span className="text-muted-foreground">Original price</span>
-                              <span className={totalPctDiscount > 0 || promoDiscountUsd > 0 ? "line-through text-muted-foreground" : "font-semibold"}>
-                                {formatPrice(price)}
+                              <span className={totalPctDiscount > 0 || promoDiscountDisplay > 0 ? "line-through text-muted-foreground" : "font-semibold"}>
+                                {fmt(price)}
                               </span>
                             </div>
                             <div className="flex items-center justify-between text-blue-700 dark:text-blue-400">
                               <span>Loyalty discount ({LOYALTY_DISCOUNT_PCT}% off) when you pay in full</span>
-                              <span>−{formatPrice(price * LOYALTY_DISCOUNT_PCT / 100)}</span>
+                              <span>−{fmt(price * LOYALTY_DISCOUNT_PCT / 100)}</span>
                             </div>
                             {siblingDiscount && (
                               <div className="flex items-center justify-between text-purple-700 dark:text-purple-400">
                                 <span>Sibling discount ({discountPercent}% off)</span>
-                                <span>−{formatPrice(price * discountPercent / 100)}</span>
+                                <span>−{fmt(price * discountPercent / 100)}</span>
                               </div>
                             )}
-                            {promoDiscountUsd > 0 && (
+                            {promoDiscountDisplay > 0 && (
                               <div className="flex items-center justify-between text-green-700 dark:text-green-400">
                                 <span>Promo code</span>
-                                <span>−{formatPrice(promoDiscountUsd)}</span>
+                                <span>−{fmt(promoDiscountDisplay)}</span>
                               </div>
                             )}
                             <div className="border-t border-primary/20 pt-1.5 flex items-center justify-between font-bold">
                               <span>You pay</span>
-                              <span className="text-primary text-base">{formatPrice(effectiveTotal)}</span>
+                              <span className="text-primary text-base">{fmt(effectiveTotal)}</span>
                             </div>
                             <p className="text-xs text-green-700 dark:text-green-400 font-medium">
-                              You save {formatPrice(price - effectiveTotal)} on this course!
+                              You save {fmt(price - effectiveTotal)} on this course!
                             </p>
                           </div>
 
@@ -726,7 +738,7 @@ export default function CourseDetail() {
                                 disabled={createCheckoutMutation.isPending || !studentFirstName || !studentLastName}
                               >
                                 {createCheckoutMutation.isPending ? "Processing..." : (
-                                  `Pay in Full — ${formatPrice(effectiveTotal)}${totalPctDiscount > 0 ? ` (${totalPctDiscount}% off)` : ""}`
+                                  `Pay in Full — ${fmt(effectiveTotal)}${totalPctDiscount > 0 ? ` (${totalPctDiscount}% off)` : ""}`
                                 )}
                               </Button>
                             </div>
@@ -741,7 +753,7 @@ export default function CourseDetail() {
                               >
                                 {enrollWithInstallmentsMutation.isPending
                                   ? "Enrolling..."
-                                  : `Pay in 3 Installments — ${formatPrice(installmentAmount)}/month × 3`}
+                                  : `Pay in 3 Installments — ${fmt(installmentAmount)}/month × 3`}
                               </Button>
                             )}
 
@@ -756,7 +768,7 @@ export default function CourseDetail() {
                                 {enrollWithoutPaymentMutation.isPending
                                   ? "Enrolling..."
                                   : perSessionRate !== null
-                                    ? `Enroll & Pay Monthly — ${formatPrice(perSessionRate)}/session`
+                                    ? `Enroll & Pay Monthly — ${fmt(perSessionRate)}/session`
                                     : "Enroll & Pay Monthly"}
                               </Button>
                             )}

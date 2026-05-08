@@ -11,6 +11,8 @@ export const ENV = {
   geminiApiKey: process.env.GEMINI_API_KEY ?? "",
   stripeSecretKey: process.env.STRIPE_SECRET_KEY ?? "",
   stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET ?? "",
+  stripeInrSecretKey: process.env.STRIPE_INR_SECRET_KEY ?? "",
+  stripeInrWebhookSecret: process.env.STRIPE_INR_WEBHOOK_SECRET ?? "",
   stripeBypass: process.env.STRIPE_BYPASS === "true",
   corsOrigin: process.env.CORS_ORIGIN ?? "http://localhost:5173",
   cookieSecure: process.env.COOKIE_SECURE === "true",

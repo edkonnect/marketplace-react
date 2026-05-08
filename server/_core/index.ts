@@ -56,8 +56,9 @@ async function startServer() {
   );
   // Stripe webhook MUST be registered before CORS and express.json() middleware
   // Stripe sends from its own servers so CORS must not apply here
-  const { handleStripeWebhook } = await import("../payments/stripeWebhook");
+  const { handleStripeWebhook, handleStripeInrWebhook } = await import("../payments/stripeWebhook");
   app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), handleStripeWebhook);
+  app.post("/api/stripe/webhook-inr", express.raw({ type: "application/json" }), handleStripeInrWebhook);
 
   // Acuity webhook requires raw body for HMAC-SHA256 signature verification.
   const { handleAcuityWebhook } = await import("../acuity-webhook");

@@ -1,6 +1,6 @@
 import cron from "node-cron";
 import * as db from "./db";
-import { createCombinedUsageInvoice } from "./payments/stripe";
+import { createCombinedUsageInvoice, isAsiaTz } from "./payments/stripe";
 import { sendSessionReminders } from "./notification-service";
 import { sendSessionNotesReminders } from "./emails/session-notes-reminder";
 
@@ -135,11 +135,13 @@ export async function processUsageBilling() {
       }
 
       try {
+        const currency = isAsiaTz(parentUserRecord.timezone) ? "inr" : "usd";
         const stripeInvoice = await createCombinedUsageInvoice({
           stripeCustomerId: parentUserRecord.stripeCustomerId,
           cycleEnd: lines[0].cycleEnd,
           billingCycleIds: lines.map(l => l.billingCycleId),
           lines,
+          currency,
         });
 
         const cycleStatus = stripeInvoice.status === "paid" ? "paid" : "invoiced";

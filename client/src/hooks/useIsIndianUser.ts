@@ -1,19 +1,22 @@
 import { useAuthContext } from "@/contexts/AuthContext";
 
-const INDIAN_TIMEZONES = ["Asia/Calcutta", "Asia/Kolkata"];
+// Matches backend isAsiaTz() — any Asia/* timezone pays in INR
+function isAsiaTz(tz: string | null | undefined): boolean {
+  return typeof tz === "string" && tz.startsWith("Asia/");
+}
 
 export function useIsIndianUser(): boolean {
   const { user } = useAuthContext();
 
-  // Logged-in user: check their saved timezone
-  if (user?.timezone) {
-    return INDIAN_TIMEZONES.includes(user.timezone);
+  // Logged-in user: always use their saved timezone from DB — never fall back to browser
+  if (user !== undefined) {
+    return isAsiaTz(user?.timezone);
   }
 
   // Logged-out visitor: check browser timezone
   try {
     const browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    return INDIAN_TIMEZONES.includes(browserTz);
+    return isAsiaTz(browserTz);
   } catch {
     return false;
   }
