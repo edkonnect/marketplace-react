@@ -41,8 +41,8 @@ export interface SearchResult {
 // Load FAQ data
 // ---------------------------------------------------------------------------
 
-const faqDataPath = path.join(__dirname, "../data/faq-data.json");
-const unansweredLogPath = path.join(__dirname, "../data/unanswered-questions.json");
+const faqDataPath = path.join(process.cwd(), "server/data/faq-data.json");
+const unansweredLogPath = path.join(process.cwd(), "server/data/unanswered-questions.json");
 
 const faqData: FaqItem[] = JSON.parse(fs.readFileSync(faqDataPath, "utf-8"));
 
@@ -522,7 +522,7 @@ interface QueryLog {
   url?: string;
 }
 
-const queryLogPath = path.join(__dirname, "../data/chatbot-query-log.json");
+const queryLogPath = path.join(process.cwd(), "server/data/chatbot-query-log.json");
 
 export function logQuery(
   question: string,
