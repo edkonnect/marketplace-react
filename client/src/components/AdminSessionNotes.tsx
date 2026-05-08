@@ -1,34 +1,53 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { FileText, Search, X, Download } from "lucide-react";
+import { FileText, Search, X, Download, User } from "lucide-react";
 
 function today() {
   return new Date().toISOString().slice(0, 10);
 }
-function thirtyDaysAgo() {
-  const d = new Date();
-  d.setDate(d.getDate() - 30);
-  return d.toISOString().slice(0, 10);
-}
 
 export function AdminSessionNotes() {
+  // Filter input state (what user types/selects)
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [selectedTutorName, setSelectedTutorName] = useState<string>("all");
-  const [selectedParentEmail, setSelectedParentEmail] = useState<string>("all");
+  const [parentSearch, setParentSearch] = useState("");
+  const [selectedParent, setSelectedParent] = useState<{ email: string; name: string } | null>(null);
+  const [showSuggestions, setShowSuggestions] = useState(false);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
 
+  // Applied filter state (what actually filters the data)
   const [appliedFrom, setAppliedFrom] = useState("");
   const [appliedTo, setAppliedTo] = useState("");
   const [appliedTutor, setAppliedTutor] = useState<string>("all");
-  const [appliedParent, setAppliedParent] = useState<string>("all");
+
+  // ✅ FIX 1: Gate — only show results after user explicitly applies or selects a parent
+  const [hasApplied, setHasApplied] = useState(false);
+
+  const searchRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
+        setShowSuggestions(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   const { data: tutors = [] } = trpc.admin.getTutorsForCourseApproval.useQuery();
+
+  const { data: parentsData } = trpc.admin.getAllUsers.useQuery({
+    role: "parent",
+    limit: 1000,
+    offset: 0,
+  });
 
   const uniqueTutors = useMemo(() => {
     const seen = new Set<string>();
@@ -40,55 +59,88 @@ export function AdminSessionNotes() {
     });
   }, [tutors]);
 
-  const { data: sessionsData, isLoading } = trpc.admin.getAllSessions.useQuery({
-    limit: 1000,
-    offset: 0,
-    startDate: appliedFrom,
-    endDate: appliedTo,
-  });
+  const filteredParents = useMemo(() => {
+    const allParents = (parentsData?.users || []).map(u => ({
+      email: u.email || "",
+      name: u.name || u.email || "",
+    })).filter(p => p.email);
 
-  // Get unique parents filtered by selected tutor
-  const uniqueParents = useMemo(() => {
-    const seen = new Set<string>();
-    const parents: { email: string; name: string }[] = [];
-    (sessionsData?.sessions || []).forEach(s => {
-      if (!s.feedbackFromTutor || s.feedbackFromTutor.trim() === "") return;
-      if (appliedTutor !== "all" && (s.tutorName || "") !== appliedTutor) return;
-      if (s.parentEmail && !seen.has(s.parentEmail)) {
-        seen.add(s.parentEmail);
-        parents.push({ email: s.parentEmail, name: s.parentName || s.parentEmail });
-      }
-    });
-    return parents.sort((a, b) => a.name.localeCompare(b.name));
-  }, [sessionsData, appliedTutor]);
+    if (!parentSearch.trim()) return allParents.slice(0, 10);
+    const q = parentSearch.toLowerCase();
+    return allParents.filter(p =>
+      p.name.toLowerCase().includes(q) || p.email.toLowerCase().includes(q)
+    ).slice(0, 10);
+  }, [parentsData, parentSearch]);
+
+  // Only fetch when user has applied filters or selected a parent
+  const shouldFetch = hasApplied || selectedParent !== null;
+
+  const { data: sessionsData, isLoading } = trpc.admin.getAllSessions.useQuery(
+    {
+      limit: 2000,
+      offset: 0,
+      startDate: appliedFrom,
+      endDate: appliedTo,
+    },
+    {
+      // ✅ FIX 2: Don't run query until user applies filters
+      enabled: shouldFetch,
+    }
+  );
 
   const notesOnly = useMemo(() => {
+    if (!shouldFetch) return [];
     return (sessionsData?.sessions || []).filter(s => {
       if (!s.feedbackFromTutor || s.feedbackFromTutor.trim() === "") return false;
       if (appliedTutor !== "all" && (s.tutorName || "") !== appliedTutor) return false;
-      if (appliedParent !== "all" && (s.parentEmail || "") !== appliedParent) return false;
+      if (selectedParent && (s.parentEmail || "") !== selectedParent.email) return false;
       return true;
     });
-  }, [sessionsData, appliedTutor, appliedParent]);
+  }, [sessionsData, appliedTutor, selectedParent, shouldFetch]);
 
+  // ✅ FIX 3: Apply sets the gate
   const handleApply = () => {
     setAppliedFrom(fromDate);
     setAppliedTo(toDate);
     setAppliedTutor(selectedTutorName);
-    setAppliedParent(selectedParentEmail);
+    setHasApplied(true);
   };
 
+  // ✅ FIX 4: Reset clears everything including the gate, dates go to empty
   const handleReset = () => {
-    const f = thirtyDaysAgo();
-    const t = today();
-    setFromDate(f);
-    setToDate(t);
+    setFromDate("");
+    setToDate("");
     setSelectedTutorName("all");
-    setSelectedParentEmail("all");
-    setAppliedFrom(f);
-    setAppliedTo(t);
+    setParentSearch("");
+    setSelectedParent(null);
+    setAppliedFrom("");
+    setAppliedTo("");
     setAppliedTutor("all");
-    setAppliedParent("all");
+    setHasApplied(false); // ← hides results again
+  };
+
+  // ✅ FIX 5: Selecting a parent shows their sessions immediately
+  const handleSelectParent = (p: { email: string; name: string }) => {
+    setSelectedParent(p);
+    setParentSearch(p.name);
+    setShowSuggestions(false);
+    // Clear date filters so ALL sessions for this parent show
+    setAppliedFrom("");
+    setAppliedTo("");
+    setFromDate("");
+    setToDate("");
+    setAppliedTutor("all");
+    setSelectedTutorName("all");
+    setHasApplied(true); // ← trigger results display
+  };
+
+  const handleClearParent = () => {
+    setSelectedParent(null);
+    setParentSearch("");
+    // If no other filters are active, hide results
+    if (!appliedFrom && !appliedTo && appliedTutor === "all") {
+      setHasApplied(false);
+    }
   };
 
   const handleGeneratePdf = async () => {
@@ -96,9 +148,7 @@ export function AdminSessionNotes() {
     setIsGeneratingPdf(true);
 
     try {
-      const parentLabel = appliedParent !== "all"
-        ? uniqueParents.find(p => p.email === appliedParent)?.name || appliedParent
-        : "All Parents";
+      const parentLabel = selectedParent ? selectedParent.name : "All Parents";
 
       const fromLabel = appliedFrom
         ? new Date(appliedFrom).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })
@@ -216,7 +266,7 @@ export function AdminSessionNotes() {
               <input
                 type="date"
                 value={fromDate}
-                max={toDate}
+                max={toDate || today()}
                 onChange={(e) => setFromDate(e.target.value)}
                 className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
               />
@@ -239,9 +289,6 @@ export function AdminSessionNotes() {
                 value={selectedTutorName}
                 onValueChange={(v) => {
                   setSelectedTutorName(v);
-                  setAppliedTutor(v);
-                  setSelectedParentEmail("all");
-                  setAppliedParent("all");
                 }}
               >
                 <SelectTrigger>
@@ -257,28 +304,55 @@ export function AdminSessionNotes() {
                 </SelectContent>
               </Select>
             </div>
-            <div>
-              <label className="text-sm font-medium mb-2 block">Parent</label>
-              <Select
-                key={`${appliedTutor}-${selectedParentEmail}`}
-                value={selectedParentEmail}
-                onValueChange={(v) => {
-                  setSelectedParentEmail(v);
-                  setAppliedParent(v);
-                }}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="All parents" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All parents</SelectItem>
-                  {uniqueParents.map((p) => (
-                    <SelectItem key={p.email} value={p.email}>
-                      {p.name}
-                    </SelectItem>
+            <div ref={searchRef} className="relative">
+              <label className="text-sm font-medium mb-2 block">Search Parent</label>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+                <input
+                  type="text"
+                  value={parentSearch}
+                  placeholder="Type parent name..."
+                  onChange={(e) => {
+                    setParentSearch(e.target.value);
+                    setSelectedParent(null);
+                    setShowSuggestions(true);
+                    // If user clears the parent search, hide results if no other filters
+                    if (!e.target.value.trim() && !appliedFrom && !appliedTo && appliedTutor === "all") {
+                      setHasApplied(false);
+                    }
+                  }}
+                  onFocus={() => setShowSuggestions(true)}
+                  className="w-full h-9 rounded-md border border-input bg-background pl-9 pr-8 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                />
+                {parentSearch && (
+                  <button
+                    onClick={handleClearParent}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
+              {showSuggestions && parentSearch && filteredParents.length > 0 && (
+                <div className="absolute z-50 w-full mt-1 bg-background border border-input rounded-md shadow-lg max-h-48 overflow-y-auto">
+                  {filteredParents.map(p => (
+                    <button
+                      key={p.email}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-muted text-left"
+                      onMouseDown={() => handleSelectParent(p)}
+                    >
+                      <User className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                      <div>
+                        <div className="font-medium">{p.name}</div>
+                        <div className="text-xs text-muted-foreground">{p.email}</div>
+                      </div>
+                    </button>
                   ))}
-                </SelectContent>
-              </Select>
+                </div>
+              )}
+              {selectedParent && (
+                <p className="text-xs text-green-600 mt-1">✓ Selected: {selectedParent.name}</p>
+              )}
             </div>
           </div>
           <div className="flex gap-2 mt-4">
@@ -305,14 +379,23 @@ export function AdminSessionNotes() {
       <Card>
         <CardHeader>
           <CardTitle>Session Notes</CardTitle>
-          {!isLoading && (
+          {shouldFetch && !isLoading && (
             <p className="text-sm text-muted-foreground">
               {notesOnly.length} session{notesOnly.length !== 1 ? "s" : ""} with notes found
             </p>
           )}
         </CardHeader>
         <CardContent>
-          {isLoading ? (
+          {/* ✅ FIX: Show prompt when nothing applied yet */}
+          {!shouldFetch ? (
+            <div className="flex flex-col items-center justify-center py-14 text-center">
+              <Search className="h-8 w-8 text-muted-foreground/40 mb-2" />
+              <p className="font-medium">No filters applied</p>
+              <p className="text-sm text-muted-foreground mt-1">
+                Select a date range and click Apply, or search for a parent to view session notes
+              </p>
+            </div>
+          ) : isLoading ? (
             <div className="space-y-3">
               {[1, 2, 3].map((i) => <Skeleton key={i} className="h-24 w-full" />)}
             </div>
@@ -320,7 +403,9 @@ export function AdminSessionNotes() {
             <div className="flex flex-col items-center justify-center py-14 text-center">
               <FileText className="h-8 w-8 text-muted-foreground/40 mb-2" />
               <p className="font-medium">No session notes found</p>
-              <p className="text-sm text-muted-foreground mt-1">Try adjusting the date range or tutor filter</p>
+              <p className="text-sm text-muted-foreground mt-1">
+                Try a different date range, tutor, or parent
+              </p>
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -335,13 +420,17 @@ export function AdminSessionNotes() {
                     <th className="py-2 font-medium">Notes</th>
                   </tr>
                 </thead>
-                <tbody key={`${appliedTutor}-${appliedParent}`}>
+                <tbody key={selectedParent?.email || "all"}>
                   {notesOnly.map((s) => {
                     const studentName = [s.studentFirstName, s.studentLastName].filter(Boolean).join(" ") || "—";
                     return (
                       <tr key={s.id} className="border-b last:border-0 hover:bg-muted/40 align-top">
                         <td className="py-3 pr-4 whitespace-nowrap text-muted-foreground">
-                          {new Date(s.scheduledAt).toLocaleDateString()}
+                          {new Date(s.scheduledAt).toLocaleDateString("en-IN", {
+                            day: "2-digit",
+                            month: "2-digit",
+                            year: "numeric",
+                          })}
                         </td>
                         <td className="py-3 pr-4 font-medium whitespace-nowrap">{studentName}</td>
                         <td className="py-3 pr-4 whitespace-nowrap">{s.tutorName || "—"}</td>
