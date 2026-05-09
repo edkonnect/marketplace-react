@@ -2283,20 +2283,32 @@ export default function ParentDashboard() {
 
                 {/* Card 2 — Billing & Spend Analyzer */}
                 {(() => {
+                  // Returns amount in display currency (INR for indian users, USD for others)
                   const getSubAmount = (item: NonNullable<typeof subscriptions>[number]): number => {
-                    // nextBillingAmount is already in the subscription's currency (INR or USD)
-                    // For INR subs, skip it and fall through to course.price (USD) so totalSpend stays in USD
                     if (item.nextBillingAmount != null && item.nextBillingCurrency !== "inr") return Number(item.nextBillingAmount);
                     const s = item.subscription;
                     if (s.paymentPlan === "installment" && s.firstInstallmentAmount != null) return Number(s.firstInstallmentAmount);
-                    const coursePrice = Number(item.course?.price ?? 0);
-                    const promo = Number(s.promoDiscountAmount ?? 0);
-                    const discount = Number(s.discountAmount ?? 0);
+                    const isIndiaRegion = item.course?.region === "india";
+                    const priceInrStored = item.course?.priceInr ? Number(item.course.priceInr) : null;
+                    // For indian users: use priceInr if set, else for india-region courses price is already INR, else convert
+                    const coursePrice = isIndian
+                      ? (priceInrStored ?? (isIndiaRegion ? Number(item.course?.price ?? 0) : Math.round(Number(item.course?.price ?? 0) * exchangeRate)))
+                      : Number(item.course?.price ?? 0);
+                    const promo = isIndian ? Math.round(Number(s.promoDiscountAmount ?? 0) * exchangeRate) : Number(s.promoDiscountAmount ?? 0);
+                    const discount = isIndian ? Math.round(Number(s.discountAmount ?? 0) * exchangeRate) : Number(s.discountAmount ?? 0);
                     return Math.max(0, coursePrice - promo - discount);
                   };
+                  // fmt formats already-currency-correct amounts without double-converting
+                  const fmtAmt = (amt: number) => isIndian
+                    ? new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(amt)
+                    : `$${amt % 1 === 0 ? amt.toFixed(0) : amt.toFixed(2)}`;
                   const activeSubs = analyticsFilteredSubscriptions.filter(s => s.subscription.status === "active");
                   const totalSpend = activeSubs.reduce((sum, s) => sum + getSubAmount(s), 0);
-                  const totalSavings = analyticsFilteredSubscriptions.reduce((sum, s) => sum + Number(s.subscription.promoDiscountAmount ?? 0) + Number(s.subscription.discountAmount ?? 0), 0);
+                  const totalSavings = analyticsFilteredSubscriptions.reduce((sum, s) => {
+                    const promoUsd = Number(s.subscription.promoDiscountAmount ?? 0);
+                    const discUsd = Number(s.subscription.discountAmount ?? 0);
+                    return sum + (isIndian ? Math.round((promoUsd + discUsd) * exchangeRate) : (promoUsd + discUsd));
+                  }, 0);
                   const hasSiblingDiscount = analyticsFilteredSubscriptions.some(s => s.subscription.siblingDiscountApplied);
                   return (
                     <div className="rounded-2xl bg-gradient-to-br from-emerald-500 to-emerald-600 p-5 text-white shadow-md flex flex-col gap-2 h-[240px]">
@@ -2309,10 +2321,10 @@ export default function ParentDashboard() {
                           <button onClick={() => setShowBillingModal(true)} className="text-xs font-medium opacity-90 hover:opacity-100 underline underline-offset-2">Show more</button>
                         </div>
                       </div>
-                      <p className="text-4xl font-bold">{formatPrice(totalSpend)}</p>
+                      <p className="text-4xl font-bold">{fmtAmt(totalSpend)}</p>
                       <p className="text-xs opacity-70 -mt-2">across {activeSubs.length} active enrollment{activeSubs.length !== 1 ? "s" : ""}</p>
                       {totalSavings > 0 && (
-                        <p className="text-xs opacity-90">Saved <span className="font-bold">{formatPrice(totalSavings)}</span> via discounts</p>
+                        <p className="text-xs opacity-90">Saved <span className="font-bold">{fmtAmt(totalSavings)}</span> via discounts</p>
                       )}
                       {hasSiblingDiscount && (
                         <span className="self-start text-[10px] bg-white/20 px-2 py-0.5 rounded-full font-medium">Sibling discount applied</span>
@@ -2651,14 +2663,25 @@ export default function ParentDashboard() {
           if (item.nextBillingAmount != null && item.nextBillingCurrency !== "inr") return Number(item.nextBillingAmount);
           const s = item.subscription;
           if (s.paymentPlan === "installment" && s.firstInstallmentAmount != null) return Number(s.firstInstallmentAmount);
-          const coursePrice = Number(item.course?.price ?? 0);
-          const promo = Number(s.promoDiscountAmount ?? 0);
-          const discount = Number(s.discountAmount ?? 0);
+          const isIndiaRegion = item.course?.region === "india";
+          const priceInrStored = item.course?.priceInr ? Number(item.course.priceInr) : null;
+          const coursePrice = isIndian
+            ? (priceInrStored ?? (isIndiaRegion ? Number(item.course?.price ?? 0) : Math.round(Number(item.course?.price ?? 0) * exchangeRate)))
+            : Number(item.course?.price ?? 0);
+          const promo = isIndian ? Math.round(Number(s.promoDiscountAmount ?? 0) * exchangeRate) : Number(s.promoDiscountAmount ?? 0);
+          const discount = isIndian ? Math.round(Number(s.discountAmount ?? 0) * exchangeRate) : Number(s.discountAmount ?? 0);
           return Math.max(0, coursePrice - promo - discount);
         };
         const activeSubs = (subscriptions || []).filter(s => s.subscription.status === "active");
         const totalSpend = activeSubs.reduce((sum, s) => sum + getSubAmount(s), 0);
-        const totalSavings = (subscriptions || []).reduce((sum, s) => sum + Number(s.subscription.promoDiscountAmount ?? 0) + Number(s.subscription.discountAmount ?? 0), 0);
+        const totalSavings = (subscriptions || []).reduce((sum, s) => {
+          const promoUsd = Number(s.subscription.promoDiscountAmount ?? 0);
+          const discUsd = Number(s.subscription.discountAmount ?? 0);
+          return sum + (isIndian ? Math.round((promoUsd + discUsd) * exchangeRate) : (promoUsd + discUsd));
+        }, 0);
+        const fmtAmt = (amt: number) => isIndian
+          ? new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(amt)
+          : `$${amt % 1 === 0 ? amt.toFixed(0) : amt.toFixed(2)}`;
         const planLabel = (plan: string) => plan === "monthly" ? "Monthly" : plan === "installment" ? "Installment" : "Full";
         return (
           <Dialog open={showBillingModal} onOpenChange={setShowBillingModal}>
@@ -2674,12 +2697,12 @@ export default function ParentDashboard() {
                 <div className="grid grid-cols-2 gap-3">
                   <div className="rounded-xl bg-emerald-50 dark:bg-emerald-950/40 p-4">
                     <p className="text-xs text-muted-foreground">Total Spend</p>
-                    <p className="text-2xl font-bold text-emerald-700 dark:text-emerald-400 mt-1">{formatPrice(totalSpend)}</p>
+                    <p className="text-2xl font-bold text-emerald-700 dark:text-emerald-400 mt-1">{fmtAmt(totalSpend)}</p>
                     <p className="text-[10px] text-muted-foreground mt-0.5">{activeSubs.length} active enrollment{activeSubs.length !== 1 ? "s" : ""}</p>
                   </div>
                   <div className="rounded-xl bg-blue-50 dark:bg-blue-950/40 p-4">
                     <p className="text-xs text-muted-foreground">Total Saved</p>
-                    <p className="text-2xl font-bold text-blue-700 dark:text-blue-400 mt-1">{formatPrice(totalSavings)}</p>
+                    <p className="text-2xl font-bold text-blue-700 dark:text-blue-400 mt-1">{fmtAmt(totalSavings)}</p>
                     <p className="text-[10px] text-muted-foreground mt-0.5">via discounts &amp; promos</p>
                   </div>
                 </div>
@@ -2692,7 +2715,9 @@ export default function ParentDashboard() {
                     ) : activeSubs.map((item) => {
                       const s = item.subscription;
                       const amount = getSubAmount(item);
-                      const savings = Number(s.promoDiscountAmount ?? 0) + Number(s.discountAmount ?? 0);
+                      const promoUsd = Number(s.promoDiscountAmount ?? 0);
+                      const discUsd = Number(s.discountAmount ?? 0);
+                      const savings = isIndian ? Math.round((promoUsd + discUsd) * exchangeRate) : (promoUsd + discUsd);
                       return (
                         <div key={s.id} className="rounded-xl border bg-card p-4 space-y-2">
                           <div className="flex items-start justify-between gap-2">
@@ -2700,15 +2725,15 @@ export default function ParentDashboard() {
                               <p className="font-semibold text-sm">{item.course?.title || "Course"}</p>
                               <p className="text-xs text-muted-foreground">{[s.studentFirstName, s.studentLastName].filter(Boolean).join(" ")} · {planLabel(s.paymentPlan)} plan</p>
                             </div>
-                            <p className="font-bold text-base shrink-0">{formatPrice(amount)}</p>
+                            <p className="font-bold text-base shrink-0">{fmtAmt(amount)}</p>
                           </div>
                           {item.nextBillingDate && (
                             <p className="text-xs text-muted-foreground">Next billing: {new Date(item.nextBillingDate).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}</p>
                           )}
                           {savings > 0 && (
                             <div className="flex flex-wrap gap-1.5 pt-1 border-t">
-                              {Number(s.promoDiscountAmount ?? 0) > 0 && <span className="text-[10px] bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 px-2 py-0.5 rounded-full font-medium">Promo −{formatPrice(Number(s.promoDiscountAmount))}</span>}
-                              {Number(s.discountAmount ?? 0) > 0 && <span className="text-[10px] bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400 px-2 py-0.5 rounded-full font-medium">Discount −{formatPrice(Number(s.discountAmount))}</span>}
+                              {promoUsd > 0 && <span className="text-[10px] bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 px-2 py-0.5 rounded-full font-medium">Promo −{fmtAmt(isIndian ? Math.round(promoUsd * exchangeRate) : promoUsd)}</span>}
+                              {discUsd > 0 && <span className="text-[10px] bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400 px-2 py-0.5 rounded-full font-medium">Discount −{fmtAmt(isIndian ? Math.round(discUsd * exchangeRate) : discUsd)}</span>}
                               {s.siblingDiscountApplied && <span className="text-[10px] bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-400 px-2 py-0.5 rounded-full font-medium">Sibling discount</span>}
                               {s.loyaltyDiscountApplied && <span className="text-[10px] bg-violet-100 dark:bg-violet-900/40 text-violet-700 dark:text-violet-400 px-2 py-0.5 rounded-full font-medium">Loyalty discount</span>}
                             </div>
@@ -3143,9 +3168,10 @@ export default function ParentDashboard() {
             <div className="space-y-3 py-2">
               {/* Test Prep: Full OR Installments */}
               {paymentModalSub.course.courseType === "test_prep" && (() => {
+                const isIndiaRegionModal = paymentModalSub.course.region === "india";
                 const priceUsd = parseFloat(paymentModalSub.course.price || "0");
                 const priceInr = paymentModalSub.course.priceInr ? parseFloat(paymentModalSub.course.priceInr) : null;
-                const price = isIndian ? (priceInr ?? Math.round(priceUsd * exchangeRate)) : priceUsd;
+                const price = isIndian ? (priceInr ?? (isIndiaRegionModal ? priceUsd : Math.round(priceUsd * exchangeRate))) : priceUsd;
                 const fmtModal = (amt: number) => isIndian
                   ? new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(amt)
                   : `$${amt % 1 === 0 ? amt.toFixed(0) : amt.toFixed(2)}`;
@@ -3223,9 +3249,10 @@ export default function ParentDashboard() {
 
               {/* Tutor / Homework: Monthly usage billing + Pay in Full */}
               {(paymentModalSub.course.courseType === "tutor" || paymentModalSub.course.courseType === "homework") && (() => {
+                const isIndiaRegionModal = paymentModalSub.course.region === "india";
                 const priceUsd = parseFloat(paymentModalSub.course.price || "0");
                 const priceInr = paymentModalSub.course.priceInr ? parseFloat(paymentModalSub.course.priceInr) : null;
-                const price = isIndian ? (priceInr ?? Math.round(priceUsd * exchangeRate)) : priceUsd;
+                const price = isIndian ? (priceInr ?? (isIndiaRegionModal ? priceUsd : Math.round(priceUsd * exchangeRate))) : priceUsd;
                 const fmtModal = (amt: number) => isIndian
                   ? new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(amt)
                   : `$${amt % 1 === 0 ? amt.toFixed(0) : amt.toFixed(2)}`;
