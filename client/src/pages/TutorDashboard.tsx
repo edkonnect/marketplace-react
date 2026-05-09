@@ -611,7 +611,8 @@ export default function TutorDashboard() {
   const [transcriptModal, setTranscriptModal] = useState<TranscriptModalState | null>(null);
   const [summarizingInModal, setSummarizingInModal] = useState(false);
   const summarizingInModalRef = useRef(false);
-  const pendingGradeContextRef = useRef<{ transcript: string; sessionId: number; courseTitle: string; studentName: string } | null>(null);
+  const pendingGradeContextRef = useRef<{ transcript: string; sessionId: number; courseTitle: string; studentName: string; force?: boolean } | null>(null);
+  const [sessionContextMap, setSessionContextMap] = useState<Record<number, string>>({});
   const [generatingQuiz, setGeneratingQuiz] = useState(false);
   const [gradingSession, setGradingSession] = useState(false);
 
@@ -711,6 +712,7 @@ export default function TutorDashboard() {
             sessionId: gradeCtx.sessionId,
             courseName: gradeCtx.courseTitle,
             studentName: gradeCtx.studentName,
+            force: gradeCtx.force,
           });
         }
       }
@@ -1155,23 +1157,31 @@ export default function TutorDashboard() {
     });
   };
 
-  const handleModalSummarize = () => {
+  const handleModalSummarize = (force = false) => {
     if (!transcriptModal?.transcript) return;
     summarizingInModalRef.current = true;
     setSummarizingInModal(true);
+    const sessionContext = sessionContextMap[transcriptModal.sessionId] || undefined;
+    // If context is provided, always force re-grade so cached grade gets overwritten
+    const shouldForce = force || !!sessionContext;
     // Capture grading context now (before async completes) so onSuccess can use it safely
     const wordCount = transcriptModal.transcript.trim().split(/\s+/).filter(Boolean).length;
-    if (wordCount >= 300) {
+    // For force re-grade, use context-augmented transcript so grading also reflects context
+    const transcriptForGrading = sessionContext
+      ? `TUTOR CONTEXT:\n${sessionContext}\n\nTRANSCRIPT:\n${transcriptModal.transcript}`
+      : transcriptModal.transcript;
+    if (wordCount >= 300 || (shouldForce && transcriptModal.transcript.trim())) {
       pendingGradeContextRef.current = {
-        transcript: transcriptModal.transcript,
+        transcript: transcriptForGrading,
         sessionId: transcriptModal.sessionId,
         courseTitle: transcriptModal.courseTitle,
         studentName: transcriptModal.studentName,
+        force: shouldForce,
       };
     } else {
       pendingGradeContextRef.current = null;
     }
-    summarizeMutation.mutate({ text: transcriptModal.transcript, maxLength: 200, sessionDate: transcriptModal.sessionDate });
+    summarizeMutation.mutate({ text: transcriptModal.transcript, maxLength: 200, sessionDate: transcriptModal.sessionDate, sessionContext });
   };
 
   const handleUseThisSummary = () => {
@@ -2773,9 +2783,22 @@ export default function TutorDashboard() {
                   </div>
                 )}
 
+                {/* Session context box — always visible */}
+                <div className="space-y-1 shrink-0">
+                  <Label className="text-xs font-medium text-muted-foreground">
+                    Additional context for AI <span className="text-muted-foreground/60">(optional)</span>
+                  </Label>
+                  <Textarea
+                    value={sessionContextMap[transcriptModal.sessionId] || ""}
+                    onChange={(e) => setSessionContextMap((prev) => ({ ...prev, [transcriptModal.sessionId]: e.target.value }))}
+                    placeholder="e.g. Student solved 40 problems on whiteboard, all correct. Session was mostly silent problem-solving."
+                    className="min-h-[60px] text-sm resize-none"
+                  />
+                </div>
+
                 {!transcriptModal.summary ? (
                   <Button
-                    onClick={handleModalSummarize}
+                    onClick={() => handleModalSummarize(false)}
                     disabled={summarizingInModal}
                     variant="outline"
                     className="self-start shrink-0"
@@ -2791,17 +2814,31 @@ export default function TutorDashboard() {
                         {renderBoldMarkdown(transcriptModal.summary)}
                       </div>
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex gap-2 flex-wrap">
                       <Button onClick={handleUseThisSummary} size="sm">
                         Save to Notes
                       </Button>
                       <Button
-                        onClick={handleModalSummarize}
+                        onClick={() => handleModalSummarize(false)}
                         disabled={summarizingInModal}
                         variant="outline"
                         size="sm"
                       >
                         {summarizingInModal ? "Regenerating..." : "Regenerate"}
+                      </Button>
+                      <Button
+                        onClick={() => {
+                          if (confirm("This will overwrite existing notes and grade. Continue?")) {
+                            handleModalSummarize(true);
+                          }
+                        }}
+                        disabled={summarizingInModal}
+                        variant="outline"
+                        size="sm"
+                        className="text-amber-600 border-amber-300 hover:bg-amber-50"
+                      >
+                        <Sparkles className="w-3.5 h-3.5 mr-1.5" />
+                        {summarizingInModal ? "Re-grading..." : "Re-summarize & Re-grade"}
                       </Button>
                     </div>
                   </div>

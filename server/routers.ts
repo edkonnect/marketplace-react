@@ -6934,6 +6934,7 @@ export const appRouter = router({
         text: z.string().min(1, "Text cannot be empty"),
         maxLength: z.number().optional().default(150),
         sessionDate: z.string().optional(),
+        sessionContext: z.string().optional(),
       }))
       .mutation(async ({ input }) => {
         const { ENV } = await import("./_core/env");
@@ -6989,7 +6990,7 @@ RULES:
 
 Summarize the following session notes:
 
-${input.text}`;
+${input.sessionContext ? `TUTOR CONTEXT (use this to supplement the transcript below):\n${input.sessionContext}\n\nTRANSCRIPT:\n` : ''}${input.text}`;
 
           const result = await model.generateContent(prompt);
           const response = result.response;
@@ -7292,6 +7293,7 @@ Return ONLY the JSON object.`;
         sessionId: z.number(),
         studentName: z.string().optional(),
         courseName: z.string().optional(),
+        force: z.boolean().optional(),
       }))
       .mutation(async ({ input }) => {
         // Guard: transcript must be long enough to grade meaningfully
@@ -7303,9 +7305,9 @@ Return ONLY the JSON object.`;
           });
         }
 
-        // Return cached result if this session has already been graded
+        // Return cached result if this session has already been graded (skip if force=true)
         const cached = await db.getSessionRubricGrades(input.sessionId);
-        if (cached?.rubricGradedAt && cached.rubricEvidence) {
+        if (!input.force && cached?.rubricGradedAt && cached.rubricEvidence) {
           const grades = JSON.parse(cached.rubricEvidence as string);
           return {
             grades,
