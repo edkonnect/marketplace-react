@@ -82,7 +82,7 @@ export default function SignUp() {
       });
       // Clear stored referral code after successful signup
       localStorage.removeItem("edkonnect_ref");
-      fireConversion('Y_2FCLq02KocELW4_r5D');
+      await fireConversion('Y_2FCLq02KocELW4_r5D');
       toast.success("Account created! Check your email for the verification link.");
       setLocation("/login");
     } catch (error) {
