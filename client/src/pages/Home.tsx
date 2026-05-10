@@ -597,7 +597,7 @@ export default function Home() {
                         <span className="rounded-full bg-violet-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-600">New</span>
                       </div>
                       <p className="mt-1 text-xs leading-5 text-slate-700">
-                        Smart AI-powered session management provides complete transparency on session details and a holistic view of the students progress.
+                        Smart AI-powered session management provides complete transparency on session details and a holistic view of the student's progress.
                       </p>
                     </div>
                   </div>
