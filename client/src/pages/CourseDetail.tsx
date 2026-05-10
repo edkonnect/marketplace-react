@@ -39,6 +39,7 @@ export default function CourseDetail() {
   const [studentLastName, setStudentLastName] = React.useState("");
   const [studentGrade, setStudentGrade] = React.useState("");
   const [availabilityModalOpen, setAvailabilityModalOpen] = React.useState(false);
+  const [showDiscountBreakdown, setShowDiscountBreakdown] = React.useState(false);
   const [expandedBios, setExpandedBios] = React.useState<Set<number>>(new Set());
   const [selectedTutorForAvailability, setSelectedTutorForAvailability] = React.useState<{
     id: number;
@@ -46,6 +47,11 @@ export default function CourseDetail() {
   } | null>(null);
 
   const { data: course, isLoading } = trpc.course.get.useQuery({ id: courseId });
+
+  const { data: refDiscount } = trpc.referral.getDiscountForCourse.useQuery(
+    { coursePriceUsd: parseFloat(course?.price ?? "0") },
+    { enabled: !!course, staleTime: 60 * 60 * 1000 }
+  );
 
   // Fetch availability for selected tutor
   const { data: tutorAvailability = [] } = trpc.tutorAvailability.getByTutorId.useQuery(
@@ -397,6 +403,13 @@ export default function CourseDetail() {
   // Installment amount (3 equal parts of discounted price, sibling+promo only)
   const installmentAmount = discountedMonthlyBase / 3;
 
+  // "As low as" — best-case price assuming loyalty + sibling + referral promo all applied
+  const refDiscountAmt = isIndian
+    ? (refDiscount?.discountAmountInr ?? 0)
+    : (refDiscount?.discountAmountUsd ?? 0);
+  const asLowAs = Math.max(0, price * (1 - (LOYALTY_DISCOUNT_PCT + 5) / 100) - refDiscountAmt);
+  const asLowAsPerSession = course.totalSessions ? asLowAs / course.totalSessions : null;
+
   return (
     <div className="min-h-screen flex flex-col bg-background">
       <Navigation />
@@ -524,21 +537,62 @@ export default function CourseDetail() {
             {/* Sidebar - Enrollment Card */}
             <div>
               <Card className="sticky top-24 border-2 z-20 bg-background">
-                <CardHeader>
-                  <div className="flex items-baseline gap-2 mb-2">
-                    <CoursePrice price={price} priceInr={course.priceInr} region={course.region ?? "global"} priceClassName="text-4xl font-bold text-primary" />
+                <CardHeader className="space-y-2">
+                  {/* Actual price */}
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-3xl font-bold">{fmt(price)}</span>
                     {course.totalSessions && (
-                      <span className="text-sm text-muted-foreground">
-                        / {course.totalSessions} sessions
-                      </span>
+                      <span className="text-sm text-muted-foreground">/ {course.totalSessions} sessions</span>
                     )}
                   </div>
-                  <CardDescription>
-                    {course.totalSessions
-                      ? `${fmt(price / course.totalSessions)} per session`
-                      : "Course package pricing"
-                    }
-                  </CardDescription>
+                  {/* As low as (discounted total) + inline Show button */}
+                  <div className="flex items-baseline gap-2 flex-wrap">
+                    <span className="text-xs text-muted-foreground font-normal">as low as</span>
+                    <span className="text-2xl font-bold text-primary">{fmt(asLowAs)}</span>
+                    <button
+                      type="button"
+                      onClick={() => setShowDiscountBreakdown(v => !v)}
+                      className="text-xs font-medium border border-primary text-primary rounded px-2 py-0.5 hover:bg-primary/10 transition-colors"
+                    >
+                      {showDiscountBreakdown ? "Hide" : "Show"}
+                    </button>
+                  </div>
+                  {/* Discount breakdown */}
+                  {showDiscountBreakdown && (
+                    <div className="space-y-1 text-sm border rounded-lg p-3 bg-muted/30">
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Base price</span>
+                        <span>{fmt(price)}</span>
+                      </div>
+                      <div className="flex justify-between text-blue-600 dark:text-blue-400">
+                        <span>Loyalty discount (5% off, pay-in-full)</span>
+                        <span>−{fmt(price * LOYALTY_DISCOUNT_PCT / 100)}</span>
+                      </div>
+                      <div className="flex justify-between text-purple-600 dark:text-purple-400">
+                        <span>Sibling discount (5% off)</span>
+                        <span>−{fmt(price * 5 / 100)}</span>
+                      </div>
+                      {refDiscountAmt > 0 && (
+                        <div className="flex justify-between text-green-600 dark:text-green-400">
+                          <span>Referral promo code</span>
+                          <span>−{fmt(refDiscountAmt)}</span>
+                        </div>
+                      )}
+                      <div className="border-t border-border pt-1 flex justify-between font-semibold">
+                        <span>As low as</span>
+                        <span className="text-primary">{fmt(asLowAs)}</span>
+                      </div>
+                      {asLowAsPerSession && (
+                        <div className="flex justify-between text-xs text-muted-foreground">
+                          <span>Per session ({course.totalSessions} sessions)</span>
+                          <span>{fmt(asLowAsPerSession)}/session</span>
+                        </div>
+                      )}
+                      <p className="text-xs text-muted-foreground pt-1">
+                        * Sibling discount applies when another child is already enrolled. Loyalty discount requires pay-in-full. Promo code required for referral discount.
+                      </p>
+                    </div>
+                  )}
                 </CardHeader>
                 <CardContent className="space-y-4">
                   {isAuthenticated ? (

@@ -8295,6 +8295,25 @@ For engagementData, describe ONLY the student's participation and behavior. The 
         };
       }),
 
+    /** Public: get all referral discount tiers (for client-side "as low as" calculation) */
+    getPublicTiers: publicProcedure.query(async () => {
+      const tiers = await db.getReferralSettings();
+      return tiers.map(t => ({
+        maxPriceUsd: t.maxPriceUsd != null ? parseFloat(t.maxPriceUsd) : null,
+        discountAmountUsd: parseFloat(t.discountAmountUsd),
+        discountAmountInr: parseFloat(t.discountAmountInr),
+        sortOrder: t.sortOrder,
+      }));
+    }),
+
+    /** Public: get the referral discount that applies to a specific course price */
+    getDiscountForCourse: publicProcedure
+      .input(z.object({ coursePriceUsd: z.number() }))
+      .query(async ({ input }) => {
+        const discount = await db.getReferralDiscountForPrice(input.coursePriceUsd);
+        return { discountAmountUsd: discount.usd, discountAmountInr: discount.inr };
+      }),
+
     /** Admin: get referral discount tier settings */
     getReferralSettings: adminProcedure.query(async () => {
       const tiers = await db.getReferralSettings();

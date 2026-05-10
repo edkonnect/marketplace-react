@@ -15,6 +15,16 @@ import { Link, useSearch } from "wouter";
 
 const COURSES_PER_PAGE = 9; // 3 rows × 3 columns
 
+type PublicTier = { maxPriceUsd: number | null; discountAmountUsd: number; discountAmountInr: number; sortOrder: number };
+
+function getRefDiscount(priceUsd: number, tiers: PublicTier[]): PublicTier | null {
+  const sorted = [...tiers].sort((a, b) => a.sortOrder - b.sortOrder);
+  for (const tier of sorted) {
+    if (tier.maxPriceUsd === null || priceUsd <= tier.maxPriceUsd) return tier;
+  }
+  return sorted[sorted.length - 1] ?? null;
+}
+
 export default function CourseListing() {
   const search = useSearch();
   const params = new URLSearchParams(search);
@@ -29,6 +39,10 @@ export default function CourseListing() {
   const region = isIndian ? "india" : "us";
 
   const { data: courses, isLoading } = trpc.course.list.useQuery({ region });
+
+  const { data: referralTiers = [] } = trpc.referral.getPublicTiers.useQuery(undefined, {
+    staleTime: 60 * 60 * 1000,
+  });
 
   // Filter and sort courses
   const filteredCourses = courses
@@ -222,7 +236,15 @@ export default function CourseListing() {
                             </Badge>
                           )}
                         </div>
-                        <CoursePrice price={course.price} priceInr={course.priceInr} region={course.region ?? "global"} priceClassName="text-2xl font-bold text-primary" />
+                        <CoursePrice
+                          price={course.price}
+                          priceInr={course.priceInr}
+                          region={course.region ?? "global"}
+                          totalSessions={course.totalSessions}
+                          referralDiscountUsd={getRefDiscount(parseFloat(course.price), referralTiers)?.discountAmountUsd}
+                          referralDiscountInr={getRefDiscount(parseFloat(course.price), referralTiers)?.discountAmountInr}
+                          priceClassName="text-2xl font-bold text-primary"
+                        />
                       </div>
                       <CardTitle className="text-xl">{course.title}</CardTitle>
                       {course.gradeLevel && (
