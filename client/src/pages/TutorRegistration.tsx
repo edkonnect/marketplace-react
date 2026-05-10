@@ -3,6 +3,7 @@ import Navigation from "@/components/Navigation";
 import Footer from "@/components/Footer";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
+import { fireConversion } from "@/lib/gtag";
 import { useLocation } from "wouter";
 import { CheckCircle2, Loader2, Camera, X } from "lucide-react";
 import { useAuth } from "@/_core/hooks/useAuth";
@@ -124,6 +125,7 @@ export default function TutorRegistration() {
 
   const registerMutation = trpc.tutorProfile.register.useMutation({
     onSuccess: () => {
+      fireConversion('TUTOR_REG_LABEL');
       markSubmitted(values.email.trim());
       toast.success("Registration submitted successfully!");
     },

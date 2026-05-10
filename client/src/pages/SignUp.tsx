@@ -19,6 +19,7 @@ import {
 import { detectUserTimezone } from "@/../../shared/timezone-utils";
 import { TimezoneSelector } from "@/components/TimezoneSelector";
 import { PhoneInput } from "@/components/PhoneInput";
+import { fireConversion } from "@/lib/gtag";
 
 export default function SignUp() {
   const [, setLocation] = useLocation();
@@ -81,6 +82,7 @@ export default function SignUp() {
       });
       // Clear stored referral code after successful signup
       localStorage.removeItem("edkonnect_ref");
+      fireConversion('SIGNUP_LABEL');
       toast.success("Account created! Check your email for the verification link.");
       setLocation("/login");
     } catch (error) {

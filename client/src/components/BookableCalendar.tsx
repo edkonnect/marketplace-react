@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Input } from "@/components/ui/input";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
+import { fireConversion } from "@/lib/gtag";
 import { useAuthContext } from "@/contexts/AuthContext";
 import {
   COMMON_TIMEZONES,
@@ -298,6 +299,7 @@ export function BookableCalendar({
 
   const bookSessionMutation = trpc.session.quickBook.useMutation({
     onSuccess: () => {
+      fireConversion('BOOKING_LABEL');
       toast.success("Session booked successfully!");
       setIsConfirmDialogOpen(false);
       onBookingComplete();
@@ -312,6 +314,7 @@ export function BookableCalendar({
       if (data.totalFailed > 0) {
         toast.warning(`Booked ${data.totalBooked} sessions. ${data.totalFailed} sessions failed.`);
       } else {
+        fireConversion('BOOKING_LABEL');
         toast.success(`Successfully booked ${data.totalBooked} recurring sessions!`);
       }
       setIsConfirmDialogOpen(false);
