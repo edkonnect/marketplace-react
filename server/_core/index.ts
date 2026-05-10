@@ -43,11 +43,11 @@ async function startServer() {
       contentSecurityPolicy: {
         directives: {
           defaultSrc: ["'self'"],
-          scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
-          styleSrc: ["'self'", "'unsafe-inline'"],
-          imgSrc: ["'self'", "data:", "blob:", "https://*.amazonaws.com"],
-          connectSrc: ["'self'", "https://*.amazonaws.com", ...(ENV.referralAppUrl ? [ENV.referralAppUrl] : [])],
-          fontSrc: ["'self'", "data:"],
+          scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "https://www.googletagmanager.com", "https://www.google-analytics.com", "https://googleads.g.doubleclick.net", "https://www.google.com"],
+          styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+          imgSrc: ["'self'", "data:", "blob:", "https://*.amazonaws.com", "https://www.googletagmanager.com", "https://www.google-analytics.com", "https://googleads.g.doubleclick.net"],
+          connectSrc: ["'self'", "https://*.amazonaws.com", "https://www.google-analytics.com", "https://analytics.google.com", "https://stats.g.doubleclick.net", "https://region1.google-analytics.com", ...(ENV.referralAppUrl ? [ENV.referralAppUrl] : [])],
+          fontSrc: ["'self'", "data:", "https://fonts.gstatic.com"],
           objectSrc: ["'none'"],
           frameAncestors: ["'none'"],
         },
