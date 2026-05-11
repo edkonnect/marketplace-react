@@ -190,6 +190,61 @@ export function AdminSessionNotes() {
       const totalStudents = new Set(notesOnly.map(s => [s.studentFirstName, s.studentLastName].filter(Boolean).join(" "))).size;
       const totalTutors = new Set(notesOnly.map(s => s.tutorName)).size;
 
+      // Build per-student summary grouped by student → tutor+course → session count
+      type StudentGroup = {
+        tutorCourses: Record<string, { tutor: string; course: string; count: number }>;
+        total: number;
+      };
+      const studentMap: Record<string, StudentGroup> = {};
+      notesOnly.forEach(s => {
+        const studentName = [s.studentFirstName, s.studentLastName].filter(Boolean).join(" ") || "Unknown";
+        const tutor = s.tutorName || "—";
+        const course = s.courseTitle || "—";
+        const key = `${tutor}__${course}`;
+        if (!studentMap[studentName]) studentMap[studentName] = { tutorCourses: {}, total: 0 };
+        if (!studentMap[studentName].tutorCourses[key]) {
+          studentMap[studentName].tutorCourses[key] = { tutor, course, count: 0 };
+        }
+        studentMap[studentName].tutorCourses[key].count++;
+        studentMap[studentName].total++;
+      });
+
+      const studentSummaryRows = Object.entries(studentMap).map(([studentName, data], idx) => {
+        const courseRows = Object.values(data.tutorCourses).map(tc => `
+          <tr class="course-row">
+            <td class="col-course">• ${tc.course}</td>
+            <td class="col-tutor">${tc.tutor}</td>
+            <td class="col-sessions">${tc.count}</td>
+          </tr>
+        `).join("");
+        return `
+          <div class="student-summary-card">
+            <div class="student-summary-header">
+              <span class="student-index">Student ${idx + 1}</span>
+              <span class="student-name">${studentName}</span>
+              <span class="student-total">${data.total} session${data.total !== 1 ? "s" : ""}</span>
+            </div>
+            <table class="summary-table">
+              <colgroup>
+                <col style="width:55%">
+                <col style="width:35%">
+                <col style="width:10%">
+              </colgroup>
+              <thead>
+                <tr class="summary-thead-row">
+                  <th class="col-course th">Course</th>
+                  <th class="col-tutor th">Tutor</th>
+                  <th class="col-sessions th">Sessions</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${courseRows}
+              </tbody>
+            </table>
+          </div>
+        `;
+      }).join("");
+
       const htmlContent = `<!DOCTYPE html>
 <html>
 <head>
@@ -215,10 +270,20 @@ export function AdminSessionNotes() {
     .session-body { padding: 16px 20px; }
     .notes-text { font-size: 13px; line-height: 1.75; color: #374151; white-space: pre-wrap; }
     .footer { margin-top: 40px; padding: 20px 40px; border-top: 1px solid #e5e7eb; text-align: center; font-size: 12px; color: #9ca3af; }
-    .summary { background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 10px; padding: 16px 20px; margin-bottom: 28px; display: flex; gap: 32px; flex-wrap: wrap; }
-    .summary-item { font-size: 13px; color: #374151; }
-    .summary-item strong { display: block; font-size: 22px; color: #16a34a; font-weight: 700; }
     .date-range-banner { background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 10px 16px; margin-bottom: 20px; font-size: 13px; color: #1d4ed8; font-weight: 500; }
+    .summary-title { font-size: 11px; font-weight: 700; color: #6b7280; margin-bottom: 14px; text-transform: uppercase; letter-spacing: 1px; }
+    .student-summary-card { border: 1px solid #d1fae5; border-radius: 10px; margin-bottom: 14px; overflow: hidden; page-break-inside: avoid; }
+    .student-summary-header { background: #f0fdf4; padding: 12px 20px; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid #d1fae5; }
+    .student-index { background: #16a34a; color: white; font-size: 10px; font-weight: 700; border-radius: 20px; padding: 3px 10px; white-space: nowrap; letter-spacing: 0.3px; }
+    .student-name { font-size: 14px; font-weight: 700; color: #111827; flex: 1; }
+    .student-total { font-size: 12px; color: #16a34a; font-weight: 700; white-space: nowrap; }
+    .summary-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+    .summary-thead-row { background: #f8fafc; border-bottom: 1px solid #e5e7eb; }
+    .th { font-size: 10px; font-weight: 700; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.6px; padding: 8px 16px; text-align: left; }
+    .col-course { padding: 9px 16px; font-size: 12px; color: #374151; border-bottom: 1px solid #f3f4f6; vertical-align: middle; }
+    .col-tutor { padding: 9px 16px; font-size: 12px; color: #374151; border-bottom: 1px solid #f3f4f6; vertical-align: middle; }
+    .col-sessions { padding: 9px 16px; font-size: 13px; font-weight: 700; color: #16a34a; border-bottom: 1px solid #f3f4f6; vertical-align: middle; text-align: center; }
+    .course-row:last-child td { border-bottom: none; }
     @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
   </style>
 </head>
@@ -236,10 +301,9 @@ export function AdminSessionNotes() {
     <div class="date-range-banner">
       📅 Showing session notes from <strong>${fromLabel}</strong> to <strong>${toLabel}</strong>
     </div>
-    <div class="summary">
-      <div class="summary-item"><strong>${notesOnly.length}</strong>Total Sessions</div>
-      <div class="summary-item"><strong>${totalTutors}</strong>Tutors</div>
-      <div class="summary-item"><strong>${totalStudents}</strong>Students</div>
+    <div style="margin-bottom:28px;">
+      <div class="summary-title">Summary by Student</div>
+      ${studentSummaryRows}
     </div>
     ${sessionRows}
   </div>
