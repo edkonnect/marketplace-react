@@ -22,6 +22,8 @@ import {
   getReferralWelcomeEmail,
   getCouponRewardEmail,
   getAdminNewUserNotificationEmail,
+  getTrialRequestAdminEmail,
+  getTrialRequestConfirmationEmail,
 } from './email-templates';
 
 const BASE_URL = process.env.VITE_FRONTEND_FORGE_API_URL || 'http://localhost:3000';
@@ -463,6 +465,39 @@ export async function sendCouponRewardEmail(params: {
   return await emailService.sendEmail({
     to: params.userEmail,
     subject: `Your referral discount coupon — ${params.couponCode}`,
+    html,
+  });
+}
+
+export async function sendTrialRequestAdminEmail(params: {
+  parentName: string;
+  email: string;
+  phone?: string;
+  childName: string;
+  childGrade: string;
+  courseName: string;
+  preferredTime?: string;
+  message?: string;
+}): Promise<void> {
+  const adminEmail = process.env.ADMIN_NOTIFICATION_EMAIL ?? 'giteshsagvekar07@gmail.com';
+  const html = getTrialRequestAdminEmail(params);
+  await emailService.sendEmail({
+    to: adminEmail,
+    subject: `Trial Lesson Request: ${params.childName} — ${params.courseName}`,
+    html,
+  });
+}
+
+export async function sendTrialRequestConfirmationEmail(params: {
+  parentName: string;
+  email: string;
+  childName: string;
+  courseName: string;
+}): Promise<void> {
+  const html = getTrialRequestConfirmationEmail(params);
+  await emailService.sendEmail({
+    to: params.email,
+    subject: `Your Trial Lesson Request — ${params.courseName}`,
     html,
   });
 }

@@ -10,7 +10,7 @@ import * as db from "./db";
 import { TRPCError } from "@trpc/server";
 import { searchFaq, logUnansweredQuestion, logQuery } from "./faq/faq-search";
 import { checkChatbotRateLimit, bookingRateLimiter } from "./faq/chatbot-rate-limiter";
-import { sendWelcomeEmail, sendBookingConfirmation, sendEnrollmentConfirmation, sendTutorEnrollmentNotification, sendNoShowNotification, formatEmailDate, formatEmailTime, formatEmailPrice, sendTutorApplicationReceivedEmail, sendReferralInviteEmail, sendCouponRewardEmail, sendAdminNewUserNotification } from "./emails/email-helpers";
+import { sendWelcomeEmail, sendBookingConfirmation, sendEnrollmentConfirmation, sendTutorEnrollmentNotification, sendNoShowNotification, formatEmailDate, formatEmailTime, formatEmailPrice, sendTutorApplicationReceivedEmail, sendReferralInviteEmail, sendCouponRewardEmail, sendAdminNewUserNotification, sendTrialRequestAdminEmail, sendTrialRequestConfirmationEmail } from "./emails/email-helpers";
 import { generateBookingToken, isValidBookingToken } from "./booking-management";
 import { sendCancellationConfirmationEmail } from "./emails/cancellation-email";
 import { generateCurriculumPDF } from "./pdf/pdf-generator";
@@ -4430,6 +4430,36 @@ export const appRouter = router({
           throw new TRPCError({ code: 'NOT_FOUND', message: 'Blog post not found' });
         }
         return post;
+      }),
+
+    requestTrialLesson: publicProcedure
+      .input(z.object({
+        parentName: z.string().min(1),
+        email: z.string().email(),
+        phone: z.string().optional(),
+        childName: z.string().min(1),
+        childGrade: z.string().min(1),
+        courseName: z.string().min(1),
+        preferredTime: z.string().optional(),
+        message: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        try {
+          await sendTrialRequestAdminEmail(input);
+        } catch (err) {
+          console.error('[TrialRequest] Failed to send admin email:', err);
+        }
+        try {
+          await sendTrialRequestConfirmationEmail({
+            parentName: input.parentName,
+            email: input.email,
+            childName: input.childName,
+            courseName: input.courseName,
+          });
+        } catch (err) {
+          console.error('[TrialRequest] Failed to send confirmation email:', err);
+        }
+        return { success: true };
       }),
   }),
 

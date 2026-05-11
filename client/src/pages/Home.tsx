@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import Navigation from "@/components/Navigation";
@@ -37,6 +39,8 @@ import {
   Mail,
   User,
   Sparkles,
+  ChevronsUpDown,
+  Check,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { motion, type Variants } from "framer-motion";
@@ -310,6 +314,39 @@ export default function Home() {
   }, []);
 
   // Referral state
+  const [trialModalOpen, setTrialModalOpen] = useState(false);
+  const [trialSubmitted, setTrialSubmitted] = useState(false);
+  const [courseComboOpen, setCourseComboOpen] = useState(false);
+  const [trialForm, setTrialForm] = useState({
+    parentName: "", email: "", phone: "",
+    childName: "", childGrade: "", courseName: "",
+    preferredTime: "", message: "",
+  });
+
+  const requestTrialMutation = trpc.home.requestTrialLesson.useMutation({
+    onSuccess: () => setTrialSubmitted(true),
+  });
+
+  const handleTrialSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    requestTrialMutation.mutate({
+      parentName: trialForm.parentName,
+      email: trialForm.email,
+      phone: trialForm.phone || undefined,
+      childName: trialForm.childName,
+      childGrade: trialForm.childGrade,
+      courseName: trialForm.courseName,
+      preferredTime: trialForm.preferredTime || undefined,
+      message: trialForm.message || undefined,
+    });
+  };
+
+  const resetTrialModal = () => {
+    setTrialSubmitted(false);
+    setCourseComboOpen(false);
+    setTrialForm({ parentName: "", email: "", phone: "", childName: "", childGrade: "", courseName: "", preferredTime: "", message: "" });
+  };
+
   const [referralDialogOpen, setReferralDialogOpen] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
   const [emailCheckResult, setEmailCheckResult] = useState<{ available: boolean; reason: string | null } | null>(null);
@@ -564,11 +601,12 @@ export default function Home() {
                       Get Started Free
                     </button>
                   </Link>
-                  <Link href="/login">
-                    <button className="flex h-11 items-center gap-2 rounded-full border border-slate-200 bg-white px-7 text-sm font-semibold text-slate-700 shadow-sm transition-all duration-200 hover:border-blue-300 hover:text-blue-600 active:scale-95">
-                      Sign In
-                    </button>
-                  </Link>
+                  <button
+                    onClick={() => setTrialModalOpen(true)}
+                    className="flex h-11 items-center gap-2 rounded-full border border-slate-200 bg-white px-7 text-sm font-semibold text-slate-700 shadow-sm transition-all duration-200 hover:border-blue-300 hover:text-blue-600 active:scale-95"
+                  >
+                    Request a Trial Lesson
+                  </button>
                 </div>
               )}
             </div>
@@ -978,6 +1016,129 @@ export default function Home() {
           </div>
         </div>
       </motion.section>
+
+      {/* Trial Lesson Request Dialog */}
+      <Dialog open={trialModalOpen} onOpenChange={(open) => { setTrialModalOpen(open); if (!open) resetTrialModal(); }}>
+        <DialogContent className="sm:max-w-[520px] max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Request a Trial Lesson</DialogTitle>
+            <DialogDescription>
+              Fill in the details below and we'll reach out within 24 hours to schedule your free trial.
+            </DialogDescription>
+          </DialogHeader>
+          {trialSubmitted ? (
+            <div className="py-8 text-center space-y-3">
+              <CheckCircle className="w-12 h-12 text-green-500 mx-auto" />
+              <p className="font-semibold text-lg">Request received!</p>
+              <p className="text-muted-foreground text-sm">
+                We'll reach out to <strong>{trialForm.email}</strong> within 24 hours to confirm your trial lesson.
+              </p>
+            </div>
+          ) : (
+            <form onSubmit={handleTrialSubmit} className="space-y-4 pt-2">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <Label htmlFor="trial-parent-name">Parent Name *</Label>
+                  <Input id="trial-parent-name" placeholder="Your full name" required value={trialForm.parentName} onChange={e => setTrialForm(f => ({ ...f, parentName: e.target.value }))} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="trial-email">Email *</Label>
+                  <Input id="trial-email" type="email" placeholder="you@example.com" required value={trialForm.email} onChange={e => setTrialForm(f => ({ ...f, email: e.target.value }))} />
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="trial-phone">Phone Number <span className="text-muted-foreground">(optional)</span></Label>
+                <Input id="trial-phone" type="tel" placeholder="+1 (555) 000-0000" value={trialForm.phone} onChange={e => setTrialForm(f => ({ ...f, phone: e.target.value }))} />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <Label htmlFor="trial-child-name">Child's Name *</Label>
+                  <Input id="trial-child-name" placeholder="Child's full name" required value={trialForm.childName} onChange={e => setTrialForm(f => ({ ...f, childName: e.target.value }))} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="trial-grade">Child's Grade *</Label>
+                  <select
+                    id="trial-grade"
+                    required
+                    value={trialForm.childGrade}
+                    onChange={e => setTrialForm(f => ({ ...f, childGrade: e.target.value }))}
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    <option value="">Select grade</option>
+                    {["K", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"].map(g => (
+                      <option key={g} value={g === "K" ? "Kindergarten" : `Grade ${g}`}>{g === "K" ? "Kindergarten" : `Grade ${g}`}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Course Interested In *</Label>
+                <Popover open={courseComboOpen} onOpenChange={setCourseComboOpen}>
+                  <PopoverTrigger asChild>
+                    <button
+                      type="button"
+                      role="combobox"
+                      aria-expanded={courseComboOpen}
+                      className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                      <span className={trialForm.courseName ? "text-foreground" : "text-muted-foreground"}>
+                        {trialForm.courseName || "Search courses..."}
+                      </span>
+                      <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                    <Command>
+                      <CommandInput placeholder="Search courses..." />
+                      <CommandList className="max-h-48 overflow-y-auto" onWheel={e => e.stopPropagation()}>
+                        <CommandEmpty>No courses found.</CommandEmpty>
+                        <CommandGroup>
+                          {(allCourses as any[]).map((c: any) => (
+                            <CommandItem
+                              key={c.id}
+                              value={c.title}
+                              onSelect={(val) => {
+                                setTrialForm(f => ({ ...f, courseName: val }));
+                                setCourseComboOpen(false);
+                              }}
+                            >
+                              <Check className={`mr-2 h-4 w-4 ${trialForm.courseName === c.title ? "opacity-100" : "opacity-0"}`} />
+                              {c.title}
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
+                {/* Hidden input for required validation */}
+                <input type="text" required value={trialForm.courseName} onChange={() => {}} className="sr-only" tabIndex={-1} />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="trial-time">Preferred Date / Time <span className="text-muted-foreground">(optional)</span></Label>
+                <Input id="trial-time" placeholder="e.g. Weekday evenings, Saturday mornings" value={trialForm.preferredTime} onChange={e => setTrialForm(f => ({ ...f, preferredTime: e.target.value }))} />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="trial-message">Message / Notes <span className="text-muted-foreground">(optional)</span></Label>
+                <textarea
+                  id="trial-message"
+                  rows={3}
+                  placeholder="Anything you'd like us to know about your child's learning goals..."
+                  value={trialForm.message}
+                  onChange={e => setTrialForm(f => ({ ...f, message: e.target.value }))}
+                  className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-none"
+                />
+              </div>
+              {requestTrialMutation.isError && (
+                <p className="text-sm text-destructive">Something went wrong. Please try again.</p>
+              )}
+              <Button type="submit" className="w-full" disabled={requestTrialMutation.isPending}>
+                {requestTrialMutation.isPending ? "Sending..." : "Request Trial Lesson"}
+              </Button>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* Referral Invite Dialog */}
       <Dialog open={referralDialogOpen} onOpenChange={(open) => {

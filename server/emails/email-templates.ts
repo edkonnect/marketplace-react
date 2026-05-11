@@ -1173,3 +1173,73 @@ export function getAdminNewUserNotificationEmail(params: AdminNewUserNotificatio
     preheaderText: `New ${roleLabel} registered: ${userName} (${userEmail})`
   });
 }
+
+export function getTrialRequestAdminEmail(params: {
+  parentName: string;
+  email: string;
+  phone?: string;
+  childName: string;
+  childGrade: string;
+  courseName: string;
+  preferredTime?: string;
+  message?: string;
+}): string {
+  const rows = [
+    { label: 'Parent Name', value: params.parentName },
+    { label: 'Email', value: params.email },
+    { label: 'Phone', value: params.phone || '—' },
+    { label: 'Child Name', value: params.childName },
+    { label: 'Child Grade', value: params.childGrade },
+    { label: 'Course', value: params.courseName },
+    { label: 'Preferred Date/Time', value: params.preferredTime || '—' },
+    { label: 'Message', value: params.message || '—' },
+  ];
+
+  const content = `
+    <h2 style="margin:0 0 16px; font-size:20px; color:#111827;">New Trial Lesson Request</h2>
+    <p style="margin:0 0 20px; color:#6b7280; font-size:14px;">
+      A prospective parent has requested a trial lesson. Please follow up within 24 hours.
+    </p>
+    <table style="width:100%; border-collapse:collapse;">
+      ${rows.map(r => `
+        <tr>
+          <td style="padding:8px 0; color:#6b7280; font-size:14px; width:40%; vertical-align:top;">${r.label}</td>
+          <td style="padding:8px 0; color:#111827; font-size:14px; font-weight:600; vertical-align:top;">${r.value}</td>
+        </tr>
+      `).join('')}
+    </table>
+  `;
+
+  return getEmailBase(content, {
+    preheaderText: `Trial request from ${params.parentName} for ${params.courseName}`,
+  });
+}
+
+export function getTrialRequestConfirmationEmail(params: {
+  parentName: string;
+  childName: string;
+  courseName: string;
+}): string {
+  const content = `
+    <h2 style="margin:0 0 16px; font-size:20px; color:#111827;">We've received your request!</h2>
+    <p style="margin:0 0 12px; color:#374151; font-size:15px;">Hi ${params.parentName},</p>
+    <p style="margin:0 0 20px; color:#374151; font-size:15px;">
+      Thank you for requesting a trial lesson for <strong>${params.childName}</strong> in
+      <strong>${params.courseName}</strong>. Our team will reach out within 24 hours to
+      schedule your free trial.
+    </p>
+    <p style="margin:0 0 8px; color:#374151; font-size:15px;">In the meantime, feel free to:</p>
+    <ul style="margin:0 0 24px; padding-left:20px; color:#374151; font-size:15px; line-height:1.8;">
+      <li>Browse all available courses at <a href="https://edkonnect-academy.com/courses" style="color:#2563eb;">edkonnect-academy.com/courses</a></li>
+      <li>Create a free account to get started</li>
+    </ul>
+    <p style="margin:0; color:#6b7280; font-size:13px;">
+      If you have any questions, reply to this email or contact us at
+      <a href="mailto:contact@edkonnect-academy.com" style="color:#2563eb;">contact@edkonnect-academy.com</a>.
+    </p>
+  `;
+
+  return getEmailBase(content, {
+    preheaderText: `Your trial lesson request for ${params.courseName} has been received`,
+  });
+}
