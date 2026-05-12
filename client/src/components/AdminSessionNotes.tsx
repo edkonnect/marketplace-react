@@ -88,8 +88,8 @@ export function AdminSessionNotes() {
     ).slice(0, 10);
   }, [parentsData, parentSearch]);
 
-  // Only fetch when user has applied filters AND selected a parent
-  const shouldFetch = hasApplied && selectedParent !== null;
+  // Only fetch when user has applied filters (date required; parent optional)
+  const shouldFetch = hasApplied;
 
   const { data: sessionsData, isLoading } = trpc.admin.getAllSessions.useQuery(
     {
@@ -116,7 +116,6 @@ export function AdminSessionNotes() {
 
   const handleApply = () => {
     if (!isDateSelected) return;
-    if (!selectedParent) return;
     setAppliedFrom(fromDate);
     setAppliedTo(toDate);
     setAppliedTutor(selectedTutorName);
@@ -328,8 +327,8 @@ export function AdminSessionNotes() {
     }
   };
 
-  // Determine if Apply button should be enabled
-  const canApply = isDateSelected && selectedParent !== null;
+  // Determine if Apply button should be enabled — only date is required
+  const canApply = isDateSelected;
 
   return (
     <div className="space-y-4">
@@ -404,9 +403,7 @@ export function AdminSessionNotes() {
 
             {/* Step 3: Parent search — only enabled after both dates are selected */}
             <div ref={searchRef} className="relative">
-              <label className="text-sm font-medium mb-2 block">
-                Search Parent <span className="text-red-500">*</span>
-              </label>
+              <label className="text-sm font-medium mb-2 block">Search Parent</label>
               {!isDateSelected && (
                 <p className="text-xs text-amber-600 mb-1">⚠ Select From & To date first</p>
               )}
@@ -464,7 +461,7 @@ export function AdminSessionNotes() {
               onClick={handleApply}
               disabled={!canApply}
               className="gap-2"
-              title={!isDateSelected ? "Select date range first" : !selectedParent ? "Select a parent first" : ""}
+              title={!isDateSelected ? "Select date range first" : ""}
             >
               <Search className="h-4 w-4" /> Apply
             </Button>
@@ -506,10 +503,8 @@ export function AdminSessionNotes() {
               <p className="font-medium">No filters applied</p>
               <p className="text-sm text-muted-foreground mt-1">
                 {!isDateSelected
-                  ? "Start by selecting a From and To date, then search for a parent"
-                  : !selectedParent
-                  ? "Now search and select a parent to view session notes"
-                  : "Click Apply to load session notes"}
+                  ? "Start by selecting a From and To date, then click Apply"
+                  : "Select a tutor or parent filter, then click Apply"}
               </p>
             </div>
           ) : isLoading ? (
