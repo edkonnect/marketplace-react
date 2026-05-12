@@ -220,15 +220,14 @@ export function AdminSessionNotes() {
         return `
           <div class="student-summary-card">
             <div class="student-summary-header">
-              <span class="student-index">Student ${idx + 1}</span>
               <span class="student-name">${studentName}</span>
               <span class="student-total">${data.total} session${data.total !== 1 ? "s" : ""}</span>
             </div>
             <table class="summary-table">
               <colgroup>
-                <col style="width:55%">
-                <col style="width:35%">
-                <col style="width:10%">
+                <col style="width:50%">
+                <col style="width:33%">
+                <col style="width:17%">
               </colgroup>
               <thead>
                 <tr class="summary-thead-row">
@@ -274,7 +273,6 @@ export function AdminSessionNotes() {
     .summary-title { font-size: 11px; font-weight: 700; color: #6b7280; margin-bottom: 14px; text-transform: uppercase; letter-spacing: 1px; }
     .student-summary-card { border: 1px solid #d1fae5; border-radius: 10px; margin-bottom: 14px; overflow: hidden; page-break-inside: avoid; }
     .student-summary-header { background: #f0fdf4; padding: 12px 20px; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid #d1fae5; }
-    .student-index { background: #16a34a; color: white; font-size: 10px; font-weight: 700; border-radius: 20px; padding: 3px 10px; white-space: nowrap; letter-spacing: 0.3px; }
     .student-name { font-size: 14px; font-weight: 700; color: #111827; flex: 1; }
     .student-total { font-size: 12px; color: #16a34a; font-weight: 700; white-space: nowrap; }
     .summary-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
