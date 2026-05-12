@@ -21,7 +21,7 @@ function parseLocalDate(dateStr: string) {
 function formatLocalDate(dateStr: string) {
   const d = parseLocalDate(dateStr);
   if (!d) return "All time";
-  return d.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+  return d.toLocaleDateString("en-US", { day: "numeric", month: "short", year: "numeric" });
 }
 
 const thirtyDaysAgo = new Date();
@@ -134,7 +134,7 @@ export function AdminSessionNotes() {
 
       const sessionRows = notesOnly.map(s => {
         const studentName = [s.studentFirstName, s.studentLastName].filter(Boolean).join(" ") || "—";
-        const date = new Date(s.scheduledAt).toLocaleDateString("en-IN", {
+        const date = new Date(s.scheduledAt).toLocaleDateString("en-US", {
           day: "numeric",
           month: "short",
           year: "numeric",
@@ -263,7 +263,7 @@ export function AdminSessionNotes() {
     <div class="meta">
       <div class="meta-item"><div class="meta-label">Parent</div><div class="meta-value">${parentLabel}</div></div>
       <div class="meta-item"><div class="meta-label">Date Range</div><div class="meta-value">${fromLabel} — ${toLabel}</div></div>
-      <div class="meta-item"><div class="meta-label">Generated</div><div class="meta-value">${new Date().toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric", timeZone: "Asia/Kolkata" })}</div></div>
+      <div class="meta-item"><div class="meta-label">Generated</div><div class="meta-value">${new Date().toLocaleDateString("en-US", { day: "numeric", month: "short", year: "numeric", timeZone: "Asia/Kolkata" })}</div></div>
     </div>
   </div>
   <div class="content">
@@ -482,7 +482,7 @@ export function AdminSessionNotes() {
                     return (
                       <tr key={s.id} className="border-b last:border-0 hover:bg-muted/40 align-top">
                         <td className="py-3 pr-4 whitespace-nowrap text-muted-foreground">
-                          {new Date(s.scheduledAt).toLocaleDateString("en-IN", {
+                          {new Date(s.scheduledAt).toLocaleDateString("en-US", {
                             day: "2-digit",
                             month: "2-digit",
                             year: "numeric",
