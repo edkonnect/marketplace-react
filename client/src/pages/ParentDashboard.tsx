@@ -1979,7 +1979,7 @@ export default function ParentDashboard() {
                                 <div className="flex items-center justify-between px-4 py-2.5 bg-gradient-to-r from-violet-50 to-indigo-50 dark:from-violet-950/30 dark:to-indigo-950/30 border-b border-border/50">
                                   <div className="flex items-center gap-2">
                                     <Sparkles className="w-3.5 h-3.5 text-violet-500" />
-                                    <span className="text-xs font-semibold text-violet-700 dark:text-violet-300 uppercase tracking-wide">Teaching Quality</span>
+                                    <span className="text-xs font-semibold text-violet-700 dark:text-violet-300 uppercase tracking-wide">Session Quality</span>
                                   </div>
                                   <button
                                     onClick={() => toggleGradeExpand(session.id)}
