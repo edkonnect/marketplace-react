@@ -5574,9 +5574,12 @@ export const appRouter = router({
         studentName: z.string().optional(),
         courseName: z.string().optional(),
         month: z.string().optional(), // format: "YYYY-MM"
+        hasNotes: z.boolean().optional(),
       }))
       .query(async ({ input }) => {
-        let allSessions = await db.getAllSessionsWithDetails();
+        let allSessions = input.hasNotes
+          ? await db.getSessionNotesWithDetails(input.startDate, input.endDate)
+          : await db.getAllSessionsWithDetails();
 
         // Apply status filter
         if (input.status) {

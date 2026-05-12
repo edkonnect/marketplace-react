@@ -72,6 +72,7 @@ export function AdminSessionNotes() {
       offset: 0,
       startDate: appliedFrom,
       endDate: appliedTo,
+      hasNotes: true,
     }
   );
 
@@ -99,7 +100,6 @@ export function AdminSessionNotes() {
   // Filters are all live — no separate "applied" state needed
   const notesOnly = useMemo(() => {
     return (sessionsData?.sessions || []).filter(s => {
-      if (!s.feedbackFromTutor || s.feedbackFromTutor.trim() === "") return false;
       if (selectedTutorName !== "all" && (s.tutorName || "") !== selectedTutorName) return false;
       if (studentSearch.trim()) {
         const fullName = [s.studentFirstName, s.studentLastName].filter(Boolean).join(" ").toLowerCase();

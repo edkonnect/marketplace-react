@@ -3921,6 +3921,70 @@ export async function getAllSessionsWithDetails() {
 
 
 
+export async function getSessionNotesWithDetails(startDate?: string, endDate?: string) {
+  const db = await getDb();
+  if (!db) return [];
+
+  const tutorUsers = alias(users, 'tutor_users');
+  const parentUsers = alias(users, 'parent_users');
+  const sessionCourses = alias(courses, 'session_courses');
+
+  const conditions = [isNotNull(sessions.feedbackFromTutor)];
+  if (startDate) conditions.push(gte(sessions.scheduledAt, new Date(startDate).getTime()));
+  if (endDate) {
+    const end = new Date(endDate);
+    end.setHours(23, 59, 59, 999);
+    conditions.push(lte(sessions.scheduledAt, end.getTime()));
+  }
+
+  const result = await db
+    .select({
+      session: sessions,
+      subscription: subscriptions,
+      course: courses,
+      sessionCourse: sessionCourses,
+      tutorUser: { id: tutorUsers.id, name: tutorUsers.name, email: tutorUsers.email, role: tutorUsers.role },
+      parentUser: { id: parentUsers.id, name: parentUsers.name, email: parentUsers.email },
+    })
+    .from(sessions)
+    .leftJoin(subscriptions, eq(sessions.subscriptionId, subscriptions.id))
+    .leftJoin(courses, eq(subscriptions.courseId, courses.id))
+    .leftJoin(sessionCourses, eq(sessions.courseId, sessionCourses.id))
+    .leftJoin(tutorUsers, eq(sessions.tutorId, tutorUsers.id))
+    .leftJoin(parentUsers, eq(sessions.parentId, parentUsers.id))
+    .where(and(...conditions))
+    .orderBy(desc(sessions.scheduledAt));
+
+  const seen = new Set<number>();
+  const mapped = [];
+  for (const row of result) {
+    if (seen.has(row.session.id)) continue;
+    seen.add(row.session.id);
+    mapped.push({
+      id: row.session.id,
+      subscriptionId: row.session.subscriptionId,
+      tutorId: row.session.tutorId,
+      parentId: row.session.parentId,
+      scheduledAt: row.session.scheduledAt,
+      duration: row.session.duration,
+      status: row.session.status,
+      feedbackFromTutor: row.session.feedbackFromTutor,
+      feedbackFromParent: row.session.feedbackFromParent,
+      createdAt: row.session.createdAt,
+      studentFirstName: row.subscription?.studentFirstName || row.session.studentFirstName || null,
+      studentLastName: row.subscription?.studentLastName || row.session.studentLastName || null,
+      courseTitle: row.course?.title || row.sessionCourse?.title || null,
+      courseSubject: row.course?.subject || row.sessionCourse?.subject || null,
+      tutorName: row.tutorUser?.name || null,
+      tutorEmail: row.tutorUser?.email || null,
+      tutorRole: row.tutorUser?.role || null,
+      parentName: row.parentUser?.name || null,
+      parentEmail: row.parentUser?.email || null,
+    });
+  }
+  return mapped;
+}
+
 // ============ Tutor Time Blocks ============
 
 /**
