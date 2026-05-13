@@ -9,7 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { MessageSquare, Send, User, Users, GraduationCap, ChevronRight, Paperclip, X, FileText, Download, ArrowLeft, Mail, Phone } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { toast } from "sonner";
 import { useLocation, useSearch } from "wouter";
 import { LOGIN_PATH } from "@/const";
@@ -110,6 +110,7 @@ export default function Messages() {
   const [coordinatorConversationId, setCoordinatorConversationId] = useState<number | null>(null);
   const [fabBubbleDismissed, setFabBubbleDismissed] = useState(false);
   const [handledInquiryLink, setHandledInquiryLink] = useState(false);
+  const [conversationLoading, setConversationLoading] = useState(false);
   const [inquiryDialogOpen, setInquiryDialogOpen] = useState(false);
   const [tutorInquiryDialogOpen, setTutorInquiryDialogOpen] = useState(false);
   const RECENCY_MS = 10 * 24 * 60 * 60 * 1000;
@@ -119,6 +120,8 @@ export default function Messages() {
   const queryParams = new URLSearchParams(search);
   const filterParentId = queryParams.get('parentId');
   const inquiryTutorIdParam = queryParams.get('inquiryTutorId');
+  const autoSelectParentId = queryParams.get('withParent'); // tutor → auto-open conversation with this parentId
+  const autoSelectStudentId = queryParams.get('withStudent'); // subscription id for precise student matching
 
   const isParent = user?.role === "parent";
   const isTutor = user?.role === "tutor";
@@ -287,7 +290,47 @@ export default function Messages() {
     coordinatorConversations,
   ]);
 
-  const [conversationLoading, setConversationLoading] = useState(false);
+  // Auto-select (or create) conversation when tutor clicks Message from student list
+  const handledAutoSelectRef = useRef(false);
+  useEffect(() => {
+    if (!autoSelectParentId || !isTutor) return;
+    if (handledAutoSelectRef.current) return;
+    // Wait for both data sources to load
+    if (tutorConversationsLoading || !enrolledSubscriptions) return;
+
+    const targetParentId = Number(autoSelectParentId);
+    const targetStudentId = autoSelectStudentId ? Number(autoSelectStudentId) : null;
+
+    // Case 1: existing conversation — match by studentId (subscription id) if available, else parentId
+    const existingMatch = (tutorConversations as any[] || []).find((c) => {
+      if (targetStudentId) return c?.conversation?.studentId === targetStudentId;
+      return c?.conversation?.parentId === targetParentId;
+    });
+    if (existingMatch?.conversation?.id) {
+      handledAutoSelectRef.current = true;
+      setSelectedConversationId(Number(existingMatch.conversation.id));
+      return;
+    }
+
+    // Case 2: no conversation yet — find the exact subscription and create one
+    const subMatch = (enrolledSubscriptions as any[]).find(({ subscription }: any) => {
+      if (targetStudentId) return subscription.id === targetStudentId;
+      return subscription.parentId === targetParentId;
+    });
+    if (subMatch) {
+      handledAutoSelectRef.current = true;
+      const { subscription } = subMatch;
+      setConversationLoading(true);
+      createConversationMutation.mutateAsync({
+        parentId: subscription.parentId,
+        tutorId: user!.id,
+        studentId: subscription.id,
+      }).then((conversation: any) => {
+        const convId = typeof conversation === "number" ? conversation : conversation?.id;
+        if (convId) setSelectedConversationId(convId);
+      }).catch(() => {}).finally(() => setConversationLoading(false));
+    }
+  }, [autoSelectParentId, autoSelectStudentId, isTutor, tutorConversations, tutorConversationsLoading, enrolledSubscriptions]);
 
   useEffect(() => {
     if (!isParent || loading || !isAuthenticated || handledInquiryLink) return;

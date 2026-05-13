@@ -1896,7 +1896,7 @@ export default function TutorDashboard() {
                                   <div className="flex items-center gap-3 flex-wrap justify-end">
                                     {statusBadge}
                                     <Button asChild variant="outline" size="sm">
-                                      <Link href="/messages" className="flex items-center gap-2">
+                                      <Link href={`/messages?withParent=${subscription.parentId}&withStudent=${subscription.id}`} className="flex items-center gap-2">
                                         <MessageSquare className="w-4 h-4" />
                                         Message
                                       </Link>

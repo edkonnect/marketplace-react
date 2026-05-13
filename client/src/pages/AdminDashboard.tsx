@@ -626,7 +626,7 @@ export function AdminDashboard() {
 
   const { data: analyticsData, isLoading: analyticsLoading } = trpc.admin.getAnalytics.useQuery(
     dateRange,
-    { enabled: isAuthenticated && user?.role === "admin" && isUnlocked }
+    { enabled: isAuthenticated && user?.role === "admin" }
   );
 
   const { data: tutorOptions, isLoading: tutorOptionsLoading } = trpc.admin.getTutorsForCourseApproval.useQuery(
@@ -802,7 +802,6 @@ export function AdminDashboard() {
 
           {/* Section content */}
           {activeSection === "analytics" && (
-            <SuperUserGate>
             <div className="space-y-6">
               <DateRangeSelector onDateRangeChange={(startDate, endDate) => setDateRange({ startDate, endDate })} />
               {analyticsLoading ? (
@@ -856,7 +855,6 @@ export function AdminDashboard() {
                 <p className="text-center text-muted-foreground py-8">No analytics data available</p>
               )}
             </div>
-            </SuperUserGate>
           )}
 
           {activeSection === "users" && (
