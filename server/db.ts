@@ -2332,7 +2332,8 @@ export async function getUpcomingSessions(userId: number, role: "parent" | "tuto
   const db = await getDb();
   if (!db) return [];
 
-  const now = Date.now();
+  // Include sessions that started up to 1 hour ago so in-progress sessions remain visible
+  const windowStart = Date.now() - 60 * 60 * 1000;
   const condition = role === "parent"
     ? eq(sessions.parentId, userId)
     : eq(sessions.tutorId, userId);
@@ -2357,7 +2358,7 @@ export async function getUpcomingSessions(userId: number, role: "parent" | "tuto
     .leftJoin(sessionCourses, eq(sessions.courseId, sessionCourses.id))
     .leftJoin(tutorUsers, eq(sessions.tutorId, tutorUsers.id))
     .leftJoin(parentUsers, eq(sessions.parentId, parentUsers.id))
-    .where(and(condition, gte(sessions.scheduledAt, now), eq(sessions.status, "scheduled")))
+    .where(and(condition, gte(sessions.scheduledAt, windowStart), eq(sessions.status, "scheduled")))
     .orderBy(asc(sessions.scheduledAt));
 }
 
@@ -5547,14 +5548,20 @@ export async function getAllTutorPayoutRequests() {
 export async function updateTutorPayoutRequestStatus(
   id: number,
   status: "approved" | "rejected",
-  adminNotes?: string
+  adminNotes?: string,
+  adjustedAmount?: string
 ) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
 
   await db
     .update(tutorPayoutRequests)
-    .set({ status, adminNotes: adminNotes ?? null, updatedAt: new Date() })
+    .set({
+      status,
+      adminNotes: adminNotes ?? null,
+      ...(adjustedAmount !== undefined ? { totalAmount: adjustedAmount } : {}),
+      updatedAt: new Date(),
+    })
     .where(eq(tutorPayoutRequests.id, id));
 }
 

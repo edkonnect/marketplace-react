@@ -648,6 +648,8 @@ export function AdminDashboard() {
   const [payoutStatusFilter, setPayoutStatusFilter] = useState<"all" | "pending" | "approved" | "rejected">("pending");
   const [rejectingId, setRejectingId] = useState<number | null>(null);
   const [rejectNotes, setRejectNotes] = useState("");
+  const [editingPayoutId, setEditingPayoutId] = useState<number | null>(null);
+  const [editedAmount, setEditedAmount] = useState("");
 
   const { data: payoutRequests = [], isLoading: payoutRequestsLoading, refetch: refetchPayoutRequests } =
     trpc.adminCourses.getPayoutRequests.useQuery(
@@ -661,6 +663,8 @@ export function AdminDashboard() {
       refetchPayoutRequests();
       setRejectingId(null);
       setRejectNotes("");
+      setEditingPayoutId(null);
+      setEditedAmount("");
     },
     onError: (err) => toast.error(err.message || "Failed to update payout request"),
   });
@@ -1286,8 +1290,35 @@ export function AdminDashboard() {
                                 </Badge>
                                 {req.status === "pending" && (
                                   <div className="flex gap-2 mt-1">
-                                    <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white" onClick={() => updatePayoutMutation.mutate({ id: req.id, status: "approved" })} disabled={updatePayoutMutation.isPending}>Approve</Button>
-                                    <Button size="sm" variant="destructive" onClick={() => setRejectingId(rejectingId === req.id ? null : req.id)}>Reject</Button>
+                                    <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white"
+                                      onClick={() => updatePayoutMutation.mutate({
+                                        id: req.id,
+                                        status: "approved",
+                                        adjustedAmount: editingPayoutId === req.id && editedAmount ? editedAmount : undefined,
+                                      })}
+                                      disabled={updatePayoutMutation.isPending}>Approve</Button>
+                                    <Button size="sm" variant="outline"
+                                      onClick={() => {
+                                        setEditingPayoutId(editingPayoutId === req.id ? null : req.id);
+                                        setEditedAmount(parseFloat(req.totalAmount).toFixed(2));
+                                        setRejectingId(null);
+                                      }}>Edit Amount</Button>
+                                    <Button size="sm" variant="destructive" onClick={() => { setRejectingId(rejectingId === req.id ? null : req.id); setEditingPayoutId(null); }}>Reject</Button>
+                                  </div>
+                                )}
+                                {editingPayoutId === req.id && req.status === "pending" && (
+                                  <div className="flex gap-2 mt-1 w-full items-center">
+                                    <span className="text-sm text-muted-foreground">$</span>
+                                    <Input
+                                      type="number"
+                                      min="0"
+                                      step="0.01"
+                                      value={editedAmount}
+                                      onChange={e => setEditedAmount(e.target.value)}
+                                      className="text-sm h-8 w-28"
+                                      placeholder="New amount"
+                                    />
+                                    <span className="text-xs text-muted-foreground">then hit Approve</span>
                                   </div>
                                 )}
                                 {rejectingId === req.id && (

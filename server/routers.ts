@@ -6468,9 +6468,10 @@ export const appRouter = router({
         id: z.number(),
         status: z.enum(["approved", "rejected"]),
         adminNotes: z.string().optional(),
+        adjustedAmount: z.string().optional(),
       }))
       .mutation(async ({ input }) => {
-        await db.updateTutorPayoutRequestStatus(input.id, input.status, input.adminNotes);
+        await db.updateTutorPayoutRequestStatus(input.id, input.status, input.adminNotes, input.adjustedAmount);
         return { success: true };
       }),
 
@@ -7252,7 +7253,7 @@ Return ONLY the JSON object, nothing else.`;
         const genAI = new GoogleGenerativeAI(ENV.geminiApiKey);
         const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
-        const prompt = `You are an expert educational assistant. Based on the following tutoring session transcript, generate 5 to 8 multiple-choice questions to test the student's understanding.
+        const prompt = `You are an expert educational assistant. Based on the following tutoring session transcript, generate 5 to 8 multiple-choice questions to test the student's understanding of the SUBJECT MATTER taught.
 
 STUDENT: ${input.studentName || 'Student'}
 COURSE: ${input.courseName || 'General'}
@@ -7277,7 +7278,10 @@ Generate questions in EXACTLY this JSON format:
 Rules:
 - Exactly 4 options per question
 - correctAnswer is the 0-based index of the correct option
-- Only ask about topics actually covered in the transcript
+- ONLY ask questions that test understanding of academic concepts, skills, or subject content taught in the session
+- NEVER ask questions about what was said in the conversation, who mentioned something, what the student's name is, what exams the student is taking, or any personal/conversational details
+- NEVER ask "What did [student] say about..." or "Which [topic] did [student] mention..."
+- Questions must be educational and test whether the student learned the material — as if the question appeared on a homework assignment or test
 - Keep questions clear and age-appropriate
 
 Return ONLY the JSON object.`;
