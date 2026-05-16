@@ -40,7 +40,7 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 
 // Refresh access token ~2 min before it expires (access token = 30 min, so refresh every 28 min)
 const TOKEN_REFRESH_INTERVAL_MS = 28 * 60 * 1000;
-const IDLE_TIMEOUT_MS = 30 * 60 * 1000; // log out after 30 min of no activity
+const IDLE_TIMEOUT_MS = 2 * 60 * 60 * 1000; // log out after 2 hours of no activity
 const ACTIVITY_EVENTS = ["mousemove", "mousedown", "keydown", "touchstart", "scroll"] as const;
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -75,9 +75,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     refreshInFlightRef.current = true;
     try {
       await request("/api/auth/refresh-token", { method: "POST" });
-    } catch {
-      // Transient failure — keep interval running, will retry next tick
-      console.warn("[Auth] Silent token refresh failed, will retry");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "";
+      const isAuthError = msg.includes("Invalid refresh token") || msg.includes("Missing refresh token") || msg.includes("401") || msg.includes("Unauthorized");
+      if (isAuthError) {
+        // Refresh token is invalid/expired — log out cleanly now rather than
+        // letting the user get abruptly kicked mid-action when the access token expires
+        refreshInFlightRef.current = false;
+        stopRefreshInterval();
+        await request("/api/auth/logout", { method: "POST" }).catch(() => {});
+        setUser(null);
+        return;
+      }
+      // Transient network failure — keep interval running, will retry next tick
+      console.warn("[Auth] Silent token refresh failed (network), will retry:", msg);
     } finally {
       refreshInFlightRef.current = false;
     }
