@@ -37,6 +37,10 @@ async function startServer() {
   const app = express();
   const server = createServer(app);
 
+  // Trust the first proxy (nginx) so rate-limiting uses the real client IP
+  // instead of the proxy IP (which would cause all users to share one bucket)
+  app.set("trust proxy", 1);
+
   // Security & middleware
   app.use(
     helmet({
@@ -74,7 +78,7 @@ async function startServer() {
 
   const authLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
-    limit: 100,
+    limit: 200,
   });
 
   // Local dev storage shim must be registered BEFORE express.json() so it can
