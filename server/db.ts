@@ -4798,31 +4798,28 @@ export async function getParentSessionNotes(parentId: number, limit: number = 10
   try {
     return await db
       .select({
-        id: sessions.id,
-        sessionId: sessions.id,
+        id: sessionNotes.id,
+        sessionId: sessionNotes.sessionId,
         subscriptionId: sessions.subscriptionId,
-        tutorId: sessions.tutorId,
+        tutorId: sessionNotes.tutorId,
         tutorName: users.name,
-        progressSummary: sessions.feedbackFromTutor,
-        homework: sql<string | null>`NULL`,
-        challenges: sql<string | null>`NULL`,
-        nextSteps: sql<string | null>`NULL`,
-        createdAt: sessions.updatedAt,
+        progressSummary: sessionNotes.progressSummary,
+        homework: sessionNotes.homework,
+        challenges: sessionNotes.challenges,
+        nextSteps: sessionNotes.nextSteps,
+        createdAt: sessionNotes.createdAt,
         scheduledAt: sessions.scheduledAt,
-        studentFirstName: subscriptions.studentFirstName,
-        studentLastName: subscriptions.studentLastName,
+        studentFirstName: sql<string | null>`COALESCE(${sessions.studentFirstName}, ${subscriptions.studentFirstName})`,
+        studentLastName: sql<string | null>`COALESCE(${sessions.studentLastName}, ${subscriptions.studentLastName})`,
         courseSubject: courses.subject,
         courseTitle: courses.title,
       })
-      .from(sessions)
-      .innerJoin(users, eq(sessions.tutorId, users.id))
-      .innerJoin(subscriptions, eq(sessions.subscriptionId, subscriptions.id))
+      .from(sessionNotes)
+      .innerJoin(sessions, eq(sessionNotes.sessionId, sessions.id))
+      .leftJoin(users, eq(sessionNotes.tutorId, users.id))
+      .leftJoin(subscriptions, eq(sessions.subscriptionId, subscriptions.id))
       .leftJoin(courses, eq(subscriptions.courseId, courses.id))
-      .where(and(
-        eq(sessions.parentId, parentId),
-        isNotNull(sessions.feedbackFromTutor),
-        eq(sessions.status, 'completed')
-      ))
+      .where(eq(sessions.parentId, parentId))
       .orderBy(desc(sessions.scheduledAt))
       .limit(limit);
   } catch (error) {

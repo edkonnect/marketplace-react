@@ -398,9 +398,9 @@ export default function ParentDashboard() {
   const combinedNotes = useMemo(() => {
     const notesMap = new Map();
 
-    // Add structured notes from sessionNotes query
+    // Add structured notes from sessionNotes query (keyed by sessionId)
     (sessionNotes || []).forEach((note) => {
-      notesMap.set(note.id, note);
+      notesMap.set(note.sessionId, note);
     });
 
     // Add feedback from completed/no_show sessions in history
@@ -1737,10 +1737,16 @@ export default function ParentDashboard() {
 
                           {noteBySessionId.has(session.id) && (() => {
                             const n = noteBySessionId.get(session.id)!;
-                            const hasExtra = n.homework || n.challenges || n.nextSteps;
+                            const hasExtra = n.progressSummary || n.homework || n.challenges || n.nextSteps;
                             if (!hasExtra) return null;
                             return (
                               <div className="mt-3 p-4 rounded-xl border-l-4 border-blue-400 bg-gradient-to-br from-blue-50 to-blue-100/40 dark:from-blue-950/20 dark:to-blue-900/10 space-y-2">
+                                {n.progressSummary && (
+                                  <div>
+                                    <p className="text-xs font-semibold text-blue-800 dark:text-blue-200 uppercase tracking-wide mb-0.5">Learning Takeaways</p>
+                                    <p className="text-sm text-blue-900 dark:text-blue-50 leading-relaxed whitespace-pre-wrap">{n.progressSummary}</p>
+                                  </div>
+                                )}
                                 {n.homework && (
                                   <div>
                                     <p className="text-xs font-semibold text-blue-800 dark:text-blue-200 uppercase tracking-wide mb-0.5">Homework</p>
