@@ -1952,33 +1952,6 @@ export default function ParentDashboard() {
                             if (score == null && evidence.length === 0) return null;
                             const scoreLabel = score == null ? null : score >= 3.5 ? "Excellent" : score >= 2.5 ? "Proficient" : score >= 1.5 ? "Developing" : "Needs Support";
                             const scoreText = score == null ? "text-muted-foreground" : score >= 3.5 ? "text-emerald-600 dark:text-emerald-400" : score >= 2.5 ? "text-blue-600 dark:text-blue-400" : score >= 1.5 ? "text-amber-500 dark:text-amber-400" : "text-red-500 dark:text-red-400";
-                            // Parent-friendly descriptions per score level per criterion
-                            const criteriaDescriptions: Record<string, Record<number, string>> = {
-                              "Academic Efficiency & Time Management": {
-                                4: "Session starts smoothly and quickly. Your child is actively working within minutes and stays focused almost the entire time.",
-                                3: "Short setup at the beginning, then steady focus. Most of the session is productive.",
-                                2: "Noticeable time lost to setup, distractions, or off-topic conversation.",
-                                1: "Large portion of session feels unstructured or unproductive.",
-                              },
-                              "Learning Engagement & Understanding": {
-                                4: "Your child explains their thinking clearly and solves problems independently with guidance.",
-                                3: "Your child practices after explanations and shows understanding through solving.",
-                                2: "Your child mostly watches or follows along without much independent thinking.",
-                                1: "Your child is disengaged or just copying answers without understanding.",
-                              },
-                              "Strategy & Problem-Solving Skills": {
-                                4: "Your child learns smart techniques, shortcuts, and how to approach problems efficiently.",
-                                3: "Your child understands the concept and picks up a few helpful tips.",
-                                2: "Focus is mainly on basic steps without deeper strategy.",
-                                1: "Your child struggles to understand the concept or lacks clarity on how to apply it.",
-                              },
-                              "Session Value & Takeaways": {
-                                4: "Your child can clearly explain what they learned and leaves with a structured plan or homework.",
-                                3: "Session ends with a quick recap and some practice assigned.",
-                                2: "Session ends without a clear summary or next steps.",
-                                1: "No clear takeaway or direction after the session.",
-                              },
-                            };
                             return (
                               <div className="mt-4 rounded-xl border border-border/60 overflow-hidden shadow-sm">
                                 {/* Header bar */}
@@ -2038,7 +2011,6 @@ export default function ParentDashboard() {
                                       {evidence.map((e) => {
                                         const bar = e.score === 4 ? "bg-emerald-500" : e.score === 3 ? "bg-blue-500" : e.score === 2 ? "bg-amber-400" : "bg-red-500";
                                         const label = e.score === 4 ? "Exceeds" : e.score === 3 ? "Proficient" : e.score === 2 ? "Developing" : "Support";
-                                        const parentDesc = criteriaDescriptions[e.criterion]?.[e.score];
                                         return (
                                           <div key={e.criterion} className="space-y-1">
                                             <div className="flex items-center justify-between gap-2">
@@ -2048,8 +2020,8 @@ export default function ParentDashboard() {
                                             <div className="w-full bg-muted rounded-full h-1.5 overflow-hidden">
                                               <div className={`h-1.5 rounded-full ${bar} transition-all`} style={{ width: `${(e.score / 4) * 100}%` }} />
                                             </div>
-                                            {parentDesc && (
-                                              <p className="text-xs text-muted-foreground leading-relaxed border-l-2 border-muted pl-2">{parentDesc}</p>
+                                            {e.evidence && (
+                                              <p className="text-xs text-muted-foreground leading-relaxed border-l-2 border-muted pl-2">{e.evidence}</p>
                                             )}
                                           </div>
                                         );
