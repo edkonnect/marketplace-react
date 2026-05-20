@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { FileText, Search, X, Download } from "lucide-react";
+import { FileText, Search, X, Download, AlertCircle, ChevronDown, ChevronRight } from "lucide-react";
 
 function today() {
   return new Date().toISOString().slice(0, 10);
@@ -30,11 +30,13 @@ const defaultFrom = thirtyDaysAgo.toISOString().slice(0, 10);
 const defaultTo = today();
 
 export function AdminSessionNotes() {
+  const [activeTab, setActiveTab] = useState<"notes" | "pending">("notes");
   const [fromDate, setFromDate] = useState(defaultFrom);
   const [toDate, setToDate] = useState(defaultTo);
   const [selectedTutorName, setSelectedTutorName] = useState<string>("all");
   const [studentSearch, setStudentSearch] = useState("");
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+  const [expandedTutors, setExpandedTutors] = useState<Set<string>>(new Set());
 
   // Applied date range — defaults to last 30 days; updates when Apply is clicked
   const [appliedFrom, setAppliedFrom] = useState(defaultFrom);
@@ -76,6 +78,17 @@ export function AdminSessionNotes() {
     }
   );
 
+  // Pending notes: sessions in the last 30 days only (server pre-filters by date)
+  const pendingStartDate = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 30);
+    return d.toISOString().slice(0, 10);
+  }, []);
+  const { data: allSessionsData, isLoading: pendingLoading } = trpc.admin.getAllSessions.useQuery(
+    { limit: 2000, offset: 0, startDate: pendingStartDate },
+    { enabled: activeTab === "pending" }
+  );
+
   // Build unique student name list from loaded sessions for suggestions
   const allStudentNames = useMemo(() => {
     const sessions = sessionsData?.sessions || [];
@@ -109,6 +122,29 @@ export function AdminSessionNotes() {
     });
   }, [sessionsData, selectedTutorName, studentSearch]);
 
+  // Pending notes: past sessions that aren't cancelled/no_show and have no notes
+  const pendingByTutor = useMemo(() => {
+    const now = Date.now();
+    const thirtyDaysAgoMs = now - 30 * 24 * 60 * 60 * 1000;
+    const pending = (allSessionsData?.sessions || []).filter(s => {
+      const noNotes = !s.feedbackFromTutor || s.feedbackFromTutor.trim() === "";
+      const sessionPassed = new Date(s.scheduledAt).getTime() < now;
+      const notSkipped = s.status !== "cancelled" && s.status !== "no_show";
+      const isWithin30Days = new Date(s.scheduledAt).getTime() > thirtyDaysAgoMs;
+      return noNotes && sessionPassed && notSkipped && isWithin30Days;
+    });
+
+    const map = new Map<string, { tutorName: string; sessions: typeof pending }>();
+    for (const s of pending) {
+      const key = s.tutorName || s.tutorEmail || "Unknown Tutor";
+      if (!map.has(key)) map.set(key, { tutorName: key, sessions: [] });
+      map.get(key)!.sessions.push(s);
+    }
+    return Array.from(map.entries())
+      .map(([key, val]) => ({ tutorKey: key, ...val }))
+      .sort((a, b) => b.sessions.length - a.sessions.length);
+  }, [allSessionsData]);
+
   const handleApply = () => {
     setAppliedFrom(fromDate);
     setAppliedTo(toDate);
@@ -122,6 +158,15 @@ export function AdminSessionNotes() {
     setAppliedFrom(defaultFrom);
     setAppliedTo(defaultTo);
   };
+
+  function toggleTutor(key: string) {
+    setExpandedTutors(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
 
   const handleGeneratePdf = async () => {
     if (notesOnly.length === 0) return;
@@ -300,9 +345,108 @@ export function AdminSessionNotes() {
   };
 
 
+  const totalPending = pendingByTutor.reduce((sum, t) => sum + t.sessions.length, 0);
+
   return (
     <div className="space-y-4">
-      <Card>
+      {/* Tab switcher */}
+      <div className="flex gap-2 border-b pb-2">
+        <button
+          onClick={() => setActiveTab("notes")}
+          className={`px-4 py-2 text-sm font-medium rounded-t-md transition-colors ${activeTab === "notes" ? "border-b-2 border-primary text-primary" : "text-muted-foreground hover:text-foreground"}`}
+        >
+          Session Notes
+        </button>
+        <button
+          onClick={() => setActiveTab("pending")}
+          className={`px-4 py-2 text-sm font-medium rounded-t-md transition-colors flex items-center gap-2 ${activeTab === "pending" ? "border-b-2 border-primary text-primary" : "text-muted-foreground hover:text-foreground"}`}
+        >
+          Pending Notes
+          {totalPending > 0 && (
+            <span className="bg-red-100 text-red-700 text-xs font-bold px-1.5 py-0.5 rounded-full">{totalPending}</span>
+          )}
+        </button>
+      </div>
+
+      {activeTab === "pending" && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <AlertCircle className="h-5 w-5 text-amber-500" />
+              Pending Session Notes
+            </CardTitle>
+            {!pendingLoading && (
+              <p className="text-sm text-muted-foreground">
+                {totalPending} completed session{totalPending !== 1 ? "s" : ""} missing notes across {pendingByTutor.length} tutor{pendingByTutor.length !== 1 ? "s" : ""} (last 30 days)
+              </p>
+            )}
+          </CardHeader>
+          <CardContent>
+            {pendingLoading ? (
+              <div className="space-y-3">{[1, 2, 3].map(i => <Skeleton key={i} className="h-16 w-full" />)}</div>
+            ) : pendingByTutor.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-14 text-center">
+                <FileText className="h-8 w-8 text-green-400 mb-2" />
+                <p className="font-medium text-green-700">All caught up!</p>
+                <p className="text-sm text-muted-foreground mt-1">No pending session notes in the last 30 days.</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {pendingByTutor.map(({ tutorKey, tutorName, sessions }) => {
+                  const isExpanded = expandedTutors.has(tutorKey);
+                  return (
+                    <div key={tutorKey} className="border rounded-lg overflow-hidden">
+                      <button
+                        onClick={() => toggleTutor(tutorKey)}
+                        className="w-full flex items-center justify-between px-4 py-3 bg-amber-50 hover:bg-amber-100 transition-colors text-left"
+                      >
+                        <div className="flex items-center gap-3">
+                          {isExpanded ? <ChevronDown className="h-4 w-4 text-amber-600" /> : <ChevronRight className="h-4 w-4 text-amber-600" />}
+                          <span className="font-medium text-sm">{tutorName}</span>
+                        </div>
+                        <Badge variant="destructive" className="bg-red-100 text-red-700 border-red-200">
+                          {sessions.length} pending
+                        </Badge>
+                      </button>
+                      {isExpanded && (
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="border-b bg-muted/30 text-left">
+                              <th className="py-2 px-4 font-medium">Date</th>
+                              <th className="py-2 px-4 font-medium">Student</th>
+                              <th className="py-2 px-4 font-medium">Course</th>
+                              <th className="py-2 px-4 font-medium">Parent Email</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {sessions.map(s => {
+                              const studentName = [s.studentFirstName, s.studentLastName].filter(Boolean).join(" ") || "—";
+                              return (
+                                <tr key={s.id} className="border-b last:border-0 hover:bg-muted/30">
+                                  <td className="py-2.5 px-4 whitespace-nowrap text-muted-foreground">
+                                    {new Date(s.scheduledAt).toLocaleDateString("en-US", { day: "2-digit", month: "short", year: "numeric", timeZone: "Asia/Kolkata" })}
+                                  </td>
+                                  <td className="py-2.5 px-4 font-medium whitespace-nowrap">{studentName}</td>
+                                  <td className="py-2.5 px-4 whitespace-nowrap">
+                                    <Badge variant="secondary">{s.courseTitle || "—"}</Badge>
+                                  </td>
+                                  <td className="py-2.5 px-4 whitespace-nowrap text-muted-foreground">{s.parentEmail || "—"}</td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {activeTab === "notes" && <><Card>
         <CardHeader>
           <CardTitle>Filters</CardTitle>
         </CardHeader>
@@ -507,6 +651,7 @@ export function AdminSessionNotes() {
           )}
         </CardContent>
       </Card>
+      </>}
     </div>
   );
 }
