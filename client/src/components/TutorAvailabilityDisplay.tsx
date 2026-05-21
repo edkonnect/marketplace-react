@@ -3,12 +3,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Clock } from "lucide-react";
 import { trpc } from "@/lib/trpc";
+import { TimezoneSelector } from "@/components/TimezoneSelector";
 import {
   convertFromUTC,
   createTimestamp,
   detectUserTimezone,
   formatSessionTime,
-  getTimezoneAbbreviation,
 } from "@/../../shared/timezone-utils";
 
 interface AvailabilitySlot {
@@ -24,6 +24,7 @@ interface TutorAvailabilityDisplayProps {
   tutorId: number;
   tutorTimezone?: string | null;
   viewerTimezone?: string | null;
+  onViewerTimezoneChange?: (tz: string) => void;
 }
 
 interface UpcomingAvailabilityDay {
@@ -133,13 +134,10 @@ export default function TutorAvailabilityDisplay({
   tutorId,
   tutorTimezone,
   viewerTimezone,
+  onViewerTimezoneChange,
 }: TutorAvailabilityDisplayProps) {
   const effectiveViewerTimezone = viewerTimezone || detectUserTimezone();
   const effectiveTutorTimezone = tutorTimezone || effectiveViewerTimezone;
-  const viewerTimezoneAbbr = useMemo(
-    () => getTimezoneAbbreviation(effectiveViewerTimezone),
-    [effectiveViewerTimezone]
-  );
 
   const { data: upcomingSessions = [] } = trpc.session.getUpcomingByTutorId.useQuery({ tutorId });
 
@@ -164,8 +162,19 @@ export default function TutorAvailabilityDisplay({
           Available Slots (Next 7 Days)
         </CardTitle>
         <CardDescription>
-          {`Actual available time slots in your timezone (${viewerTimezoneAbbr}) after considering booked sessions`}
+          {tutorTimezone && tutorTimezone !== effectiveViewerTimezone
+            ? `Tutor's schedule is in ${tutorTimezone}. Slots shown in:`
+            : `Slots shown in:`}
         </CardDescription>
+        {onViewerTimezoneChange && (
+          <TimezoneSelector
+            value={effectiveViewerTimezone}
+            onChange={onViewerTimezoneChange}
+            showDetected={false}
+            label=""
+            className="mt-1"
+          />
+        )}
       </CardHeader>
       <CardContent>
         {!hasAvailability ? (

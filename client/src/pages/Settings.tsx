@@ -11,6 +11,7 @@ import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
 import { User, Lock, BookOpen, Users, GraduationCap, ChevronRight, Camera, Trash2, Loader2 } from "lucide-react";
 import { PhoneInput } from "@/components/PhoneInput";
+import { TimezoneSelector } from "@/components/TimezoneSelector";
 import { Badge } from "@/components/ui/badge";
 import { ImageCropModal } from "@/components/ImageCropModal";
 import Footer from "@/components/Footer";
@@ -26,6 +27,7 @@ export default function Settings() {
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
+  const [timezone, setTimezone] = useState("");
 
   // Password
   const [currentPassword, setCurrentPassword] = useState("");
@@ -66,6 +68,7 @@ const { data: subscriptions } = trpc.subscription.mySubscriptions.useQuery(undef
       setLastName((meData as any).lastName || "");
       setEmail((meData as any).email || "");
       setPhone((meData as any).phoneNumber || "");
+      setTimezone((meData as any).timezone || "");
     }
   }, [meData]);
 
@@ -198,10 +201,11 @@ const { data: subscriptions } = trpc.subscription.mySubscriptions.useQuery(undef
   // --- Handlers ---
 
   const handleProfileSave = () => {
-    const updates: { firstName?: string; lastName?: string; phoneNumber?: string } = {};
+    const updates: { firstName?: string; lastName?: string; phoneNumber?: string; timezone?: string } = {};
     if (firstName.trim()) updates.firstName = firstName.trim();
     if (lastName.trim()) updates.lastName = lastName.trim();
     if (phone) updates.phoneNumber = phone;
+    if (timezone) updates.timezone = timezone;
     updateProfileMutation.mutate(updates);
   };
 
@@ -295,6 +299,14 @@ const { data: subscriptions } = trpc.subscription.mySubscriptions.useQuery(undef
               onChange={setPhone}
               label="Phone Number"
             />
+            {user?.role === "tutor" && (
+              <TimezoneSelector
+                value={timezone}
+                onChange={setTimezone}
+                label="Your Timezone"
+                showDetected={true}
+              />
+            )}
             <div className="flex justify-end pt-1">
               <Button onClick={handleProfileSave} disabled={updateProfileMutation.isPending} size="sm">
                 {updateProfileMutation.isPending ? "Saving..." : "Save Changes"}

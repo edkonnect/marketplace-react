@@ -1,5 +1,6 @@
 import Navigation from "@/components/Navigation";
 import Footer from "@/components/Footer";
+import { TimezoneSelector } from "@/components/TimezoneSelector";
 import { CoursePrice } from "@/components/CoursePrice";
 import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -19,7 +20,6 @@ import {
   createTimestamp,
   detectUserTimezone,
   formatSessionTime,
-  getTimezoneAbbreviation,
 } from "@/../../shared/timezone-utils";
 
 type AvailabilitySlot = {
@@ -156,9 +156,8 @@ export default function TutorDetail() {
   
   const displayCourses = coursesData || [];
   const tutorTz = tutorProfile ? ((tutorProfile as any).businessTimezone || (tutorProfile as any).timezone || null) : null;
-  const viewerTz = user?.timezone || detectUserTimezone();
-  const viewerTzAbbr = useMemo(() => getTimezoneAbbreviation(viewerTz), [viewerTz]);
-  const convertedAvailability = useMemo(() => {
+  const [selectedViewerTz, setSelectedViewerTz] = useState<string>(() => user?.timezone || detectUserTimezone());
+const convertedAvailability = useMemo(() => {
     const activeAvailability = (availability ?? []).filter((slot) => slot.isActive);
     if (!activeAvailability.length) return [];
     if (!tutorTz) {
@@ -168,8 +167,8 @@ export default function TutorDetail() {
         sortKey: Number.parseInt(slot.startTime.slice(0, 2), 10) * 60 + Number.parseInt(slot.startTime.slice(3, 5), 10),
       }));
     }
-    return convertWeeklyAvailabilityToTimezone(activeAvailability, tutorTz, viewerTz);
-  }, [availability, tutorTz, viewerTz]);
+    return convertWeeklyAvailabilityToTimezone(activeAvailability, tutorTz, selectedViewerTz);
+  }, [availability, tutorTz, selectedViewerTz]);
 
   const parseSubjects = (subjects: string | null) => {
     if (!subjects) return [];
@@ -452,7 +451,8 @@ export default function TutorDetail() {
                   availability={availability}
                   tutorId={tutorId}
                   tutorTimezone={tutorTz}
-                  viewerTimezone={viewerTz}
+                  viewerTimezone={selectedViewerTz}
+                  onViewerTimezoneChange={setSelectedViewerTz}
                 />
               )}
 
@@ -465,10 +465,17 @@ export default function TutorDetail() {
                       General Availability
                     </CardTitle>
                     <CardDescription>
-                      {tutorTz && tutorTz !== viewerTz
-                        ? `Times shown in your timezone (${viewerTzAbbr}). Tutor schedule is set in ${tutorTz}.`
-                        : `Times shown in your timezone (${viewerTzAbbr})`}
+                      {tutorTz && tutorTz !== selectedViewerTz
+                        ? `Tutor's schedule is in ${tutorTz}. Times converted to:`
+                        : `Times shown in:`}
                     </CardDescription>
+                    <TimezoneSelector
+                      value={selectedViewerTz}
+                      onChange={setSelectedViewerTz}
+                      showDetected={false}
+                      label=""
+                      className="mt-1"
+                    />
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-3">
