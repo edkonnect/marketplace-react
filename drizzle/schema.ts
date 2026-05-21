@@ -216,6 +216,8 @@ export const courses = mysqlTable("courses", {
   region: mysqlEnum("region", ["global", "us", "india"]).default("global").notNull(),
   courseType: mysqlEnum("courseType", ["test_prep", "tutor", "homework"]).default("tutor").notNull(),
   displayOrder: int("displayOrder").default(0).notNull(),
+  displayOrderIndia: int("displayOrderIndia").default(0).notNull(),
+  displayOrderUs: int("displayOrderUs").default(0).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 }, (table) => ({

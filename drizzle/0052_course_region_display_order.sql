@@ -1,0 +1,2 @@
+ALTER TABLE courses ADD COLUMN displayOrderIndia int NOT NULL DEFAULT 0;
+ALTER TABLE courses ADD COLUMN displayOrderUs int NOT NULL DEFAULT 0;

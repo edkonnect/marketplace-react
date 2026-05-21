@@ -1007,6 +1007,7 @@ export const appRouter = router({
         minPrice: z.number().optional(),
         maxPrice: z.number().optional(),
         searchTerm: z.string().optional(),
+        region: z.enum(["global", "us", "india"]).optional(),
       }))
       .query(async ({ input }) => {
         return await db.searchCourses(input);
@@ -6382,6 +6383,8 @@ export const appRouter = router({
         region: z.enum(["global", "us", "india"]).optional().or(z.literal("")).transform(v => v || undefined),
         courseType: z.enum(["tutor", "homework", "test_prep"]).optional().or(z.literal("")).transform(v => v || undefined),
         displayOrder: z.number().optional(),
+        displayOrderIndia: z.number().optional(),
+        displayOrderUs: z.number().optional(),
       }))
       .mutation(async ({ input }) => {
         const course = await db.createCourse(input as any);
@@ -6407,6 +6410,8 @@ export const appRouter = router({
         region: z.enum(["global", "us", "india"]).optional().or(z.literal("")).transform(v => v || undefined),
         courseType: z.enum(["tutor", "homework", "test_prep"]).optional().or(z.literal("")).transform(v => v || undefined),
         displayOrder: z.number().optional(),
+        displayOrderIndia: z.number().optional(),
+        displayOrderUs: z.number().optional(),
       }))
       .mutation(async ({ input }) => {
         const { id, ...data } = input;

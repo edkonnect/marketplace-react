@@ -72,9 +72,10 @@ export default function CourseListing() {
       } else if (priceSort === "high-low") {
         return parseFloat(b.price) - parseFloat(a.price);
       }
-      // 0 means unset — push those to end; non-zero ordered ascending
-      const aOrder = (a.displayOrder ?? 0) || Infinity;
-      const bOrder = (b.displayOrder ?? 0) || Infinity;
+      // Use region-specific order; if not set (0), push to end
+      const orderField = isIndian ? "displayOrderIndia" : "displayOrderUs";
+      const aOrder = ((a as any)[orderField] ?? 0) || Infinity;
+      const bOrder = ((b as any)[orderField] ?? 0) || Infinity;
       return aOrder - bOrder;
     });
 

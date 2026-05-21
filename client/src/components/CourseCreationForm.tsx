@@ -35,6 +35,8 @@ export function CourseCreationForm({ onSuccess, editingCourse }: CourseCreationF
     imageUrl: "",
     curriculum: "",
     displayOrder: "0",
+    displayOrderIndia: "0",
+    displayOrderUs: "0",
   };
 
   const initialValues = editingCourse
@@ -49,6 +51,8 @@ export function CourseCreationForm({ onSuccess, editingCourse }: CourseCreationF
         imageUrl: editingCourse?.imageUrl || "",
         curriculum: editingCourse?.curriculum || "",
         displayOrder: editingCourse?.displayOrder?.toString() ?? "0",
+        displayOrderIndia: editingCourse?.displayOrderIndia?.toString() ?? "0",
+        displayOrderUs: editingCourse?.displayOrderUs?.toString() ?? "0",
       }
     : emptyValues;
 
@@ -145,6 +149,8 @@ export function CourseCreationForm({ onSuccess, editingCourse }: CourseCreationF
       price: values.price,
       priceInr: region === "global" && priceInr ? priceInr : null,
       displayOrder: parseInt(values.displayOrder) || 0,
+      displayOrderIndia: parseInt(values.displayOrderIndia) || 0,
+      displayOrderUs: parseInt(values.displayOrderUs) || 0,
       aiPowered,
       region,
       courseType,
@@ -343,12 +349,22 @@ export function CourseCreationForm({ onSuccess, editingCourse }: CourseCreationF
               placeholder="https://example.com/image.jpg"
             />
 
-            <FormInput
-              field={register("displayOrder")}
-              label="Display Order"
-              type="number"
-              placeholder="0"
-            />
+            {(region === "india" || region === "global") && (
+              <FormInput
+                field={register("displayOrderIndia")}
+                label="Display Order (India 🇮🇳)"
+                type="number"
+                placeholder="0"
+              />
+            )}
+            {(region === "us" || region === "global") && (
+              <FormInput
+                field={register("displayOrderUs")}
+                label="Display Order (US 🇺🇸)"
+                type="number"
+                placeholder="0"
+              />
+            )}
           </div>
 
           <div className="space-y-1.5">

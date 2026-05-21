@@ -1262,9 +1262,13 @@ export async function getAllActiveCourses(region?: "global" | "us" | "india") {
     : region === "us"  ? ["global", "us"]
     : ["global", "us", "india"]; // no region = return all (undetected/admin)
 
+  const orderCol = region === "india" ? courses.displayOrderIndia
+                 : region === "us"    ? courses.displayOrderUs
+                 : courses.displayOrder;
+
   return await db.select().from(courses)
     .where(and(eq(courses.isActive, true), inArray(courses.region, allowedRegions)))
-    .orderBy(sql`CASE WHEN ${courses.displayOrder} = 0 THEN 1 ELSE 0 END`, courses.displayOrder, desc(courses.createdAt));
+    .orderBy(sql`CASE WHEN ${orderCol} = 0 THEN 1 ELSE 0 END`, orderCol, desc(courses.createdAt));
 }
 
 export async function updateCourse(id: number, updates: Record<string, any>) {
@@ -1290,11 +1294,20 @@ export async function searchCourses(filters: {
   minPrice?: number;
   maxPrice?: number;
   searchTerm?: string;
+  region?: "global" | "us" | "india";
 }) {
   const db = await getDb();
   if (!db) return [];
 
   let conditions = [eq(courses.isActive, true)];
+
+  if (filters.region) {
+    const allowedRegions: ("global" | "us" | "india")[] =
+      filters.region === "india" ? ["global", "india"]
+      : filters.region === "us"  ? ["global", "us"]
+      : ["global", "us", "india"];
+    conditions.push(inArray(courses.region, allowedRegions));
+  }
 
   if (filters.subject) {
     conditions.push(eq(courses.subject, filters.subject));
@@ -1321,7 +1334,11 @@ export async function searchCourses(filters: {
     );
   }
 
-  return await db.select().from(courses).where(and(...conditions)).orderBy(sql`CASE WHEN ${courses.displayOrder} = 0 THEN 1 ELSE 0 END`, courses.displayOrder, desc(courses.createdAt));
+  const orderCol = filters.region === "india" ? courses.displayOrderIndia
+                 : filters.region === "us"    ? courses.displayOrderUs
+                 : courses.displayOrder;
+
+  return await db.select().from(courses).where(and(...conditions)).orderBy(sql`CASE WHEN ${orderCol} = 0 THEN 1 ELSE 0 END`, orderCol, desc(courses.createdAt));
 }
 
 // ============ Tutor Course Preferences ============
