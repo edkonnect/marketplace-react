@@ -7281,8 +7281,9 @@ Generate questions in EXACTLY this JSON format:
 }
 
 Rules:
-- Exactly 4 options per question
-- correctAnswer is the 0-based index of the correct option
+- EVERY question MUST have EXACTLY 4 options — no more, no less. This is a hard requirement. Never generate 3 or 5 options.
+- The "options" array MUST contain exactly 4 strings every time, no exceptions.
+- correctAnswer is the 0-based index (0, 1, 2, or 3) of the correct option
 - ONLY ask questions that test understanding of academic concepts, skills, or subject content taught in the session
 - NEVER ask questions about what was said in the conversation, who mentioned something, what the student's name is, what exams the student is taking, or any personal/conversational details
 - NEVER ask "What did [student] say about..." or "Which [topic] did [student] mention..."
@@ -7291,10 +7292,8 @@ Rules:
 
 Return ONLY the JSON object.`;
 
-        try {
-          const result = await model.generateContent(prompt);
-          let jsonText = result.response.text().trim();
-
+        const parseAndFilter = (raw: string) => {
+          let jsonText = raw.trim();
           if (jsonText.startsWith('```json')) {
             jsonText = jsonText.replace(/```json\n?/g, '').replace(/```\n?/g, '');
           } else if (jsonText.startsWith('```')) {
@@ -7303,19 +7302,44 @@ Return ONLY the JSON object.`;
           const start = jsonText.indexOf('{');
           const end = jsonText.lastIndexOf('}');
           if (start !== -1 && end !== -1) jsonText = jsonText.substring(start, end + 1);
-
           let parsed: { questions: Array<{ id: string; question: string; options: string[]; correctAnswer: number }> };
           try {
             parsed = JSON.parse(jsonText);
           } catch {
-            throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'AI returned invalid format. Please try again.' });
+            return [];
+          }
+          if (!Array.isArray(parsed?.questions)) return [];
+          return parsed.questions.filter((q) =>
+            Array.isArray(q.options) &&
+            q.options.length === 4 &&
+            q.correctAnswer >= 0 &&
+            q.correctAnswer <= 3
+          );
+        };
+
+        try {
+          const MAX_ATTEMPTS = 3;
+          const MIN_QUESTIONS = 5;
+          const validQuestions: Array<{ id: string; question: string; options: string[]; correctAnswer: number }> = [];
+          const seenQuestions = new Set<string>();
+
+          for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+            const result = await model.generateContent(prompt);
+            const batch = parseAndFilter(result.response.text());
+            for (const q of batch) {
+              if (!seenQuestions.has(q.question)) {
+                seenQuestions.add(q.question);
+                validQuestions.push({ ...q, id: String(validQuestions.length + 1) });
+              }
+            }
+            if (validQuestions.length >= MIN_QUESTIONS) break;
           }
 
-          if (!Array.isArray(parsed.questions) || parsed.questions.length === 0) {
-            throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'No questions generated. Try again.' });
+          if (validQuestions.length === 0) {
+            throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Could not generate valid questions. Please try again.' });
           }
 
-          return { questions: parsed.questions };
+          return { questions: validQuestions };
         } catch (error: any) {
           if (error instanceof TRPCError) throw error;
           throw new TRPCError({
