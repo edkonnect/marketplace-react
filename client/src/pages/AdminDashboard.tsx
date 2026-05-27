@@ -1,5 +1,6 @@
 import { useAuth } from "@/_core/hooks/useAuth";
 import { AdminSessionNotes } from "@/components/AdminSessionNotes";
+import { AdminLoginReport } from "@/components/AdminLoginReport";
 import { LOGIN_PATH } from "@/const";
 import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -1444,6 +1445,7 @@ export function AdminDashboard() {
 
           {activeSection === "course-files" && <CourseFilesAdminPanel />}
           {activeSection === "session-notes" && <AdminSessionNotes />}
+{activeSection === "login-report" && <AdminLoginReport />}
           {activeSection === "security" && <SuperUserSettings />}
         </div>
       </DashboardLayout>
