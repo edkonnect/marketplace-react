@@ -168,8 +168,18 @@ export function buildParentAnalyticsViewModel(input: BuildParentAnalyticsInput):
   };
 
   subscriptions.forEach((item, idx) => addStudent(item?.subscription?.studentFirstName, item?.subscription?.studentLastName, `subscription:${item?.subscription?.id ?? idx}`));
-  analyticsSessions.forEach((item, idx) => addStudent(item?.studentFirstName, item?.studentLastName, `session:${item?.id ?? idx}`));
-  upcomingSessions.forEach((item, idx) => addStudent(item?.studentFirstName, item?.studentLastName, `upcoming:${item?.id ?? idx}`));
+  // Only seed students from sessions/upcoming if they have an actual name — nameless sessions
+  // would each get a unique fallback key (e.g. "session:123") and create phantom "Student" cards.
+  analyticsSessions.forEach((item) => {
+    if (item?.studentFirstName || item?.studentLastName) {
+      addStudent(item.studentFirstName, item.studentLastName, `session:${item.id}`);
+    }
+  });
+  upcomingSessions.forEach((item) => {
+    if (item?.studentFirstName || item?.studentLastName) {
+      addStudent(item.studentFirstName, item.studentLastName, `upcoming:${item.id}`);
+    }
+  });
 
   const studentOptions = Array.from(studentMap.values()).sort((a, b) => a.label.localeCompare(b.label));
   const activeStudentKey =
@@ -201,14 +211,37 @@ export function buildParentAnalyticsViewModel(input: BuildParentAnalyticsInput):
   const sessionStudentById = new Map<number, SessionStudent>();
   analyticsSessions.forEach((session) => {
     if (!session?.id) return;
-    const key = buildStudentKey(session.studentFirstName, session.studentLastName, `session:${session.id}`);
+    // Build the name-based key first; if the session has no name, fall back to the
+    // subscription-keyed student that matches the same subscription (if any).
+    let key = buildStudentKey(session.studentFirstName, session.studentLastName, "");
+    if (!key) {
+      // Try to resolve via subscription id attached to the session
+      const subKey = session.subscriptionId
+        ? buildStudentKey(
+            subscriptions.find((s: any) => s?.subscription?.id === session.subscriptionId)?.subscription?.studentFirstName,
+            subscriptions.find((s: any) => s?.subscription?.id === session.subscriptionId)?.subscription?.studentLastName,
+            `subscription:${session.subscriptionId}`,
+          )
+        : null;
+      key = subKey && studentMap.has(subKey) ? subKey : `session:${session.id}`;
+    }
     const name = studentMap.get(key)?.label ?? buildStudentLabel(session.studentFirstName, session.studentLastName);
     sessionStudentById.set(session.id, { key, name });
   });
   const upcomingStudentById = new Map<number, SessionStudent>();
   upcomingSessions.forEach((session) => {
     if (!session?.id) return;
-    const key = buildStudentKey(session.studentFirstName, session.studentLastName, `upcoming:${session.id}`);
+    let key = buildStudentKey(session.studentFirstName, session.studentLastName, "");
+    if (!key) {
+      const subKey = session.subscriptionId
+        ? buildStudentKey(
+            subscriptions.find((s: any) => s?.subscription?.id === session.subscriptionId)?.subscription?.studentFirstName,
+            subscriptions.find((s: any) => s?.subscription?.id === session.subscriptionId)?.subscription?.studentLastName,
+            `subscription:${session.subscriptionId}`,
+          )
+        : null;
+      key = subKey && studentMap.has(subKey) ? subKey : `upcoming:${session.id}`;
+    }
     const name = studentMap.get(key)?.label ?? buildStudentLabel(session.studentFirstName, session.studentLastName);
     upcomingStudentById.set(session.id, { key, name });
   });

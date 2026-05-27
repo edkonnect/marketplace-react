@@ -37,6 +37,7 @@ import {
   Mail,
   MessageSquareQuote,
   PanelLeft,
+  RefreshCw,
   Share2,
   ShieldCheck,
   Users,
@@ -66,6 +67,7 @@ export type AdminSection =
   | "referrals"
   | "session-notes"
   | "login-report"
+  | "acuity-sync"
   | "security";
 
 type NavItem = {
@@ -95,6 +97,7 @@ const navGroups: NavGroup[] = [
       { icon: Wallet, label: "Payout Requests", section: "payout-requests" },
       { icon: FileText, label: "Session Notes", section: "session-notes" },
       { icon: ClipboardList, label: "Login Report", section: "login-report" },
+      { icon: RefreshCw, label: "Acuity Sync", section: "acuity-sync" },
     ],
   },
   {

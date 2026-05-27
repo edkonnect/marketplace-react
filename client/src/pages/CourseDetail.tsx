@@ -23,6 +23,7 @@ import { LOGIN_PATH } from "@/const";
 import { toast } from "sonner";
 import { BookableCalendar } from "@/components/BookableCalendar";
 import { TutorAvailabilityModal } from "@/components/TutorAvailabilityModal";
+import { detectUserTimezone } from "@/../../shared/timezone-utils";
 
 export default function CourseDetail() {
   const { id } = useParams();
@@ -44,7 +45,9 @@ export default function CourseDetail() {
   const [selectedTutorForAvailability, setSelectedTutorForAvailability] = React.useState<{
     id: number;
     name: string;
+    timezone?: string | null;
   } | null>(null);
+  const [viewerTimezone, setViewerTimezone] = React.useState<string>(() => detectUserTimezone());
 
   const { data: course, isLoading } = trpc.course.get.useQuery({ id: courseId });
 
@@ -1031,7 +1034,8 @@ export default function CourseDetail() {
                                   onClick={() => {
                                     setSelectedTutorForAvailability({
                                       id: tutorAssignment.tutorId,
-                                      name: tutorAssignment.user.name || "Tutor"
+                                      name: tutorAssignment.user.name || "Tutor",
+                                      timezone: (tutorAssignment.user as any).timezone || null,
                                     });
                                     setAvailabilityModalOpen(true);
                                   }}
@@ -1179,6 +1183,9 @@ export default function CourseDetail() {
           onOpenChange={setAvailabilityModalOpen}
           tutorId={selectedTutorForAvailability.id}
           tutorName={selectedTutorForAvailability.name}
+          tutorTimezone={selectedTutorForAvailability.timezone}
+          viewerTimezone={viewerTimezone}
+          onViewerTimezoneChange={setViewerTimezone}
           availability={tutorAvailability}
         />
       )}

@@ -3,6 +3,7 @@ import * as db from "./db";
 import { createCombinedUsageInvoice, isAsiaTz } from "./payments/stripe";
 import { sendSessionReminders } from "./notification-service";
 import { sendSessionNotesReminders } from "./emails/session-notes-reminder";
+import { syncAcuitySessions } from "./acuity-sync";
 
 export function startReminderCron() {
   // Run every 5 minutes — matches the ±5 min window in getUpcomingSessionsForNotifications()
@@ -174,4 +175,18 @@ export function startSessionNotesReminderCron() {
     await sendSessionNotesReminders();
   });
   console.log("[Cron] Session notes reminder cron scheduled (09:00 AM IST daily)");
+}
+
+export function startAcuitySyncCron(intervalMinutes: number = 60) {
+  const cronExpr = `*/${intervalMinutes} * * * *`;
+  cron.schedule(cronExpr, async () => {
+    console.log("[Cron] Running Acuity session sync...");
+    try {
+      const result = await syncAcuitySessions();
+      console.log(`[Cron] Acuity sync complete — inserted: ${result.inserted}, cancelled: ${result.cancelled}, skipped: ${result.skipped}`);
+    } catch (err: any) {
+      console.error("[Cron] Acuity sync failed:", err?.message);
+    }
+  });
+  console.log(`[Cron] Acuity sync cron scheduled (every ${intervalMinutes} minutes)`);
 }

@@ -1,6 +1,7 @@
 import { useAuth } from "@/_core/hooks/useAuth";
 import { AdminSessionNotes } from "@/components/AdminSessionNotes";
 import { AdminLoginReport } from "@/components/AdminLoginReport";
+import AcuitySyncPanel from "@/components/AcuitySyncPanel";
 import { LOGIN_PATH } from "@/const";
 import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -1445,7 +1446,8 @@ export function AdminDashboard() {
 
           {activeSection === "course-files" && <CourseFilesAdminPanel />}
           {activeSection === "session-notes" && <AdminSessionNotes />}
-{activeSection === "login-report" && <AdminLoginReport />}
+          {activeSection === "login-report" && <AdminLoginReport />}
+          {activeSection === "acuity-sync" && <AcuitySyncPanel />}
           {activeSection === "security" && <SuperUserSettings />}
         </div>
       </DashboardLayout>

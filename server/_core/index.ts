@@ -149,7 +149,7 @@ async function startServer() {
   });
 
   // Start monthly usage billing cron
-  const { startBillingCron, processUsageBilling, startReminderCron, startSessionNotesReminderCron } = await import("../cron");
+  const { startBillingCron, processUsageBilling, startReminderCron, startSessionNotesReminderCron, startAcuitySyncCron } = await import("../cron");
   if (process.env.NODE_ENV === 'production') {
     startBillingCron();
   } else {
@@ -162,6 +162,13 @@ async function startServer() {
     startSessionNotesReminderCron();
   } else {
     console.log("[Cron] Session notes reminder cron SKIPPED (not production)");
+  }
+
+  // Acuity session sync — hourly for now, change to daily (1440) when stable
+  if (process.env.NODE_ENV === 'production') {
+    startAcuitySyncCron(60);
+  } else {
+    console.log("[Cron] Acuity sync cron SKIPPED (not production)");
   }
 
   // Catch-up: if any billing cycles were missed (e.g. server was down on the 1st), run immediately

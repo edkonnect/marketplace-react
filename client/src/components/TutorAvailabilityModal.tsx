@@ -1,9 +1,16 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Clock, Calendar as CalendarIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { trpc } from "@/lib/trpc";
+import { TimezoneSelector } from "@/components/TimezoneSelector";
+import {
+  detectUserTimezone,
+  convertFromUTC,
+  createTimestamp,
+  formatSessionTime,
+} from "@/../../shared/timezone-utils";
 
 const DAYS_OF_WEEK = [
   { value: 0, label: "Sunday" },
@@ -15,11 +22,16 @@ const DAYS_OF_WEEK = [
   { value: 6, label: "Saturday" },
 ];
 
+const SLOT_DURATION_MINUTES = 60;
+
 interface TutorAvailabilityModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   tutorId: number;
   tutorName?: string;
+  tutorTimezone?: string | null;
+  viewerTimezone?: string;
+  onViewerTimezoneChange?: (tz: string) => void;
   availability: Array<{
     id: number;
     dayOfWeek: number;
@@ -34,9 +46,25 @@ export function TutorAvailabilityModal({
   onOpenChange,
   tutorId,
   tutorName,
+  tutorTimezone,
+  viewerTimezone: externalViewerTz,
+  onViewerTimezoneChange,
   availability,
 }: TutorAvailabilityModalProps) {
   const [activeTab, setActiveTab] = useState("this-week");
+  const [internalViewerTz, setInternalViewerTz] = useState<string>(() => detectUserTimezone());
+
+  // Use external viewer timezone if provided (controlled), else use internal state
+  const viewerTz = externalViewerTz || internalViewerTz;
+  const setViewerTz = (tz: string) => {
+    if (onViewerTimezoneChange) {
+      onViewerTimezoneChange(tz);
+    } else {
+      setInternalViewerTz(tz);
+    }
+  };
+
+  const effectiveTutorTz = tutorTimezone || viewerTz;
 
   // Fetch upcoming sessions for this tutor
   const { data: upcomingSessions = [] } = trpc.session.getUpcomingByTutorId.useQuery(
@@ -44,73 +72,142 @@ export function TutorAvailabilityModal({
     { enabled: open }
   );
 
-  // Calculate available time slots with details for next 7 days
-  const calculateDetailedSlots = () => {
-    const result: Record<number, { count: number; slots: string[] }> = {};
-    const now = new Date();
-    const oneWeekFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+  // Timezone-aware slot calculation for "This Week" tab
+  const upcomingAvailabilityDays = useMemo(() => {
+    const now = Date.now();
+    const viewerToday = convertFromUTC(now, viewerTz);
+    viewerToday.setHours(0, 0, 0, 0);
 
-    availability.forEach(slot => {
-      if (!slot.isActive) return;
+    const days: Array<{
+      key: string;
+      label: string;
+      dateLabel: string;
+      dayOfWeek: number;
+      availableTimeSlots: string[];
+    }> = [];
 
-      const [startHour, startMin] = slot.startTime.split(':').map(Number);
-      const [endHour, endMin] = slot.endTime.split(':').map(Number);
+    for (let offset = 0; offset < 7; offset++) {
+      const dayDate = new Date(viewerToday);
+      dayDate.setDate(viewerToday.getDate() + offset);
 
-      for (let d = new Date(now); d <= oneWeekFromNow; d.setDate(d.getDate() + 1)) {
-        if (d.getDay() === slot.dayOfWeek) {
-          const slotStart = new Date(d);
-          slotStart.setHours(startHour, startMin, 0, 0);
-          const slotEnd = new Date(d);
-          slotEnd.setHours(endHour, endMin, 0, 0);
+      const year = dayDate.getFullYear();
+      const month = dayDate.getMonth();
+      const date = dayDate.getDate();
 
-          const currentSlotTime = new Date(slotStart);
-          const availableSlots: string[] = [];
+      const dayStartUTC = createTimestamp(year, month, date, 0, 0, viewerTz);
+      const dayEndUTC = createTimestamp(year, month, date, 23, 59, viewerTz);
+      const dayNoonUTC = createTimestamp(year, month, date, 12, 0, viewerTz);
+      const slotsByTimestamp = new Map<number, string>();
 
-          while (currentSlotTime < slotEnd) {
-            const nextSlotTime = new Date(currentSlotTime.getTime() + 60 * 60 * 1000);
+      for (let dayOffset = -1; dayOffset <= 1; dayOffset++) {
+        const checkDateNoonUTC = dayNoonUTC + dayOffset * 24 * 60 * 60 * 1000;
+        const tutorDate = convertFromUTC(checkDateNoonUTC, effectiveTutorTz);
+        const dayWindows = availability.filter(
+          (slot) => slot.isActive && slot.dayOfWeek === tutorDate.getDay()
+        );
 
-            const isBooked = upcomingSessions.some(session => {
-              const sessionStart = new Date(session.scheduledAt);
-              const sessionEnd = new Date(session.scheduledAt + (session.duration || 60) * 60 * 1000);
-              return currentSlotTime < sessionEnd && nextSlotTime > sessionStart;
-            });
+        if (!dayWindows.length) continue;
 
-            if (!isBooked && currentSlotTime >= now) {
-              const timeStr = currentSlotTime.toLocaleTimeString('en-US', {
-                hour: 'numeric',
-                minute: '2-digit',
-                hour12: true
-              });
-              availableSlots.push(timeStr);
+        for (const slot of dayWindows) {
+          const [startHour, startMinute] = slot.startTime.split(":").map(Number);
+          const [endHour, endMinute] = slot.endTime.split(":").map(Number);
+          let cursorMinutes = startHour * 60 + startMinute;
+          const endMinutes = endHour * 60 + endMinute;
+
+          while (cursorMinutes + SLOT_DURATION_MINUTES <= endMinutes) {
+            const slotHour = Math.floor(cursorMinutes / 60);
+            const slotMinute = cursorMinutes % 60;
+            const slotTimestampUTC = createTimestamp(
+              tutorDate.getFullYear(),
+              tutorDate.getMonth(),
+              tutorDate.getDate(),
+              slotHour,
+              slotMinute,
+              effectiveTutorTz
+            );
+
+            if (
+              slotTimestampUTC < dayStartUTC ||
+              slotTimestampUTC > dayEndUTC ||
+              slotTimestampUTC <= now
+            ) {
+              cursorMinutes += SLOT_DURATION_MINUTES;
+              continue;
             }
 
-            currentSlotTime.setTime(nextSlotTime.getTime());
-          }
+            const slotEndUTC = slotTimestampUTC + SLOT_DURATION_MINUTES * 60 * 1000;
+            const isBooked = upcomingSessions.some((session) => {
+              const sessionStart = session.scheduledAt;
+              const sessionEnd = sessionStart + (session.duration || SLOT_DURATION_MINUTES) * 60 * 1000;
+              return slotTimestampUTC < sessionEnd && slotEndUTC > sessionStart;
+            });
 
-          if (!result[slot.dayOfWeek]) {
-            result[slot.dayOfWeek] = { count: 0, slots: [] };
+            if (!isBooked) {
+              slotsByTimestamp.set(
+                slotTimestampUTC,
+                formatSessionTime(slotTimestampUTC, viewerTz, "h:mm a")
+              );
+            }
+
+            cursorMinutes += SLOT_DURATION_MINUTES;
           }
-          result[slot.dayOfWeek].count += availableSlots.length;
-          result[slot.dayOfWeek].slots.push(...availableSlots);
         }
       }
+
+      days.push({
+        key: `${year}-${month + 1}-${date}`,
+        label: formatSessionTime(dayStartUTC, viewerTz, "EEEE"),
+        dateLabel: formatSessionTime(dayStartUTC, viewerTz, "MMM d"),
+        dayOfWeek: dayDate.getDay(),
+        availableTimeSlots: Array.from(slotsByTimestamp.entries())
+          .sort((a, b) => a[0] - b[0])
+          .map(([, label]) => label),
+      });
+    }
+
+    return days;
+  }, [availability, upcomingSessions, effectiveTutorTz, viewerTz]);
+
+  // Timezone-aware general schedule for "General Schedule" tab
+  const generalScheduleByDay = useMemo(() => {
+    return DAYS_OF_WEEK.map((day) => {
+      const daySlots = availability.filter(
+        (slot) => slot.dayOfWeek === day.value && slot.isActive
+      );
+
+      const convertedSlots = daySlots.map((slot) => {
+        const [startHour, startMinute] = slot.startTime.split(":").map(Number);
+        const [endHour, endMinute] = slot.endTime.split(":").map(Number);
+
+        // Use a fixed reference week (first week of Jan 2024) for display-only conversion
+        const startUTC = createTimestamp(2024, 0, 7 + slot.dayOfWeek, startHour, startMinute, effectiveTutorTz);
+        let endUTC = createTimestamp(2024, 0, 7 + slot.dayOfWeek, endHour, endMinute, effectiveTutorTz);
+        if (endUTC <= startUTC) endUTC += 24 * 60 * 60 * 1000;
+
+        const startLabel = formatSessionTime(startUTC, viewerTz, "h:mm a");
+        const endLabel = formatSessionTime(endUTC, viewerTz, "h:mm a");
+
+        return { id: slot.id, startTime: startLabel, endTime: endLabel };
+      });
+
+      return { ...day, slots: convertedSlots };
     });
+  }, [availability, effectiveTutorTz, viewerTz]);
 
-    return result;
-  };
+  const daysWithSlots = upcomingAvailabilityDays.filter((day) => {
+    // Only show days that have configured availability windows
+    const hasWindows = availability.some(
+      (slot) => slot.isActive && slot.dayOfWeek === day.dayOfWeek
+    );
+    return hasWindows;
+  });
 
-  const detailedSlotsByDay = calculateDetailedSlots();
-
-  const availabilityByDay = DAYS_OF_WEEK.map(day => ({
-    ...day,
-    slots: availability.filter(slot => slot.dayOfWeek === day.value && slot.isActive),
-    availableCount: detailedSlotsByDay[day.value]?.count || 0,
-    availableTimeSlots: detailedSlotsByDay[day.value]?.slots || [],
-  }));
+  const timezonesDiffer =
+    tutorTimezone && tutorTimezone !== viewerTz;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
+      <DialogContent className="max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
         <DialogHeader>
           <DialogTitle>
             {tutorName ? `${tutorName}'s Availability` : "Tutor Availability"}
@@ -123,6 +220,22 @@ export function TutorAvailabilityModal({
             <TabsTrigger value="general">General Schedule</TabsTrigger>
           </TabsList>
 
+          {/* Timezone Selector — shown below tabs */}
+          <div className="mt-3 px-1">
+            <div className="text-xs text-muted-foreground mb-1">
+              {timezonesDiffer
+                ? `Tutor's schedule is in ${tutorTimezone}. Slots shown in:`
+                : "Slots shown in:"}
+            </div>
+            <TimezoneSelector
+              value={viewerTz}
+              onChange={setViewerTz}
+              label=""
+              showDetected={false}
+              className="!space-y-0"
+            />
+          </div>
+
           <TabsContent value="this-week" className="flex-1 overflow-y-auto mt-4">
             <div className="space-y-4">
               <div className="flex items-center gap-2 text-sm text-muted-foreground mb-4">
@@ -131,14 +244,21 @@ export function TutorAvailabilityModal({
               </div>
 
               <div className="space-y-2">
-                {availabilityByDay
-                  .filter(day => day.slots.length > 0)
-                  .map(day => (
-                    <div key={day.value} className="border rounded-lg p-4">
+                {daysWithSlots.length === 0 ? (
+                  <p className="text-sm text-muted-foreground text-center py-4">
+                    No availability configured
+                  </p>
+                ) : (
+                  daysWithSlots.map((day) => (
+                    <div key={day.key} className="border rounded-lg p-4">
                       <div className="flex items-center justify-between mb-3">
-                        <span className="font-semibold text-base">{day.label}</span>
-                        <Badge variant={day.availableCount > 0 ? "default" : "secondary"}>
-                          {day.availableCount} {day.availableCount === 1 ? 'slot' : 'slots'} available
+                        <div>
+                          <span className="font-semibold text-base">{day.label}</span>
+                          <span className="text-sm text-muted-foreground ml-2">{day.dateLabel}</span>
+                        </div>
+                        <Badge variant={day.availableTimeSlots.length > 0 ? "default" : "secondary"}>
+                          {day.availableTimeSlots.length}{" "}
+                          {day.availableTimeSlots.length === 1 ? "slot" : "slots"} available
                         </Badge>
                       </div>
 
@@ -158,7 +278,8 @@ export function TutorAvailabilityModal({
                         <p className="text-sm text-muted-foreground">No available slots</p>
                       )}
                     </div>
-                  ))}
+                  ))
+                )}
               </div>
             </div>
           </TabsContent>
@@ -171,39 +292,42 @@ export function TutorAvailabilityModal({
               </div>
 
               <div className="space-y-3">
-                {DAYS_OF_WEEK.map(day => {
-                  const daySlots = availability.filter(slot => slot.dayOfWeek === day.value && slot.isActive);
-                  return (
-                    <div
-                      key={day.value}
-                      className={`flex items-start gap-4 p-4 rounded-lg border transition-colors ${
-                        daySlots.length > 0
-                          ? "bg-primary/5 border-primary/20"
-                          : "bg-muted/30 border-border"
-                      }`}
-                    >
-                      <div className="min-w-[100px]">
-                        <p className={`text-sm font-semibold ${daySlots.length > 0 ? "text-foreground" : "text-muted-foreground"}`}>
-                          {day.label}
-                        </p>
-                      </div>
-                      <div className="flex-1">
-                        {daySlots.length > 0 ? (
-                          <div className="space-y-1">
-                            {daySlots.map(slot => (
-                              <div key={slot.id} className="flex items-center gap-2 text-sm">
-                                <Clock className="w-3 h-3 text-primary" />
-                                <span>{slot.startTime} - {slot.endTime}</span>
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <p className="text-sm text-muted-foreground italic">Not available</p>
-                        )}
-                      </div>
+                {generalScheduleByDay.map((day) => (
+                  <div
+                    key={day.value}
+                    className={`flex items-start gap-4 p-4 rounded-lg border transition-colors ${
+                      day.slots.length > 0
+                        ? "bg-primary/5 border-primary/20"
+                        : "bg-muted/30 border-border"
+                    }`}
+                  >
+                    <div className="min-w-[100px]">
+                      <p
+                        className={`text-sm font-semibold ${
+                          day.slots.length > 0 ? "text-foreground" : "text-muted-foreground"
+                        }`}
+                      >
+                        {day.label}
+                      </p>
                     </div>
-                  );
-                })}
+                    <div className="flex-1">
+                      {day.slots.length > 0 ? (
+                        <div className="space-y-1">
+                          {day.slots.map((slot) => (
+                            <div key={slot.id} className="flex items-center gap-2 text-sm">
+                              <Clock className="w-3 h-3 text-primary" />
+                              <span>
+                                {slot.startTime} – {slot.endTime}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-sm text-muted-foreground italic">Not available</p>
+                      )}
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           </TabsContent>

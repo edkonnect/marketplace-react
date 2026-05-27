@@ -5660,45 +5660,55 @@ export const appRouter = router({
         )).sort().reverse();
         return { parentNames, studentNames, courseNames, months };
       }),
-     getLoginReport: adminProcedure
-  .query(async () => {
-    const allUsers = await db.getAllUsers();
-    const allSubs = await db.getAllSubscriptions();
-    const today = new Date();
-    today.setUTCHours(0, 0, 0, 0);
+    getLoginReport: adminProcedure
+      .query(async () => {
+        const allUsers = await db.getAllUsers();
+        const allSubs = await db.getAllSubscriptions();
+        const today = new Date();
+        today.setUTCHours(0, 0, 0, 0);
 
-    const parents = allUsers.filter(u => u.role === 'parent');
+        const parents = allUsers.filter(u => u.role === 'parent');
 
-    const subsByParent = new Map<number, string[]>();
-    for (const sub of allSubs as any[]) {
-      const parentId = sub.subscription?.parentId;
-      if (!parentId) continue;
-      const fn = sub.subscription?.studentFirstName || '';
-      const ln = sub.subscription?.studentLastName || '';
-      const name = `${fn} ${ln}`.trim();
-      if (!name) continue;
-      if (!subsByParent.has(parentId)) subsByParent.set(parentId, []);
-      subsByParent.get(parentId)!.push(name);
-    }
+        const subsByParent = new Map<number, string[]>();
+        for (const sub of allSubs as any[]) {
+          const parentId = sub.subscription?.parentId;
+          if (!parentId) continue;
+          const fn = sub.subscription?.studentFirstName || '';
+          const ln = sub.subscription?.studentLastName || '';
+          const name = `${fn} ${ln}`.trim();
+          if (!name) continue;
+          if (!subsByParent.has(parentId)) subsByParent.set(parentId, []);
+          subsByParent.get(parentId)!.push(name);
+        }
 
-    const results = parents.map((parent) => {
-      const students = [...new Set(subsByParent.get(parent.id) ?? [])];
-      const loggedInToday = parent.lastSignedIn
-        ? new Date(parent.lastSignedIn) >= today
-        : false;
+        const results = parents.map((parent) => {
+          const students = [...new Set(subsByParent.get(parent.id) ?? [])];
+          const loggedInToday = parent.lastSignedIn
+            ? new Date(parent.lastSignedIn) >= today
+            : false;
 
-      return {
-        id: parent.id,
-        parentName: parent.name || `${parent.firstName || ''} ${parent.lastName || ''}`.trim() || 'Unknown',
-        email: parent.email,
-        students,
-        loggedInToday,
-        lastLoginAt: parent.lastSignedIn ?? null,
-      };
-    });
+          return {
+            id: parent.id,
+            parentName: parent.name || `${(parent as any).firstName || ''} ${(parent as any).lastName || ''}`.trim() || 'Unknown',
+            email: parent.email,
+            students,
+            loggedInToday,
+            lastLoginAt: parent.lastSignedIn ?? null,
+          };
+        });
 
-    return results;
-  }),
+        return results;
+      }),
+
+    previewAcuitySync: adminProcedure.query(async () => {
+      const { previewAcuitySessions } = await import("./acuity-sync");
+      return await previewAcuitySessions();
+    }),
+
+    runAcuitySync: adminProcedure.mutation(async () => {
+      const { syncAcuitySessions } = await import("./acuity-sync");
+      return await syncAcuitySessions();
+    }),
   }),
 
   // Tutor Availability Management
