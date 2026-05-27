@@ -4201,7 +4201,7 @@ export const appRouter = router({
       }))
       .mutation(async ({ ctx, input }) => {
         const { default: Stripe } = await import('stripe');
-        const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: '2025-12-15.clover' });
+        const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: '2026-02-25.clover' });
         const origin = input.origin ?? `${ctx.req.protocol}://${ctx.req.get('host')}`;
 
         // Verify eligibility
@@ -5660,6 +5660,45 @@ export const appRouter = router({
         )).sort().reverse();
         return { parentNames, studentNames, courseNames, months };
       }),
+     getLoginReport: adminProcedure
+  .query(async () => {
+    const allUsers = await db.getAllUsers();
+    const allSubs = await db.getAllSubscriptions();
+    const today = new Date();
+    today.setUTCHours(0, 0, 0, 0);
+
+    const parents = allUsers.filter(u => u.role === 'parent');
+
+    const subsByParent = new Map<number, string[]>();
+    for (const sub of allSubs as any[]) {
+      const parentId = sub.subscription?.parentId;
+      if (!parentId) continue;
+      const fn = sub.subscription?.studentFirstName || '';
+      const ln = sub.subscription?.studentLastName || '';
+      const name = `${fn} ${ln}`.trim();
+      if (!name) continue;
+      if (!subsByParent.has(parentId)) subsByParent.set(parentId, []);
+      subsByParent.get(parentId)!.push(name);
+    }
+
+    const results = parents.map((parent) => {
+      const students = [...new Set(subsByParent.get(parent.id) ?? [])];
+      const loggedInToday = parent.lastSignedIn
+        ? new Date(parent.lastSignedIn) >= today
+        : false;
+
+      return {
+        id: parent.id,
+        parentName: parent.name || `${parent.firstName || ''} ${parent.lastName || ''}`.trim() || 'Unknown',
+        email: parent.email,
+        students,
+        loggedInToday,
+        lastLoginAt: parent.lastSignedIn ?? null,
+      };
+    });
+
+    return results;
+  }),
   }),
 
   // Tutor Availability Management
@@ -8768,3 +8807,4 @@ For engagementData, describe ONLY the student's participation and behavior. The 
 });
 
 export type AppRouter = typeof appRouter;
+

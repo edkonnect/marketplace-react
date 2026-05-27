@@ -42,6 +42,7 @@ import {
   Users,
   UserSquare2,
   Wallet,
+  ClipboardList,
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { DashboardLayoutSkeleton } from "./DashboardLayoutSkeleton";
@@ -64,6 +65,7 @@ export type AdminSection =
   | "email"
   | "referrals"
   | "session-notes"
+  | "login-report"
   | "security";
 
 type NavItem = {
@@ -92,6 +94,7 @@ const navGroups: NavGroup[] = [
       { icon: CalendarDays, label: "Sessions", section: "sessions" },
       { icon: Wallet, label: "Payout Requests", section: "payout-requests" },
       { icon: FileText, label: "Session Notes", section: "session-notes" },
+      { icon: ClipboardList, label: "Login Report", section: "login-report" },
     ],
   },
   {
