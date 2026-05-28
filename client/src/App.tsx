@@ -103,6 +103,7 @@ function Router() {
       <Route path={"/blog"} component={BlogListing} />
       <Route path={"/blog/:slug"} component={BlogPost} />
       <Route path={"/knowledge-portal"}>{() => { window.location.replace("/"); return null; }}</Route>
+      <Route path={"/faq"}>{() => { window.location.replace("/#faq"); return null; }}</Route>
       <Route path={"/404"} component={NotFound} />
       <Route component={NotFound} />
     </Switch>
