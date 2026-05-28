@@ -1047,11 +1047,13 @@ export default function CourseDetail() {
                                   size="sm"
                                   className="w-full xs:w-auto whitespace-nowrap"
                                   onClick={() => handleBookTrial(tutorAssignment.tutorId)}
-                                  disabled={!trialEligibility?.eligible}
+                                  disabled={isAuthenticated && !trialEligibility?.eligible}
                                 >
-                                  {trialEligibility?.eligible
-                                    ? `Book Trial Lesson (${trialEligibility.trialsRemaining}/2 left)`
-                                    : "Trial Limit Reached"
+                                  {!isAuthenticated
+                                    ? "Book Trial Lesson"
+                                    : trialEligibility?.eligible
+                                      ? `Book Trial Lesson (${trialEligibility.trialsRemaining}/2 left)`
+                                      : "Trial Limit Reached"
                                   }
                                 </Button>
                               </div>
