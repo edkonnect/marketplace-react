@@ -9,7 +9,15 @@ import "./index.css";
 import { AuthProvider, useAuthContext } from "./contexts/AuthContext";
 import { SuperUserProvider } from "./contexts/SuperUserContext";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 0,
+      refetchOnMount: true,
+      refetchOnWindowFocus: true,
+    },
+  },
+});
 
 let isRefreshing = false;
 
