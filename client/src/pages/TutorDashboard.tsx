@@ -383,17 +383,17 @@ export default function TutorDashboard() {
 
   const { data: subscriptions, isLoading: subsLoading, refetch: refetchSubscriptions } = trpc.subscription.mySubscriptionsAsTutor.useQuery(
     undefined,
-    { enabled: isAuthenticated && user?.role === "tutor" }
+    { enabled: isAuthenticated && user?.role === "tutor", staleTime: 0, refetchOnMount: true }
   );
 
   const { data: upcomingSessions, refetch: refetchUpcoming } = trpc.session.myUpcoming.useQuery(
     undefined,
-    { enabled: isAuthenticated && user?.role === "tutor" }
+    { enabled: isAuthenticated && user?.role === "tutor", staleTime: 0, refetchOnMount: true }
   );
 
   const { data: historySessions, isLoading: historyLoading, refetch: refetchHistory } = trpc.session.myHistory.useQuery(
     undefined,
-    { enabled: isAuthenticated && user?.role === "tutor" }
+    { enabled: isAuthenticated && user?.role === "tutor", staleTime: 0, refetchOnMount: true }
   );
 
   // Fetch all rubric grades for this tutor's sessions
