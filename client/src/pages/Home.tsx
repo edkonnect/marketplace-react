@@ -41,6 +41,8 @@ import {
   Sparkles,
   ChevronsUpDown,
   Check,
+  PlayCircle,
+  X,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { motion, type Variants } from "framer-motion";
@@ -347,6 +349,7 @@ export default function Home() {
     setTrialForm({ parentName: "", email: "", phone: "", childName: "", childGrade: "", courseName: "", preferredTime: "", message: "" });
   };
 
+  const [walkthroughOpen, setWalkthroughOpen] = useState(false);
   const [referralDialogOpen, setReferralDialogOpen] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
   const [emailCheckResult, setEmailCheckResult] = useState<{ available: boolean; reason: string | null } | null>(null);
@@ -625,6 +628,18 @@ export default function Home() {
                     onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-slate-950/10 via-transparent to-white/10" />
+
+                  {/* Play button — top-right corner */}
+                  <button
+                    onClick={() => setWalkthroughOpen(true)}
+                    aria-label="Watch platform walkthrough"
+                    className="absolute right-4 top-4 group flex items-center gap-2.5 rounded-full bg-white/90 pl-2 pr-4 py-2 shadow-[0_4px_20px_rgba(0,0,0,0.18)] backdrop-blur-sm transition-all duration-200 hover:bg-white hover:shadow-[0_6px_24px_rgba(37,99,235,0.3)] hover:scale-105 active:scale-95"
+                  >
+                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-600 shadow-md transition-all duration-200 group-hover:bg-blue-700">
+                      <PlayCircle className="h-5 w-5 text-white" />
+                    </div>
+                    <span className="text-xs font-semibold text-slate-800">Watch Platform Tour</span>
+                  </button>
                   <div className="absolute bottom-5 left-5 hidden max-w-[400px] items-start gap-3 rounded-2xl border border-violet-100 bg-white/95 p-4 shadow-[0_24px_55px_-30px_rgba(15,23,42,0.45)] sm:flex">
                     <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-violet-500 to-indigo-600 text-white shadow-md">
                       <Sparkles className="h-5 w-5" />
@@ -1382,6 +1397,33 @@ export default function Home() {
           </div>
         </div>
       </motion.section>
+
+      {/* Walkthrough Video Modal */}
+      {walkthroughOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
+          onClick={() => setWalkthroughOpen(false)}
+        >
+          <div
+            className="relative w-full max-w-4xl rounded-2xl overflow-hidden shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              onClick={() => setWalkthroughOpen(false)}
+              aria-label="Close video"
+              className="absolute right-3 top-3 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80 transition"
+            >
+              <X className="h-4 w-4" />
+            </button>
+            <video
+              src="https://edkonnect-tutor-profiles.s3.us-east-2.amazonaws.com/walkthrough_/Edkonnect_Platform_Walkthrough+(1).mp4"
+              controls
+              autoPlay
+              className="w-full aspect-video bg-black"
+            />
+          </div>
+        </div>
+      )}
 
       <Footer />
     </div>
