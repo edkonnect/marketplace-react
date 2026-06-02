@@ -42,6 +42,7 @@ const CALENDAR_TO_EMAIL: Record<number, string> = {
   12585605: "chintalapati.vrs@gmail.com",
   13801030: "sharved2508@gmail.com",
   12986707: "shafirasik757575@gmail.com",
+  9344460:  "brianolsen1127.work@gmail.com",
 };
 
 const APPT_TYPE_TO_COURSE: Record<number, number | null> = {
@@ -80,8 +81,36 @@ const APPT_TYPE_TO_COURSE: Record<number, number | null> = {
   74022709: null, 74023161: null,
   14792692: 25,
   38756951: 116, 38756927: 116,
+  // High School Math (US + CBSE + IG/IB)
   14691576: 299, 71128121: 299, 26804614: 299,
-35389891: 227, 71128157: 227, 35389384: 227, 35389295: 227, 35389450: 227, 48083214: 227,
+  // Biology (IB/IG/CBSE variants)
+  35389891: 227, 71128157: 227, 35389384: 227, 35389295: 227, 35389450: 227, 48083214: 227,
+  // Middle School Math (US)
+  14474827: 293,
+  // High School English (CBSE)
+  27314258: 116,
+  // Middle School English (CBSE + US)
+  27314289: 114, 38757538: 114,
+  // Elementary School English (US)
+  24510098: 115,
+  // Chemistry (CBSE)
+  28978757: 15,
+  // Middle School Science (CBSE)
+  33654551: null,
+  // SAT Foundation English
+  58068542: 25,
+  // Free Trial sessions
+  14701559: 1, 15690898: 25,
+  // Middle School Mathematics (CBSE)
+  26804574: 293,
+  // AP Statistics
+  87525059: 68,
+  // AP Calculus
+  71556848: 33,
+  // Additional half hour class
+  31198809: null,
+  // IELTS/TOEFL
+  31263147: 41, 31263177: 41,
 };
 
 async function fetchAppointments(minDate: string, maxDate: string, includeCanceled: boolean): Promise<any[]> {
@@ -119,7 +148,8 @@ export async function syncAcuitySessions(): Promise<{
   if (!database) throw new Error("DB not available");
 
   const today = new Date();
-  const minDate = today.toISOString().split("T")[0];
+  // Go back 30 days to catch recently-completed sessions that were missed
+  const minDate = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
   const maxDate = new Date(today.getTime() + 120 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
 
   console.log(`[AcuitySync] Syncing ${minDate} → ${maxDate}`);
@@ -190,11 +220,12 @@ export async function syncAcuitySessions(): Promise<{
     const studentLastName = (appt.lastName || "").trim() || null;
 
     try {
+      const status = scheduledAtMs < Date.now() ? 'completed' : 'scheduled';
       const result = await database.execute(sql`
         INSERT IGNORE INTO sessions
           (subscriptionId, tutorId, parentId, scheduledAt, duration, status, isTrial, courseId, meetingUrl, meetingPlatform, studentFirstName, studentLastName, acuityAppointmentId)
         VALUES
-          (${subscriptionId}, ${tutorId}, ${parentId}, ${scheduledAtMs}, ${duration}, 'scheduled', 0, ${courseId}, ${meetingUrl}, 'Zoom', ${studentFirstName}, ${studentLastName}, ${String(appt.id)})
+          (${subscriptionId}, ${tutorId}, ${parentId}, ${scheduledAtMs}, ${duration}, ${status}, 0, ${courseId}, ${meetingUrl}, 'Zoom', ${studentFirstName}, ${studentLastName}, ${String(appt.id)})
       `);
       const affectedRows = (result as any)[0]?.affectedRows ?? 0;
       if (affectedRows > 0) inserted++;
@@ -293,7 +324,7 @@ export async function previewAcuitySessions(): Promise<{
   if (!database) throw new Error("DB not available");
 
   const today = new Date();
-  const minDate = today.toISOString().split("T")[0];
+  const minDate = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
   const maxDate = new Date(today.getTime() + 120 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
 
   const allTutors = await database.select({ id: users.id, email: users.email, name: users.name }).from(users).where(eq(users.role, "tutor"));
