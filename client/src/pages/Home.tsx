@@ -1401,7 +1401,7 @@ export default function Home() {
       {/* Walkthrough Video Modal */}
       {walkthroughOpen && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-3 sm:p-6"
           onClick={() => setWalkthroughOpen(false)}
         >
           <div
@@ -1418,7 +1418,8 @@ export default function Home() {
             <video
               src="https://edkonnect-tutor-profiles.s3.us-east-2.amazonaws.com/walkthrough_/Edkonnect-Walkthrough.mp4"
               controls
-              autoPlay
+              playsInline
+              preload="metadata"
               className="w-full aspect-video bg-black"
             />
           </div>
