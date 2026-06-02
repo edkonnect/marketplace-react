@@ -1259,7 +1259,7 @@ export default function Home() {
                   </div>
                   <div className="flex flex-col gap-0.5">
                     <span>Email</span>
-                    <a href="mailto:contact@edkonnect-academy.com" className="font-semibold text-foreground hover:text-primary transition-colors">contact@edkonnect-academy.com</a>
+                    <a href="mailto:admin@edkonnect-academy.com" className="font-semibold text-foreground hover:text-primary transition-colors">admin@edkonnect-academy.com</a>
                   </div>
                 </div>
 

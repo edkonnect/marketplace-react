@@ -1235,7 +1235,7 @@ export function getTrialRequestConfirmationEmail(params: {
     </ul>
     <p style="margin:0; color:#6b7280; font-size:13px;">
       If you have any questions, reply to this email or contact us at
-      <a href="mailto:contact@edkonnect-academy.com" style="color:#2563eb;">contact@edkonnect-academy.com</a>.
+      <a href="mailto:admin@edkonnect-academy.com" style="color:#2563eb;">admin@edkonnect-academy.com</a>.
     </p>
   `;
 

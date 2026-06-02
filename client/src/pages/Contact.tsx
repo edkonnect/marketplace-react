@@ -87,16 +87,16 @@ export default function Contact() {
                       <span className="font-medium text-foreground">Email</span>
                     </div>
                     <a
-                      href="mailto:contact@edkonnect-academy.com"
+                      href="mailto:admin@edkonnect-academy.com"
                       className="pl-5 font-semibold text-primary hover:underline transition-colors break-all"
                     >
-                      contact@edkonnect-academy.com
+                      admin@edkonnect-academy.com
                     </a>
                   </div>
                 </div>
 
                 <Button asChild className="w-full gap-2">
-                  <a href="mailto:contact@edkonnect-academy.com">
+                  <a href="mailto:admin@edkonnect-academy.com">
                     <Mail className="w-4 h-4" />
                     Email Us
                   </a>
@@ -149,11 +149,11 @@ export default function Contact() {
           </div>
           <div className="hidden sm:block w-px h-8 bg-border/60" />
           <a
-            href="mailto:contact@edkonnect-academy.com"
+            href="mailto:admin@edkonnect-academy.com"
             className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline"
           >
             <Mail className="w-3.5 h-3.5" />
-            contact@edkonnect-academy.com
+            admin@edkonnect-academy.com
           </a>
         </div>
       </div>
