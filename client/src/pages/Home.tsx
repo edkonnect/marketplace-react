@@ -638,7 +638,7 @@ export default function Home() {
                     <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-600 shadow-md transition-all duration-200 group-hover:bg-blue-700">
                       <PlayCircle className="h-5 w-5 text-white" />
                     </div>
-                    <span className="text-xs font-semibold text-slate-800">Watch Platform Tour</span>
+                    <span className="text-xs font-semibold text-slate-800">Watch our Platform Demo</span>
                   </button>
                   <div className="absolute bottom-5 left-5 hidden max-w-[400px] items-start gap-3 rounded-2xl border border-violet-100 bg-white/95 p-4 shadow-[0_24px_55px_-30px_rgba(15,23,42,0.45)] sm:flex">
                     <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-violet-500 to-indigo-600 text-white shadow-md">
