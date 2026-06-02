@@ -1416,7 +1416,7 @@ export default function Home() {
               <X className="h-4 w-4" />
             </button>
             <video
-              src="https://edkonnect-tutor-profiles.s3.us-east-2.amazonaws.com/walkthrough_/Edkonnect_Platform_Walkthrough+(1).mp4"
+              src="https://edkonnect-tutor-profiles.s3.us-east-2.amazonaws.com/walkthrough_/Edkonnect_Platform_Walkthrough%2B(1).mp4"
               controls
               autoPlay
               className="w-full aspect-video bg-black"
