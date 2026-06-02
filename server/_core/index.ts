@@ -52,6 +52,7 @@ async function startServer() {
           imgSrc: ["'self'", "data:", "blob:", "https://*.amazonaws.com", "https://www.googletagmanager.com", "https://www.google-analytics.com", "https://googleads.g.doubleclick.net", "https://images.unsplash.com"],
           connectSrc: ["'self'", "https://*.amazonaws.com", "https://www.google-analytics.com", "https://analytics.google.com", "https://stats.g.doubleclick.net", "https://region1.google-analytics.com", ...(ENV.referralAppUrl ? [ENV.referralAppUrl] : [])],
           fontSrc: ["'self'", "data:", "https://fonts.gstatic.com"],
+          mediaSrc: ["'self'", "https://*.amazonaws.com"],
           objectSrc: ["'none'"],
           frameAncestors: ["'none'"],
         },
