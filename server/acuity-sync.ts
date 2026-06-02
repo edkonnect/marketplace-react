@@ -80,6 +80,8 @@ const APPT_TYPE_TO_COURSE: Record<number, number | null> = {
   74022709: null, 74023161: null,
   14792692: 25,
   38756951: 116, 38756927: 116,
+  14691576: 299, 71128121: 299, 26804614: 299,
+35389891: 227, 71128157: 227, 35389384: 227, 35389295: 227, 35389450: 227, 48083214: 227,
 };
 
 async function fetchAppointments(minDate: string, maxDate: string, includeCanceled: boolean): Promise<any[]> {
