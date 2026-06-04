@@ -35,8 +35,19 @@ export function CoordinatorManager() {
   const parents = usersData?.users || [];
 
   const createCoordinatorMutation = trpc.coordinators.create.useMutation({
-    onSuccess: () => {
-      toast.success("Coordinator created successfully");
+    onSuccess: (data) => {
+      if (data.emailSent) {
+        toast.success("Coordinator created! Password setup email sent.");
+      } else {
+        // Email failed — copy setup link so admin can share manually
+        if (data.setupLink) {
+          navigator.clipboard.writeText(data.setupLink).catch(() => {});
+          toast.warning("Coordinator created but email failed. Setup link copied to clipboard!", { duration: 8000 });
+          console.log("Password setup link:", data.setupLink);
+        } else {
+          toast.error("Coordinator created but failed to generate setup link. Use 'Send Password Link' button.");
+        }
+      }
       setIsCreateDialogOpen(false);
       setCreateForm({
         email: "",

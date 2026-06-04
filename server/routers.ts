@@ -6585,19 +6585,24 @@ export const appRouter = router({
           throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to create coordinator profile' });
         }
 
+        let setupLink: string | undefined;
+        let emailSent = false;
         try {
           const setupToken = await db.createPasswordSetupToken(user.id);
           if (setupToken) {
-            const setupUrl = `${process.env.VITE_FRONTEND_FORGE_API_URL || 'http://localhost:3000'}/setup-password?token=${setupToken}`;
+            setupLink = `${process.env.VITE_FRONTEND_FORGE_API_URL || 'http://localhost:3000'}/setup-password?token=${setupToken}`;
             const expiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000); // 48 hours from now
 
             const { sendCoordinatorPasswordSetupEmail } = await import('./emails/email-helpers');
-            const emailSent = await sendCoordinatorPasswordSetupEmail({
+            emailSent = await sendCoordinatorPasswordSetupEmail({
               coordinatorEmail: user.email,
               coordinatorName: `${user.firstName} ${user.lastName}`,
-              setupUrl,
+              setupUrl: setupLink,
               expiresAt,
             });
+            if (!emailSent) {
+              console.error('[Coordinator Creation] Email service returned false for:', user.email);
+            }
           }
         } catch (emailError) {
           console.error('[Coordinator Creation] Failed to send password setup email:', emailError);
@@ -6608,7 +6613,11 @@ export const appRouter = router({
         return {
           success: true,
           coordinatorId: user.id,
-          message: 'Coordinator created successfully. Password setup email sent.'
+          emailSent,
+          setupLink,
+          message: emailSent
+            ? 'Coordinator created successfully. Password setup email sent.'
+            : 'Coordinator created. Email failed — use the setup link below to share manually.',
         };
       }),
 

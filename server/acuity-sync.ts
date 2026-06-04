@@ -9,8 +9,8 @@
  */
 
 import { getDb } from "./db";
-import { users, sessions, subscriptions } from "../drizzle/schema";
-import { eq, and, sql } from "drizzle-orm";
+import { users, subscriptions } from "../drizzle/schema";
+import { eq, sql } from "drizzle-orm";
 
 const ACUITY_USER_ID = "18852823";
 const ACUITY_API_KEY = "bc59ae0823601e5a1ce172dab15221c7";
@@ -83,7 +83,7 @@ const APPT_TYPE_TO_COURSE: Record<number, number | null> = {
   38756951: 116, 38756927: 116,
   // High School Math (US + CBSE + IG/IB)
   14691576: 299, 71128121: 299, 26804614: 299,
-  // Biology (IB/IG/CBSE variants)
+  // Biology (US + IB/IG/CBSE variants)
   35389891: 227, 71128157: 227, 35389384: 227, 35389295: 227, 35389450: 227, 48083214: 227,
   // Middle School Math (US)
   14474827: 293,
