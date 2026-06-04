@@ -131,6 +131,11 @@ async function startServer() {
     res.redirect(301, "https://promote.edkonnect-academy.com");
   });
 
+  // Test platform redirect
+app.get("/mytest", (_req, res) => {
+  res.redirect(301, "https://test.edkonnect-academy.com");
+});
+
   // development mode uses Vite, production mode uses static files
   if (process.env.NODE_ENV === "development") {
     await setupVite(app, server);

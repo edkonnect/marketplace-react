@@ -63,6 +63,11 @@ export default function Footer() {
                   Cancel Subscription
                 </button>
               </li>
+              <li>
+  <a href="/mytest" className="hover:text-primary transition-colors">
+    Take your test
+  </a>
+</li>
             </ul>
           </div>
 
