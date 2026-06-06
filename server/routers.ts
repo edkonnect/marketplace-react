@@ -7759,7 +7759,7 @@ For engagementData, describe ONLY the student's participation and behavior. The 
           nextPageToken = data.next_page_token;
         } while (nextPageToken);
 
-        const TOLERANCE_MS = 40 * 60 * 1000; // same window as auto-detection
+        const TOLERANCE_MS = 6 * 60 * 60 * 1000; // 6 hours — covers tutors who start Zoom early
 
         return allMeetings
           .filter(m => String(m.id) === String(meetingId))

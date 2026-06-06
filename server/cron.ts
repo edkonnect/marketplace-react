@@ -183,7 +183,7 @@ export function startAcuitySyncCron(intervalMinutes: number = 60) {
     console.log("[Cron] Running Acuity session sync...");
     try {
       const result = await syncAcuitySessions();
-      console.log(`[Cron] Acuity sync complete — inserted: ${result.inserted}, cancelled: ${result.cancelled}, skipped: ${result.skipped}`);
+      console.log(`[Cron] Acuity sync complete — inserted: ${result.inserted}, updated: ${result.updated}, cancelled: ${result.cancelled}, skipped: ${result.skipped}`);
     } catch (err: any) {
       console.error("[Cron] Acuity sync failed:", err?.message);
     }
