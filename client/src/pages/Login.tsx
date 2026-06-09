@@ -179,14 +179,14 @@ export default function Login() {
                 onClick={() => setShowResendSetup(!showResendSetup)}
                 className="text-primary hover:underline"
               >
-                Haven't received your account setup link?
+                Haven't received your verification or setup email?
               </button>
             </div>
 
             {showResendSetup && (
               <div className="mt-4 p-4 bg-muted rounded-md">
                 <p className="text-sm mb-2 text-muted-foreground">
-                  Enter your email to receive a new setup link:
+                  Enter your email and we'll send the appropriate link:
                 </p>
                 <form onSubmit={handleResendSetup} className="space-y-2">
                   <input

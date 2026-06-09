@@ -449,47 +449,56 @@ authRouter.post("/resend-setup-link", async (req, res) => {
   }
 
   const { email } = parseResult.data;
+  const genericOk = { success: true, message: "If an account exists for this email, we've sent the appropriate link." };
 
   // Find user by email
   const user = await db.getUserByEmail(email);
   if (!user) {
-    // Don't reveal if email exists - security best practice
-    return res.json({
-      success: true,
-      message: "If an approved account exists for this email, a setup link has been sent."
-    });
+    return res.json(genericOk);
   }
 
-  // Check if account setup is already complete
+  // Parent/coordinator: resend email verification link
+  if (user.role === 'parent' || user.role === 'coordinator') {
+    if (user.emailVerified) {
+      return res.json({ success: true, message: "Your email is already verified. Please use the login page." });
+    }
+    try {
+      const token = await db.createEmailVerificationToken(user.id);
+      if (token) {
+        const verificationUrl = `${process.env.VITE_FRONTEND_FORGE_API_URL || 'http://localhost:3000'}/api/auth/verify-email?token=${token.token}`;
+        await sendVerificationEmail({
+          userEmail: user.email,
+          userName: user.name || user.email,
+          verificationUrl,
+          expiresAt: token.expiresAt,
+        });
+        console.log('[ResendSetupLink] Verification email sent to:', user.email);
+      }
+    } catch (error) {
+      console.error('[ResendSetupLink] Failed to send verification email:', error);
+      return res.status(500).json({ error: "Failed to send verification email. Please try again later." });
+    }
+    return res.json(genericOk);
+  }
+
+  // Tutor: resend password setup link (only if approved and setup not complete)
   if (user.accountSetupComplete) {
-    return res.json({
-      success: true,
-      message: "Your account is already set up. Please use the login page."
-    });
+    return res.json({ success: true, message: "Your account is already set up. Please use the login page." });
   }
 
-  // Check if user has approved tutor profile
   const tutorProfile = await db.getTutorProfileByUserId(user.id);
   if (!tutorProfile || tutorProfile.approvalStatus !== 'approved') {
-    // Don't reveal profile status - security
-    return res.json({
-      success: true,
-      message: "If an approved account exists for this email, a setup link has been sent."
-    });
+    return res.json(genericOk);
   }
 
-  // Generate new setup token
   const setupToken = await db.createPasswordSetupToken(user.id);
   if (!setupToken) {
-    return res.status(500).json({
-      error: "Failed to generate setup link. Please try again later."
-    });
+    return res.status(500).json({ error: "Failed to generate setup link. Please try again later." });
   }
 
   const setupUrl = `${process.env.VITE_FRONTEND_FORGE_API_URL || 'http://localhost:3000'}/setup-password?token=${setupToken}`;
   const expiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000);
 
-  // Send email
   try {
     const { sendPasswordSetupEmail } = await import('../../emails/email-helpers');
     const emailSent = await sendPasswordSetupEmail({
@@ -500,21 +509,15 @@ authRouter.post("/resend-setup-link", async (req, res) => {
     });
     if (!emailSent) {
       console.error('[ResendSetupLink] Email service returned false for:', user.email);
-      return res.status(500).json({
-        error: "Failed to send setup link. Please try again later."
-      });
+      return res.status(500).json({ error: "Failed to send setup link. Please try again later." });
     }
+    console.log('[ResendSetupLink] Password setup email sent to:', user.email);
   } catch (error) {
     console.error('[ResendSetupLink] Failed to send email:', error);
-    return res.status(500).json({
-      error: "Failed to send setup link. Please try again later."
-    });
+    return res.status(500).json({ error: "Failed to send setup link. Please try again later." });
   }
 
-  res.json({
-    success: true,
-    message: "If an approved account exists for this email, a setup link has been sent."
-  });
+  res.json(genericOk);
 });
 
 // Per-admin brute-force protection: 5 failed attempts locks out for 15 minutes
