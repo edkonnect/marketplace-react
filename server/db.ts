@@ -5643,6 +5643,15 @@ export async function getParentTutorConversationsForCoordinator(coordinatorId: n
   const db = await getDb();
   if (!db) return [];
 
+  // Get all parent IDs assigned to this coordinator first
+  const assignments = await db
+    .select({ parentId: coordinatorAssignments.parentId })
+    .from(coordinatorAssignments)
+    .where(eq(coordinatorAssignments.coordinatorId, coordinatorId));
+
+  if (assignments.length === 0) return [];
+  const parentIds = assignments.map(a => a.parentId);
+
   const parentUser = alias(users, "parent_user");
   const tutorUser = alias(users, "tutor_user");
 
@@ -5661,7 +5670,7 @@ export async function getParentTutorConversationsForCoordinator(coordinatorId: n
     .leftJoin(tutorUser, eq(conversations.tutorId, tutorUser.id))
     .where(
       and(
-        eq(conversations.coordinatorId, coordinatorId),
+        inArray(conversations.parentId, parentIds),
         inArray(conversations.conversationType, ['parent_tutor', 'parent_tutor_inquiry'] as any[])
       )
     )
