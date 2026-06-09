@@ -5637,6 +5637,38 @@ export async function getCoordinatorParentConversations(coordinatorId: number) {
 }
 
 /**
+ * Get all parent↔tutor conversations for a coordinator's assigned parents (read-only view).
+ */
+export async function getParentTutorConversationsForCoordinator(coordinatorId: number) {
+  const db = await getDb();
+  if (!db) return [];
+
+  const parentUser = alias(users, "parent_user");
+  const tutorUser = alias(users, "tutor_user");
+
+  return await db
+    .select({
+      conversationId: conversations.id,
+      parentId: conversations.parentId,
+      parentName: parentUser.name,
+      tutorId: conversations.tutorId,
+      tutorName: tutorUser.name,
+      lastMessageAt: conversations.lastMessageAt,
+      conversationType: conversations.conversationType,
+    })
+    .from(conversations)
+    .innerJoin(parentUser, eq(conversations.parentId, parentUser.id))
+    .leftJoin(tutorUser, eq(conversations.tutorId, tutorUser.id))
+    .where(
+      and(
+        eq(conversations.coordinatorId, coordinatorId),
+        inArray(conversations.conversationType, ['parent_tutor', 'parent_tutor_inquiry'] as any[])
+      )
+    )
+    .orderBy(desc(conversations.lastMessageAt));
+}
+
+/**
  * Get parent's coordinator conversation with unread count
  */
 export async function getParentCoordinatorConversation(parentId: number) {

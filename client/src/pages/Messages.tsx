@@ -1443,11 +1443,16 @@ export default function Messages() {
                                     </div>
                                     <button
                                       title="Download"
-                                      onClick={() => {
-                                        const a = document.createElement('a');
-                                        a.href = msg.fileUrl!;
-                                        a.download = msg.fileName!;
-                                        a.click();
+                                      onClick={async () => {
+                                        try {
+                                          const result = await utils.messaging.getMessageFileUrl.fetch({ fileUrl: msg.fileUrl! });
+                                          const a = document.createElement('a');
+                                          a.href = result.url;
+                                          a.download = msg.fileName!;
+                                          a.click();
+                                        } catch {
+                                          window.open(msg.fileUrl!, '_blank');
+                                        }
                                       }}
                                       className={`flex-shrink-0 p-1 rounded hover:bg-black/10 transition-colors`}
                                     >

@@ -3498,6 +3498,20 @@ export const appRouter = router({
         };
       }),
 
+    // Returns a short-lived presigned URL so message file attachments can be
+    // downloaded without exposing the raw private S3 URL to the client.
+    getMessageFileUrl: protectedProcedure
+      .input(z.object({ fileUrl: z.string() }))
+      .query(async ({ input }) => {
+        const { getCourseFilePresignedUrl } = await import('./storage/s3Storage');
+        // Extract the S3 key from the stored URL (everything after the bucket hostname)
+        const match = input.fileUrl.match(/amazonaws\.com\/(.+)$/);
+        if (!match) return { url: input.fileUrl }; // non-S3 URL, return as-is
+        const key = match[1];
+        const url = await getCourseFilePresignedUrl(key, input.fileUrl);
+        return { url };
+      }),
+
     // Student-Tutor Messaging
     getStudentsWithTutors: parentProcedure.query(async ({ ctx }) => {
       return await db.getStudentsWithTutors(ctx.user.id);
@@ -3567,6 +3581,11 @@ export const appRouter = router({
     getCoordinatorParentConversations: coordinatorProcedure.query(async ({ ctx }) => {
       // Get all parent-coordinator conversations for this coordinator
       return await db.getCoordinatorParentConversations(ctx.user.id);
+    }),
+
+    // Read-only view of parent↔tutor conversations for this coordinator's assigned parents.
+    getParentTutorConversationsForCoordinator: coordinatorProcedure.query(async ({ ctx }) => {
+      return await db.getParentTutorConversationsForCoordinator(ctx.user.id);
     }),
 
     getParentCoordinatorConversation: parentProcedure.query(async ({ ctx }) => {
