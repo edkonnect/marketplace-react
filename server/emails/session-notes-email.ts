@@ -168,12 +168,15 @@ export async function sendSessionNotesEmail(data: SessionNotesEmailData): Promis
                 </h3>
                 ${data.attachments.map(att => `
                   <div style="margin: 8px 0; padding: 12px; background-color: white; border-radius: 6px; border: 1px solid #e0e0e0;">
-                    <a href="${att.fileUrl}" style="color: ${primaryColor}; text-decoration: none; font-size: 15px; display: block; font-weight: 500;">
+                    <a href="${data.notesUrl}" style="color: ${primaryColor}; text-decoration: none; font-size: 15px; display: block; font-weight: 500;">
                       📄 ${att.fileName}
                       <span style="color: #666666; font-size: 13px; margin-left: 8px; font-weight: normal;">(${formatFileSize(att.fileSize)})</span>
                     </a>
                   </div>
                 `).join('')}
+                <p style="margin: 12px 0 0 0; color: #666666; font-size: 13px;">
+                  Sign in to view or download attachments.
+                </p>
               </div>
             </td>
           </tr>
