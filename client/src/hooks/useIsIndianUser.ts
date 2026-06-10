@@ -9,8 +9,8 @@ export function useIsIndianUser(): boolean {
   const { user } = useAuthContext();
 
   // Logged-in user: always use their saved timezone from DB — never fall back to browser
-  if (user !== undefined) {
-    return isAsiaTz(user?.timezone);
+  if (user !== undefined && user !== null) {
+    return isAsiaTz(user.timezone);
   }
 
   // Logged-out visitor: check browser timezone
