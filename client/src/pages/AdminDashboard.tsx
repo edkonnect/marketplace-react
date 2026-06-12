@@ -180,6 +180,8 @@ function CourseFilesAdminPanel() {
     onSuccess: () => { refetchFiles(); resetUpload(); toast.success("File uploaded successfully"); },
   });
   const deleteFileMutation = trpc.fileManagement.deleteFile.useMutation({ onSuccess: () => { refetchFiles(); toast.success("File deleted"); } });
+
+  const updateFileMutation = trpc.fileManagement.updateFile.useMutation({ onSuccess: () => { refetchFiles(); setEditDialogFile(null); toast.success("File updated"); } });
   const assignTutorsMutation = trpc.fileManagement.assignFileToTutors.useMutation({ onSuccess: () => { refetchFiles(); setAssignDialogFileId(null); toast.success("Tutors assigned"); } });
 
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
@@ -191,6 +193,10 @@ function CourseFilesAdminPanel() {
   const [assignDialogFileId, setAssignDialogFileId] = useState<number | null>(null);
   const [selectedTutorIds, setSelectedTutorIds] = useState<number[]>([]);
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
+  const [editDialogFile, setEditDialogFile] = useState<any | null>(null);
+const [editTitle, setEditTitle] = useState("");
+const [editDescription, setEditDescription] = useState("");
+const [editCourseId, setEditCourseId] = useState<string>("");
   const [fileSearch, setFileSearch] = useState("");
   const [filterCourseId, setFilterCourseId] = useState<string>("all");
 
@@ -456,10 +462,11 @@ function CourseFilesAdminPanel() {
                       </td>
                       <td className="py-2 pr-4 text-muted-foreground">{new Date(row.file.createdAt).toLocaleDateString()}</td>
                       <td className="py-2">
-                        <div className="flex gap-2">
-                          <Button size="sm" variant="outline" onClick={() => openAssignDialog(row.file.id)}>Assign Tutors</Button>
-                          <Button size="sm" variant="ghost" onClick={() => setDeleteConfirmId(row.file.id)}><Trash2 className="w-4 h-4 text-destructive" /></Button>
-                        </div>
+                       <div className="flex gap-2">
+  <Button size="sm" variant="outline" onClick={() => openAssignDialog(row.file.id)}>Assign Tutors</Button>
+  <Button size="sm" variant="outline" onClick={() => { setEditDialogFile(row.file); setEditTitle(row.file.title); setEditDescription(row.file.description ?? ""); setEditCourseId(row.file.courseId ? String(row.file.courseId) : ""); }}>Edit</Button>
+  <Button size="sm" variant="ghost" onClick={() => setDeleteConfirmId(row.file.id)}><Trash2 className="w-4 h-4 text-destructive" /></Button>
+</div>
                       </td>
                     </tr>
                   ))}
@@ -502,7 +509,38 @@ function CourseFilesAdminPanel() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
+        <Dialog open={editDialogFile !== null} onOpenChange={open => { if (!open) setEditDialogFile(null); }}>
+  <DialogContent className="max-w-md">
+    <DialogHeader>
+      <DialogTitle>Edit File</DialogTitle>
+    </DialogHeader>
+    <div className="space-y-4 py-2">
+      <div className="space-y-2">
+        <Label>Title</Label>
+        <Input value={editTitle} onChange={e => setEditTitle(e.target.value)} />
+      </div>
+      <div className="space-y-2">
+        <Label>Description (optional)</Label>
+        <Textarea value={editDescription} onChange={e => setEditDescription(e.target.value)} rows={2} />
+      </div>
+      <div className="space-y-2">
+        <Label>Course (optional)</Label>
+        <select value={editCourseId} onChange={e => setEditCourseId(e.target.value)} className="w-full border border-input rounded-md px-3 py-2 text-sm bg-background">
+          <option value="">— No course —</option>
+          {coursesList.map((c: any) => (
+            <option key={c.id} value={String(c.id)}>{c.name}</option>
+          ))}
+        </select>
+      </div>
+    </div>
+    <DialogFooter>
+      <Button variant="outline" onClick={() => setEditDialogFile(null)}>Cancel</Button>
+      <Button disabled={updateFileMutation.isPending || !editTitle.trim()} onClick={() => updateFileMutation.mutate({ fileId: editDialogFile.id, title: editTitle.trim(), description: editDescription.trim() || undefined, courseId: editCourseId ? parseInt(editCourseId) : null })}>
+        {updateFileMutation.isPending ? "Saving..." : "Save Changes"}
+      </Button>
+    </DialogFooter>
+  </DialogContent>
+</Dialog>
       <Dialog open={deleteConfirmId !== null} onOpenChange={open => { if (!open) setDeleteConfirmId(null); }}>
         <DialogContent className="max-w-sm">
           <DialogHeader>

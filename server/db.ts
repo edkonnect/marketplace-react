@@ -6286,6 +6286,12 @@ export async function deleteCourseFile(fileId: number): Promise<void> {
   await db.delete(courseFiles).where(eq(courseFiles.id, fileId));
 }
 
+export async function updateCourseFile(fileId: number, data: { title: string; description: string | null; courseId: number | null }): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(courseFiles).set({ title: data.title, description: data.description, courseId: data.courseId }).where(eq(courseFiles.id, fileId));
+}
+
 export async function assignCourseFileToTutors(
   fileId: number,
   tutorIds: number[],

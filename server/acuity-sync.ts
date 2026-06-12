@@ -24,8 +24,6 @@ const ACUITY_API_KEY = "bc59ae0823601e5a1ce172dab15221c7";
 const ACUITY_BASE = "https://acuityscheduling.com/api/v1";
 const AUTH = Buffer.from(`${ACUITY_USER_ID}:${ACUITY_API_KEY}`).toString("base64");
 
-<<<<<<< HEAD
-=======
 const CALENDAR_TO_EMAIL: Record<number, string> = {
   9518516:  "dolon.mukherjee.2011@gmail.com",
   13134669: "bichuskumar8@gmail.com",
@@ -123,7 +121,6 @@ const APPT_TYPE_TO_COURSE: Record<number, number | null> = {
   30863827: 163,
 };
 
->>>>>>> edb855f (fix: map Physics Private Session appointment type to course 163)
 async function fetchAppointments(minDate: string, maxDate: string, includeCanceled: boolean): Promise<any[]> {
   const params = new URLSearchParams({ minDate, maxDate, max: "2000" });
   if (includeCanceled) params.set("canceled", "true");

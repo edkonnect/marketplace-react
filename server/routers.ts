@@ -8742,6 +8742,27 @@ For engagementData, describe ONLY the student's participation and behavior. The 
         return { success: true };
       }),
 
+      updateFile: adminProcedure
+  .input(z.object({
+    fileId: z.number(),
+    title: z.string().min(1),
+    description: z.string().optional(),
+    courseId: z.number().optional().nullable(),
+  }))
+  .mutation(async ({ input }) => {
+    const file = await db.getCourseFileById(input.fileId);
+    if (!file) throw new TRPCError({ code: "NOT_FOUND", message: "File not found." });
+    await db.updateCourseFile(input.fileId, {
+      title: input.title,
+      description: input.description ?? null,
+      courseId: input.courseId ?? null,
+    });
+    return { success: true };
+  }),
+
+
+
+
     assignFileToTutors: adminProcedure
       .input(z.object({
         fileId: z.number(),
