@@ -180,7 +180,7 @@ function CourseFilesAdminPanel() {
     onSuccess: () => { refetchFiles(); resetUpload(); toast.success("File uploaded successfully"); },
   });
   const deleteFileMutation = trpc.fileManagement.deleteFile.useMutation({ onSuccess: () => { refetchFiles(); toast.success("File deleted"); } });
-
+   const utils = trpc.useUtils();
   const updateFileMutation = trpc.fileManagement.updateFile.useMutation({ onSuccess: () => { refetchFiles(); setEditDialogFile(null); toast.success("File updated"); } });
   const assignTutorsMutation = trpc.fileManagement.assignFileToTutors.useMutation({ onSuccess: () => { refetchFiles(); setAssignDialogFileId(null); toast.success("Tutors assigned"); } });
 
@@ -464,8 +464,12 @@ const [editCourseId, setEditCourseId] = useState<string>("");
                       <td className="py-2">
                        <div className="flex gap-2">
   <Button size="sm" variant="outline" onClick={() => openAssignDialog(row.file.id)}>Assign Tutors</Button>
-  <Button size="sm" variant="outline" onClick={() => { setEditDialogFile(row.file); setEditTitle(row.file.title); setEditDescription(row.file.description ?? ""); setEditCourseId(row.file.courseId ? String(row.file.courseId) : ""); }}>Edit</Button>
-  <Button size="sm" variant="ghost" onClick={() => setDeleteConfirmId(row.file.id)}><Trash2 className="w-4 h-4 text-destructive" /></Button>
+  <Button size="sm" variant="outline" onClick={async () => {
+  const result = await utils.fileManagement.getPresignedUrl.fetch({ fileKey: row.file.fileKey, fileUrl: row.file.fileUrl });
+  window.open(result.url, '_blank');
+}}>View</Button>
+<Button size="sm" variant="outline" onClick={() => { setEditDialogFile(row.file); setEditTitle(row.file.title); setEditDescription(row.file.description ?? ""); setEditCourseId(row.file.courseId ? String(row.file.courseId) : ""); }}>Edit</Button>
+<Button size="sm" variant="ghost" onClick={() => setDeleteConfirmId(row.file.id)}><Trash2 className="w-4 h-4 text-destructive" /></Button>
 </div>
                       </td>
                     </tr>
