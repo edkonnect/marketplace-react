@@ -118,7 +118,7 @@ export default function Navigation() {
           <div className="flex items-center justify-between h-16 px-6">
           {/* Logo */}
           <Link href="/" className="flex items-center gap-2 text-xl font-semibold text-primary hover:text-primary/80 transition-colors">
-            <GraduationCap className="w-8 h-8" />
+            <img src="/images/Edkonnect_legacy_image.jpg" alt="EdKonnect" className="h-8 w-auto" />
             <span>EdKonnect Academy</span>
           </Link>
 
