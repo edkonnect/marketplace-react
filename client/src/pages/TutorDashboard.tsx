@@ -602,6 +602,7 @@ export default function TutorDashboard() {
     parentId?: number;
     quizEnabled?: boolean;
     editable?: boolean;
+     recordingId?: string;
     grades?: RubricGrade[];
     overallScore?: number;
     overallNarrative?: string;
@@ -642,6 +643,10 @@ export default function TutorDashboard() {
   });
   const [progressSuggestionModal, setProgressSuggestionModal] = useState<null | { subscriptionId: number; studentName: string; courseTitle: string }>(null);
 
+   const updateTranscriptMutation = trpc.zoom.updateTranscript.useMutation({
+    onSuccess: () => toast.success("Transcript saved!"),
+    onError: (e) => toast.error("Failed to save transcript: " + e.message),
+  });
   const fetchTranscriptMutation = trpc.zoom.fetchTranscript.useMutation({
     onSuccess: (data, variables) => {
       const sessionId = variables.sessionId || 0;
@@ -666,6 +671,8 @@ export default function TutorDashboard() {
         courseId: session?.courseId ?? undefined,
         parentId: session?.parentId ?? undefined,
         quizEnabled: !!(session as any)?.courseQuizEnabled && !(session as any)?.hasQuiz,
+        editable: true,
+          recordingId: data.recordingId,
       });
       toast.success("Transcript loaded. Review it in the popup.");
     },
@@ -2771,12 +2778,28 @@ export default function TutorDashboard() {
               {/* Transcript Tab */}
               <TabsContent value="transcript" className="flex-1 flex flex-col gap-4 min-h-0 mt-4 overflow-y-auto pr-1">
                 {transcriptModal.editable ? (
-                  <Textarea
-                    value={transcriptModal.transcript}
-                    onChange={(e) => setTranscriptModal((prev) => prev ? { ...prev, transcript: e.target.value } : prev)}
-                    placeholder="Paste your transcript here..."
-                    className="flex-1 min-h-[200px] text-sm font-mono resize-none"
-                  />
+  <div className="space-y-2">
+    <Textarea
+      value={transcriptModal.transcript}
+      onChange={(e) => setTranscriptModal((prev) => prev ? { ...prev, transcript: e.target.value } : prev)}
+      placeholder="Paste your transcript here..."
+      className="flex-1 min-h-[200px] text-sm font-mono resize-none"
+    />
+    <Button
+      size="sm"
+      variant="outline"
+      onClick={() => {
+        if (!transcriptModal.recordingId) return;
+        updateTranscriptMutation.mutate({
+          recordingId: transcriptModal.recordingId,
+          transcriptText: transcriptModal.transcript,
+        });
+      }}
+      disabled={updateTranscriptMutation.isPending}
+    >
+      Save Edited Transcript
+    </Button>
+  </div>
                 ) : (
                   <div className="overflow-y-auto rounded-md border bg-muted/30 p-3 text-sm whitespace-pre-wrap max-h-48">
                     {transcriptModal.transcript || "No transcript content."}

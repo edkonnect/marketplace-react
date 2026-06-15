@@ -8048,6 +8048,26 @@ For engagementData, describe ONLY the student's participation and behavior. The 
       }),
 
     /**
+     * Update transcript text (for editing before AI summarization)
+     */
+    updateTranscript: protectedProcedure
+      .input(z.object({
+        recordingId: z.string(),
+        transcriptText: z.string(),
+      }))
+      .mutation(async ({ input }) => {
+        const { zoomMeetingRecordings } = await import('../drizzle/schema');
+        const database = await db.getDb();
+        if (!database) {
+          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Database not available' });
+        }
+        await database.update(zoomMeetingRecordings)
+          .set({ transcriptText: input.transcriptText })
+          .where(eq(zoomMeetingRecordings.id, input.recordingId));
+        return { success: true };
+      }),
+
+    /**
      * Get all recordings for a session
      */
     getSessionRecordings: protectedProcedure
