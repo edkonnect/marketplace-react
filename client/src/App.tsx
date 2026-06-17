@@ -34,6 +34,7 @@ import TutorPayments from "./pages/TutorPayments";
 import Settings from "./pages/Settings";
 import TutorProfile from "./pages/TutorProfile";
 import TutorAvailability from "./pages/TutorAvailability";
+import TermsAndConditions from "./pages/TermsAndConditions";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
 import AboutUs from "./pages/AboutUs";
 import Contact from "./pages/Contact";
@@ -97,6 +98,7 @@ function Router() {
       <Route path={"/session-notes"} component={SessionNotesHistory} />
       <Route path={"/messages"} component={Messages} />
       <Route path={"/settings"} component={Settings} />
+      <Route path={"/terms-and-conditions"} component={TermsAndConditions} />
       <Route path={"/privacy-policy"} component={PrivacyPolicy} />
       <Route path={"/about"} component={AboutUs} />
       <Route path={"/contact"} component={Contact} />

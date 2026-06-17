@@ -101,10 +101,15 @@ export default function Footer() {
                 </Link>
               </li>
               <li>
-                <Link href="/privacy-policy" onClick={scrollToTop} className="hover:text-primary transition-colors">
-                  Terms &amp; Conditions
-                </Link>
-              </li>
+  <Link href="/terms-and-conditions" onClick={scrollToTop} className="hover:text-primary transition-colors">
+    Terms &amp; Conditions
+  </Link>
+</li>
+<li>
+  <Link href="/privacy-policy" onClick={scrollToTop} className="hover:text-primary transition-colors">
+    Privacy Policy
+  </Link>
+</li>
               <li>
                 <a href="/promote" onClick={scrollToTop} className="hover:text-primary transition-colors">
                   Promote with us
