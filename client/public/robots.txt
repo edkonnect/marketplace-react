@@ -1,5 +1,7 @@
 User-agent: *
 Disallow: /sat-act-sample-problems/
 Disallow: /sat-act-sample-problems
+Disallow: /free-worksheets/
+Disallow: /free-worksheets
 
 Sitemap: https://edkonnect-academy.com/sitemap.xml

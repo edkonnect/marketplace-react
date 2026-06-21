@@ -107,6 +107,8 @@ function Router() {
       <Route path={"/knowledge-portal"}>{() => { window.location.replace("/"); return null; }}</Route>
       <Route path={"/faq"}>{() => { window.location.replace("/#faq"); return null; }}</Route>
       <Route path={"/how-it-works"}>{() => { window.location.replace("/?demo=true"); return null; }}</Route>
+      <Route path={"/our-approach"}>{() => { window.location.replace("/about"); return null; }}</Route>
+      <Route path={"/our-approach/"}>{() => { window.location.replace("/about"); return null; }}</Route>
       <Route path={"/404"} component={NotFound} />
       <Route component={NotFound} />
     </Switch>
