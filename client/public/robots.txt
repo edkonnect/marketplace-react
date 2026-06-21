@@ -1,0 +1,5 @@
+User-agent: *
+Disallow: /sat-act-sample-problems/
+Disallow: /sat-act-sample-problems
+
+Sitemap: https://edkonnect-academy.com/sitemap.xml

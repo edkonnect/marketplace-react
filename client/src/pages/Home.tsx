@@ -350,6 +350,12 @@ export default function Home() {
   };
 
   const [walkthroughOpen, setWalkthroughOpen] = useState(false);
+
+  useEffect(() => {
+    if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("demo") === "true") {
+      setWalkthroughOpen(true);
+    }
+  }, []);
   const [referralDialogOpen, setReferralDialogOpen] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
   const [emailCheckResult, setEmailCheckResult] = useState<{ available: boolean; reason: string | null } | null>(null);
