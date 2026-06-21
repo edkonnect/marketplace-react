@@ -109,6 +109,8 @@ function Router() {
       <Route path={"/how-it-works"}>{() => { window.location.replace("/?demo=true"); return null; }}</Route>
       <Route path={"/our-approach"}>{() => { window.location.replace("/about"); return null; }}</Route>
       <Route path={"/our-approach/"}>{() => { window.location.replace("/about"); return null; }}</Route>
+      <Route path={"/free-worksheets"}>{() => { window.location.replace("/blog"); return null; }}</Route>
+      <Route path={"/free-worksheets/"}>{() => { window.location.replace("/blog"); return null; }}</Route>
       <Route path={"/404"} component={NotFound} />
       <Route component={NotFound} />
     </Switch>
