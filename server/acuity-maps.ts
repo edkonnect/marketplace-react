@@ -43,6 +43,8 @@ export const CALENDAR_TO_TUTOR: Record<number, number> = {
 // undefined (not in map) = unknown type, reported in preview.
 // null = known type with no matching course; only synced for trial types.
 export const APPT_TYPE_TO_COURSE: Record<number, number | null> = {
+  // Physics
+  30863827: 163,  // Physics - Private Session (CBSE/ICSE/IG/IB/State) → ICSE High School Physics - Grade 11
   // Computer Science / Programming
   57218677: 51,   // Middle School Computer Science → IB Computer Science
   54015900: 51,   // High School Computer Science → IB Computer Science
