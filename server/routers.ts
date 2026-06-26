@@ -3015,10 +3015,17 @@ export const appRouter = router({
           }
           
           // Get session details for email
+          // Get session details for email
           const session = await db.getSessionById(id);
           if (session) {
             const sessionDate = new Date(session.scheduledAt);
             const subscription = session.subscriptionId ? await db.getSubscriptionById(session.subscriptionId) : null;
+            // Keep subscription's preferredTutorId in sync with the tutor actually teaching this session.
+            // Without this, the student won't appear in the new tutor's Students list and the marketplace
+            // will keep showing the old tutor's name to the parent.
+            if (subscription && subscription.preferredTutorId !== session.tutorId) {
+              await db.updateSubscription(subscription.id, { preferredTutorId: session.tutorId });
+            }
             const course = subscription ? await db.getCourseById(subscription.courseId) : null;
             const tutor = await db.getUserById(session.tutorId);
             const parent = await db.getUserById(session.parentId);

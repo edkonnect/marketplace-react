@@ -153,6 +153,15 @@ export async function upsertAcuitySession(
         updatedAt = NOW()
       WHERE id = ${existingRow.id}
     `);
+    // Keep the subscription's preferredTutorId in sync with whichever tutor's
+    // calendar this appointment is actually booked on, so the student shows up
+    // correctly in that tutor's Students list and marketplace.
+    if (subscriptionId) {
+      await db.execute(sql`
+        UPDATE subscriptions SET preferredTutorId = ${tutorId}
+        WHERE id = ${subscriptionId} AND preferredTutorId != ${tutorId}
+      `);
+    }
     return { ok: true, action: "updated", sessionId: existingRow.id };
   }
 
@@ -182,5 +191,11 @@ export async function upsertAcuitySession(
 
   // mysql2 affectedRows: 1 = inserted, 2 = updated via ON DUPLICATE KEY.
   const affected = res[0]?.affectedRows ?? 0;
+  if (subscriptionId) {
+    await db.execute(sql`
+      UPDATE subscriptions SET preferredTutorId = ${tutorId}
+      WHERE id = ${subscriptionId} AND preferredTutorId != ${tutorId}
+    `);
+  }
   return { ok: true, action: affected === 1 ? "inserted" : "updated" };
 }
