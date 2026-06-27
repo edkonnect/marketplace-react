@@ -2,6 +2,7 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { AdminSessionNotes } from "@/components/AdminSessionNotes";
 import { AdminLoginReport } from "@/components/AdminLoginReport";
 import AcuitySyncPanel from "@/components/AcuitySyncPanel";
+import { LeadsManager } from "@/components/LeadsManager";
 import { LOGIN_PATH } from "@/const";
 import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -39,6 +40,7 @@ import DashboardLayout, { AdminSection } from "@/components/DashboardLayout";
 import { SuperUserGate } from "@/components/SuperUserGate";
 import { SuperUserSettings } from "@/components/SuperUserSettings";
 import { useSuperUser } from "@/contexts/SuperUserContext";
+
 import { NOT_SUPER_USER_ERR_MSG } from "@shared/const";
 
 function RevenueBreakdownButton({ isUnlocked, onOpen, onLockAndOpen }: {
@@ -1490,6 +1492,7 @@ export function AdminDashboard() {
           {activeSection === "session-notes" && <AdminSessionNotes />}
           {activeSection === "login-report" && <AdminLoginReport />}
           {activeSection === "acuity-sync" && <AcuitySyncPanel />}
+          {activeSection === "leads" && <LeadsManager />}
           {activeSection === "security" && <SuperUserSettings />}
         </div>
       </DashboardLayout>

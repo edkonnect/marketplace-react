@@ -288,6 +288,20 @@
       "when": 1774000000000,
       "tag": "0043_profile_image_mediumtext",
       "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "5",
+      "when": 1782204242335,
+      "tag": "0044_strong_thunderbolt",
+      "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "5",
+      "when": 1782544832723,
+      "tag": "0045_slim_gunslinger",
+      "breakpoints": true
     }
   ]
 }

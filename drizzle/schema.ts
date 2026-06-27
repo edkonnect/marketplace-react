@@ -1210,3 +1210,21 @@ export const tutorFileAssignmentsRelations = relations(tutorFileAssignments, ({ 
     relationName: "tutorFileAssignmentTutor",
   }),
 }));
+
+
+export const leads = mysqlTable("leads", {
+  id: int("id").autoincrement().primaryKey(),
+  name: varchar("name", { length: 255 }).notNull(),
+  parentName: varchar("parentName", { length: 255 }).notNull(),
+  email: varchar("email", { length: 255 }).notNull(),
+  phone: varchar("phone", { length: 50 }).notNull(),
+  status: varchar("status", { length: 20 }).default("new").notNull(),
+  message: text("message"),
+  bestAvailability: text("bestAvailability"),
+  syncedToSheet: boolean("syncedToSheet").default(false).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type Lead = typeof leads.$inferSelect;
+export type InsertLead = typeof leads.$inferInsert;
