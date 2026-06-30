@@ -385,7 +385,9 @@ export default function CourseDetail() {
 
   const priceUsd = parseFloat(course.price);
   const priceInrStored = course.priceInr ? parseFloat(course.priceInr) : null;
-  const price = isIndian ? (priceInrStored ?? Math.round(priceUsd * exchangeRate)) : priceUsd;
+  const price = isIndian
+  ? (priceInrStored ?? (course.region === "india" ? priceUsd : Math.round(priceUsd * exchangeRate)))
+  : priceUsd;
   // fmt formats an already-currency-correct amount — avoids double-conversion when price is already INR
   const fmt = (amt: number) => isIndian
     ? new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(amt)

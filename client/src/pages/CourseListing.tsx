@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { BookOpen, Clock, DollarSign, GraduationCap, Search, ChevronLeft, ChevronRight } from "lucide-react";
+import { BookOpen, Clock, Layers, GraduationCap, Search, ChevronLeft, ChevronRight } from "lucide-react";
 import { useState } from "react";
 import { Link, useSearch } from "wouter";
 
@@ -286,7 +286,7 @@ export default function CourseListing() {
                         )}
                         {course.totalSessions && (
                           <div className="flex items-center gap-2 text-muted-foreground">
-                            <DollarSign className="h-4 w-4" />
+                           <Layers className="h-4 w-4" />
                             <span>{course.totalSessions} sessions</span>
                           </div>
                         )}
