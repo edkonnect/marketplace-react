@@ -1243,3 +1243,61 @@ export function getTrialRequestConfirmationEmail(params: {
     preheaderText: `Your trial lesson request for ${params.courseName} has been received`,
   });
 }
+
+interface PaymentReminderEmailProps {
+  parentName: string;
+  studentName: string;
+  courseTitle: string;
+  amountDue: string;
+  dashboardUrl: string;
+}
+
+export function getPaymentReminderEmail(props: PaymentReminderEmailProps): string {
+  const { parentName, studentName, courseTitle, amountDue, dashboardUrl } = props;
+
+  const content = `
+    <h1>Payment Reminder</h1>
+
+    <p>Hi ${parentName},</p>
+
+    <p>You've successfully enrolled <strong>${studentName}</strong> in <strong>${courseTitle}</strong>. Your payment is pending — please complete it to activate the enrollment.</p>
+
+    <div class="highlight-box">
+      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin: 0;">
+        <tr>
+          <td style="padding: 8px 0; font-weight: 600; color: #111827; width: 140px;">Student:</td>
+          <td style="padding: 8px 0; color: #374151;">${studentName}</td>
+        </tr>
+        <tr>
+          <td style="padding: 8px 0; font-weight: 600; color: #111827;">Course:</td>
+          <td style="padding: 8px 0; color: #374151;">${courseTitle}</td>
+        </tr>
+        <tr>
+          <td style="padding: 8px 0; font-weight: 600; color: #111827;">Amount Due:</td>
+          <td style="padding: 8px 0; color: #374151; font-weight: 600;">${amountDue}</td>
+        </tr>
+      </table>
+    </div>
+
+    <div style="text-align: center; margin: 32px 0;">
+      <a href="${dashboardUrl}" class="button">Complete Payment Now</a>
+    </div>
+
+    <p>You can pay in full or choose to split into 3 installments — both options are available on your dashboard.</p>
+
+    <div class="highlight-box" style="background-color: #fef3c7; border-left-color: #f59e0b;">
+      <p style="margin: 0; font-weight: 600; color: #92400e;">⚠️ Action Required</p>
+      <p style="margin: 8px 0 0 0; color: #92400e;">
+        Your enrollment will remain inactive until payment is completed. Sessions cannot be scheduled until payment is received.
+      </p>
+    </div>
+
+    <p style="margin-top: 32px;">If you have any questions, reply to this email or contact us at <a href="mailto:admin@edkonnect-academy.com" style="color: #3b82f6;">admin@edkonnect-academy.com</a>.</p>
+
+    <p>Thank you,<br><strong>The EdKonnect Academy Team</strong></p>
+  `;
+
+  return getEmailBase(content, {
+    preheaderText: `Payment required for ${studentName}'s enrollment in ${courseTitle}`,
+  });
+}

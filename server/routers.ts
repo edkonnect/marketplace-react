@@ -10,7 +10,7 @@ import * as db from "./db";
 import { TRPCError } from "@trpc/server";
 import { searchFaq, logUnansweredQuestion, logQuery } from "./faq/faq-search";
 import { checkChatbotRateLimit, bookingRateLimiter } from "./faq/chatbot-rate-limiter";
-import { sendWelcomeEmail, sendBookingConfirmation, sendEnrollmentConfirmation, sendTutorEnrollmentNotification, sendNoShowNotification, formatEmailDate, formatEmailTime, formatEmailPrice, sendTutorApplicationReceivedEmail, sendReferralInviteEmail, sendCouponRewardEmail, sendAdminNewUserNotification, sendTrialRequestAdminEmail, sendTrialRequestConfirmationEmail } from "./emails/email-helpers";
+import { sendWelcomeEmail, sendBookingConfirmation, sendEnrollmentConfirmation, sendTutorEnrollmentNotification, sendNoShowNotification, formatEmailDate, formatEmailTime, formatEmailPrice, sendTutorApplicationReceivedEmail, sendReferralInviteEmail, sendCouponRewardEmail, sendAdminNewUserNotification, sendTrialRequestAdminEmail, sendTrialRequestConfirmationEmail, sendPaymentReminderEmail } from "./emails/email-helpers";
 import { generateBookingToken, isValidBookingToken } from "./booking-management";
 import { sendCancellationConfirmationEmail } from "./emails/cancellation-email";
 import { generateCurriculumPDF } from "./pdf/pdf-generator";
@@ -1688,6 +1688,133 @@ export const appRouter = router({
         }
 
         return { success: true, subscriptionId, setupUrl };
+      }),
+
+    enrollPayLater: parentProcedure
+      .input(z.object({
+        courseId: z.number(),
+        preferredTutorId: z.number().optional(),
+        studentFirstName: z.string(),
+        studentLastName: z.string(),
+        studentGrade: z.string(),
+        promoCode: z.string().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const course = await db.getCourseById(input.courseId);
+        if (!course) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'Course not found' });
+        }
+
+        // Prevent duplicate enrollment
+        const normalize = (v: string | null | undefined) => (v || "").trim().toLowerCase();
+        const targetFirst = normalize(input.studentFirstName);
+        const targetLast = normalize(input.studentLastName);
+        const existingSubscriptions = await db.getSubscriptionsByParentId(ctx.user.id);
+        const duplicateCourse = existingSubscriptions.some((s: any) => {
+          const sub = s.subscription;
+          if (!sub || sub.status === "cancelled") return false;
+          return (
+            normalize(sub.studentFirstName) === targetFirst &&
+            normalize(sub.studentLastName) === targetLast &&
+            sub.courseId === input.courseId
+          );
+        });
+        if (duplicateCourse) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "This student is already enrolled in this course." });
+        }
+
+        const tutors = await db.getTutorsForCourse(input.courseId);
+        const primaryTutor = tutors.find((t: any) => t.isPrimary) || tutors[0];
+        if (!primaryTutor) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'No tutor found for this course' });
+        }
+        const selectedTutorId = input.preferredTutorId || primaryTutor.tutorId;
+
+        const hasSiblingDiscount = await checkSiblingDiscount(ctx.user.id, input.studentFirstName, input.studentLastName);
+        const { isAsiaTz: isAsiaTzPayLater } = await import("./payments/stripe");
+        const { getUsdToInrRate: getInrRatePayLater } = await import("./utils/exchangeRate");
+        const parentUserPayLater = await db.getUserById(ctx.user.id);
+        const useInrPayLater = isAsiaTzPayLater(parentUserPayLater?.timezone);
+        const usdPricePayLater = parseFloat(course.price);
+        const inrRatePayLater = useInrPayLater ? await getInrRatePayLater() : 1;
+        const coursePrice = useInrPayLater
+          ? (course.priceInr != null ? parseFloat(course.priceInr) : Math.round(usdPricePayLater * inrRatePayLater))
+          : usdPricePayLater;
+        const currency = useInrPayLater ? "inr" : "usd";
+
+        // Validate promo code
+        let promoDiscountUsd = 0;
+        let appliedCouponId: number | null = null;
+        if (input.promoCode) {
+          if (input.promoCode.toUpperCase().startsWith("EDK-")) {
+            const parentUser = await db.getUserById(ctx.user.id);
+            const result = await validateReferralPromo(input.promoCode, parentUser?.email ?? "");
+            if (!result.valid) {
+              throw new TRPCError({ code: "BAD_REQUEST", message: result.reason ?? "Invalid or expired promo code." });
+            }
+            promoDiscountUsd = Math.round(coursePrice * 10) / 100;
+          } else {
+            const coupon = await db.getCouponByCode(input.promoCode);
+            if (!coupon || coupon.isUsed || coupon.userId !== ctx.user.id) {
+              throw new TRPCError({ code: 'BAD_REQUEST', message: 'Invalid or expired promo code.' });
+            }
+            const referralDiscount = await db.getReferralDiscountForPrice(coursePrice);
+            promoDiscountUsd = referralDiscount.usd;
+            await db.updateCouponAmounts(coupon.id, { usd: referralDiscount.usd, inr: referralDiscount.inr });
+            appliedCouponId = coupon.id;
+          }
+        }
+
+        // Apply sibling + loyalty + promo discounts (same as pay-in-full)
+        const LOYALTY_DISCOUNT_PERCENT = 5;
+        const siblingPct = hasSiblingDiscount ? SIBLING_DISCOUNT_PERCENT : 0;
+        const loyaltyPct = LOYALTY_DISCOUNT_PERCENT;
+        const totalPct = Math.min(100, siblingPct + loyaltyPct);
+        const afterDiscountPct = Math.round(coursePrice * 100 * (1 - totalPct / 100));
+        const discountedTotalCents = Math.max(0, afterDiscountPct - Math.round(promoDiscountUsd * 100));
+        const amountDueFormatted = currency === "inr"
+          ? `₹${(discountedTotalCents / 100).toFixed(2)}`
+          : `$${(discountedTotalCents / 100).toFixed(2)}`;
+
+        const now = new Date();
+        const subscriptionId = await db.createSubscription({
+          parentId: ctx.user.id,
+          courseId: input.courseId,
+          preferredTutorId: selectedTutorId,
+          studentFirstName: input.studentFirstName,
+          studentLastName: input.studentLastName,
+          studentGrade: input.studentGrade,
+          status: 'active',
+          startDate: now,
+          paymentStatus: 'pending',
+          paymentPlan: 'full',
+          siblingDiscountApplied: hasSiblingDiscount,
+          loyaltyDiscountApplied: true,
+          promoDiscountAmount: promoDiscountUsd.toString(),
+          appliedCouponId,
+          discountAmount: (coursePrice - discountedTotalCents / 100).toFixed(2),
+        });
+
+        if (!subscriptionId) {
+          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to create enrollment' });
+        }
+
+        // Send payment reminder email to parent
+        try {
+          if (ctx.user.email) {
+            await sendPaymentReminderEmail({
+              parentEmail: ctx.user.email,
+              parentName: ctx.user.name || "Parent",
+              studentName: `${input.studentFirstName} ${input.studentLastName}`,
+              courseTitle: course.title,
+              amountDue: amountDueFormatted,
+            });
+          }
+        } catch (err) {
+          console.error('[enrollPayLater] Failed to send payment reminder email:', err);
+        }
+
+        return { success: true, subscriptionId };
       }),
 
     retryCheckout: parentProcedure

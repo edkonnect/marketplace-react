@@ -24,6 +24,7 @@ import {
   getAdminNewUserNotificationEmail,
   getTrialRequestAdminEmail,
   getTrialRequestConfirmationEmail,
+  getPaymentReminderEmail,
 } from './email-templates';
 
 const BASE_URL = process.env.VITE_FRONTEND_FORGE_API_URL || 'http://localhost:3000';
@@ -517,6 +518,28 @@ export async function sendAdminNewUserNotification(params: {
   await emailService.sendEmail({
     to: adminEmail,
     subject: `New ${roleLabel} Registered: ${params.userName}`,
+    html,
+  });
+}
+
+export async function sendPaymentReminderEmail(params: {
+  parentEmail: string;
+  parentName: string;
+  studentName: string;
+  courseTitle: string;
+  amountDue: string;
+}): Promise<boolean> {
+  const dashboardUrl = emailRedirect('/parent/dashboard');
+  const html = getPaymentReminderEmail({
+    parentName: params.parentName,
+    studentName: params.studentName,
+    courseTitle: params.courseTitle,
+    amountDue: params.amountDue,
+    dashboardUrl,
+  });
+  return await emailService.sendEmail({
+    to: params.parentEmail,
+    subject: `Payment Required: ${params.studentName}'s enrollment in ${params.courseTitle}`,
     html,
   });
 }

@@ -129,6 +129,7 @@ export default function CourseDetail() {
   const createCheckoutMutation = trpc.course.createCheckoutSession.useMutation();
   const enrollWithoutPaymentMutation = trpc.course.enrollWithoutPayment.useMutation();
   const enrollWithInstallmentsMutation = trpc.course.enrollWithInstallments.useMutation();
+  const enrollPayLaterMutation = trpc.course.enrollPayLater.useMutation();
 
   // Request tutor state
   const [isTutorRequestOpen, setIsTutorRequestOpen] = React.useState(false);
@@ -308,6 +309,29 @@ export default function CourseDetail() {
         toast.success("Enrolled successfully! Add your payment method from the dashboard.");
         setLocation("/parent/dashboard");
       }
+    } catch (error: any) {
+      const message = error?.data?.message || error?.message || "Failed to enroll";
+      toast.error(message);
+    }
+  };
+
+  const handleEnrollPayLater = async () => {
+    if (!studentFirstName || !studentLastName) {
+      toast.error("Please provide student's first and last name");
+      return;
+    }
+    try {
+      await enrollPayLaterMutation.mutateAsync({
+        courseId,
+        preferredTutorId: selectedTutorId || undefined,
+        studentFirstName,
+        studentLastName,
+        studentGrade: studentGrade || "Grade Not Specified",
+        promoCode: promoValidation?.valid ? promoCode.trim().toUpperCase() : undefined,
+      });
+      setIsEnrollDialogOpen(false);
+      toast.success("Enrolled! A payment reminder has been sent to your email.");
+      setLocation("/parent/dashboard");
     } catch (error: any) {
       const message = error?.data?.message || error?.message || "Failed to enroll";
       toast.error(message);
@@ -829,6 +853,18 @@ export default function CourseDetail() {
                                     : "Enroll & Pay Monthly"}
                               </Button>
                             )}
+
+                            {/* Pay Later: enroll now, pay later from dashboard */}
+                            <Button
+                              variant="outline"
+                              className="w-full"
+                              onClick={handleEnrollPayLater}
+                              disabled={enrollPayLaterMutation.isPending || !studentFirstName || !studentLastName}
+                            >
+                              {enrollPayLaterMutation.isPending
+                                ? "Enrolling..."
+                                : `Pay Later — ${fmt(effectiveTotal)} due after enrollment`}
+                            </Button>
 
                           </div>
                         </DialogContent>
