@@ -616,7 +616,7 @@ export default function TutorDashboard() {
   const [sessionContextMap, setSessionContextMap] = useState<Record<number, string>>({});
   const [generatingQuiz, setGeneratingQuiz] = useState(false);
   const [gradingSession, setGradingSession] = useState(false);
-
+  const [tutorQuizModal, setTutorQuizModal] = useState<{ sessionId: number } | null>(null);
   const savePreferencesMutation = trpc.tutorCoursePreferences.saveMine.useMutation({
     onSuccess: () => {
       toast.success("Preferences saved");
@@ -743,6 +743,10 @@ export default function TutorDashboard() {
       toast.error("Failed to generate quiz: " + error.message);
     },
   });
+  const { data: viewedQuiz } = trpc.quiz.getBySession.useQuery(
+    { sessionId: tutorQuizModal?.sessionId ?? 0 },
+    { enabled: !!tutorQuizModal }
+  );
 
   // Load existing grade when transcript modal is open
   const existingGradeQuery = trpc.grades.getBySession.useQuery(
@@ -2383,24 +2387,32 @@ export default function TutorDashboard() {
                                   </div>
                                 )}
 
-                                {(session as any).hasQuiz && (
-                                  <div className="mt-2">
+                               {(session as any).hasQuiz && (
+                                  <div className="mt-2 flex items-center justify-between gap-2">
                                     {(session as any).quizStatus === "completed" ? (
                                       <div className={`flex items-center gap-1.5 text-sm ${(session as any).quizScore == null || (session as any).quizScore >= 70 ? "text-green-600 dark:text-green-400" : (session as any).quizScore >= 40 ? "text-orange-500 dark:text-orange-400" : "text-red-500 dark:text-red-400"}`}>
                                         <CheckCircle className="w-4 h-4" />
                                         <span>Quiz completed</span>
                                         {(session as any).quizScore != null && (
                                           <span className="font-semibold">
-                                            · {(session as any).quizScore}% ({(session as any).quizCorrectCount}/{(session as any).quizTotalCount})
+                                            Â· {(session as any).quizScore}% ({(session as any).quizCorrectCount}/{(session as any).quizTotalCount})
                                           </span>
                                         )}
                                       </div>
                                     ) : (
                                       <div className="flex items-center gap-1.5 text-sm text-amber-600 dark:text-amber-400">
                                         <HelpCircle className="w-4 h-4" />
-                                        <span>Quiz assigned — pending</span>
+                                        <span>Quiz assigned - pending</span>
                                       </div>
                                     )}
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      className="h-7 text-xs shrink-0"
+                                      onClick={() => setTutorQuizModal({ sessionId: session.id })}
+                                    >
+                                      View Quiz
+                                    </Button>
                                   </div>
                                 )}
 
@@ -3133,9 +3145,68 @@ export default function TutorDashboard() {
 	            </Button>
 	          </DialogFooter>
 	        </DialogContent>
-	      </Dialog>
-
-	      <Footer />
-	    </div>
-	  );
+              </Dialog>
+              {tutorQuizModal && (
+                <Dialog open={true} onOpenChange={() => setTutorQuizModal(null)}>
+                  <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col gap-0 p-0">
+                    <div className="px-6 pt-6 pb-4 border-b shrink-0">
+                      <DialogTitle>Session Quiz</DialogTitle>
+                      <DialogDescription className="mt-1">
+                        {viewedQuiz?.status === "completed"
+                          ? "Student has completed this quiz."
+                          : "Quiz assigned to student - not yet completed."}
+                      </DialogDescription>
+                    </div>
+                    <div className="flex-1 min-h-0 overflow-y-auto space-y-4 px-6 py-4">
+                      {!viewedQuiz ? (
+                        <p className="text-sm text-muted-foreground">Loadingâ€¦</p>
+                      ) : (
+                        viewedQuiz.questions.map((q, idx) => {
+                          const studentAnswersArr = viewedQuiz.studentAnswers ? JSON.parse(viewedQuiz.studentAnswers) : null;
+                          const studentAnswer = studentAnswersArr ? studentAnswersArr[idx] : null;
+                          const isCompleted = viewedQuiz.status === "completed";
+                          const isCorrect = studentAnswer === q.correctAnswer;
+                          return (
+                            <div
+                              key={q.id}
+                              className={`p-3 rounded-lg border-l-4 ${
+                                isCompleted
+                                  ? isCorrect
+                                    ? "border-green-500 bg-green-50 dark:bg-green-950/20"
+                                    : "border-red-500 bg-red-50 dark:bg-red-950/20"
+                                  : "border-muted"
+                              }`}
+                            >
+                              <p className="text-sm font-medium mb-1">{idx + 1}. {q.question}</p>
+                              <div className="space-y-1">
+                                {q.options.map((opt, optIdx) => (
+                                  <p
+                                    key={optIdx}
+                                    className={`text-xs ${
+                                      optIdx === q.correctAnswer
+                                        ? "text-green-700 dark:text-green-400 font-semibold"
+                                        : isCompleted && optIdx === studentAnswer
+                                        ? "text-red-700 dark:text-red-400"
+                                        : "text-muted-foreground"
+                                    }`}
+                                  >
+                                    {optIdx === q.correctAnswer ? "[correct] " : isCompleted && optIdx === studentAnswer ? "[selected] " : "- "}
+                                    {opt}
+                                  </p>
+                                ))}
+                              </div>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+                    <DialogFooter className="px-6 py-4 border-t shrink-0">
+                      <Button onClick={() => setTutorQuizModal(null)}>Close</Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+              )}
+              <Footer />
+            </div>
+          );
 }

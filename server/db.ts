@@ -9,7 +9,7 @@ import {
   InsertTutorProfile, InsertParentProfile, InsertCoordinatorProfile, InsertCourse,
   InsertSubscription, InsertSession, InsertConversation,
   InsertMessage, InsertPayment, courseTutors, InsertCourseTutor,
-  platformStats, featuredCourses, testimonials, faqs, blogPosts,
+  platformStats, featuredCourses, testimonials, faqs, blogPosts, leads,
   tutorAvailability, InsertTutorAvailability,
   tutorTimeBlocks, InsertTutorTimeBlock,
   emailSettings, InsertEmailSettings,
@@ -2059,8 +2059,7 @@ export type SessionMatchResult =
  * Resolve which session a Zoom recording belongs to, based on recording start time.
  * Tutors use a single permanent Zoom room, so meetingId alone is not enough —
  * we match by finding the closest session scheduledAt within a ±30 min tolerance window.
- */
-export async function resolveSessionForZoomRecording(params: {
+ */export async function resolveSessionForZoomRecording(params: {
   meetingId: string;
   hostId: string;
   recordingStartTime: Date;
@@ -2087,6 +2086,8 @@ export async function resolveSessionForZoomRecording(params: {
   }
 
   const recordingMs = params.recordingStartTime.getTime();
+  // Small buffer to allow for late starts / early joins (tutor starting Zoom a bit early/late)
+  const BUFFER_MS = 10 * 60 * 1000; // 10 min buffer on each side of the scheduled window
   const TOLERANCE_MS = 30 * 60 * 1000;
   const windowStart = recordingMs - TOLERANCE_MS - 2 * 60 * 60 * 1000; // look back up to 2.5h
   const windowEnd = recordingMs + TOLERANCE_MS;
@@ -2114,14 +2115,18 @@ export async function resolveSessionForZoomRecording(params: {
       `[ZoomMatch] candidates for tutorId=${tutorId}: ${JSON.stringify(candidates.map(c => ({ id: c.id, scheduledAt: c.scheduledAt, duration: c.duration, iso: new Date(c.scheduledAt).toISOString() })))}`
     );
 
-    // Step 3: Filter out sessions that have clearly ended before the recording started.
+    // Step 3 (FIXED): Only keep sessions where the recording actually started
+    // INSIDE that session's scheduled window (start - buffer, end + buffer).
+    // This replaces the old "ended before recording started" check, which was
+    // too loose and let far-away sessions qualify as "viable".
     const viable = candidates.filter(c => {
-      const sessionEndMs = Number(c.scheduledAt) + c.duration * 60 * 1000;
-      return recordingMs <= sessionEndMs + TOLERANCE_MS;
+      const sessionStartMs = Number(c.scheduledAt);
+      const sessionEndMs = sessionStartMs + c.duration * 60 * 1000;
+      return recordingMs >= sessionStartMs - BUFFER_MS && recordingMs <= sessionEndMs + BUFFER_MS;
     });
 
     console.log(
-      `[ZoomMatch] viable for tutorId=${tutorId}: ${JSON.stringify(viable.map(c => ({ id: c.id, iso: new Date(c.scheduledAt).toISOString(), dur: c.duration })))}`
+      `[ZoomMatch] viable (strict containment) for tutorId=${tutorId}: ${JSON.stringify(viable.map(c => ({ id: c.id, iso: new Date(c.scheduledAt).toISOString(), dur: c.duration })))}`
     );
 
     if (viable.length === 0) continue; // try next tutor
@@ -2130,15 +2135,13 @@ export async function resolveSessionForZoomRecording(params: {
       return { sessionId: viable[0].id, tutorId, reason: 'matched' };
     }
 
-    // Multiple viable candidates: pick closest, reject if equidistant
-    const diffFirst = Math.abs(Number(viable[0].scheduledAt) - recordingMs);
-    const diffSecond = Math.abs(Number(viable[1].scheduledAt) - recordingMs);
-    if (diffFirst === diffSecond) {
-      console.warn(`[ZoomMatch] Ambiguous: sessions ${viable[0].id} and ${viable[1].id} are equidistant (${diffFirst}ms) from recording`);
-      return { sessionId: null, tutorId, reason: 'ambiguous' };
-    }
-
-    return { sessionId: viable[0].id, tutorId, reason: 'matched' };
+    // Step 4 (FIXED): Multiple sessions both genuinely contain the recording start
+    // (rare overlap/double-booking) — this is genuinely ambiguous, do NOT guess.
+    console.warn(
+      `[ZoomMatch] Ambiguous: ${viable.length} sessions (${viable.map(v => v.id).join(', ')}) ` +
+      `all contain recording start time ${new Date(recordingMs).toISOString()}`
+    );
+    return { sessionId: null, tutorId, reason: 'ambiguous' };
   }
 
   // No tutorId found a match
@@ -6472,4 +6475,49 @@ export async function userHasAccessToCourseFile(userId: number, role: string, fi
     return rows.length > 0;
   }
   return false;
+}
+
+// Add this import at the top of server/db.ts where other table imports are:
+// leads (already added to the big import list from '../drizzle/schema')
+
+/**
+ * Save a new lead from the website Contact form
+ */
+export async function saveLead(params: {
+  name: string;
+  parentName: string;
+  email: string;
+  phone: string;
+  message?: string;
+  bestAvailability?: string;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const result = await db.insert(leads).values({
+    name: params.name,
+    parentName: params.parentName,
+    email: params.email,
+    phone: params.phone,
+    message: params.message ?? null,
+    bestAvailability: params.bestAvailability ?? null,
+  });
+
+  return result;
+}
+
+export async function getAllLeads() {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const result = await db.select().from(leads).orderBy(desc(leads.createdAt));
+  return result;
+}
+
+export async function updateLeadStatus(id: number, status: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  await db.update(leads).set({ status }).where(eq(leads.id, id));
+  return { success: true };
 }

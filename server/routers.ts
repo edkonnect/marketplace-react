@@ -10,7 +10,7 @@ import * as db from "./db";
 import { TRPCError } from "@trpc/server";
 import { searchFaq, logUnansweredQuestion, logQuery } from "./faq/faq-search";
 import { checkChatbotRateLimit, bookingRateLimiter } from "./faq/chatbot-rate-limiter";
-import { sendWelcomeEmail, sendBookingConfirmation, sendEnrollmentConfirmation, sendTutorEnrollmentNotification, sendNoShowNotification, formatEmailDate, formatEmailTime, formatEmailPrice, sendTutorApplicationReceivedEmail, sendReferralInviteEmail, sendCouponRewardEmail, sendAdminNewUserNotification, sendTrialRequestAdminEmail, sendTrialRequestConfirmationEmail, sendPaymentReminderEmail } from "./emails/email-helpers";
+import { sendWelcomeEmail, sendBookingConfirmation, sendEnrollmentConfirmation, sendTutorEnrollmentNotification, sendNoShowNotification, formatEmailDate, formatEmailTime, formatEmailPrice, sendTutorApplicationReceivedEmail, sendReferralInviteEmail, sendCouponRewardEmail, sendAdminNewUserNotification, sendTrialRequestAdminEmail, sendTrialRequestConfirmationEmail, sendPaymentReminderEmail, sendLeadAdminEmail, sendLeadConfirmationEmail } from "./emails/email-helpers";
 import { generateBookingToken, isValidBookingToken } from "./booking-management";
 import { sendCancellationConfirmationEmail } from "./emails/cancellation-email";
 import { generateCurriculumPDF } from "./pdf/pdf-generator";
@@ -3142,10 +3142,17 @@ export const appRouter = router({
           }
           
           // Get session details for email
+          // Get session details for email
           const session = await db.getSessionById(id);
           if (session) {
             const sessionDate = new Date(session.scheduledAt);
             const subscription = session.subscriptionId ? await db.getSubscriptionById(session.subscriptionId) : null;
+            // Keep subscription's preferredTutorId in sync with the tutor actually teaching this session.
+            // Without this, the student won't appear in the new tutor's Students list and the marketplace
+            // will keep showing the old tutor's name to the parent.
+            if (subscription && subscription.preferredTutorId !== session.tutorId) {
+              await db.updateSubscription(subscription.id, { preferredTutorId: session.tutorId });
+            }
             const course = subscription ? await db.getCourseById(subscription.courseId) : null;
             const tutor = await db.getUserById(session.tutorId);
             const parent = await db.getUserById(session.parentId);
@@ -4608,6 +4615,35 @@ export const appRouter = router({
         }
         return { success: true };
       }),
+      submitLead: publicProcedure
+      .input(z.object({
+        name: z.string().min(1),
+        parentName: z.string().min(1),
+        email: z.string().email(),
+        phone: z.string().min(1),
+        message: z.string().optional(),
+        bestAvailability: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        await db.saveLead(input);
+
+        try {
+          await sendLeadAdminEmail(input);
+        } catch (err) {
+          console.error('[Lead] Failed to send admin email:', err);
+        }
+        try {
+          await sendLeadConfirmationEmail({
+            parentName: input.parentName,
+            email: input.email,
+            name: input.name,
+          });
+        } catch (err) {
+          console.error('[Lead] Failed to send confirmation email:', err);
+        }
+
+        return { success: true };
+      }),
   }),
 
   // Admin Management
@@ -4673,6 +4709,20 @@ export const appRouter = router({
           totalPayments,
           totalRevenue: totalRevenue.toFixed(2),
         };
+      }), 
+      getLeads: adminProcedure
+      .query(async () => {
+        return await db.getAllLeads();
+      }),
+
+    updateLeadStatus: adminProcedure
+      .input(z.object({
+        id: z.number(),
+        status: z.enum(["new", "contacted"]),
+      }))
+      .mutation(async ({ input }) => {
+        await db.updateLeadStatus(input.id, input.status);
+        return { success: true };
       }),
 
     getAllUsers: adminProcedure

@@ -35,6 +35,7 @@ import {
   LayoutDashboard,
   LogOut,
   Mail,
+  MessageSquare,
   MessageSquareQuote,
   PanelLeft,
   RefreshCw,
@@ -68,6 +69,7 @@ export type AdminSection =
   | "session-notes"
   | "login-report"
   | "acuity-sync"
+  | "leads"
   | "security";
 
 type NavItem = {
@@ -98,6 +100,7 @@ const navGroups: NavGroup[] = [
       { icon: FileText, label: "Session Notes", section: "session-notes" },
       { icon: ClipboardList, label: "Login Report", section: "login-report" },
       { icon: RefreshCw, label: "Acuity Sync", section: "acuity-sync" },
+      { icon: MessageSquare, label: "Leads", section: "leads" },
     ],
   },
   {

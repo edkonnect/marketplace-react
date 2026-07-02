@@ -15,6 +15,7 @@ import Navigation from "@/components/Navigation";
 import Footer from "@/components/Footer";
 import { Link, useLocation } from "wouter";
 import { useState, useRef, useEffect } from "react";
+import { StillNeedHelpCard } from "@/components/StillNeedHelpCard";
 import { toast } from "sonner";
 import {
   Calendar,
@@ -1244,39 +1245,7 @@ export default function Home() {
               </Accordion>
             </div>
 
-            <Card className="border-border/60 sticky top-24 shadow-sm">
-              <CardContent className="p-6 space-y-4">
-                <div className="flex items-start gap-3">
-                  <div className="w-10 h-10 rounded-full bg-primary/10 text-primary flex items-center justify-center">
-                    <MessageSquare className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h3 className="text-lg font-semibold">Still need help?</h3>
-                    <p className="text-sm text-muted-foreground">
-                      Talk with our team for enrollment questions or to match with a tutor faster.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="rounded-lg bg-muted/40 border border-border/60 p-4 space-y-3 text-sm text-muted-foreground">
-                  <div className="flex flex-col gap-0.5">
-                    <span>Live chat</span>
-                    <span className="text-primary font-semibold">Mon – Fri, 9:00 AM – 6:00 PM ET</span>
-                  </div>
-                  <div className="flex flex-col gap-0.5">
-                    <span>Email</span>
-                    <a href="mailto:admin@edkonnect-academy.com" className="font-semibold text-foreground hover:text-primary transition-colors">admin@edkonnect-academy.com</a>
-                  </div>
-                </div>
-
-                <Button asChild className="w-full">
-                  <Link href="/contact">Contact Support</Link>
-                </Button>
-                <Button asChild variant="outline" className="w-full">
-                  <Link href="/tutors">Find a Tutor</Link>
-                </Button>
-              </CardContent>
-            </Card>
+            <StillNeedHelpCard />
           </div>
         </div>
       </motion.section>

@@ -543,3 +543,45 @@ export async function sendPaymentReminderEmail(params: {
     html,
   });
 }
+
+export async function sendLeadAdminEmail(params: {
+  name: string;
+  parentName: string;
+  email: string;
+  phone: string;
+  message?: string;
+  bestAvailability?: string;
+}): Promise<void> {
+  const adminEmail = process.env.ADMIN_NOTIFICATION_EMAIL ?? 'giteshsagvekar07@gmail.com';
+  const html = `
+    <h2>New Lead from Website Contact Form</h2>
+    <p><strong>Name:</strong> ${params.name}</p>
+    <p><strong>Parent Name:</strong> ${params.parentName}</p>
+    <p><strong>Email:</strong> ${params.email}</p>
+    <p><strong>Phone:</strong> ${params.phone}</p>
+    <p><strong>Message:</strong> ${params.message || '-'}</p>
+    <p><strong>Best availability:</strong> ${params.bestAvailability || '-'}</p>
+  `;
+  await emailService.sendEmail({
+    to: adminEmail,
+    subject: `New Lead: ${params.name}`,
+    html,
+  });
+}
+
+export async function sendLeadConfirmationEmail(params: {
+  parentName: string;
+  email: string;
+  name: string;
+}): Promise<void> {
+  const html = `
+    <p>Hi ${params.parentName},</p>
+    <p>Thanks for reaching out to EdKonnect Academy about ${params.name}. Our team will contact you within 2-3 business days.</p>
+    <p>— EdKonnect Academy</p>
+  `;
+  await emailService.sendEmail({
+    to: params.email,
+    subject: `We received your request — EdKonnect Academy`,
+    html,
+  });
+}
