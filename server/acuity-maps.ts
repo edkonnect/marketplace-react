@@ -55,8 +55,8 @@ export const APPT_TYPE_TO_COURSE: Record<number, number | null> = {
 
   // Math — Elementary (no matching course)
   // Math — Elementary
-14691452: 298,  // Elementary School Math - Private Session (US) → Elementary Math Grade 3
-14793473: 298,  // Elementary School Math - Free Trial Session → Elementary Math Grade 3
+14691452: 297,  // Elementary School Math - Private Session (US) → Elementary Math Grade 3
+14793473: 297,  // Elementary School Math - Free Trial Session → Elementary Math Grade 3
 26804440: null, 38753649: null, 38754939: null,
 38754970: null, 49843342: null, 25031851: null, 19017079: null,
   // Math — Middle School
