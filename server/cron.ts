@@ -90,6 +90,11 @@ export async function processUsageBilling() {
             console.log(`[Cron] Sub ${subscription.id}: billing cycle already paid, advancing window`);
             continue;
           }
+          // Stripe invoice already created for this cycle — skip to avoid duplicate charges
+          if (existingCycle.stripeInvoiceId) {
+            console.log(`[Cron] Sub ${subscription.id}: cycle ${existingCycle.id} already has invoice ${existingCycle.stripeInvoiceId}, skipping duplicate`);
+            continue;
+          }
           cycleId = existingCycle.id;
           console.log(`[Cron] Sub ${subscription.id}: retrying ${existingCycle.status} billing cycle ${cycleId}`);
         }

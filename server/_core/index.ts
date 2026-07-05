@@ -190,12 +190,6 @@ async function startServer() {
     console.log("[Cron] Acuity sync cron SKIPPED (not production)");
   }
 
-  const { getUsageBasedSubscriptionsDue } = await import("../db");
-  const overdue = await getUsageBasedSubscriptionsDue();
-  if (overdue.length > 0) {
-    console.log(`[Cron] ${overdue.length} overdue billing cycle(s) found on startup — running catch-up billing`);
-    processUsageBilling().catch((err: any) => console.error("[Cron] Startup catch-up billing failed:", err?.message));
-  }
 }
 
 startServer().catch(console.error);
