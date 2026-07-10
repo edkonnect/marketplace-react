@@ -432,7 +432,9 @@ export async function createCombinedUsageInvoice(params: {
       return retrieved;
     }
     console.error(`[Stripe] Combined usage invoice ${invoice.id} pay() failed:`, err?.message);
-    throw err;
+    // Return the finalized invoice even on payment failure so the caller
+    // can save the stripeInvoiceId and prevent duplicate invoice creation on retry
+    return finalized;
   }
 }
 

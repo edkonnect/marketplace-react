@@ -95,6 +95,12 @@ export async function processUsageBilling() {
             console.log(`[Cron] Sub ${subscription.id}: cycle ${existingCycle.id} already has invoice ${existingCycle.stripeInvoiceId}, skipping duplicate`);
             continue;
           }
+          // Failed cycle with no invoice — advance window to prevent infinite daily retry
+          if (existingCycle.status === "failed") {
+            await db.updateSubscription(subscription.id, { billingCycleStart: nextStart, billingCycleEnd: nextEnd });
+            console.log(`[Cron] Sub ${subscription.id}: cycle ${existingCycle.id} previously failed with no invoice, advancing window`);
+            continue;
+          }
           cycleId = existingCycle.id;
           console.log(`[Cron] Sub ${subscription.id}: retrying ${existingCycle.status} billing cycle ${cycleId}`);
         }
@@ -135,6 +141,7 @@ export async function processUsageBilling() {
       if (!parentUserRecord?.stripeCustomerId) {
         for (const line of lines) {
           await db.updateBillingCycle(line.billingCycleId, { status: "failed" });
+          await db.updateSubscription(line.subscriptionId, { billingCycleStart: line.nextStart, billingCycleEnd: line.nextEnd });
         }
         console.error(`[Cron] Group ${groupKey}: no stripeCustomerId for parentId=${firstSub.parentId}`);
         continue;
@@ -142,6 +149,31 @@ export async function processUsageBilling() {
 
       try {
         const currency = isAsiaTz(parentUserRecord.timezone) ? "inr" : "usd";
+
+        // Check Stripe directly for an existing open invoice for these billing cycles
+        // This guards against the case where a crash happened after Stripe invoice creation
+        // but before our DB was updated with the stripeInvoiceId
+        const { getStripeClient } = await import("./payments/stripe");
+        const stripeClient = getStripeClient(currency);
+        const cycleIdsKey = lines.map(l => l.billingCycleId).sort().join(",");
+        const existingStripeInvoices = await stripeClient.invoices.list({
+          customer: parentUserRecord.stripeCustomerId,
+          status: "open",
+          limit: 10,
+        });
+        const alreadyExists = existingStripeInvoices.data.find(inv =>
+          inv.metadata?.type === "usage_cycle" &&
+          inv.metadata?.billing_cycle_ids === cycleIdsKey
+        );
+        if (alreadyExists) {
+          console.log(`[Cron] Group ${groupKey}: found existing Stripe invoice ${alreadyExists.id} for these cycles, skipping duplicate`);
+          for (const line of lines) {
+            await db.updateBillingCycle(line.billingCycleId, { status: "invoiced", stripeInvoiceId: alreadyExists.id });
+            await db.updateSubscription(line.subscriptionId, { billingCycleStart: line.nextStart, billingCycleEnd: line.nextEnd });
+          }
+          continue;
+        }
+
         const stripeInvoice = await createCombinedUsageInvoice({
           stripeCustomerId: parentUserRecord.stripeCustomerId,
           cycleEnd: lines[0].cycleEnd,
@@ -162,6 +194,8 @@ export async function processUsageBilling() {
       } catch (stripeErr: any) {
         for (const line of lines) {
           await db.updateBillingCycle(line.billingCycleId, { status: "failed" });
+          // Advance billing window even on failure to prevent infinite daily retry
+          await db.updateSubscription(line.subscriptionId, { billingCycleStart: line.nextStart, billingCycleEnd: line.nextEnd });
         }
         console.error(`[Cron] Group ${groupKey}: Stripe invoice failed:`, stripeErr?.message);
       }
