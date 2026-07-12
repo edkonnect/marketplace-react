@@ -30,4 +30,7 @@ export const ENV = {
   // Referral app integration (EDK- promo codes)
   referralAppUrl: process.env.REFERRAL_APP_URL ?? "",
   referralAppApiKey: process.env.MARKETPLACE_API_KEY ?? "",
+  // Acuity Scheduling API
+  acuityUserId: process.env.ACUITY_USER_ID ?? "",
+  acuityApiKey: process.env.ACUITY_API_KEY ?? "",
 };
