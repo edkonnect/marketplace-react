@@ -5905,6 +5905,27 @@ export const appRouter = router({
       const { syncAcuitySessions } = await import("./acuity-sync");
       return await syncAcuitySessions();
     }),
+
+    getMissingAcuitySessions: adminProcedure.query(async () => {
+      const { getMissingAcuitySessions } = await import("./acuity-sync");
+      return await getMissingAcuitySessions();
+    }),
+
+    syncAcuitySession: adminProcedure
+      .input(z.object({ acuityAppointmentId: z.string() }))
+      .mutation(async ({ input }) => {
+        const { forceSyncAcuitySession } = await import("./acuity-sync");
+        return await forceSyncAcuitySession(input.acuityAppointmentId);
+      }),
+
+    syncAllMatchedAcuitySessions: adminProcedure
+      .input(z.object({ acuityIds: z.array(z.string()) }))
+      .mutation(async ({ input }) => {
+        const { forceSyncAcuitySession } = await import("./acuity-sync");
+        const results = await Promise.allSettled(input.acuityIds.map((id) => forceSyncAcuitySession(id)));
+        const succeeded = results.filter((r) => r.status === "fulfilled" && (r as any).value.ok).length;
+        return { succeeded, failed: results.length - succeeded };
+      }),
   }),
 
   // Tutor Availability Management
