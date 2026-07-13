@@ -267,7 +267,7 @@ export async function previewAcuitySessions(): Promise<AcuityPreview> {
     toInsert.push({
       acuityId,
       tutorId: r.tutorId!,
-      parentEmail: splitEmails(appt.email)[0] || "—",
+      parentEmail: splitEmails(appt.email).join(", ") || "—",
       studentName: [appt.firstName, appt.lastName].filter(Boolean).join(" ").trim() || "—",
       scheduledAtIst: toIst(r.scheduledAtMs!),
       durationMin: r.duration!,
@@ -421,7 +421,7 @@ export async function getMissingAcuitySessions(): Promise<{
     if (!r.ok && (r.reason === "no_parent" || r.reason === "unmapped_calendar")) continue;
 
     const studentName = [appt.firstName, appt.lastName].filter(Boolean).join(" ").trim() || "—";
-    const parentEmail = splitEmails(appt.email)[0] || "—";
+    const parentEmail = splitEmails(appt.email).join(", ") || "—";
     const scheduledAtMs = new Date(appt.datetime).getTime();
     const durationMin = parseInt(String(appt.duration ?? ""), 10) || 60;
     const meetingUrl = extractZoomUrl(appt.location);
