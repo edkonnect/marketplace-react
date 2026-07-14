@@ -9,7 +9,7 @@ import {
   InsertTutorProfile, InsertParentProfile, InsertCoordinatorProfile, InsertCourse,
   InsertSubscription, InsertSession, InsertConversation,
   InsertMessage, InsertPayment, courseTutors, InsertCourseTutor,
-  platformStats, featuredCourses, testimonials, faqs, blogPosts, leads,
+  platformStats, featuredCourses, testimonials, faqs, blogPosts, leads, acuityEmailAliases,
   tutorAvailability, InsertTutorAvailability,
   tutorTimeBlocks, InsertTutorTimeBlock,
   emailSettings, InsertEmailSettings,
@@ -6520,4 +6520,34 @@ export async function updateLeadStatus(id: number, status: string) {
 
   await db.update(leads).set({ status }).where(eq(leads.id, id));
   return { success: true };
+}
+
+export async function getAcuityEmailAliases() {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const rows = await db
+    .select({
+      id: acuityEmailAliases.id,
+      acuityEmail: acuityEmailAliases.acuityEmail,
+      userId: acuityEmailAliases.userId,
+      userName: sql<string>`CONCAT(${users.firstName}, ' ', ${users.lastName})`,
+      userEmail: users.email,
+      createdAt: acuityEmailAliases.createdAt,
+    })
+    .from(acuityEmailAliases)
+    .innerJoin(users, eq(acuityEmailAliases.userId, users.id))
+    .orderBy(acuityEmailAliases.createdAt);
+  return rows;
+}
+
+export async function createAcuityEmailAlias(acuityEmail: string, userId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.insert(acuityEmailAliases).values({ acuityEmail: acuityEmail.toLowerCase().trim(), userId });
+}
+
+export async function deleteAcuityEmailAlias(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.delete(acuityEmailAliases).where(eq(acuityEmailAliases.id, id));
 }
