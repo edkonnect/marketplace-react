@@ -36,6 +36,8 @@ export type AcuityLookups = {
   parentEmailToId: Record<string, number>;
   /** key `${parentId}-${courseId}-${studentFirstLower}` -> subscription id (prefer active) */
   subByParentCourseStudent: Record<string, number>;
+  /** lowercased acuity alias email -> platform user id (admin-managed overrides) */
+  parentAliasEmailToId: Record<string, number>;
 };
 
 export type UpsertResult =
@@ -73,6 +75,7 @@ export function resolveAcuityAppt(
   let parentId: number | undefined;
   for (const e of emails) {
     if (lookups.parentEmailToId[e]) { parentId = lookups.parentEmailToId[e]; break; }
+    if (lookups.parentAliasEmailToId[e]) { parentId = lookups.parentAliasEmailToId[e]; break; }
   }
   if (!parentId) return { ok: false, reason: "no_parent", emails };
 

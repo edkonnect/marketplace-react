@@ -5906,6 +5906,24 @@ export const appRouter = router({
       return await syncAcuitySessions();
     }),
 
+    acuityAliases: router({
+      getAll: adminProcedure.query(async () => {
+        return await db.getAcuityEmailAliases();
+      }),
+      create: adminProcedure
+        .input(z.object({ acuityEmail: z.string().email(), userId: z.number().int() }))
+        .mutation(async ({ input }) => {
+          await db.createAcuityEmailAlias(input.acuityEmail, input.userId);
+          return { success: true };
+        }),
+      delete: adminProcedure
+        .input(z.object({ id: z.number().int() }))
+        .mutation(async ({ input }) => {
+          await db.deleteAcuityEmailAlias(input.id);
+          return { success: true };
+        }),
+    }),
+
     getMissingAcuitySessions: adminProcedure.query(async () => {
       const { getMissingAcuitySessions } = await import("./acuity-sync");
       return await getMissingAcuitySessions();

@@ -1228,3 +1228,15 @@ export const leads = mysqlTable("leads", {
 
 export type Lead = typeof leads.$inferSelect;
 export type InsertLead = typeof leads.$inferInsert;
+
+export const acuityEmailAliases = mysqlTable("acuity_email_aliases", {
+  id: int("id").autoincrement().primaryKey(),
+  acuityEmail: varchar("acuityEmail", { length: 320 }).notNull().unique(),
+  userId: int("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => ({
+  acuityEmailIdx: index("acuity_email_aliases_email_idx").on(table.acuityEmail),
+  userIdx: index("acuity_email_aliases_user_idx").on(table.userId),
+}));
+
+export type AcuityEmailAlias = typeof acuityEmailAliases.$inferSelect;

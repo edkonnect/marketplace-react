@@ -14,7 +14,7 @@
  */
 
 import { getDb } from "./db";
-import { users, subscriptions, courses } from "../drizzle/schema";
+import { users, subscriptions, courses, acuityEmailAliases } from "../drizzle/schema";
 import { eq, sql } from "drizzle-orm";
 import { CALENDAR_TO_TUTOR, APPT_TYPE_TO_COURSE, splitEmails, extractZoomUrl, toIst } from "./acuity-maps";
 import { upsertAcuitySession, resolveAcuityAppt, type AcuityAppt, type AcuityLookups } from "./acuity-upsert";
@@ -41,7 +41,7 @@ async function fetchAppointments(minDate: string, maxDate: string, includeCancel
   return data;
 }
 
-/** Build the lookups the shared upsert/resolver needs (parent emails + subscriptions). */
+/** Build the lookups the shared upsert/resolver needs (parent emails + subscriptions + aliases). */
 async function buildLookups(database: NonNullable<Awaited<ReturnType<typeof getDb>>>): Promise<AcuityLookups> {
   const allParents = await database.select({ id: users.id, email: users.email }).from(users).where(eq(users.role, "parent"));
   const parentEmailToId: Record<string, number> = {};
@@ -65,7 +65,11 @@ async function buildLookups(database: NonNullable<Awaited<ReturnType<typeof getD
     if (!subByParentCourseStudent[key] || s.status === "active") subByParentCourseStudent[key] = s.id;
   }
 
-  return { parentEmailToId, subByParentCourseStudent };
+  const aliases = await database.select({ acuityEmail: acuityEmailAliases.acuityEmail, userId: acuityEmailAliases.userId }).from(acuityEmailAliases);
+  const parentAliasEmailToId: Record<string, number> = {};
+  for (const a of aliases) parentAliasEmailToId[a.acuityEmail.toLowerCase()] = a.userId;
+
+  return { parentEmailToId, subByParentCourseStudent, parentAliasEmailToId };
 }
 
 export async function syncAcuitySessions(): Promise<{
@@ -349,7 +353,7 @@ async function buildMissingLookups(
     subCountByParentCourseStudent[key] = (subCountByParentCourseStudent[key] ?? 0) + 1;
   }
 
-  return { ...base, subCountByParentCourseStudent, tutorIdToName };
+  return { ...base, subCountByParentCourseStudent, tutorIdToName, parentAliasEmailToId: base.parentAliasEmailToId };
 }
 
 export type MissingSession = {

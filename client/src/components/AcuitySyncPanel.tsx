@@ -3,12 +3,16 @@ import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { RefreshCw, Loader2, ExternalLink, CheckCircle, AlertTriangle, XCircle, HelpCircle } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { RefreshCw, Loader2, ExternalLink, CheckCircle, AlertTriangle, XCircle, HelpCircle, Trash2, Plus } from "lucide-react";
 
 export default function AcuitySyncPanel() {
   const [previewEnabled, setPreviewEnabled] = useState(false);
   const [missingEnabled, setMissingEnabled] = useState(false);
   const [syncingId, setSyncingId] = useState<string | null>(null);
+  const [newAliasEmail, setNewAliasEmail] = useState("");
+  const [newAliasUserId, setNewAliasUserId] = useState("");
+  const [userSearch, setUserSearch] = useState("");
 
   const {
     data: preview,
@@ -66,6 +70,27 @@ export default function AcuitySyncPanel() {
     },
     onError: (err) => toast.error(`Sync all failed: ${err.message}`),
   });
+
+  const { data: aliases, refetch: reloadAliases } = trpc.admin.acuityAliases.getAll.useQuery(undefined, { refetchOnWindowFocus: false });
+  const { data: allUsers } = trpc.admin.getAllUsers.useQuery({ limit: 500, role: "parent" }, { refetchOnWindowFocus: false });
+
+  const createAliasMutation = trpc.admin.acuityAliases.create.useMutation({
+    onSuccess: () => { toast.success("Alias added"); setNewAliasEmail(""); setNewAliasUserId(""); setUserSearch(""); reloadAliases(); },
+    onError: (err) => toast.error(`Failed: ${err.message}`),
+  });
+
+  const deleteAliasMutation = trpc.admin.acuityAliases.delete.useMutation({
+    onSuccess: () => { toast.success("Alias removed"); reloadAliases(); },
+    onError: (err) => toast.error(`Failed: ${err.message}`),
+  });
+
+  const filteredParents = allUsers?.users
+    ? allUsers.users.filter(u =>
+        !userSearch ||
+        (u.email ?? "").toLowerCase().includes(userSearch.toLowerCase()) ||
+        `${u.firstName ?? ""} ${u.lastName ?? ""}`.toLowerCase().includes(userSearch.toLowerCase())
+      ).slice(0, 10)
+    : [];
 
   const skippedTotal = preview
     ? preview.skipped.noParent.length +
@@ -395,6 +420,106 @@ export default function AcuitySyncPanel() {
         {!missingData && !loadingMissing && (
           <p className="text-sm text-muted-foreground py-8 text-center border rounded-lg">
             Click "Load Missing Sessions" to check what's in Acuity but not on the platform.
+          </p>
+        )}
+      </div>
+
+      {/* ── Email Aliases section ── */}
+      <div className="border-t pt-6 space-y-4">
+        <div>
+          <h3 className="text-lg font-semibold">Acuity Email Aliases</h3>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            Map an Acuity booking email to a platform parent account. Use this when a parent books in Acuity under a different email than their platform login.
+          </p>
+        </div>
+
+        {/* Add alias form */}
+        <div className="border rounded-lg p-4 space-y-3">
+          <p className="text-sm font-medium">Add New Alias</p>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <div>
+              <label className="text-xs text-muted-foreground mb-1 block">Acuity email (booking email)</label>
+              <Input
+                placeholder="simerpreet.kaur@fmr.com"
+                value={newAliasEmail}
+                onChange={(e) => setNewAliasEmail(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground mb-1 block">Search platform parent</label>
+              <Input
+                placeholder="Search by name or email..."
+                value={userSearch}
+                onChange={(e) => { setUserSearch(e.target.value); setNewAliasUserId(""); }}
+              />
+              {userSearch && filteredParents.length > 0 && !newAliasUserId && (
+                <div className="border rounded-lg mt-1 bg-white shadow-sm z-10 max-h-48 overflow-y-auto">
+                  {filteredParents.map((u) => (
+                    <button
+                      key={u.id}
+                      className="w-full text-left px-3 py-2 text-sm hover:bg-muted/50 border-b last:border-0"
+                      onClick={() => { setNewAliasUserId(String(u.id)); setUserSearch(`${u.firstName ?? ""} ${u.lastName ?? ""} (${u.email})`); }}
+                    >
+                      <span className="font-medium">{u.firstName} {u.lastName}</span>
+                      <span className="text-muted-foreground ml-2 text-xs">{u.email}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="flex items-end">
+              <Button
+                className="w-full"
+                disabled={!newAliasEmail || !newAliasUserId || createAliasMutation.isPending}
+                onClick={() => createAliasMutation.mutate({ acuityEmail: newAliasEmail, userId: parseInt(newAliasUserId) })}
+              >
+                {createAliasMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Plus className="h-4 w-4 mr-2" />}
+                Add Alias
+              </Button>
+            </div>
+          </div>
+        </div>
+
+        {/* Aliases table */}
+        {aliases && aliases.length > 0 && (
+          <div className="border rounded-lg overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b bg-muted/50">
+                  <th className="px-4 py-3 text-left font-medium">Acuity Email</th>
+                  <th className="px-4 py-3 text-left font-medium">Platform Account</th>
+                  <th className="px-4 py-3 text-left font-medium">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {aliases.map((a) => (
+                  <tr key={a.id} className="border-b last:border-0 hover:bg-muted/30">
+                    <td className="px-4 py-3 font-mono text-xs">{a.acuityEmail}</td>
+                    <td className="px-4 py-3">
+                      <div>{a.userName}</div>
+                      <div className="text-xs text-muted-foreground">{a.userEmail}</div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="text-destructive hover:text-destructive"
+                        disabled={deleteAliasMutation.isPending}
+                        onClick={() => { if (confirm(`Remove alias ${a.acuityEmail}?`)) deleteAliasMutation.mutate({ id: a.id }); }}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {aliases && aliases.length === 0 && (
+          <p className="text-sm text-muted-foreground py-6 text-center border rounded-lg">
+            No email aliases configured yet.
           </p>
         )}
       </div>
