@@ -642,10 +642,18 @@ export function AdminDashboard() {
     { enabled: isAuthenticated && user?.role === "admin" && isUnlocked }
   );
 
-  const { data: sessionsData, isLoading: sessionsLoading } = trpc.admin.getAllSessions.useQuery(
+  const { data: sessionsData, isLoading: sessionsLoading, refetch: refetchSessions } = trpc.admin.getAllSessions.useQuery(
     { limit: ITEMS_PER_PAGE, offset: (sessionsPage - 1) * ITEMS_PER_PAGE, ...sessionFilters },
     { enabled: isAuthenticated && user?.role === "admin" }
   );
+
+  const updateSessionStatusMutation = trpc.admin.updateSessionStatus.useMutation({
+    onSuccess: () => {
+      toast.success("Session status updated");
+      refetchSessions();
+    },
+    onError: (err) => toast.error(err.message || "Failed to update session status"),
+  });
 
   const { data: sessionFilterOptions } = trpc.admin.getSessionFilterOptions.useQuery(
     undefined,
@@ -1270,6 +1278,19 @@ export function AdminDashboard() {
                                 >
                                   {session.status === "no_show" ? "Completed (No Show)" : session.status}
                                 </Badge>
+                                <Select
+                                  value={session.status}
+                                  onValueChange={(v) => updateSessionStatusMutation.mutate({ sessionId: session.id, status: v as any })}
+                                  disabled={updateSessionStatusMutation.isPending}
+                                >
+                                  <SelectTrigger className="h-7 w-36 text-xs"><SelectValue /></SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="scheduled">Scheduled</SelectItem>
+                                    <SelectItem value="completed">Completed</SelectItem>
+                                    <SelectItem value="cancelled">Cancelled</SelectItem>
+                                    <SelectItem value="no_show">No Show</SelectItem>
+                                  </SelectContent>
+                                </Select>
                               </div>
                               <div className="space-y-1 text-sm text-muted-foreground">
                                 <p><span className="font-medium text-foreground">Course:</span> {session.courseTitle || "Unknown"}</p>

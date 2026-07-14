@@ -5840,6 +5840,17 @@ export const appRouter = router({
         };
       }),
 
+    updateSessionStatus: adminProcedure
+      .input(z.object({
+        sessionId: z.number(),
+        status: z.enum(["scheduled", "completed", "cancelled", "no_show"]),
+      }))
+      .mutation(async ({ input }) => {
+        const ok = await db.updateSessionStatus(input.sessionId, input.status);
+        if (!ok) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to update session status" });
+        return { success: true };
+      }),
+
     getSessionFilterOptions: adminProcedure
       .query(async () => {
         const allSessions = await db.getAllSessionsWithDetails();

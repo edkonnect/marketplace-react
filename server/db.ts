@@ -3889,6 +3889,13 @@ export async function getTutorSessionRatingStats(tutorId: number) {
 }
 
 // Get all sessions with details (for admin)
+export async function updateSessionStatus(sessionId: number, status: "scheduled" | "completed" | "cancelled" | "no_show") {
+  const db = await getDb();
+  if (!db) return false;
+  await db.update(sessions).set({ status }).where(eq(sessions.id, sessionId));
+  return true;
+}
+
 export async function getAllSessionsWithDetails() {
   const db = await getDb();
   if (!db) return [];
