@@ -122,6 +122,12 @@ export async function syncAcuitySessions(): Promise<{
   // Cancel sessions cancelled in Acuity. Only touch the row whose
   // acuityAppointmentId matches the cancelled appointment (or legacy NULL rows),
   // so a re-booked slot sharing the time isn't wrongly cancelled.
+  //
+  // FIX: previously this only matched status = 'scheduled', so a session that
+  // had already flipped to 'completed' (e.g. the appointment time passed, or
+  // a tutor added notes) before it was cancelled in Acuity would never get
+  // updated — it stayed stuck as "completed" forever. Now it also matches
+  // 'completed' rows, so a late Acuity cancellation still corrects the label.
   let cancelled_count = 0;
   for (const appt of cancelledOnly as AcuityAppt[]) {
     const tutorId = CALENDAR_TO_TUTOR[appt.calendarID];
@@ -137,7 +143,7 @@ export async function syncAcuitySessions(): Promise<{
       const cancelResult = (await database.execute(sql`
         UPDATE sessions SET status = 'cancelled', updatedAt = NOW()
         WHERE tutorId = ${tutorId} AND scheduledAt = ${scheduledAtMs} AND parentId = ${parentId}
-          AND status = 'scheduled'
+          AND status IN ('scheduled', 'completed')
           AND (acuityAppointmentId = ${String(appt.id)} OR acuityAppointmentId IS NULL)
       `)) as any;
       if ((cancelResult[0]?.affectedRows ?? 0) > 0) cancelled_count++;
