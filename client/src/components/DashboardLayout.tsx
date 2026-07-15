@@ -58,7 +58,7 @@ export type AdminSection =
   | "payout-requests"
   | "payments"
   | "registered-tutors"
-  | "availability"
+  |  "availability"
   | "course-approval"
   | "courses"
   | "course-files"

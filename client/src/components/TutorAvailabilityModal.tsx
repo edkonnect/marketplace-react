@@ -28,6 +28,10 @@ interface TutorAvailabilityModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   tutorId: number;
+  // Needed to resolve which Acuity appointment type to check live availability
+  // against. If omitted, the modal falls back to the old tutor_availability-based
+  // calculation (no live check) — still works, just not double-booking-proof.
+  courseId?: number;
   tutorName?: string;
   tutorTimezone?: string | null;
   viewerTimezone?: string;
@@ -45,6 +49,7 @@ export function TutorAvailabilityModal({
   open,
   onOpenChange,
   tutorId,
+  courseId,
   tutorName,
   tutorTimezone,
   viewerTimezone: externalViewerTz,
@@ -66,14 +71,89 @@ export function TutorAvailabilityModal({
 
   const effectiveTutorTz = tutorTimezone || viewerTz;
 
-  // Fetch upcoming sessions for this tutor
+  // Fetch upcoming sessions for this tutor (fallback path only)
   const { data: upcomingSessions = [] } = trpc.session.getUpcomingByTutorId.useQuery(
     { tutorId },
     { enabled: open }
   );
 
-  // Timezone-aware slot calculation for "This Week" tab
-  const upcomingAvailabilityDays = useMemo(() => {
+  // Live Acuity availability — the source of truth for "This Week" when available.
+  // Reflects the tutor's real Acuity calendar right now, so a class booked
+  // directly in Acuity (never synced into our sessions table) still correctly
+  // blocks the slot instead of showing as free.
+  const {
+    data: liveSlotsData,
+    isLoading: isLoadingLiveSlots,
+  } = trpc.tutorAvailability.getLiveSlots.useQuery(
+    { tutorId, courseId: courseId as number },
+    { enabled: open && !!courseId, retry: false }
+  );
+
+  const liveAvailable = liveSlotsData?.ok === true;
+  
+  
+  // Timezone-aware slot calculation for "This Week" tab — LIVE path.
+  // Groups Acuity's raw slot timestamps into the viewer's local days.
+  const liveAvailabilityDays = useMemo(() => {
+    if (!liveAvailable || !liveSlotsData || liveSlotsData.ok !== true) return [];
+
+    const now = Date.now();
+    const viewerToday = convertFromUTC(now, viewerTz);
+    viewerToday.setHours(0, 0, 0, 0);
+
+    // Flatten all slot timestamps from every returned Acuity day into one list —
+    // we re-bucket them by the VIEWER's calendar day below, since Acuity's own
+    // `date` grouping is in the tutor's calendar timezone, not the viewer's.
+    const allSlotTimestamps: number[] = [];
+    for (const day of liveSlotsData.days) {
+      for (const slot of day.slots) {
+        const ms = Date.parse(slot.time);
+        if (!Number.isNaN(ms)) allSlotTimestamps.push(ms);
+      }
+    }
+
+    const days: Array<{
+      key: string;
+      label: string;
+      dateLabel: string;
+      dayOfWeek: number;
+      availableTimeSlots: string[];
+    }> = [];
+
+    for (let offset = 0; offset < 7; offset++) {
+      const dayDate = new Date(viewerToday);
+      dayDate.setDate(viewerToday.getDate() + offset);
+
+      const year = dayDate.getFullYear();
+      const month = dayDate.getMonth();
+      const date = dayDate.getDate();
+
+      const dayStartUTC = createTimestamp(year, month, date, 0, 0, viewerTz);
+      const dayEndUTC = createTimestamp(year, month, date, 23, 59, viewerTz);
+
+      const slotsThisDay = allSlotTimestamps
+        .filter((ms) => ms >= dayStartUTC && ms <= dayEndUTC && ms > now)
+        .sort((a, b) => a - b)
+        .map((ms) => formatSessionTime(ms, viewerTz, "h:mm a"));
+
+      days.push({
+        key: `${year}-${month + 1}-${date}`,
+        label: formatSessionTime(dayStartUTC, viewerTz, "EEEE"),
+        dateLabel: formatSessionTime(dayStartUTC, viewerTz, "MMM d"),
+        dayOfWeek: dayDate.getDay(),
+        availableTimeSlots: slotsThisDay,
+      });
+    }
+
+    
+    return days;
+  }, [liveAvailable, liveSlotsData, viewerTz]);
+  
+
+  // Timezone-aware slot calculation for "This Week" tab — FALLBACK path
+  // (used when live Acuity data isn't available for this tutor/course combo,
+  // e.g. not mapped in Acuity yet). Same logic as before.
+  const fallbackAvailabilityDays = useMemo(() => {
     const now = Date.now();
     const viewerToday = convertFromUTC(now, viewerTz);
     viewerToday.setHours(0, 0, 0, 0);
@@ -168,7 +248,12 @@ export function TutorAvailabilityModal({
     return days;
   }, [availability, upcomingSessions, effectiveTutorTz, viewerTz]);
 
+  // Use live data whenever it's available; otherwise fall back to the
+  // tutor_availability-based calculation.
+  const upcomingAvailabilityDays = liveAvailable ? liveAvailabilityDays : fallbackAvailabilityDays;
+
   // Timezone-aware general schedule for "General Schedule" tab
+  // (always the recurring tutor_availability table — unaffected by live checks)
   const generalScheduleByDay = useMemo(() => {
     return DAYS_OF_WEEK.map((day) => {
       const daySlots = availability.filter(
@@ -194,13 +279,18 @@ export function TutorAvailabilityModal({
     });
   }, [availability, effectiveTutorTz, viewerTz]);
 
-  const daysWithSlots = upcomingAvailabilityDays.filter((day) => {
-    // Only show days that have configured availability windows
-    const hasWindows = availability.some(
-      (slot) => slot.isActive && slot.dayOfWeek === day.dayOfWeek
-    );
-    return hasWindows;
-  });
+  // When using live data, show every day of the week regardless of what's
+  // configured in tutor_availability (live data doesn't depend on that table).
+  // When using the fallback, keep the original behavior of only showing days
+  // that have a configured availability window.
+  const daysWithSlots = liveAvailable
+    ? upcomingAvailabilityDays
+    : upcomingAvailabilityDays.filter((day) => {
+        const hasWindows = availability.some(
+          (slot) => slot.isActive && slot.dayOfWeek === day.dayOfWeek
+        );
+        return hasWindows;
+      });
 
   const timezonesDiffer =
     tutorTimezone && tutorTimezone !== viewerTz;
@@ -244,7 +334,11 @@ export function TutorAvailabilityModal({
               </div>
 
               <div className="space-y-2">
-                {daysWithSlots.length === 0 ? (
+                {open && courseId && isLoadingLiveSlots ? (
+                  <p className="text-sm text-muted-foreground text-center py-4">
+                    Checking live availability…
+                  </p>
+                ) : daysWithSlots.length === 0 ? (
                   <p className="text-sm text-muted-foreground text-center py-4">
                     No availability configured
                   </p>

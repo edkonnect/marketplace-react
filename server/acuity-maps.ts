@@ -39,6 +39,14 @@ export const CALENDAR_TO_TUTOR: Record<number, number> = {
   12986707: 58, // Ms. Shafia
 };
 
+// ── Platform Tutor user id -> Acuity Calendar ID (reverse of CALENDAR_TO_TUTOR) ─
+// Derived automatically — do not edit directly, edit CALENDAR_TO_TUTOR instead.
+// If a tutor id appears against multiple calendars, the LAST one wins here
+// (shouldn't happen in practice — CALENDAR_TO_TUTOR should be 1:1 tutor:calendar).
+export const TUTOR_TO_CALENDAR: Record<number, number> = Object.fromEntries(
+  Object.entries(CALENDAR_TO_TUTOR).map(([calendarId, tutorId]) => [tutorId, Number(calendarId)])
+);
+
 // ── Appointment Type ID -> Platform Course ID ─────────────────────────────────
 // undefined (not in map) = unknown type, reported in preview.
 // null = known type with no matching course; only synced for trial types.
@@ -165,6 +173,53 @@ export const TRIAL_APPOINTMENT_TYPES = new Set<number>([
   61243720,                  // HS CS free trial
   38756927,                  // HS English free trial (US)
 ]);
+
+// ── Platform Course ID -> Acuity Trial Appointment Type ID(s) ────────────────
+// Reverse of APPT_TYPE_TO_COURSE, restricted to trial-bookable types only
+// (TRIAL_APPOINTMENT_TYPES). This is what the live "This Week" availability
+// check uses to find which appointmentTypeID to query for a given course.
+// A course can have more than one trial appointment type (e.g. different
+// curricula/regions), which is why this maps to an array.
+export const COURSE_TO_TRIAL_APPT_TYPES: Record<number, number[]> = (() => {
+  const map: Record<number, number[]> = {};
+  for (const [apptTypeIdStr, courseId] of Object.entries(APPT_TYPE_TO_COURSE)) {
+    if (courseId == null) continue;
+    const apptTypeId = Number(apptTypeIdStr);
+    if (!TRIAL_APPOINTMENT_TYPES.has(apptTypeId)) continue;
+    if (!map[courseId]) map[courseId] = [];
+    map[courseId].push(apptTypeId);
+  }
+  return map;
+})();
+
+/**
+ * Resolve the Acuity appointmentTypeID to use for a live availability check,
+ * given a platform courseId and tutorId. Needed because a course can map to
+ * several trial appointment types (different curricula), but only some of
+ * those types are actually assigned to a given tutor's calendar in Acuity.
+ *
+ * `calendarIdsByApptType` should come from a fresh (or cached) call to
+ * GET /api/v1/appointment-types, keyed by appointmentTypeID -> calendarIDs[].
+ * Pass it in rather than fetching here so callers can cache/reuse it across
+ * many tutors in one request.
+ */
+export function resolveTrialAppointmentType(
+  courseId: number,
+  tutorId: number,
+  calendarIdsByApptType: Record<number, number[]>
+): number | null {
+  const candidates = COURSE_TO_TRIAL_APPT_TYPES[courseId];
+  if (!candidates || candidates.length === 0) return null;
+
+  const calendarId = TUTOR_TO_CALENDAR[tutorId];
+  if (!calendarId) return null;
+
+  for (const apptTypeId of candidates) {
+    const calendarIds = calendarIdsByApptType[apptTypeId] || [];
+    if (calendarIds.includes(calendarId)) return apptTypeId;
+  }
+  return null;
+}
 
 // ── Shared helpers ────────────────────────────────────────────────────────────
 

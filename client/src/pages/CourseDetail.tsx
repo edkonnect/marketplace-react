@@ -1222,6 +1222,7 @@ export default function CourseDetail() {
           open={availabilityModalOpen}
           onOpenChange={setAvailabilityModalOpen}
           tutorId={selectedTutorForAvailability.id}
+          courseId={course.id}
           tutorName={selectedTutorForAvailability.name}
           tutorTimezone={selectedTutorForAvailability.timezone}
           viewerTimezone={viewerTimezone}

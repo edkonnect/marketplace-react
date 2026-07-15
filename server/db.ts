@@ -3642,7 +3642,6 @@ export async function getAllTutorsWithAvailability() {
     return [];
   }
 }
-
 // ============ Email Settings ============
 
 /**

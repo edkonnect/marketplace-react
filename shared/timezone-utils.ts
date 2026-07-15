@@ -25,9 +25,19 @@ export const COMMON_TIMEZONES = [
 /**
  * Detect the user's timezone automatically from their browser
  */
+// Legacy IANA timezone aliases that browsers can still return but that
+// won't match our COMMON_TIMEZONES option values (e.g. old "Asia/Calcutta"
+// vs current "Asia/Kolkata") — this caused the timezone <select> to silently
+// fall back to its first option while the real bound value stayed on the
+// unmatched alias, badly desyncing displayed times from the selected label.
+const TIMEZONE_ALIASES: Record<string, string> = {
+  'Asia/Calcutta': 'Asia/Kolkata',
+};
+
 export function detectUserTimezone(): string {
   try {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const detected = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    return TIMEZONE_ALIASES[detected] || detected;
   } catch (error) {
     console.error('Failed to detect timezone:', error);
     return 'America/New_York'; // Default to ET

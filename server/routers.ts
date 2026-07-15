@@ -5462,11 +5462,6 @@ export const appRouter = router({
         return await db.getTutorAvailability(input.tutorId);
       }),
 
-    getAllTutorsWithAvailability: adminProcedure
-      .query(async () => {
-        return await db.getAllTutorsWithAvailability();
-      }),
-
     setTutorAvailability: adminProcedure
       .input(z.object({
         tutorId: z.number(),
@@ -5968,14 +5963,25 @@ export const appRouter = router({
         return availability;
       }),
 
-    /**
-     * Get tutor's availability schedule by tutor ID (public)
-     */
-    getByTutorId: publicProcedure
+   getByTutorId: publicProcedure
       .input(z.object({ tutorId: z.number() }))
       .query(async ({ input }) => {
         const availability = await db.getTutorAvailability(input.tutorId);
         return availability;
+      }),
+
+    /**
+     * Live "This Week" availability, computed directly from Acuity (not our
+     * own `sessions` table) so a tutor's real bookings — including ones that
+     * never synced to our DB — correctly block the slot. Falls back to
+     * { ok: false } if this tutor/course isn't mapped in Acuity yet; caller
+     * should fall back to the recurring tutor_availability table in that case.
+     */
+    getLiveSlots: publicProcedure
+      .input(z.object({ tutorId: z.number(), courseId: z.number() }))
+      .query(async ({ input }) => {
+        const { getLiveTutorAvailability } = await import("./acuity-availability");
+        return await getLiveTutorAvailability(input.tutorId, input.courseId);
       }),
 
     /**
