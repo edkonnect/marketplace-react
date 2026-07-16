@@ -3150,9 +3150,14 @@ export const appRouter = router({
             // Keep subscription's preferredTutorId in sync with the tutor actually teaching this session.
             // Without this, the student won't appear in the new tutor's Students list and the marketplace
             // will keep showing the old tutor's name to the parent.
-            if (subscription && subscription.preferredTutorId !== session.tutorId) {
-              await db.updateSubscription(subscription.id, { preferredTutorId: session.tutorId });
-            }
+            if (
+  subscription &&
+  subscription.preferredTutorId !== session.tutorId &&
+  session.status !== 'cancelled' &&
+  session.status !== 'no_show'
+) {
+  await db.updateSubscription(subscription.id, { preferredTutorId: session.tutorId });
+}
             const course = subscription ? await db.getCourseById(subscription.courseId) : null;
             const tutor = await db.getUserById(session.tutorId);
             const parent = await db.getUserById(session.parentId);
