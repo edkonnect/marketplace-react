@@ -6,6 +6,11 @@
  * upsert on acuityAppointmentId (with a fallback to the (tutorId, scheduledAt)
  * unique index) means reschedules and field corrections self-heal instead of
  * being silently skipped, while manually-entered notes/feedback are preserved.
+ *
+ * preferredTutorId sync: when a subscription's tutor changes in Acuity, we want
+ * subscriptions.preferredTutorId to follow — but ONLY off a live (non-cancelled)
+ * appointment. Cancelled appointments from an old tutor must never be allowed to
+ * push preferredTutorId back to that old tutor.
  */
 
 import { sql } from "drizzle-orm";
@@ -156,15 +161,16 @@ export async function upsertAcuitySession(
         updatedAt = NOW()
       WHERE id = ${existingRow.id}
     `);
-    // Keep the subscription's preferredTutorId in sync with whichever tutor's
-    // calendar this appointment is actually booked on, so the student shows up
-    // correctly in that tutor's Students list and marketplace.
+
+    // Only let a LIVE (non-cancelled) appointment push preferredTutorId forward.
+    // A cancelled appointment from an old tutor must never revert this.
     if (subscriptionId && nextStatus !== "cancelled") {
       await db.execute(sql`
         UPDATE subscriptions SET preferredTutorId = ${tutorId}
         WHERE id = ${subscriptionId} AND preferredTutorId != ${tutorId}
       `);
     }
+
     return { ok: true, action: "updated", sessionId: existingRow.id };
   }
 
@@ -194,11 +200,19 @@ export async function upsertAcuitySession(
 
   // mysql2 affectedRows: 1 = inserted, 2 = updated via ON DUPLICATE KEY.
   const affected = res[0]?.affectedRows ?? 0;
-  if (subscriptionId ) {
+
+  // Only push preferredTutorId when this appointment landed as a live
+  // (non-cancelled) row. A brand-new appointment is never inserted as
+  // cancelled by this function (status is derived from scheduledAtMs above),
+  // but the ON DUPLICATE KEY branch can re-point an old cancelled row —
+  // in that case `status` here is still the freshly computed scheduled/completed
+  // value for THIS appointment, so it's safe to sync.
+  if (subscriptionId) {
     await db.execute(sql`
       UPDATE subscriptions SET preferredTutorId = ${tutorId}
       WHERE id = ${subscriptionId} AND preferredTutorId != ${tutorId}
     `);
   }
+
   return { ok: true, action: affected === 1 ? "inserted" : "updated" };
 }
