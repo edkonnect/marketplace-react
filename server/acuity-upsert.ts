@@ -194,7 +194,7 @@ export async function upsertAcuitySession(
 
   // mysql2 affectedRows: 1 = inserted, 2 = updated via ON DUPLICATE KEY.
   const affected = res[0]?.affectedRows ?? 0;
-  if (subscriptionId && status !== "cancelled") {
+  if (subscriptionId ) {
     await db.execute(sql`
       UPDATE subscriptions SET preferredTutorId = ${tutorId}
       WHERE id = ${subscriptionId} AND preferredTutorId != ${tutorId}
