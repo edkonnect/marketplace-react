@@ -8,9 +8,13 @@
  * being silently skipped, while manually-entered notes/feedback are preserved.
  *
  * preferredTutorId sync: when a subscription's tutor changes in Acuity, we want
- * subscriptions.preferredTutorId to follow — but ONLY off a live (non-cancelled)
- * appointment. Cancelled appointments from an old tutor must never be allowed to
- * push preferredTutorId back to that old tutor.
+ * subscriptions.preferredTutorId to follow. This must be ORDER-INDEPENDENT —
+ * it is always derived from whichever live (non-cancelled, non-no_show)
+ * session for that subscription has the latest scheduledAt, via a subquery,
+ * rather than "does this incoming appointment's tutor differ, then overwrite."
+ * The latter flaps back and forth depending on what order a sync batch
+ * processes appointments in (e.g. an old tutor's completed sessions landing
+ * after a new tutor's sessions in the same batch).
  */
 
 import { sql } from "drizzle-orm";
@@ -162,12 +166,25 @@ export async function upsertAcuitySession(
       WHERE id = ${existingRow.id}
     `);
 
-    // Only let a LIVE (non-cancelled) appointment push preferredTutorId forward.
-    // A cancelled appointment from an old tutor must never revert this.
-    if (subscriptionId && nextStatus !== "cancelled") {
+    // preferredTutorId must reflect the MOST RECENT live (non-cancelled,
+    // non-no_show) session for this subscription — not just "whichever
+    // appointment happened to sync last." Acuity/webhook batches can process
+    // an old tutor's completed sessions after a new tutor's sessions, so a
+    // naive "does this session's tutor differ, then overwrite" check will
+    // flap preferredTutorId back and forth depending on sync order. Deriving
+    // it via a subquery on scheduledAt DESC makes the result order-independent.
+    if (subscriptionId) {
       await db.execute(sql`
-        UPDATE subscriptions SET preferredTutorId = ${tutorId}
-        WHERE id = ${subscriptionId} AND preferredTutorId != ${tutorId}
+        UPDATE subscriptions s
+        JOIN (
+          SELECT tutorId FROM sessions
+          WHERE subscriptionId = ${subscriptionId}
+            AND status NOT IN ('cancelled', 'no_show')
+          ORDER BY scheduledAt DESC
+          LIMIT 1
+        ) latest
+        SET s.preferredTutorId = latest.tutorId
+        WHERE s.id = ${subscriptionId} AND s.preferredTutorId != latest.tutorId
       `);
     }
 
@@ -201,16 +218,21 @@ export async function upsertAcuitySession(
   // mysql2 affectedRows: 1 = inserted, 2 = updated via ON DUPLICATE KEY.
   const affected = res[0]?.affectedRows ?? 0;
 
-  // Only push preferredTutorId when this appointment landed as a live
-  // (non-cancelled) row. A brand-new appointment is never inserted as
-  // cancelled by this function (status is derived from scheduledAtMs above),
-  // but the ON DUPLICATE KEY branch can re-point an old cancelled row —
-  // in that case `status` here is still the freshly computed scheduled/completed
-  // value for THIS appointment, so it's safe to sync.
+  // Same order-independent derivation as the UPDATE path above: always set
+  // preferredTutorId from the subscription's most recent live session,
+  // regardless of what order Acuity/webhook batches process appointments in.
   if (subscriptionId) {
     await db.execute(sql`
-      UPDATE subscriptions SET preferredTutorId = ${tutorId}
-      WHERE id = ${subscriptionId} AND preferredTutorId != ${tutorId}
+      UPDATE subscriptions s
+      JOIN (
+        SELECT tutorId FROM sessions
+        WHERE subscriptionId = ${subscriptionId}
+          AND status NOT IN ('cancelled', 'no_show')
+        ORDER BY scheduledAt DESC
+        LIMIT 1
+      ) latest
+      SET s.preferredTutorId = latest.tutorId
+      WHERE s.id = ${subscriptionId} AND s.preferredTutorId != latest.tutorId
     `);
   }
 

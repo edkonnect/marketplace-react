@@ -1721,6 +1721,36 @@ export async function updateSubscription(id: number, updates: Partial<InsertSubs
   }
 }
 
+/**
+ * Sync a subscription's preferredTutorId to the tutor of its most recent
+ * live (non-cancelled, non-no_show) session. Order-independent by design —
+ * always derives from scheduledAt DESC rather than "does this session's
+ * tutor differ, then overwrite," which flaps depending on sync order.
+ */
+export async function syncPreferredTutorFromLatestSession(subscriptionId: number): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return false;
+  try {
+    await db.execute(sql`
+      UPDATE subscriptions s
+      JOIN (
+        SELECT tutorId FROM sessions
+        WHERE subscriptionId = ${subscriptionId}
+          AND status NOT IN ('cancelled', 'no_show')
+        ORDER BY scheduledAt DESC
+        LIMIT 1
+      ) latest
+      SET s.preferredTutorId = latest.tutorId
+      WHERE s.id = ${subscriptionId} AND s.preferredTutorId != latest.tutorId
+    `);
+    return true;
+  } catch (error) {
+    console.error("[Database] Failed to sync preferredTutorId:", error);
+    return false;
+  }
+}
+
+
 export async function updateSubscriptionProgressStatus(
   id: number,
   progressStatus: "low" | "medium" | "high" | null
@@ -6557,3 +6587,4 @@ export async function deleteAcuityEmailAlias(id: number) {
   if (!db) throw new Error("Database not available");
   await db.delete(acuityEmailAliases).where(eq(acuityEmailAliases.id, id));
 }
+
