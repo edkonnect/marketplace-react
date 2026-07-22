@@ -180,7 +180,7 @@ export default function Navigation() {
             {titles.map((title) => (
               <Link
                 key={title}
-                href={`/courses?category=Test%20Prep&search=${encodeURIComponent(title)}`}
+                href={`/courses?category=Test%20Prep&testPrepGroup=${encodeURIComponent(hoveredItem.group)}&search=${encodeURIComponent(title)}`}
                 onClick={closeMenusAnd()}
                 className="text-sm text-foreground/80 hover:text-primary hover:bg-primary/5 rounded-md px-2 py-1 transition-colors"
               >
