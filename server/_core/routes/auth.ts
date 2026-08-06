@@ -13,7 +13,7 @@ authRouter.post("/signup", async (req, res) => {
     const firstError = parsed.error.issues[0]?.message ?? "Invalid input";
     return res.status(400).json({ error: firstError });
   }
-  const { email, password, firstName, lastName, role, timezone } = parsed.data;
+  const { email, password, firstName, lastName, role, timezone, interestType, targetScoreRange, plannedTestMonth, courseType } = parsed.data;
   const refCode = typeof req.body.refCode === "string" ? req.body.refCode.trim().toUpperCase() : null;
 
   const existing = await db.getUserByEmail(email);
@@ -111,6 +111,18 @@ authRouter.post("/signup", async (req, res) => {
         childrenInfo: null,
         preferences: null,
       });
+      if (interestType) {
+        try {
+          await db.upsertSatStudentDetails(user.id, {
+            interestType,
+            targetScoreRange: targetScoreRange || null,
+            plannedTestMonth: plannedTestMonth || null,
+            courseType: courseType || null,
+          });
+        } catch (err) {
+          console.error("[Auth] Failed to save SAT student details:", err);
+        }
+      }
     } else if (role === "tutor") {
       await db.createTutorProfile({
         userId: user.id,

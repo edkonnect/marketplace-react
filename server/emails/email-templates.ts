@@ -1300,4 +1300,44 @@ export function getPaymentReminderEmail(props: PaymentReminderEmailProps): strin
   return getEmailBase(content, {
     preheaderText: `Payment required for ${studentName}'s enrollment in ${courseTitle}`,
   });
+
+
+
+}
+
+
+interface TrialReminderEmailProps {
+  parentName: string;
+  reminderNumber: 1 | 2 | 3;
+  bookingUrl: string;
+}
+
+export function getTrialReminderEmail(props: TrialReminderEmailProps): string {
+  const { parentName, reminderNumber, bookingUrl } = props;
+
+  const messageByReminder: Record<1 | 2 | 3, string> = {
+    1: `We noticed you were checking out our courses but haven't scheduled a trial session yet. We'd love to help your child get started!`,
+    2: `Just following up — a free trial session is a great way to meet a tutor and see if it's the right fit, no commitment needed.`,
+    3: `This is a final reminder — we'd still love to help. Whenever you're ready, scheduling a trial takes just a couple of minutes.`,
+  };
+
+  const content = `
+    <h1>Ready to schedule your trial session?</h1>
+
+    <p>Hi ${parentName},</p>
+
+    <p>${messageByReminder[reminderNumber]}</p>
+
+    <div style="text-align: center; margin: 32px 0;">
+      <a href="${bookingUrl}" class="button">Schedule a Trial Session</a>
+    </div>
+
+    <p>If you have any questions or need help finding the right tutor, just reply to this email — we're happy to help.</p>
+
+    <p style="margin-top: 32px;">Best regards,<br><strong>The EdKonnect Academy Team</strong></p>
+  `;
+
+  return getEmailBase(content, {
+    preheaderText: `Hi ${parentName}, ready to schedule your trial session with EdKonnect Academy?`
+  });
 }

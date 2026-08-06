@@ -16,6 +16,7 @@ import { sendCancellationConfirmationEmail } from "./emails/cancellation-email";
 import { generateCurriculumPDF } from "./pdf/pdf-generator";
 import { sendSessionNotesEmail } from "./emails/session-notes-email";
 import { emailService } from "./emails/email-service";
+import { getTrialReminderEmail } from "./emails/email-templates";
 import { storagePut } from "./storage/storage";
 import { uploadProfileImageToS3, deleteProfileImageFromS3, uploadCourseFileToS3, deleteCourseFileFromS3, getCourseFilePresignedUrl } from "./storage/s3Storage";
 import crypto from "crypto";
@@ -4733,13 +4734,66 @@ export const appRouter = router({
         search: z.string().optional(),
         startDate: z.string().optional(),
         endDate: z.string().optional(),
+        status: z.enum(["active", "inactive"]).optional(),
+        satOnly: z.enum(["sat", "non_sat"]).optional(),
       }))
       .query(async ({ input }) => {
         let allUsers = await db.getAllUsers();
+
+        // Compute active/inactive status per user based on trial reminders + session activity
+        const allReminders = await db.getAllTrialReminders();
+        const allSessions = await db.getAllSessionsMinimal();
+        const TEN_DAYS_MS = 10 * 24 * 60 * 60 * 1000;
+        const now = Date.now();
+
+        const remindersByUser = new Map<number, typeof allReminders>();
+        for (const r of allReminders) {
+          if (!remindersByUser.has(r.userId)) remindersByUser.set(r.userId, []);
+          remindersByUser.get(r.userId)!.push(r);
+        }
+        const sessionsByUser = new Map<number, number[]>();
+        const satUserIds = new Set<number>();
+        for (const s of allSessions) {
+          if (!sessionsByUser.has(s.parentId)) sessionsByUser.set(s.parentId, []);
+          sessionsByUser.get(s.parentId)!.push(Number(s.scheduledAt));
+          if (s.courseTitle && /\bSAT\b/i.test(s.courseTitle)) {
+            satUserIds.add(s.parentId);
+          }
+        }
+
+        allUsers = allUsers.map(u => {
+          const userReminders = remindersByUser.get(u.id) || [];
+          const reminder3 = userReminders.find(r => r.reminderNumber === 3 && r.status === "sent");
+          let activityStatus: "active" | "inactive" = "active";
+          if (reminder3) {
+            const r3Time = new Date(reminder3.sentAt).getTime();
+            const daysSince = now - r3Time;
+            if (daysSince >= TEN_DAYS_MS) {
+              const userSessions = sessionsByUser.get(u.id) || [];
+              const hasActivitySince = userSessions.some(sTime => sTime > r3Time);
+              if (!hasActivitySince) activityStatus = "inactive";
+            }
+          }
+          const hasSessions = (sessionsByUser.get(u.id) || []).length > 0;
+          const sentReminderDetails = (remindersByUser.get(u.id) || []).filter(r => r.status === "sent").map(r => ({ reminderNumber: r.reminderNumber, sentAt: r.sentAt }));
+          return { ...u, activityStatus, isSat: satUserIds.has(u.id), hasSessions, sentReminderDetails };
+        });
         
         // Apply role filter
         if (input.role) {
           allUsers = allUsers.filter(u => u.role === input.role);
+        }
+
+        // Apply active/inactive status filter
+        if (input.status) {
+          allUsers = allUsers.filter(u => (u as any).activityStatus === input.status);
+        }
+
+        // Apply SAT filter
+        if (input.satOnly === "sat") {
+          allUsers = allUsers.filter(u => (u as any).isSat === true);
+        } else if (input.satOnly === "non_sat") {
+          allUsers = allUsers.filter(u => (u as any).isSat !== true);
         }
         
         // Apply search filter (name or email)
@@ -4776,6 +4830,169 @@ export const appRouter = router({
           users: paginatedUsers,
           total: allUsers.length,
         };
+      }),
+    
+      previewTrialReminder: adminProcedure
+      .input(z.object({
+        userId: z.number(),
+        reminderNumber: z.number().min(1).max(3),
+      }))
+      .query(async ({ input }) => {
+        const user = await db.getUserById(input.userId);
+        if (!user || !user.email) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "User not found or has no email" });
+        }
+
+        const bookingUrl = process.env.VITE_FRONTEND_FORGE_API_URL
+          ? `${process.env.VITE_FRONTEND_FORGE_API_URL}/`
+          : "https://edkonnect-academy.com/";
+
+        const html = getTrialReminderEmail({
+          parentName: user.name || user.firstName || "there",
+          reminderNumber: input.reminderNumber as 1 | 2 | 3,
+          bookingUrl,
+        });
+
+        return {
+          to: user.email,
+          subject: "Ready to schedule your trial session?",
+          html,
+        };
+      }),
+
+      sendTrialReminder: adminProcedure
+      .input(z.object({
+        userId: z.number(),
+        reminderNumber: z.number().min(1).max(3),
+      }))
+      .mutation(async ({ input }) => {
+        const user = await db.getUserById(input.userId);
+        if (!user || !user.email) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "User not found or has no email" });
+        }
+
+        const bookingUrl = process.env.VITE_FRONTEND_FORGE_API_URL
+          ? `${process.env.VITE_FRONTEND_FORGE_API_URL}/`
+          : "https://edkonnect-academy.com/";
+
+        const html = getTrialReminderEmail({
+          parentName: user.name || user.firstName || "there",
+          reminderNumber: input.reminderNumber as 1 | 2 | 3,
+          bookingUrl,
+        });
+
+        const sent = await emailService.sendEmail({
+          to: user.email,
+          subject: "Ready to schedule your trial session?",
+          html,
+        });
+
+        await db.createTrialReminder({
+          userId: user.id,
+          reminderNumber: input.reminderNumber,
+          status: sent ? "sent" : "failed",
+        });
+
+        return { success: sent };
+      }),
+    getUserSessionDetails: adminProcedure
+      .input(z.object({ userId: z.number() }))
+      .query(async ({ input }) => {
+        const targetUser = await db.getUserById(input.userId);
+        if (!targetUser) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "User not found" });
+        }
+
+        const allSessions = await db.getAllSessionsWithDetails();
+        const userSessions = allSessions.filter(s => s.parentId === input.userId);
+
+        const completed = userSessions.filter(s => s.status === "completed").length;
+        const scheduled = userSessions.filter(s => s.status === "scheduled").length;
+        const cancelled = userSessions.filter(s => s.status === "cancelled").length;
+        const noShow = userSessions.filter(s => s.status === "no_show").length;
+
+        const subjectCounts = new Map<string, number>();
+        let isSat = false;
+        for (const s of userSessions) {
+          const subject = s.courseSubject || "Unknown";
+          subjectCounts.set(subject, (subjectCounts.get(subject) || 0) + 1);
+          if (s.courseTitle && /\bSAT\b/i.test(s.courseTitle)) isSat = true;
+        }
+
+        const reminders = await db.getTrialReminders(input.userId);
+        const satDetails = await db.getSatStudentDetails(input.userId);
+
+        const subscriptionRows = await db.getSubscriptionsByParentId(input.userId);
+        const activeSatSubs = subscriptionRows.filter(row => row.subscription.status === "active" && row.course.title && /\bSAT\b/i.test(row.course.title));
+
+        function subjectBucket(title: string): "Math" | "English" | null {
+          if (/\bMath\b/i.test(title)) return "Math";
+          if (/\bEnglish\b/i.test(title)) return "English";
+          return null;
+        }
+
+        const packages = activeSatSubs
+          .map(row => {
+            const bucket = subjectBucket(row.course.title || "");
+            if (!bucket) return null;
+            const bucketCompleted = userSessions.filter(s => s.status === "completed" && s.courseTitle && subjectBucket(s.courseTitle) === bucket).length;
+            const bucketScheduled = userSessions.filter(s => s.status === "scheduled" && s.courseTitle && subjectBucket(s.courseTitle) === bucket).length;
+            return {
+              subscriptionId: row.subscription.id,
+              courseTitle: row.course.title,
+              totalSessions: row.course.totalSessions || 0,
+              completed: bucketCompleted,
+              scheduled: bucketScheduled,
+              remaining: Math.max(0, (row.course.totalSessions || 0) - bucketCompleted),
+            };
+          })
+          .filter((p): p is NonNullable<typeof p> => p !== null);
+
+        return {
+          user: {
+            id: targetUser.id,
+            name: targetUser.name,
+            email: targetUser.email,
+            phoneNumber: targetUser.phoneNumber,
+            createdAt: targetUser.createdAt,
+          },
+          isSat,
+          satDetails,
+          packages,
+          sessions: userSessions,
+          reminders,
+          summary: {
+            total: userSessions.length,
+            completed,
+            scheduled,
+            cancelled,
+            noShow,
+            subjects: Array.from(subjectCounts.entries()).map(([subject, count]) => ({ subject, count })),
+          },
+        };
+      }),
+
+    updateSatStudentDetails: adminProcedure
+      .input(z.object({
+        userId: z.number(),
+        courseStartDate: z.string().optional().nullable(),
+        courseCompletionDate: z.string().optional().nullable(),
+        satTestDate: z.string().optional().nullable(),
+        satTestDate2: z.string().optional().nullable(),
+        satTestDate3: z.string().optional().nullable(),
+      }))
+      .mutation(async ({ input }) => {
+        const success = await db.upsertSatStudentDetails(input.userId, {
+          courseStartDate: input.courseStartDate ? new Date(input.courseStartDate) : null,
+          courseCompletionDate: input.courseCompletionDate ? new Date(input.courseCompletionDate) : null,
+          satTestDate: input.satTestDate ? new Date(input.satTestDate) : null,
+          satTestDate2: input.satTestDate2 ? new Date(input.satTestDate2) : null,
+          satTestDate3: input.satTestDate3 ? new Date(input.satTestDate3) : null,
+        });
+        if (!success) {
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to save details" });
+        }
+        return { success: true };
       }),
 
     deleteUser: adminProcedure

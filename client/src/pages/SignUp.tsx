@@ -19,6 +19,8 @@ import {
 import { detectUserTimezone } from "@/../../shared/timezone-utils";
 import { TimezoneSelector } from "@/components/TimezoneSelector";
 import { PhoneInput } from "@/components/PhoneInput";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
 import { fireConversion } from "@/lib/gtag";
 
 export default function SignUp() {
@@ -33,6 +35,10 @@ export default function SignUp() {
       phone: "",
       educationalNeeds: "",
       role: "parent" as "parent" | "tutor" | "admin",
+      interestType: "" as "" | "sat_test_prep" | "k12_math" | "k12_english" | "advanced_placement" | "coding" | "computer_science" | "other",
+      targetScoreRange: "",
+      plannedTestMonth: "",
+      courseType: "" as "" | "regular" | "accelerated",
     },
     {
       firstName: required("First name is required"),
@@ -79,6 +85,10 @@ export default function SignUp() {
         role: values.role,
         timezone: timezone,
         ...(refCode ? { refCode } : {}),
+        ...(values.interestType ? { interestType: values.interestType } : {}),
+        ...(values.targetScoreRange ? { targetScoreRange: values.targetScoreRange } : {}),
+        ...(values.plannedTestMonth ? { plannedTestMonth: values.plannedTestMonth } : {}),
+        ...(values.courseType ? { courseType: values.courseType } : {}),
       });
       // Clear stored referral code after successful signup
       localStorage.removeItem("edkonnect_ref");
@@ -177,6 +187,66 @@ export default function SignUp() {
                   rows={4}
                   helperText="Help us match you with the perfect tutor by sharing your educational goals."
                 />
+
+                <div>
+                  <Label className="text-sm font-medium mb-2 block">What are you interested in?</Label>
+                  <Select value={values.interestType} onValueChange={v => setValue("interestType", v as any)}>
+                    <SelectTrigger><SelectValue placeholder="Select an option (optional)" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="sat_test_prep">SAT / ACT Prep</SelectItem>
+                      <SelectItem value="k12_math">K-12 Math</SelectItem>
+                      <SelectItem value="k12_english">K-12 English</SelectItem>
+                      <SelectItem value="advanced_placement">Advanced Placement (AP)</SelectItem>
+                      <SelectItem value="coding">Coding</SelectItem>
+                      <SelectItem value="computer_science">Computer Science</SelectItem>
+                      <SelectItem value="other">Other</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {values.interestType === "sat_test_prep" && (
+                  <div className="grid md:grid-cols-3 gap-4">
+                    <div>
+                      <Label className="text-sm font-medium mb-2 block">Target Score Range</Label>
+                      <Select value={values.targetScoreRange} onValueChange={v => setValue("targetScoreRange", v)}>
+                        <SelectTrigger><SelectValue placeholder="Select range" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="1000-1100">1000-1100</SelectItem>
+                          <SelectItem value="1100-1200">1100-1200</SelectItem>
+                          <SelectItem value="1200-1300">1200-1300</SelectItem>
+                          <SelectItem value="1300-1400">1300-1400</SelectItem>
+                          <SelectItem value="1400-1500">1400-1500</SelectItem>
+                          <SelectItem value="1500-1600">1500-1600</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium mb-2 block">Planned Test Month</Label>
+                      <Select value={values.plannedTestMonth} onValueChange={v => setValue("plannedTestMonth", v)}>
+                        <SelectTrigger><SelectValue placeholder="Select month" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="march">March</SelectItem>
+                          <SelectItem value="may">May</SelectItem>
+                          <SelectItem value="june">June</SelectItem>
+                          <SelectItem value="august">August</SelectItem>
+                          <SelectItem value="october">October</SelectItem>
+                          <SelectItem value="november">November</SelectItem>
+                          <SelectItem value="december">December</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium mb-2 block">Course Type</Label>
+                      <Select value={values.courseType} onValueChange={v => setValue("courseType", v as any)}>
+                        <SelectTrigger><SelectValue placeholder="Select type" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="regular">Regular (30+30 hrs)</SelectItem>
+                          <SelectItem value="accelerated">Accelerated (20+20 hrs)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                )}
 
                 <TimezoneSelector
                   value={timezone}

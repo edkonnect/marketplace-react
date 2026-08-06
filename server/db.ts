@@ -5039,6 +5039,103 @@ export async function createNotificationLog(log: InsertNotificationLog) {
   }
 }
 
+export async function createTrialReminder(data: { userId: number; reminderNumber: number; status: string }) {
+  const db = await getDb();
+  if (!db) return null;
+
+  try {
+    const { trialReminders } = await import("../drizzle/schema");
+    const result = await db.insert(trialReminders).values(data) as any;
+    return Number(result.insertId);
+  } catch (error) {
+    console.error("[Database] Failed to create trial reminder:", error);
+    return null;
+  }
+}
+
+export async function getSatStudentDetails(userId: number) {
+  const db = await getDb();
+  if (!db) return null;
+
+  const { satStudentDetails } = await import("../drizzle/schema");
+  const { eq } = await import("drizzle-orm");
+  const result = await db.select().from(satStudentDetails).where(eq(satStudentDetails.userId, userId)).limit(1);
+  return result.length > 0 ? result[0] : null;
+}
+
+export async function upsertSatStudentDetails(userId: number, data: {
+  interestType?: string | null;
+  targetScoreRange?: string | null;
+  plannedTestMonth?: string | null;
+  courseType?: string | null;
+  courseStartDate?: Date | null;
+  courseCompletionDate?: Date | null;
+  satTestDate?: Date | null;
+  satTestDate2?: Date | null;
+  satTestDate3?: Date | null;
+}) {
+  const db = await getDb();
+  if (!db) return null;
+
+  const { satStudentDetails } = await import("../drizzle/schema");
+  const { eq } = await import("drizzle-orm");
+
+  try {
+    const existing = await db.select().from(satStudentDetails).where(eq(satStudentDetails.userId, userId)).limit(1);
+    if (existing.length > 0) {
+      await db.update(satStudentDetails).set(data).where(eq(satStudentDetails.userId, userId));
+    } else {
+      await db.insert(satStudentDetails).values({ userId, ...data });
+    }
+    return true;
+  } catch (error) {
+    console.error("[Database] Failed to upsert SAT student details:", error);
+    return false;
+  }
+}
+
+export async function getAllTrialReminders() {
+  const db = await getDb();
+  if (!db) return [];
+
+  const { trialReminders } = await import("../drizzle/schema");
+  return await db.select().from(trialReminders);
+}
+
+export async function getAllSessionsMinimal() {
+  const db = await getDb();
+  if (!db) return [];
+
+  const sessionCourses = alias(courses, "session_courses_minimal");
+  const result = await db
+    .select({
+      parentId: sessions.parentId,
+      scheduledAt: sessions.scheduledAt,
+      course: courses,
+      sessionCourse: sessionCourses,
+    })
+    .from(sessions)
+    .leftJoin(subscriptions, eq(sessions.subscriptionId, subscriptions.id))
+    .leftJoin(courses, eq(subscriptions.courseId, courses.id))
+    .leftJoin(sessionCourses, eq(sessions.courseId, sessionCourses.id));
+
+  return result.map(row => ({
+    parentId: row.parentId,
+    scheduledAt: row.scheduledAt,
+    courseSubject: row.course?.subject || row.sessionCourse?.subject || null,
+    courseTitle: row.course?.title || row.sessionCourse?.title || null,
+  }));
+}
+
+export async function getTrialReminders(userId: number) {
+  const db = await getDb();
+  if (!db) return [];
+
+  const { trialReminders } = await import("../drizzle/schema");
+  const { eq } = await import("drizzle-orm");
+  return await db.select().from(trialReminders).where(eq(trialReminders.userId, userId));
+}
+
 export async function getNotificationLogs(userId: number, limit: number = 50) {
   const db = await getDb();
   if (!db) return [];

@@ -13,6 +13,7 @@ import CourseDetail from "./pages/CourseDetail";
 import ParentDashboard from "./pages/ParentDashboard";
 import TutorDashboard from "./pages/TutorDashboard";
 import { AdminDashboard } from "./pages/AdminDashboard";
+import { StudentDetail } from "./pages/StudentDetail";
 import { CoordinatorDashboard } from "./pages/CoordinatorDashboard";
 import { CoordinatorParentMessages } from "./pages/CoordinatorParentMessages";
 import { CoordinatorParentSchedule } from "./pages/CoordinatorParentSchedule";
@@ -94,6 +95,7 @@ function Router() {
       <Route path={"/coordinator/parent/:parentId/messages"} component={CoordinatorParentMessages} />
       <Route path={"/coordinator/parent/:parentId/schedule"} component={CoordinatorParentSchedule} />
       <Route path={"/admin/dashboard"} component={AdminDashboard} />
+      <Route path={"/admin/student/:id"} component={StudentDetail} />
       <Route path={"/manage-booking/:token"} component={ManageBooking} />
       <Route path={"/session-notes"} component={SessionNotesHistory} />
       <Route path={"/messages"} component={Messages} />

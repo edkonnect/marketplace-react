@@ -31,6 +31,7 @@ import { TutorAssignmentDialog } from "@/components/TutorAssignmentDialog";
 import { TestimonialsManager } from "@/components/TestimonialsManager";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from "@/components/ui/table";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
@@ -586,6 +587,8 @@ export function AdminDashboard() {
   // Filter states
   const [userFilters, setUserFilters] = useState<{
     role?: "admin" | "parent" | "tutor" | "coordinator";
+    status?: "active" | "inactive";
+    satOnly?: "sat" | "non_sat";
     search?: string;
     startDate?: string;
     endDate?: string;
@@ -674,6 +677,21 @@ export function AdminDashboard() {
     },
   });
 
+const [sentReminders, setSentReminders] = useState<Record<string, Date>>({});
+  const sendTrialReminderMutation = trpc.admin.sendTrialReminder.useMutation({
+    onSuccess: (_data, variables) => {
+      toast.success(`Reminder ${variables.reminderNumber} sent`);
+      setSentReminders(prev => ({ ...prev, [`${variables.userId}-${variables.reminderNumber}`]: new Date() }));
+    },
+    onError: (err) => {
+      toast.error(err.message || "Failed to send reminder");
+    },
+  });
+  const [previewReminder, setPreviewReminder] = useState<{ userId: number; reminderNumber: number } | null>(null);
+  const { data: reminderPreview, isLoading: reminderPreviewLoading } = trpc.admin.previewTrialReminder.useQuery(
+    previewReminder ?? { userId: 0, reminderNumber: 1 },
+    { enabled: previewReminder !== null }
+  );
   const { data: usersCSVData, refetch: refetchUsersCSV } = trpc.admin.exportUsersCSV.useQuery(userFilters, { enabled: false });
   const { data: enrollmentsCSVData, refetch: refetchEnrollmentsCSV } = trpc.admin.exportEnrollmentsCSV.useQuery(enrollmentFilters, { enabled: false });
   const { data: paymentsCSVData, refetch: refetchPaymentsCSV } = trpc.admin.exportPaymentsCSV.useQuery(paymentFilters, { enabled: false });
@@ -920,7 +938,7 @@ export function AdminDashboard() {
               <Card>
                 <CardHeader><CardTitle>Filters</CardTitle></CardHeader>
                 <CardContent>
-                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
                     <div>
                       <label className="text-sm font-medium mb-2 block">Search</label>
                       <Input placeholder="Name or email..." value={userFilters.search || ""} onChange={e => setUserFilters({ ...userFilters, search: e.target.value || undefined })} />
@@ -935,6 +953,28 @@ export function AdminDashboard() {
                           <SelectItem value="parent">Parent</SelectItem>
                           <SelectItem value="tutor">Tutor</SelectItem>
                           <SelectItem value="coordinator">Coordinator</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium mb-2 block">Status</label>
+                      <Select value={userFilters.status || "all"} onValueChange={v => setUserFilters({ ...userFilters, status: v === "all" ? undefined : v as any })}>
+                        <SelectTrigger><SelectValue placeholder="All" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All</SelectItem>
+                          <SelectItem value="active">Active</SelectItem>
+                          <SelectItem value="inactive">Inactive</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium mb-2 block">SAT</label>
+                      <Select value={userFilters.satOnly || "all"} onValueChange={v => setUserFilters({ ...userFilters, satOnly: v === "all" ? undefined : v as any })}>
+                        <SelectTrigger><SelectValue placeholder="All" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All</SelectItem>
+                          <SelectItem value="sat">SAT only</SelectItem>
+                          <SelectItem value="non_sat">Non-SAT</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
@@ -967,12 +1007,39 @@ export function AdminDashboard() {
                         <div key={u.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-accent transition-colors">
                           <div className="flex-1">
                             <div className="flex items-center gap-3">
-                              <p className="font-semibold">{u.name || "Unknown"}</p>
+                              <p className={(u as any).isSat ? "font-semibold cursor-pointer hover:underline" : "font-semibold"} onClick={() => { if ((u as any).isSat) window.open(`/admin/student/${u.id}`, "_blank"); }}>{u.name || "Unknown"}</p>
+                              {(u as any).isSat && <Badge variant="default" className="bg-blue-600">SAT</Badge>}
                               <Badge variant={u.role === "admin" ? "default" : u.role === "tutor" ? "secondary" : "outline"}>{u.role}</Badge>
+                              {u.role === "parent" && (u as any).activityStatus && (<Badge variant={(u as any).activityStatus === "active" ? "secondary" : "outline"} className={(u as any).activityStatus === "inactive" ? "text-muted-foreground" : ""}>{(u as any).activityStatus === "active" ? "Active" : "Inactive"}</Badge>)}
                             </div>
                             <p className="text-sm text-muted-foreground mt-1">{u.email}</p>
                             {u.createdAt && <p className="text-xs text-muted-foreground mt-1">Joined {new Date(u.createdAt).toLocaleDateString()}</p>}
                           </div>
+                          {u.role === "parent" && !(u as any).hasSessions && (
+                            <div className="flex items-center gap-1 mr-2">
+                              {[1, 2, 3].map((num) => {
+                                const key = `${u.id}-${num}`;
+                                const dbSent = ((u as any).sentReminderDetails || []).find((r: any) => r.reminderNumber === num);
+                                const isSent = !!sentReminders[key] || !!dbSent;
+                                const sentAt = sentReminders[key] || (dbSent ? new Date(dbSent.sentAt) : undefined);
+                                return (
+                                  <div key={num} className="flex flex-col items-center">
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      disabled={isSent}
+                                      onClick={() => setPreviewReminder({ userId: u.id, reminderNumber: num })}
+                                    >
+                                      {isSent ? "Sent" : `Reminder ${num}`}
+                                    </Button>
+                                    {isSent && sentAt && (
+                                      <p className="text-[10px] text-muted-foreground mt-0.5">{sentAt.toLocaleDateString()} {sentAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</p>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
                           {u.role !== "admin" && (
                             confirmDeleteId === u.id ? (
                               <div className="flex items-center gap-2">
@@ -1597,6 +1664,42 @@ export function AdminDashboard() {
               </Accordion>
             </div>
           )}
+        </DialogContent>
+
+      </Dialog>
+
+      {/* Trial Reminder Preview Dialog */}
+      <Dialog open={previewReminder !== null} onOpenChange={open => { if (!open) setPreviewReminder(null); }}>
+        <DialogContent className="max-w-2xl w-full max-h-[85vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle>Preview Reminder {previewReminder?.reminderNumber}</DialogTitle>
+          </DialogHeader>
+          {reminderPreviewLoading ? (
+            <Skeleton className="h-64 w-full" />
+          ) : reminderPreview ? (
+            <div className="space-y-3 overflow-y-auto">
+              <p className="text-sm"><span className="font-medium">To:</span> {reminderPreview.to}</p>
+              <p className="text-sm"><span className="font-medium">Subject:</span> {reminderPreview.subject}</p>
+              <div className="border rounded-lg p-2 bg-white">
+                <iframe title="Email preview" srcDoc={reminderPreview.html} className="w-full h-96 border-0" />
+              </div>
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">Unable to load preview.</p>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPreviewReminder(null)}>Cancel</Button>
+            <Button
+              disabled={sendTrialReminderMutation.isPending}
+              onClick={() => {
+                if (!previewReminder) return;
+                sendTrialReminderMutation.mutate(previewReminder);
+                setPreviewReminder(null);
+              }}
+            >
+              Send
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

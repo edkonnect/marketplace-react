@@ -302,6 +302,20 @@
       "when": 1782544832723,
       "tag": "0045_slim_gunslinger",
       "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "5",
+      "when": 1785482443634,
+      "tag": "0046_lucky_risque",
+      "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "5",
+      "when": 1785787733456,
+      "tag": "0047_rare_retro_girl",
+      "breakpoints": true
     }
   ]
 }

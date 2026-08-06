@@ -22,6 +22,10 @@ const authSchema = {
     lastName: z.string().min(1).max(100),
     role: z.enum(["parent", "tutor"]).default("parent"),
     timezone: z.string().optional(),
+    interestType: z.enum(["sat_test_prep", "k12_math", "k12_english", "advanced_placement", "coding", "computer_science", "other"]).optional(),
+    targetScoreRange: z.string().optional(),
+    plannedTestMonth: z.string().optional(),
+    courseType: z.enum(["regular", "accelerated"]).optional(),
   }),
   login: z.object({
     email: z.string().email(),

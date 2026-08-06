@@ -16,7 +16,7 @@ type AuthContextValue = {
   loading: boolean;
   previousLastSignedIn: string | null;
   login: (email: string, password: string) => Promise<User | null>;
-  signup: (data: { firstName: string; lastName: string; email: string; password: string; role: "parent" | "tutor" | "admin" | "coordinator"; timezone?: string }) => Promise<User | null>;
+  signup: (data: { firstName: string; lastName: string; email: string; password: string; role: "parent" | "tutor" | "admin" | "coordinator"; timezone?: string; interestType?: string; targetScoreRange?: string; plannedTestMonth?: string; courseType?: string }) => Promise<User | null>;
   logout: () => Promise<void>;
   refreshProfile: () => Promise<void>;
 };
@@ -150,7 +150,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return next;
   }, [fetchProfile]);
 
-  const signup = useCallback(async (data: { firstName: string; lastName: string; email: string; password: string; role: "parent" | "tutor" | "admin" | "coordinator"; timezone?: string; refCode?: string }) => {
+  const signup = useCallback(async (data: { firstName: string; lastName: string; email: string; password: string; role: "parent" | "tutor" | "admin" | "coordinator"; timezone?: string; refCode?: string; interestType?: string; targetScoreRange?: string; plannedTestMonth?: string; courseType?: string }) => {
     await request<{ user: User }>("/api/auth/signup", {
       method: "POST",
       body: JSON.stringify(data),

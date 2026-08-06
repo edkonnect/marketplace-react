@@ -764,6 +764,48 @@ export type NotificationLog = typeof notificationLogs.$inferSelect;
 export type InsertNotificationLog = typeof notificationLogs.$inferInsert;
 
 /**
+ * Trial reminder emails sent to parents from the admin Users page
+ */
+export const trialReminders = mysqlTable("trial_reminders", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  reminderNumber: int("reminderNumber").notNull(), // 1, 2, or 3
+  status: varchar("status", { length: 20 }).notNull(), // "sent" or "failed"
+  sentAt: timestamp("sentAt").defaultNow().notNull(),
+}, (table) => ({
+  userIdIdx: index("trial_reminders_userId_idx").on(table.userId),
+}));
+
+export type TrialReminder = typeof trialReminders.$inferSelect;
+export type InsertTrialReminder = typeof trialReminders.$inferInsert;
+
+/**
+ * SAT-specific tracking info per student — captured at signup (interest/target
+ * score/planned test month/course type) and later filled in by admin
+ * (completion date, confirmed test date)
+ */
+export const satStudentDetails = mysqlTable("sat_student_details", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull().references(() => users.id, { onDelete: "cascade" }).unique(),
+  interestType: varchar("interestType", { length: 100 }), // e.g. "SAT", "K12 Math", captured at signup
+  targetScoreRange: varchar("targetScoreRange", { length: 50 }),
+  plannedTestMonth: varchar("plannedTestMonth", { length: 20 }),
+  courseType: varchar("courseType", { length: 50 }), // "regular" | "accelerated"
+  courseStartDate: timestamp("courseStartDate"),
+  courseCompletionDate: timestamp("courseCompletionDate"),
+  satTestDate: timestamp("satTestDate"),
+  satTestDate2: timestamp("satTestDate2"),
+  satTestDate3: timestamp("satTestDate3"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => ({
+  userIdIdx: index("sat_student_details_userId_idx").on(table.userId),
+}));
+
+export type SatStudentDetails = typeof satStudentDetails.$inferSelect;
+export type InsertSatStudentDetails = typeof satStudentDetails.$inferInsert;
+
+/**
  * In-app notifications for users
  */
 export const inAppNotifications = mysqlTable("in_app_notifications", {
