@@ -5073,6 +5073,12 @@ export async function upsertSatStudentDetails(userId: number, data: {
   satTestDate?: Date | null;
   satTestDate2?: Date | null;
   satTestDate3?: Date | null;
+  parentNotes1?: string | null;
+  tutorNotes1?: string | null;
+  parentNotes2?: string | null;
+  tutorNotes2?: string | null;
+  parentNotes3?: string | null;
+  tutorNotes3?: string | null;
 }) {
   const db = await getDb();
   if (!db) return null;

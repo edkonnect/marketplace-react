@@ -796,6 +796,12 @@ export const satStudentDetails = mysqlTable("sat_student_details", {
   satTestDate: timestamp("satTestDate"),
   satTestDate2: timestamp("satTestDate2"),
   satTestDate3: timestamp("satTestDate3"),
+  parentNotes1: text("parentNotes1"),
+  tutorNotes1: text("tutorNotes1"),
+  parentNotes2: text("parentNotes2"),
+  tutorNotes2: text("tutorNotes2"),
+  parentNotes3: text("parentNotes3"),
+  tutorNotes3: text("tutorNotes3"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 }, (table) => ({

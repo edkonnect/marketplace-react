@@ -4980,6 +4980,12 @@ export const appRouter = router({
         satTestDate: z.string().optional().nullable(),
         satTestDate2: z.string().optional().nullable(),
         satTestDate3: z.string().optional().nullable(),
+        parentNotes1: z.string().optional().nullable(),
+        tutorNotes1: z.string().optional().nullable(),
+        parentNotes2: z.string().optional().nullable(),
+        tutorNotes2: z.string().optional().nullable(),
+        parentNotes3: z.string().optional().nullable(),
+        tutorNotes3: z.string().optional().nullable(),
       }))
       .mutation(async ({ input }) => {
         const success = await db.upsertSatStudentDetails(input.userId, {
@@ -4988,6 +4994,12 @@ export const appRouter = router({
           satTestDate: input.satTestDate ? new Date(input.satTestDate) : null,
           satTestDate2: input.satTestDate2 ? new Date(input.satTestDate2) : null,
           satTestDate3: input.satTestDate3 ? new Date(input.satTestDate3) : null,
+          parentNotes1: input.parentNotes1 ?? null,
+          tutorNotes1: input.tutorNotes1 ?? null,
+          parentNotes2: input.parentNotes2 ?? null,
+          tutorNotes2: input.tutorNotes2 ?? null,
+          parentNotes3: input.parentNotes3 ?? null,
+          tutorNotes3: input.tutorNotes3 ?? null,
         });
         if (!success) {
           throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to save details" });

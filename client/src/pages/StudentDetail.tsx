@@ -1,4 +1,4 @@
-ï»¿import { useParams, Link } from "wouter";
+import { useParams, Link } from "wouter";
 import { useState, useEffect } from "react";
 import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,6 +8,7 @@ import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from "@
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 
@@ -25,6 +26,12 @@ export function StudentDetail() {
   const [testDate, setTestDate] = useState("");
   const [testDate2, setTestDate2] = useState("");
   const [testDate3, setTestDate3] = useState("");
+  const [parentNotes1, setParentNotes1] = useState("");
+  const [tutorNotes1, setTutorNotes1] = useState("");
+  const [parentNotes2, setParentNotes2] = useState("");
+  const [tutorNotes2, setTutorNotes2] = useState("");
+  const [parentNotes3, setParentNotes3] = useState("");
+  const [tutorNotes3, setTutorNotes3] = useState("");
 
   useEffect(() => {
     if (data?.satDetails) {
@@ -33,6 +40,12 @@ export function StudentDetail() {
       setTestDate(data.satDetails.satTestDate ? new Date(data.satDetails.satTestDate).toISOString().slice(0, 10) : "");
       setTestDate2((data.satDetails as any).satTestDate2 ? new Date((data.satDetails as any).satTestDate2).toISOString().slice(0, 10) : "");
       setTestDate3((data.satDetails as any).satTestDate3 ? new Date((data.satDetails as any).satTestDate3).toISOString().slice(0, 10) : "");
+      setParentNotes1((data.satDetails as any).parentNotes1 || "");
+      setTutorNotes1((data.satDetails as any).tutorNotes1 || "");
+      setParentNotes2((data.satDetails as any).parentNotes2 || "");
+      setTutorNotes2((data.satDetails as any).tutorNotes2 || "");
+      setParentNotes3((data.satDetails as any).parentNotes3 || "");
+      setTutorNotes3((data.satDetails as any).tutorNotes3 || "");
     }
   }, [data?.satDetails]);
 
@@ -100,19 +113,49 @@ export function StudentDetail() {
                 </div>
               </div>
               <div>
-                <p className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wide">SAT Test Dates</p>
+                <p className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wide">SAT Test Dates & Notes</p>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  <div>
-                    <Label className="text-sm font-medium mb-2 block">Test 1 Date</Label>
-                    <Input type="date" value={testDate} onChange={e => setTestDate(e.target.value)} />
+                  <div className="space-y-3">
+                    <div>
+                      <Label className="text-sm font-medium mb-2 block">Test 1 Date</Label>
+                      <Input type="date" value={testDate} onChange={e => setTestDate(e.target.value)} />
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium mb-2 block">Parent / Student Notes</Label>
+                      <Textarea value={parentNotes1} onChange={e => setParentNotes1(e.target.value)} rows={3} />
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium mb-2 block">Tutor Notes</Label>
+                      <Textarea value={tutorNotes1} onChange={e => setTutorNotes1(e.target.value)} rows={3} />
+                    </div>
                   </div>
-                  <div>
-                    <Label className="text-sm font-medium mb-2 block">Test 2 Date</Label>
-                    <Input type="date" value={testDate2} onChange={e => setTestDate2(e.target.value)} />
+                  <div className="space-y-3">
+                    <div>
+                      <Label className="text-sm font-medium mb-2 block">Test 2 Date</Label>
+                      <Input type="date" value={testDate2} onChange={e => setTestDate2(e.target.value)} />
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium mb-2 block">Parent / Student Notes</Label>
+                      <Textarea value={parentNotes2} onChange={e => setParentNotes2(e.target.value)} rows={3} />
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium mb-2 block">Tutor Notes</Label>
+                      <Textarea value={tutorNotes2} onChange={e => setTutorNotes2(e.target.value)} rows={3} />
+                    </div>
                   </div>
-                  <div>
-                    <Label className="text-sm font-medium mb-2 block">Test 3 Date</Label>
-                    <Input type="date" value={testDate3} onChange={e => setTestDate3(e.target.value)} />
+                  <div className="space-y-3">
+                    <div>
+                      <Label className="text-sm font-medium mb-2 block">Test 3 Date</Label>
+                      <Input type="date" value={testDate3} onChange={e => setTestDate3(e.target.value)} />
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium mb-2 block">Parent / Student Notes</Label>
+                      <Textarea value={parentNotes3} onChange={e => setParentNotes3(e.target.value)} rows={3} />
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium mb-2 block">Tutor Notes</Label>
+                      <Textarea value={tutorNotes3} onChange={e => setTutorNotes3(e.target.value)} rows={3} />
+                    </div>
                   </div>
                 </div>
               </div>
@@ -127,6 +170,12 @@ export function StudentDetail() {
                 satTestDate: testDate || null,
                 satTestDate2: testDate2 || null,
                 satTestDate3: testDate3 || null,
+                parentNotes1: parentNotes1 || null,
+                tutorNotes1: tutorNotes1 || null,
+                parentNotes2: parentNotes2 || null,
+                tutorNotes2: tutorNotes2 || null,
+                parentNotes3: parentNotes3 || null,
+                tutorNotes3: tutorNotes3 || null,
               })}
             >
               Save
@@ -210,8 +259,8 @@ export function StudentDetail() {
               ) : data.sessions.map(s => (
                 <TableRow key={s.id}>
                   <TableCell>{new Date(s.scheduledAt).toLocaleDateString()}</TableCell>
-                  <TableCell>{s.courseTitle || s.courseSubject || "â€”"}</TableCell>
-                  <TableCell>{s.tutorName || "â€”"}</TableCell>
+                  <TableCell>{s.courseTitle || s.courseSubject || "—"}</TableCell>
+                  <TableCell>{s.tutorName || "—"}</TableCell>
                   <TableCell><Badge variant={s.status === "completed" ? "secondary" : s.status === "cancelled" || s.status === "no_show" ? "outline" : "default"}>{s.status}</Badge></TableCell>
                 </TableRow>
               ))}
