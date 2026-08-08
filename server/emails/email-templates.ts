@@ -1312,32 +1312,82 @@ interface TrialReminderEmailProps {
   bookingUrl: string;
 }
 
-export function getTrialReminderEmail(props: TrialReminderEmailProps): string {
+interface TrialReminderEmailResult {
+  subject: string;
+  html: string;
+}
+
+export function getTrialReminderEmail(props: TrialReminderEmailProps): TrialReminderEmailResult {
   const { parentName, reminderNumber, bookingUrl } = props;
 
-  const messageByReminder: Record<1 | 2 | 3, string> = {
-    1: `We noticed you were checking out our courses but haven't scheduled a trial session yet. We'd love to help your child get started!`,
-    2: `Just following up — a free trial session is a great way to meet a tutor and see if it's the right fit, no commitment needed.`,
-    3: `This is a final reminder — we'd still love to help. Whenever you're ready, scheduling a trial takes just a couple of minutes.`,
-  };
+  if (reminderNumber === 1) {
+    const subject = "Welcome to EdKonnect Academy - Let's get you learning!";
+    const content = `
+      <h1>Welcome to EdKonnect Academy!</h1>
+      <p>Hi ${parentName},</p>
+      <p>Welcome to EdKonnect Academy! We're thrilled to have you join our community of learners and dedicated tutors.</p>
+      <p>Whether you're looking to master a tricky subject, prep for an upcoming exam, or learn a brand new skill, you're in the right place. Here is how to get started in three simple steps:</p>
+      <ol>
+        <li><strong>Complete Your Profile:</strong> Tell us a bit about your learning goals and schedule preferences so we can tailor your experience.</li>
+        <li><strong>Browse Tutors:</strong> Explore verified tutors by subject, rating, price, and availability. You can filter by exact skills to find your perfect match.</li>
+        <li><strong>Book Your First Session:</strong> Send a message to a tutor or book a session directly through their calendar.</li>
+      </ol>
+      <div style="text-align: center; margin: 32px 0;">
+        <a href="${bookingUrl}" class="button">Browse Tutors</a>
+      </div>
+      <p><strong>Need Help Finding the Right Fit?</strong></p>
+      <p>If you're not sure where to start, our matching team is here to help. Simply reply to this email with the subject you need help with, and we'll send a few personalized recommendations your way.</p>
+      <p>Happy learning!</p>
+      <p style="margin-top: 32px;">Best regards,<br><strong>Team EdKonnect</strong></p>
+    `;
+    return {
+      subject,
+      html: getEmailBase(content, {
+        preheaderText: `Hi ${parentName}, welcome to EdKonnect Academy - let's get you learning!`
+      }),
+    };
+  }
 
+  if (reminderNumber === 2) {
+    const subject = "Unlock a free trial lesson";
+    const content = `
+      <h1>Unlock a free trial lesson</h1>
+      <p>Hi ${parentName},</p>
+      <p>Finding the right tutor can make all the difference, and we want to make sure you find your perfect match risk-free.</p>
+      <p>Did you know that many tutors on our platform offer a free complimentary trial lesson? It's a zero-commitment way to meet a tutor, discuss your goals, and see if their teaching style works for you before booking full sessions.</p>
+      <p><strong>Real Results from Learners Like You</strong></p>
+      <p>You don't have to take our word for it - thousands of students have already transformed their learning experience on our platform.</p>
+      <p><strong>Ready to Start Your Success Story?</strong></p>
+      <p>Claim your trial lesson today and take the first step toward reaching your goals. Look for tutors displaying the "Free Trial Available" badge on their profiles.</p>
+      <div style="text-align: center; margin: 32px 0;">
+        <a href="${bookingUrl}" class="button">Find a Tutor</a>
+      </div>
+      <p>If you need any help selecting a tutor, just hit reply to this email - we'd love to help you find the right fit!</p>
+      <p style="margin-top: 32px;">Best regards,<br><strong>The EdKonnect Team</strong></p>
+    `;
+    return {
+      subject,
+      html: getEmailBase(content, {
+        preheaderText: `Hi ${parentName}, unlock a free trial lesson with EdKonnect Academy.`
+      }),
+    };
+  }
+
+  const subject = "Ready to schedule your trial session?";
   const content = `
     <h1>Ready to schedule your trial session?</h1>
-
     <p>Hi ${parentName},</p>
-
-    <p>${messageByReminder[reminderNumber]}</p>
-
+    <p>This is a final reminder - we'd still love to help. Whenever you're ready, scheduling a trial takes just a couple of minutes.</p>
     <div style="text-align: center; margin: 32px 0;">
       <a href="${bookingUrl}" class="button">Schedule a Trial Session</a>
     </div>
-
-    <p>If you have any questions or need help finding the right tutor, just reply to this email — we're happy to help.</p>
-
+    <p>If you have any questions or need help finding the right tutor, just reply to this email - we're happy to help.</p>
     <p style="margin-top: 32px;">Best regards,<br><strong>The EdKonnect Academy Team</strong></p>
   `;
-
-  return getEmailBase(content, {
-    preheaderText: `Hi ${parentName}, ready to schedule your trial session with EdKonnect Academy?`
-  });
+  return {
+    subject,
+    html: getEmailBase(content, {
+      preheaderText: `Hi ${parentName}, ready to schedule your trial session with EdKonnect Academy?`
+    }),
+  };
 }

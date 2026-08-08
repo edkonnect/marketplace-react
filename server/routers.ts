@@ -4847,7 +4847,7 @@ export const appRouter = router({
           ? `${process.env.VITE_FRONTEND_FORGE_API_URL}/`
           : "https://edkonnect-academy.com/";
 
-        const html = getTrialReminderEmail({
+        const { subject, html } = getTrialReminderEmail({
           parentName: user.name || user.firstName || "there",
           reminderNumber: input.reminderNumber as 1 | 2 | 3,
           bookingUrl,
@@ -4855,7 +4855,7 @@ export const appRouter = router({
 
         return {
           to: user.email,
-          subject: "Ready to schedule your trial session?",
+          subject,
           html,
         };
       }),
@@ -4875,7 +4875,7 @@ export const appRouter = router({
           ? `${process.env.VITE_FRONTEND_FORGE_API_URL}/`
           : "https://edkonnect-academy.com/";
 
-        const html = getTrialReminderEmail({
+        const { subject, html } = getTrialReminderEmail({
           parentName: user.name || user.firstName || "there",
           reminderNumber: input.reminderNumber as 1 | 2 | 3,
           bookingUrl,
@@ -4883,7 +4883,7 @@ export const appRouter = router({
 
         const sent = await emailService.sendEmail({
           to: user.email,
-          subject: "Ready to schedule your trial session?",
+          subject,
           html,
         });
 
