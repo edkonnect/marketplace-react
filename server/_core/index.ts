@@ -12,6 +12,7 @@ import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
 import { ENV } from "./env";
 import { authRouter } from "./routes/auth";
+import { authRouter } from "./routes/auth";
 import { userRouter } from "./routes/users";
 
 function isPortAvailable(port: number): Promise<boolean> {
@@ -98,6 +99,8 @@ async function startServer() {
   app.post("/api/webhooks/zoom", handleZoomWebhook);
 
   app.use("/api/auth", authLimiter, authRouter);
+  const { mobileRouter } = await import("./routes/mobile");
+app.use("/api/mobile", mobileRouter);
   app.use("/api/users", userRouter);
 
   const { pdfRouter } = await import("../pdf/pdfRoute");
