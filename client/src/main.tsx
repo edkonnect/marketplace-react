@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { httpBatchLink, TRPCClientError } from "@trpc/client";
 import { createRoot } from "react-dom/client";
 import superjson from "superjson";
+import { toast } from "sonner";
 import App from "./App";
 import "./index.css";
 import { AuthProvider, useAuthContext } from "./contexts/AuthContext";
@@ -21,7 +22,10 @@ const queryClient = new QueryClient({
 
 let isRefreshing = false;
 
-const redirectToLoginIfUnauthorized = async (error: unknown) => {
+const redirectToLoginIfUnauthorized = async (
+  error: unknown,
+  kind: "query" | "mutation" = "query"
+) => {
   if (!(error instanceof TRPCClientError)) return;
   if (typeof window === "undefined") return;
   const isUnauthorized = error.message === UNAUTHED_ERR_MSG;
@@ -33,6 +37,11 @@ const redirectToLoginIfUnauthorized = async (error: unknown) => {
   try {
     const res = await fetch("/api/auth/refresh-token", { method: "POST", credentials: "include" });
     if (res.ok) {
+      if (kind === "mutation") {
+        // Session was renewed, but the in-flight save/update was still lost —
+        // let her know so she can retry the action instead of assuming it saved.
+        toast.error("Your session was renewed. Please try that action again.");
+      }
       // Token refreshed — invalidate all cached queries so they re-fetch with the new token
       queryClient.invalidateQueries();
       return;
@@ -49,7 +58,7 @@ const redirectToLoginIfUnauthorized = async (error: unknown) => {
 queryClient.getQueryCache().subscribe(event => {
   if (event.type === "updated" && event.action.type === "error") {
     const error = event.query.state.error;
-    redirectToLoginIfUnauthorized(error);
+    redirectToLoginIfUnauthorized(error, "query");
     console.error("[API Query Error]", error);
   }
 });
@@ -57,7 +66,7 @@ queryClient.getQueryCache().subscribe(event => {
 queryClient.getMutationCache().subscribe(event => {
   if (event.type === "updated" && event.action.type === "error") {
     const error = event.mutation.state.error;
-    redirectToLoginIfUnauthorized(error);
+    redirectToLoginIfUnauthorized(error, "mutation");
     console.error("[API Mutation Error]", error);
   }
 });

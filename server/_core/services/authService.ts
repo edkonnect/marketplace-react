@@ -5,6 +5,7 @@ import { z } from "zod";
 import {
   ACCESS_TOKEN_COOKIE,
   ACCESS_TOKEN_EXPIRY_MS,
+  ADMIN_ACCESS_TOKEN_EXPIRY_MS,
   REFRESH_TOKEN_COOKIE,
   REFRESH_TOKEN_EXPIRY_MS,
   SUPER_USER_TOKEN_COOKIE,
@@ -62,7 +63,11 @@ export async function verifyPassword(password: string, hash: string) {
 }
 
 export async function setAuthCookies(req: Request, res: Response, payload: JwtPayload) {
-  const accessToken = await signJwt(payload, ACCESS_TOKEN_EXPIRY_MS, accessSecret);
+  // Admin sessions get a longer access token so long edit/update sessions
+  // don't get interrupted mid-way. All other roles keep the standard expiry.
+  const accessExpiryMs = payload.role === "admin" ? ADMIN_ACCESS_TOKEN_EXPIRY_MS : ACCESS_TOKEN_EXPIRY_MS;
+
+  const accessToken = await signJwt(payload, accessExpiryMs, accessSecret);
   const refreshToken = await signJwt(payload, REFRESH_TOKEN_EXPIRY_MS, refreshSecret);
 
   // store refresh hash
@@ -71,7 +76,7 @@ export async function setAuthCookies(req: Request, res: Response, payload: JwtPa
   const accessOptions = getCookieOptions(req, "/");
   const refreshOptions = getCookieOptions(req, "/api/auth/refresh-token");
 
-  res.cookie(ACCESS_TOKEN_COOKIE, accessToken, { ...accessOptions, maxAge: ACCESS_TOKEN_EXPIRY_MS });
+  res.cookie(ACCESS_TOKEN_COOKIE, accessToken, { ...accessOptions, maxAge: accessExpiryMs });
   res.cookie(REFRESH_TOKEN_COOKIE, refreshToken, { ...refreshOptions, maxAge: REFRESH_TOKEN_EXPIRY_MS });
 }
 
