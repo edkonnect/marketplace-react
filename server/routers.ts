@@ -2374,6 +2374,19 @@ export const appRouter = router({
     }),
 
     myUpcoming: protectedProcedure.query(async ({ ctx }) => {
+      // Zoom URL for a given (tutorId, isHost) pair is identical across all rows in this
+      // request, so cache per pair instead of hitting the DB/Zoom API for every session.
+      const zoomUrlCache = new Map<string, Promise<string | null>>();
+      const getCachedZoomUrl = (tutorId: number, isHost: boolean) => {
+        const key = `${tutorId}:${isHost}`;
+        let entry = zoomUrlCache.get(key);
+        if (!entry) {
+          entry = getTutorZoomUrl(tutorId, isHost);
+          zoomUrlCache.set(key, entry);
+        }
+        return entry;
+      };
+
       if (ctx.user.role === 'coordinator') {
         // For coordinators, get sessions for all assigned parents
         const assignments = await db.getCoordinatorAssignmentsByCoordinator(ctx.user.id);
@@ -2383,7 +2396,7 @@ export const appRouter = router({
             return await Promise.all(rows.map(async (row: any) => {
               const session = row.session || row;
               const isHost = false; // Coordinators/parents see join URL
-              const zoomUrl = await getTutorZoomUrl(session.tutorId, isHost);
+              const zoomUrl = await getCachedZoomUrl(session.tutorId, isHost);
               return {
                 ...session,
                 courseTitle: row.courseTitle,
@@ -2404,7 +2417,7 @@ export const appRouter = router({
       const isHost = ctx.user.role === 'tutor';
       return await Promise.all(rows.map(async (row: any) => {
         const session = row.session || row;
-        const zoomUrl = await getTutorZoomUrl(session.tutorId, isHost);
+        const zoomUrl = await getCachedZoomUrl(session.tutorId, isHost);
         return {
           ...session,
           courseTitle: row.courseTitle,
@@ -2418,12 +2431,25 @@ export const appRouter = router({
     }),
 
     myHistory: protectedProcedure.query(async ({ ctx }) => {
+      // Zoom URL for a given (tutorId, isHost) pair is identical across all rows in this
+      // request, so cache per pair instead of hitting the DB/Zoom API for every session.
+      const zoomUrlCache = new Map<string, Promise<string | null>>();
+      const getCachedZoomUrl = (tutorId: number, isHost: boolean) => {
+        const key = `${tutorId}:${isHost}`;
+        let entry = zoomUrlCache.get(key);
+        if (!entry) {
+          entry = getTutorZoomUrl(tutorId, isHost);
+          zoomUrlCache.set(key, entry);
+        }
+        return entry;
+      };
+
       if (ctx.user.role === 'tutor') {
         const rows = await db.getCompletedSessionsByTutorId(ctx.user.id);
         const isHost = true;
         return await Promise.all(rows.map(async (row: any) => {
           const session = row.session || row;
-          const zoomUrl = await getTutorZoomUrl(session.tutorId, isHost);
+          const zoomUrl = await getCachedZoomUrl(session.tutorId, isHost);
           return {
             ...session,
             courseTitle: row.courseTitle,
@@ -2446,7 +2472,7 @@ export const appRouter = router({
         const isHost = false;
         return await Promise.all(rows.map(async (row: any) => {
           const session = row.session || row;
-          const zoomUrl = await getTutorZoomUrl(session.tutorId, isHost);
+          const zoomUrl = await getCachedZoomUrl(session.tutorId, isHost);
           return {
             ...session,
             courseTitle: row.courseTitle,
@@ -2474,9 +2500,15 @@ export const appRouter = router({
 
         const rows = await db.getUpcomingSessions(input.parentId, 'parent');
         const isHost = false; // Coordinators see join URL
+        const zoomUrlCache = new Map<number, Promise<string | null>>();
         return await Promise.all(rows.map(async (row: any) => {
           const session = row.session || row;
-          const zoomUrl = await getTutorZoomUrl(session.tutorId, isHost);
+          let zoomUrlPromise = zoomUrlCache.get(session.tutorId);
+          if (!zoomUrlPromise) {
+            zoomUrlPromise = getTutorZoomUrl(session.tutorId, isHost);
+            zoomUrlCache.set(session.tutorId, zoomUrlPromise);
+          }
+          const zoomUrl = await zoomUrlPromise;
           return {
             ...session,
             courseTitle: row.courseTitle,
@@ -2502,9 +2534,15 @@ export const appRouter = router({
 
         const rows = await db.getCompletedSessionsByParentId(input.parentId);
         const isHost = false; // Coordinators see join URL
+        const zoomUrlCache = new Map<number, Promise<string | null>>();
         return await Promise.all(rows.map(async (row: any) => {
           const session = row.session || row;
-          const zoomUrl = await getTutorZoomUrl(session.tutorId, isHost);
+          let zoomUrlPromise = zoomUrlCache.get(session.tutorId);
+          if (!zoomUrlPromise) {
+            zoomUrlPromise = getTutorZoomUrl(session.tutorId, isHost);
+            zoomUrlCache.set(session.tutorId, zoomUrlPromise);
+          }
+          const zoomUrl = await zoomUrlPromise;
           return {
             ...session,
             courseTitle: row.courseTitle,
@@ -2533,9 +2571,15 @@ export const appRouter = router({
       // Fetch all sessions for the parent grouped by subscription
       const rows = await db.getSessionsByParentId(ctx.user.id);
       const isHost = false; // Parents see join URL
+      const zoomUrlCache = new Map<number, Promise<string | null>>();
       const sessions = await Promise.all(rows.map(async (row: any) => {
         const session = row.session || row;
-        const zoomUrl = await getTutorZoomUrl(session.tutorId, isHost);
+        let zoomUrlPromise = zoomUrlCache.get(session.tutorId);
+        if (!zoomUrlPromise) {
+          zoomUrlPromise = getTutorZoomUrl(session.tutorId, isHost);
+          zoomUrlCache.set(session.tutorId, zoomUrlPromise);
+        }
+        const zoomUrl = await zoomUrlPromise;
         return {
           ...session,
           course: row.courseTitle ? { title: row.courseTitle } : null,
@@ -4542,9 +4586,15 @@ export const appRouter = router({
     myTrials: parentProcedure.query(async ({ ctx }) => {
       const trialSessions = await db.getTrialSessionsByParentId(ctx.user.id);
       const isHost = false; // Parents see join URL
+      const zoomUrlCache = new Map<number, Promise<string | null>>();
 
       return await Promise.all(trialSessions.map(async (session: any) => {
-        const zoomUrl = await getTutorZoomUrl(session.tutorId, isHost);
+        let zoomUrlPromise = zoomUrlCache.get(session.tutorId);
+        if (!zoomUrlPromise) {
+          zoomUrlPromise = getTutorZoomUrl(session.tutorId, isHost);
+          zoomUrlCache.set(session.tutorId, zoomUrlPromise);
+        }
+        const zoomUrl = await zoomUrlPromise;
         return {
           ...session,
           joinUrl: zoomUrl || generateFallbackJoinUrl(session.id),
@@ -4903,8 +4953,7 @@ export const appRouter = router({
           throw new TRPCError({ code: "NOT_FOUND", message: "User not found" });
         }
 
-        const allSessions = await db.getAllSessionsWithDetails();
-        const userSessions = allSessions.filter(s => s.parentId === input.userId);
+        const userSessions = await db.getAllSessionsWithDetails({ parentId: input.userId });
 
         const completed = userSessions.filter(s => s.status === "completed").length;
         const scheduled = userSessions.filter(s => s.status === "scheduled").length;
