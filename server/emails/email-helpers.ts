@@ -58,7 +58,7 @@ export async function sendWelcomeEmail(params: SendWelcomeEmailParams): Promise<
   
   return await emailService.sendEmail({
     to: userEmail,
-    subject: 'Welcome to EdKonnect Academy! 🎓',
+    subject: 'Welcome to EdKonnect Academy! ÃƒÂ°Ã…Â¸Ã…Â½Ã¢â‚¬Å“',
     html,
   });
 }
@@ -290,7 +290,7 @@ export async function sendTutorApprovalEmail(params: SendTutorApprovalEmailParam
 
   return await emailService.sendEmail({
     to: tutorEmail,
-    subject: '🎉 Your Tutor Application is Approved - EdKonnect Academy',
+    subject: 'ÃƒÂ°Ã…Â¸Ã…Â½Ã¢â‚¬Â° Your Tutor Application is Approved - EdKonnect Academy',
     html,
   });
 }
@@ -316,7 +316,7 @@ export async function sendPasswordSetupEmail(params: SendPasswordSetupEmailParam
 
   return await emailService.sendEmail({
     to: tutorEmail,
-    subject: '🎉 Set Up Your Tutor Account - EdKonnect Academy',
+    subject: 'ÃƒÂ°Ã…Â¸Ã…Â½Ã¢â‚¬Â° Set Up Your Tutor Account - EdKonnect Academy',
     html,
   });
 }
@@ -342,7 +342,7 @@ export async function sendCoordinatorPasswordSetupEmail(params: SendCoordinatorP
 
   return await emailService.sendEmail({
     to: coordinatorEmail,
-    subject: '🎓 Set Up Your Coordinator Account - EdKonnect Academy',
+    subject: 'ÃƒÂ°Ã…Â¸Ã…Â½Ã¢â‚¬Å“ Set Up Your Coordinator Account - EdKonnect Academy',
     html,
   });
 }
@@ -379,7 +379,7 @@ export async function sendNoShowNotification(params: SendNoShowNotificationParam
 
   return await emailService.sendEmail({
     to: parentEmail,
-    subject: `⚠️ Session No-Show Notification - ${courseName}`,
+    subject: `ÃƒÂ¢Ã…Â¡Ã‚Â ÃƒÂ¯Ã‚Â¸Ã‚Â Session No-Show Notification - ${courseName}`,
     html,
   });
 }
@@ -392,7 +392,7 @@ export async function sendTutorApplicationReceivedEmail(params: {
   const html = getTutorApplicationReceivedEmail(params);
   return await emailService.sendEmail({
     to: params.tutorEmail,
-    subject: '✅ We received your tutor application - EdKonnect Academy',
+    subject: 'ÃƒÂ¢Ã…â€œÃ¢â‚¬Â¦ We received your tutor application - EdKonnect Academy',
     html,
   });
 }
@@ -445,7 +445,7 @@ export async function sendReferralWelcomeEmail(params: {
   });
   return await emailService.sendEmail({
     to: params.userEmail,
-    subject: 'Welcome to EdKonnect Academy — your reward is waiting!',
+    subject: 'Welcome to EdKonnect Academy ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â your reward is waiting!',
     html,
   });
 }
@@ -465,7 +465,7 @@ export async function sendCouponRewardEmail(params: {
   });
   return await emailService.sendEmail({
     to: params.userEmail,
-    subject: `Your referral discount coupon — ${params.couponCode}`,
+    subject: `Your referral discount coupon ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â ${params.couponCode}`,
     html,
   });
 }
@@ -484,7 +484,7 @@ export async function sendTrialRequestAdminEmail(params: {
   const html = getTrialRequestAdminEmail(params);
   await emailService.sendEmail({
     to: adminEmail,
-    subject: `Trial Lesson Request: ${params.childName} — ${params.courseName}`,
+    subject: `Trial Lesson Request: ${params.childName} ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â ${params.courseName}`,
     html,
   });
 }
@@ -498,7 +498,7 @@ export async function sendTrialRequestConfirmationEmail(params: {
   const html = getTrialRequestConfirmationEmail(params);
   await emailService.sendEmail({
     to: params.email,
-    subject: `Your Trial Lesson Request — ${params.courseName}`,
+    subject: `Your Trial Lesson Request ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â ${params.courseName}`,
     html,
   });
 }
@@ -575,13 +575,16 @@ export async function sendLeadConfirmationEmail(params: {
   name: string;
 }): Promise<void> {
   const html = `
-    <p>Hi ${params.parentName},</p>
-    <p>Thanks for reaching out to EdKonnect Academy about ${params.name}. Our team will contact you within 2-3 business days.</p>
-    <p>— EdKonnect Academy</p>
+    <p>Thank you for contacting EdKonnect Academy regarding ${params.name}. One of our academic team members will contact you within 1-2 business days to learn more about your student's study needs. In the meantime, please take a moment to explore all of the courses listed in our course areas.</p>
+    <p>We are the only tutoring firm that provides flexible and individualized one-on-one tutoring to K3-12 kids at an affordable price. If you have any urgent needs, please call <a href="tel:5084448714">508-444-8714</a> or contact <a href="mailto:admin@edkonnect-academy.com">admin@edkonnect-academy.com</a>.</p>
+    <p>Best,<br>
+    Team EdKonnect<br>
+    <a href="https://edkonnect-academy.com">https://edkonnect-academy.com</a><br>
+    <a href="tel:5084448714">508-444-8714</a></p>
   `;
   await emailService.sendEmail({
     to: params.email,
-    subject: `We received your request — EdKonnect Academy`,
+    subject: `We received your request - EdKonnect Academy`,
     html,
   });
 }
