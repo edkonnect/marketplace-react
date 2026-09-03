@@ -2649,8 +2649,8 @@ export async function getCoordinatorConversations(coordinatorId: number) {
 
     // Get unread counts for all conversations
     const unreadMap = new Map<number, number>();
-    for (const parentId of parentIds) {
-      const counts = await getUnreadCountsByConversation(parentId);
+    const unreadCountsByParent = await Promise.all(parentIds.map(parentId => getUnreadCountsByConversation(parentId)));
+    for (const counts of unreadCountsByParent) {
       counts.forEach((count, conversationId) => {
         unreadMap.set(conversationId, count);
       });
@@ -3925,7 +3925,7 @@ export async function updateSessionStatus(sessionId: number, status: "scheduled"
   return true;
 }
 
-export async function getAllSessionsWithDetails() {
+export async function getAllSessionsWithDetails(filters?: { parentId?: number }) {
   const db = await getDb();
   if (!db) return [];
 
@@ -3933,7 +3933,7 @@ export async function getAllSessionsWithDetails() {
   const parentUsers = alias(users, 'parent_users');
   const sessionCourses = alias(courses, 'session_courses');
 
-  const result = await db
+  const query = db
     .select({
       session: sessions,
       subscription: subscriptions,
@@ -3949,8 +3949,11 @@ export async function getAllSessionsWithDetails() {
     .leftJoin(sessionCourses, eq(sessions.courseId, sessionCourses.id))
     .leftJoin(tutorUsers, eq(sessions.tutorId, tutorUsers.id))
     .leftJoin(parentUsers, eq(sessions.parentId, parentUsers.id))
-    .leftJoin(tutorProfiles, eq(sessions.tutorId, tutorProfiles.userId))
-    .orderBy(desc(sessions.scheduledAt));
+    .leftJoin(tutorProfiles, eq(sessions.tutorId, tutorProfiles.userId));
+
+  const result = filters?.parentId != null
+    ? await query.where(eq(sessions.parentId, filters.parentId)).orderBy(desc(sessions.scheduledAt))
+    : await query.orderBy(desc(sessions.scheduledAt));
 
   const seen = new Set<number>();
   const mapped = [];
