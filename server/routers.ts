@@ -4940,10 +4940,10 @@ export const appRouter = router({
             return {
               subscriptionId: row.subscription.id,
               courseTitle: row.course.title,
-              totalSessions: row.course.totalSessions || 0,
+              totalSessions: row.subscription.customTotalSessions ?? row.course.totalSessions ?? 0,
               completed: bucketCompleted,
               scheduled: bucketScheduled,
-              remaining: Math.max(0, (row.course.totalSessions || 0) - bucketCompleted),
+              remaining: Math.max(0, (row.subscription.customTotalSessions ?? row.course.totalSessions ?? 0) - bucketCompleted),
             };
           })
           .filter((p): p is NonNullable<typeof p> => p !== null);

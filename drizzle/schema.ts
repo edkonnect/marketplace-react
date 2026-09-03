@@ -296,6 +296,7 @@ export const subscriptions = mysqlTable("subscriptions", {
   billingCycleStart: timestamp("billingCycleStart"),
   billingCycleEnd: timestamp("billingCycleEnd"),
   perSessionRateCents: int("perSessionRateCents"),
+  customTotalSessions: int("customTotalSessions"), // Optional per-student override for total session count
   loyaltyDiscountApplied: boolean("loyaltyDiscountApplied").default(false).notNull(),
   isMigrated: boolean("isMigrated").default(false).notNull(), // Flag for legacy-migrated subscriptions
   smsOptIn: boolean("smsOptIn").default(false).notNull(),

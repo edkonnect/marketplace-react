@@ -1,0 +1,1 @@
+ALTER TABLE `subscriptions` ADD `customTotalSessions` int;

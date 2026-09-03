@@ -316,6 +316,13 @@
       "when": 1785787733456,
       "tag": "0047_rare_retro_girl",
       "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "5",
+      "when": 1788409527645,
+      "tag": "0048_spicy_tenebrous",
+      "breakpoints": true
     }
   ]
 }
