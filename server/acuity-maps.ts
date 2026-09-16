@@ -77,6 +77,7 @@ export const APPT_TYPE_TO_COURSE: Record<number, number | null> = {
   71128121: 299,  // High School Math - Private (IG/IB) → High School Mathematics
   26804614: 299,  // High School Mathematics - Private (CBSE/ICSE/IG/IB/State) → High School Mathematics
   14691576: 299,  // High School Math - Private (US) → High School Mathematics
+    14691617: 299,  // High School Math - Free Trial Session (US) → High School Mathematics
 
   // Math — AP / A Level
   71556848: 33,   // AP Calculus - Private → AP CALCULUS AB
@@ -171,7 +172,8 @@ export const TRIAL_APPOINTMENT_TYPES = new Set<number>([
   40643350, 55339838,
   14701559, 15690898,        // PSAT/SAT/ACT free trials
   61243720,                  // HS CS free trial
-  38756927,                  // HS English free trial (US)
+    38756927,                  // HS English free trial (US)
+  14691617,                  // HS Math free trial (US)
 ]);
 
 // ── Platform Course ID -> Acuity Trial Appointment Type ID(s) ────────────────
