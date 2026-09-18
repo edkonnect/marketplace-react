@@ -5480,7 +5480,14 @@ export async function getUpcomingSessionsByTutorId(tutorId: number) {
   const db = await getDb();
   if (!db) return [];
 
-  const now = Date.now(); // Current timestamp in milliseconds
+  const now = Date.now();
+  // Start of "today" in IST (UTC+5:30), not the exact current instant,
+  // so sessions already run today still show up.
+  const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+  const istNow = new Date(now + IST_OFFSET_MS);
+  const startOfTodayIstAsUtc =
+    Date.UTC(istNow.getUTCFullYear(), istNow.getUTCMonth(), istNow.getUTCDate()) - IST_OFFSET_MS;
+
   const sessionCourses = alias(courses, "sessionCourse");
 
   try {
@@ -5508,8 +5515,8 @@ export async function getUpcomingSessionsByTutorId(tutorId: number) {
       .where(
         and(
           eq(sessions.tutorId, tutorId),
-          gte(sessions.scheduledAt, now),
-          eq(sessions.status, 'scheduled')
+          gte(sessions.scheduledAt, startOfTodayIstAsUtc),
+          inArray(sessions.status, ['scheduled', 'completed'])
         )
       )
       .orderBy(asc(sessions.scheduledAt))
