@@ -2382,8 +2382,12 @@ export async function getUpcomingSessions(userId: number, role: "parent" | "tuto
   const db = await getDb();
   if (!db) return [];
 
-  // Include sessions that started up to 1 hour ago so in-progress sessions remain visible
-  const windowStart = Date.now() - 60 * 60 * 1000;
+  // Start of "today" in IST (UTC+5:30), so sessions already run today still show up.
+  const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+  const istNow = new Date(Date.now() + IST_OFFSET_MS);
+  const windowStart =
+    Date.UTC(istNow.getUTCFullYear(), istNow.getUTCMonth(), istNow.getUTCDate()) - IST_OFFSET_MS;
+
   const condition = role === "parent"
     ? eq(sessions.parentId, userId)
     : eq(sessions.tutorId, userId);
@@ -2408,7 +2412,13 @@ export async function getUpcomingSessions(userId: number, role: "parent" | "tuto
     .leftJoin(sessionCourses, eq(sessions.courseId, sessionCourses.id))
     .leftJoin(tutorUsers, eq(sessions.tutorId, tutorUsers.id))
     .leftJoin(parentUsers, eq(sessions.parentId, parentUsers.id))
-    .where(and(condition, gte(sessions.scheduledAt, windowStart), eq(sessions.status, "scheduled")))
+    .where(
+      and(
+        condition,
+        gte(sessions.scheduledAt, windowStart),
+        inArray(sessions.status, ["scheduled", "completed"])
+      )
+    )
     .orderBy(asc(sessions.scheduledAt));
 }
 
