@@ -76,4 +76,49 @@ mobileRouter.get("/history", async (req: any, res) => {
     res.status(500).json({ error: "Failed to load history" });
   }
 });
+
+// Admin-only: all sessions across the whole platform (all tutors/parents),
+// mirrors the website's admin dashboard "getAllSessions" data source.
+mobileRouter.get("/admin/sessions", async (req: any, res) => {
+  try {
+    const user = await getUserFromCookie(req);
+    if (!user) {
+      return res.status(401).json({ error: "Not authenticated" });
+    }
+    if (user.role !== "admin") {
+      return res.status(403).json({ error: "Admin access required" });
+    }
+
+    const allSessions = await db.getAllSessionsWithDetails();
+
+    // Sort by scheduled date, most recent first
+    const sorted = allSessions.sort((a: any, b: any) => {
+      const aSession = a.session || a;
+      const bSession = b.session || b;
+      return Number(bSession.scheduledAt) - Number(aSession.scheduledAt);
+    });
+
+    const mapped = sorted.map((row: any) => {
+      const session = row.session || row;
+      return {
+        id: String(session.id),
+        tutorName: row.tutorName || "TBD",
+        parentName: row.parentName || "",
+        courseTitle: row.courseTitle || "TBD",
+        studentFirstName: session.studentFirstName || "",
+        studentLastName: session.studentLastName || "",
+        isTrial: !!session.isTrial,
+        scheduledAt: Number(session.scheduledAt),
+        duration: session.duration,
+        status: session.status,
+      };
+    });
+
+    res.json({ sessions: mapped, total: mapped.length });
+  } catch (error) {
+    console.error("[Mobile Admin Sessions] Error:", error);
+    res.status(500).json({ error: "Failed to load sessions" });
+  }
+});
+
 export { mobileRouter };
