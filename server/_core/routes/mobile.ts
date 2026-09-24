@@ -24,6 +24,7 @@ function mapSession(row: any) {
   const session = row.session || row;
   return {
     id: String(session.id),
+    subscriptionId: session.subscriptionId ?? null,
     tutorName: row.tutorName || "TBD",
     courseTitle: row.courseTitle || "TBD",
     studentFirstName: session.studentFirstName || "",
