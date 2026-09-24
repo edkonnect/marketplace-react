@@ -127,9 +127,9 @@ mobileRouter.get("/bookings", async (req: any, res) => {
   try {
     const user = await getUserFromCookie(req);
     if (!user) return res.status(401).json({ error: "Not authenticated" });
-    if (user.role !== "parent") return res.status(403).json({ error: "Parent access required" });
+    if (user.role === "admin") return res.json({ bookings: {} });
 
-    const rows = await db.getSessionsByParentId(user.id);
+    const rows = user.role === "tutor" ? await db.getSessionsByTutorId(user.id) : await db.getSessionsByParentId(user.id);
     const sessions = rows.map(mapSession);
 
     const grouped: Record<string, any[]> = {};
