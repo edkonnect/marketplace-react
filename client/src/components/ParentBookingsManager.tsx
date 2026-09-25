@@ -46,6 +46,7 @@ interface CalendarViewProps {
   formatTime: (timestamp: number) => string;
   getStatusBadge: (status?: string | null) => ReactElement;
   parentTimezone: string;
+  readOnly?: boolean;
 }
 
 function CalendarView({
@@ -57,6 +58,7 @@ function CalendarView({
   formatTime,
   getStatusBadge,
   parentTimezone,
+  readOnly = false,
 }: CalendarViewProps) {
   const [expandedSession, setExpandedSession] = useState<number | null>(null);
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -330,7 +332,7 @@ function CalendarView({
               const { session, student, subject } = sessionData;
               const isCompleted = session.status === "completed" || session.status === "no_show";
               const sessionHasPassed = session.scheduledAt < Date.now();
-              const canRate = isCompleted && sessionHasPassed;
+              const canRate = !readOnly && isCompleted && sessionHasPassed;
 
               const now = Date.now();
               const hoursUntilSession = (session.scheduledAt - now) / (1000 * 60 * 60);
@@ -359,10 +361,12 @@ function CalendarView({
                         <Clock className="w-4 h-4 text-muted-foreground" />
                         <span>{formatTime(session.scheduledAt)} ({session.duration} min)</span>
                       </div>
+                      {!readOnly && (
                       <div className="flex items-center gap-2">
                         <User className="w-4 h-4 text-muted-foreground" />
                         <span>Tutor: {session.tutor?.name || "Unknown"}</span>
                       </div>
+                      )}
                       <div className="flex items-center gap-2">
                         Status: {getStatusBadge(session.status)}
                       </div>
@@ -386,6 +390,8 @@ function CalendarView({
                           >
                             Join meeting
                           </Button>
+                          {!readOnly && (
+                          <>
                           <Button
                             variant="outline"
                             size="sm"
@@ -414,6 +420,8 @@ function CalendarView({
                             <p className="text-xs text-amber-600 dark:text-amber-400 w-full">
                               Changes not allowed within 12 hours of session
                             </p>
+                          )}
+                          </>
                           )}
                         </>
                       )}
@@ -452,6 +460,7 @@ interface SessionCardProps {
   formatDate: (timestamp: number) => string;
   formatTime: (timestamp: number) => string;
   getStatusBadge: (status?: string | null) => ReactElement;
+  readOnly?: boolean;
 }
 
 function SessionCard({
@@ -463,10 +472,11 @@ function SessionCard({
   formatDate,
   formatTime,
   getStatusBadge,
+  readOnly = false,
 }: SessionCardProps) {
   const { data: rating } = trpc.session.getSessionRating.useQuery(
     { sessionId: session.id },
-    { enabled: canRate }
+    { enabled: canRate && !readOnly }
   );
 
   // Check if session is within 12 hours - disable cancel/reschedule
@@ -500,7 +510,7 @@ function SessionCard({
 
         {/* Right side - Actions or Rating */}
         <div className="flex flex-col sm:flex-row md:flex-row items-stretch sm:items-center gap-3">
-          {session.status === "scheduled" && (
+          {!readOnly && session.status === "scheduled" && (
             <div className="flex flex-col gap-2 w-full sm:w-auto">
               <div className="flex gap-3">
                 <Button
@@ -558,7 +568,8 @@ function SessionCard({
   );
 }
 
-export function ParentBookingsManager() {
+export function ParentBookingsManager({ mode = "parent" }: { mode?: "parent" | "tutor" }) {
+  const isTutor = mode === "tutor";
   const { user } = useAuth();
   const parentTimezone = user?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
   const tzAbbr = useMemo(() => {
@@ -595,7 +606,9 @@ export function ParentBookingsManager() {
   const [expandedSubjects, setExpandedSubjects] = useState<Record<string, boolean>>({});
 
   const utils = trpc.useUtils();
-  const { data: bookings, isLoading, refetch } = trpc.session.myBookings.useQuery();
+  const parentQuery = trpc.session.myBookings.useQuery(undefined, { enabled: !isTutor });
+  const tutorQuery = trpc.session.myTutorBookings.useQuery(undefined, { enabled: isTutor });
+  const { data: bookings, isLoading, refetch } = (isTutor ? tutorQuery : parentQuery) as any;
   const { data: availabilityData } = trpc.subscription.getAvailability.useQuery(
     { subscriptionId: selectedSubscriptionId ?? 0 },
     { enabled: !!selectedSubscriptionId }
@@ -986,7 +999,7 @@ export function ParentBookingsManager() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <h2 className="text-2xl font-bold">My Bookings</h2>
-          {!showPolicyBanner && (
+          {!isTutor && !showPolicyBanner && (
             <button
               onClick={() => {
                 setShowPolicyBanner(true);
@@ -1007,7 +1020,7 @@ export function ParentBookingsManager() {
       </div>
 
       {/* Cancellation Policy Info - Dismissible */}
-      {showPolicyBanner && (
+      {!isTutor && showPolicyBanner && (
         <div className="bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900 rounded-lg p-4 relative animate-in fade-in slide-in-from-top-2 duration-300">
           <button
             onClick={() => {
@@ -1184,12 +1197,14 @@ export function ParentBookingsManager() {
                                   {subject}
                                   <Badge variant="outline">{sessions.length} session{sessions.length !== 1 ? 's' : ''}</Badge>
                                 </h3>
+                                {!isTutor && (
                                 <p className="text-sm text-muted-foreground mt-1">
                                   Tutor: {firstSession?.tutor?.name || "Unknown"}
                                 </p>
+                                )}
                               </div>
                               <div className="flex items-center gap-2">
-                                {scheduledSessions.length > 1 && (
+                                {!isTutor && scheduledSessions.length > 1 && (
                                   <div className="flex gap-2">
                                     <Button
                                       variant="outline"
@@ -1228,7 +1243,7 @@ export function ParentBookingsManager() {
                               {sessions.map((session: any) => {
                                 const isCompleted = session.status === "completed" || session.status === "no_show";
                                 const sessionHasPassed = session.scheduledAt < Date.now();
-                                const canRate = isCompleted && sessionHasPassed;
+                                const canRate = !isTutor && isCompleted && sessionHasPassed;
 
                                 return (
                                   <SessionCard
@@ -1241,6 +1256,7 @@ export function ParentBookingsManager() {
                                     formatDate={formatDate}
                                     formatTime={formatTime}
                                     getStatusBadge={getStatusBadge}
+                                    readOnly={isTutor}
                                   />
                                 );
                               })}
@@ -1265,6 +1281,7 @@ export function ParentBookingsManager() {
           formatTime={formatTime}
           getStatusBadge={getStatusBadge}
           parentTimezone={parentTimezone}
+          readOnly={isTutor}
         />
       )}
 

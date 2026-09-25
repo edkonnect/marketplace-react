@@ -2603,6 +2603,28 @@ export const appRouter = router({
       return grouped;
     }),
 
+    myTutorBookings: tutorProcedure.query(async ({ ctx }) => {
+      const rows = await db.getSessionsByTutorId(ctx.user.id, { limit: 2000 });
+      const zoomUrl = await getTutorZoomUrl(ctx.user.id, true);
+      const sessions = rows.map((row: any) => {
+        const session = row.session || row;
+        return {
+          ...session,
+          course: row.courseTitle ? { title: row.courseTitle } : null,
+          tutor: row.tutorName ? { name: row.tutorName } : null,
+          studentFirstName: row.studentFirstName,
+          studentLastName: row.studentLastName,
+          joinUrl: zoomUrl || generateFallbackJoinUrl(session.id),
+        };
+      });
+      return sessions.reduce((acc: any, session: any) => {
+        const subId = session.subscriptionId;
+        if (!acc[subId]) acc[subId] = [];
+        acc[subId].push(session);
+        return acc;
+      }, {});
+    }),
+
     reschedule: parentProcedure
       .input(z.object({
         sessionId: z.number(),

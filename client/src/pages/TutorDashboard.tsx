@@ -23,6 +23,7 @@ import { TimeBlockManager } from "@/components/TimeBlockManager";
 import { VideoUploadManager } from "@/components/VideoUploadManager";
 import { ZoomMeetingSetup } from "@/components/ZoomMeetingSetup";
 import { TutorSessionsManager } from "@/components/TutorSessionsManager";
+import { ParentBookingsManager } from "@/components/ParentBookingsManager";
 import { ReferralCouponPopup } from "@/components/ReferralCouponPopup";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { LOGIN_PATH } from "@/const";
@@ -1486,6 +1487,7 @@ export default function TutorDashboard() {
                 <TabsTrigger className="whitespace-nowrap" value="course-preferences">Course Preferences</TabsTrigger>
                 <TabsTrigger className="whitespace-nowrap" value="students">Students</TabsTrigger>
                 <TabsTrigger className="whitespace-nowrap" value="sessions">Upcoming Sessions</TabsTrigger>
+                <TabsTrigger className="whitespace-nowrap" value="bookings">My Bookings</TabsTrigger>
                 <TabsTrigger className="whitespace-nowrap" value="history">Completed Sessions</TabsTrigger>
                 <TabsTrigger className="whitespace-nowrap" value="my-files">My Files</TabsTrigger>
               </TabsList>
@@ -2103,6 +2105,11 @@ export default function TutorDashboard() {
                     statusVariant={statusVariant}
                     tutorTimezone={tutorTimezone}
                   />
+                </TabsContent>
+
+                {/* Bookings Tab */}
+                <TabsContent value="bookings" forceMount className={tabContentClass}>
+                  <ParentBookingsManager mode="tutor" />
                 </TabsContent>
 
                 {/* History Tab */}
