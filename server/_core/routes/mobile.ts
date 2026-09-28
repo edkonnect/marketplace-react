@@ -3,6 +3,9 @@ import { jwtVerify } from "jose";
 import { ENV } from "../env";
 import { ACCESS_TOKEN_COOKIE } from "@shared/const";
 import * as db from "../../db";
+import { sendSessionNotesEmail } from "../../emails/session-notes-email";
+import { emailService } from "../../emails/email-service";
+import { formatEmailDate, formatEmailTime } from "../../emails/email-helpers";
 
 const mobileRouter = Router();
 
@@ -391,4 +394,88 @@ mobileRouter.get("/sessions/:id/rating", async (req: any, res) => {
   }
 });
 
+// Tutor saves/updates session notes (mirrors website session.update with feedbackFromTutor)
+mobileRouter.post("/sessions/:id/notes", async (req: any, res) => {
+  try {
+    const user = await getUserFromCookie(req);
+    if (!user) return res.status(401).json({ error: "Not authenticated" });
+    if (user.role !== "tutor") return res.status(403).json({ error: "Tutor access required" });
+
+    const sessionId = Number(req.params.id);
+    const notes = typeof req.body?.notes === "string" ? req.body.notes.trim() : "";
+    if (!notes) return res.status(400).json({ error: "notes is required" });
+    if (notes.length > 10000) return res.status(400).json({ error: "notes too long" });
+
+    const session = await db.getSessionById(sessionId);
+    if (!session) return res.status(404).json({ error: "Session not found" });
+    if (session.tutorId !== user.id) return res.status(403).json({ error: "Not authorized" });
+    if (session.status !== "completed") {
+      return res.status(400).json({ error: "Notes can only be added to completed sessions" });
+    }
+
+    const isFirstTimeNotes = !session.feedbackFromTutor;
+    const success = await db.updateSession(sessionId, { feedbackFromTutor: notes });
+    if (!success) return res.status(500).json({ error: "Failed to save notes" });
+
+    // Parent email (first save only) + in-app notification (every save). Never fails the save.
+    try {
+      const parent = await db.getUserById(session.parentId);
+      const tutor = await db.getUserById(session.tutorId);
+
+      if (parent?.email && tutor) {
+        const subscription = session.subscriptionId ? await db.getSubscriptionById(session.subscriptionId) : null;
+        const parentProfile = await db.getParentProfileByUserId(parent.id);
+        const sessionDate = new Date(session.scheduledAt);
+
+        const studentName = subscription
+          ? [subscription.studentFirstName, subscription.studentLastName].filter(Boolean).join(" ").trim() || "your child"
+          : "your child";
+
+        let courseName = "the course";
+        if (session.courseId) {
+          const course = await db.getCourseById(session.courseId);
+          if (course?.title) courseName = course.title;
+        } else if (subscription) {
+          const course = await db.getCourseById(subscription.courseId);
+          if (course?.title) courseName = course.title;
+        }
+
+        if (isFirstTimeNotes) {
+          const emailHtml = await sendSessionNotesEmail({
+            parentName: parent.name || parent.email,
+            studentName,
+            tutorName: tutor.name || `${(tutor as any).firstName || ""} ${(tutor as any).lastName || ""}`.trim() || "Your tutor",
+            courseName,
+            sessionDate: formatEmailDate(sessionDate, parentProfile?.timezone || undefined),
+            sessionTime: formatEmailTime(sessionDate, parentProfile?.timezone || undefined),
+            progressSummary: notes,
+            notesUrl: `${process.env.VITE_FRONTEND_FORGE_API_URL || ""}/session-notes`,
+          });
+
+          await emailService.sendEmail({
+            to: parent.email,
+            subject: `Session Notes for ${studentName} — ${courseName}`,
+            html: emailHtml,
+          });
+        }
+
+        const tutorName = `${(tutor as any).firstName || ""} ${(tutor as any).lastName || ""}`.trim() || tutor.name || "Your tutor";
+        await db.createInAppNotification({
+          userId: session.parentId,
+          title: "Session Notes Updated",
+          message: `${tutorName} has ${isFirstTimeNotes ? "added" : "updated"} session notes for ${studentName} — ${courseName}`,
+          type: "session_reminder",
+          relatedId: session.id,
+        });
+      }
+    } catch (notifyError) {
+      console.error("[Mobile Session Notes] Failed to send notification:", notifyError);
+    }
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error("[Mobile Session Notes] Error:", error);
+    res.status(500).json({ error: "Failed to save notes" });
+  }
+});
 export { mobileRouter };
