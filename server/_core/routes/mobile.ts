@@ -427,9 +427,12 @@ mobileRouter.post("/sessions/:id/notes", async (req: any, res) => {
         const parentProfile = await db.getParentProfileByUserId(parent.id);
         const sessionDate = new Date(session.scheduledAt);
 
-        const studentName = subscription
-          ? [subscription.studentFirstName, subscription.studentLastName].filter(Boolean).join(" ").trim() || "your child"
-          : "your child";
+        const clean = (v?: string | null) => (v && v.trim() !== "." ? v.trim() : "");
+const sessionName = [clean(session.studentFirstName), clean(session.studentLastName)].filter(Boolean).join(" ");
+const subName = subscription
+  ? [clean(subscription.studentFirstName), clean(subscription.studentLastName)].filter(Boolean).join(" ")
+  : "";
+const studentName = sessionName || subName || "your child";
 
         let courseName = "the course";
         if (session.courseId) {
