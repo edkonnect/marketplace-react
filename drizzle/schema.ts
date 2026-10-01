@@ -1289,3 +1289,18 @@ export const acuityEmailAliases = mysqlTable("acuity_email_aliases", {
 }));
 
 export type AcuityEmailAlias = typeof acuityEmailAliases.$inferSelect;
+
+
+export const freeTrialRequests = mysqlTable("free_trial_requests", {
+  id: int("id").autoincrement().primaryKey(),
+  parentName: varchar("parentName", { length: 255 }).notNull(),
+  email: varchar("email", { length: 320 }).notNull(),
+  phone: varchar("phone", { length: 50 }),
+  students: text("students").notNull(), // JSON: [{ name, grade }]
+  timezone: varchar("timezone", { length: 100 }).notNull(),
+  trialDate: varchar("trialDate", { length: 10 }).notNull(), // YYYY-MM-DD
+  status: varchar("status", { length: 20 }).default("new").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type FreeTrialRequest = typeof freeTrialRequests.$inferSelect;

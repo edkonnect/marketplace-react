@@ -1,12 +1,15 @@
 /**
  * Free Trial SAT registration (public, no login).
- * Standalone Express router. Emails the submission to admin.
+ * Standalone Express router. Saves the submission to its own table
+ * and emails it to admin.
  * Mounted at /api/free-trial
  */
 import { Router } from "express";
 import { z } from "zod";
 import { emailService } from "../../emails/email-service";
 import { RateLimiter } from "../../faq/chatbot-rate-limiter";
+import { getDb } from "../../db";
+import { freeTrialRequests } from "../../../drizzle/schema";
 
 const ADMIN_EMAIL = "admin@edkonnect-academy.com";
 
@@ -49,7 +52,7 @@ freeTrialRouter.post("/", async (req, res) => {
   }
   const input = parsed.data;
 
-  // Bots fill the honeypot: pretend success, send nothing
+  // Bots fill the honeypot: pretend success, save and send nothing
   if (input.website) return res.json({ success: true });
 
   const ip =
@@ -63,6 +66,26 @@ freeTrialRouter.post("/", async (req, res) => {
       .json({ error: "Too many requests. Please try again in a few minutes." });
   }
 
+  // 1) Save to DB (a failure here is logged but doesn't block the email)
+  let saved = false;
+  try {
+    const db = await getDb();
+    if (db) {
+      await db.insert(freeTrialRequests).values({
+        parentName: input.parentName,
+        email: input.email,
+        phone: input.phone || null,
+        students: JSON.stringify(input.students),
+        timezone: input.timezone,
+        trialDate: input.trialDate,
+      });
+      saved = true;
+    }
+  } catch (error) {
+    console.error("[FreeTrial] Failed to save to DB:", error);
+  }
+
+  // 2) Email admin
   const cell = "padding:6px 12px;border:1px solid #ddd;";
   const studentRows = input.students
     .map(
@@ -98,7 +121,8 @@ freeTrialRouter.post("/", async (req, res) => {
     html,
   });
 
-  if (!sent) {
+  // Fail only if BOTH the save and the email failed
+  if (!sent && !saved) {
     return res
       .status(500)
       .json({ error: "Could not submit your request. Please try again." });
