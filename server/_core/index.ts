@@ -14,6 +14,7 @@ import { ENV } from "./env";
 import { authRouter } from "./routes/auth";
 import { authRouter } from "./routes/auth";
 import { userRouter } from "./routes/users";
+import { freeTrialRouter } from "./routes/free-trial";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -101,6 +102,7 @@ async function startServer() {
   app.use("/api/auth", authLimiter, authRouter);
   const { mobileRouter } = await import("./routes/mobile");
 app.use("/api/mobile", mobileRouter);
+  app.use("/api/free-trial", freeTrialRouter);
   app.use("/api/users", userRouter);
 
   const { pdfRouter } = await import("../pdf/pdfRoute");

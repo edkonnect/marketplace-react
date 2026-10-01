@@ -42,6 +42,7 @@ import Contact from "./pages/Contact";
 import BlogListing from "./pages/BlogListing";
 import BlogPost from "./pages/BlogPost";
 import TempLogin from "./pages/TempLogin";
+import FreeTrialSat from "./pages/FreeTrialSat";
 
 function ScrollToTop() {
   const [location] = useLocation();
@@ -104,6 +105,7 @@ function Router() {
       <Route path={"/privacy-policy"} component={PrivacyPolicy} />
       <Route path={"/about"} component={AboutUs} />
       <Route path={"/contact"} component={Contact} />
+            <Route path={"/free-trial-sat"} component={FreeTrialSat} />
       <Route path={"/blog"} component={BlogListing} />
       <Route path={"/blog/:slug"} component={BlogPost} />
       <Route path={"/knowledge-portal"}>{() => { window.location.replace("/"); return null; }}</Route>

@@ -150,7 +150,7 @@ export default function Navigation() {
     return name.split(" ").map(n => n[0]).join("").toUpperCase().slice(0, 2);
   };
 
-  const publicPages = ["/", "/tutors", "/courses", "/tutor-registration", "/about", "/contact", "/privacy-policy", "/blog"];
+   const publicPages = ["/", "/tutors", "/courses", "/tutor-registration", "/about", "/contact", "/privacy-policy", "/blog", "/free-trial-sat"];
   const isPublicPage = publicPages.some(page => location === page || (page === "/" && location === "/")) || location.startsWith("/blog");
   const isAuthPage = location.startsWith(LOGIN_PATH) || location.startsWith("/signup");
 
