@@ -1,7 +1,7 @@
 /**
  * Free Trial SAT registration (public, no login).
- * Standalone Express router. Saves the submission to its own table
- * and emails it to admin.
+ * Standalone Express router. Saves the submission to its own table,
+ * emails it to admin, and sends a confirmation email to the parent.
  * Mounted at /api/free-trial
  */
 import { Router } from "express";
@@ -23,6 +23,18 @@ const escapeHtml = (s: string) =>
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
+
+// "2026-10-17" -> "Saturday, October 17, 2026" (UTC so the day never shifts)
+const formatDate = (iso: string) => {
+  const [y, m, d] = iso.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+};
 
 const schema = z.object({
   parentName: z.string().trim().min(1).max(100),
@@ -103,7 +115,7 @@ freeTrialRouter.post("/", async (req, res) => {
       <p><strong>Email:</strong> ${escapeHtml(input.email)}</p>
       <p><strong>Phone:</strong> ${input.phone ? escapeHtml(input.phone) : "-"}</p>
       <p><strong>Time zone:</strong> ${escapeHtml(input.timezone)}</p>
-      <p><strong>Preferred trial date:</strong> ${escapeHtml(input.trialDate)}</p>
+      <p><strong>Preferred trial date:</strong> ${escapeHtml(formatDate(input.trialDate))}</p>
       <table style="border-collapse:collapse;margin-top:8px;">
         <tr>
           <th style="${cell}">#</th>
@@ -121,11 +133,45 @@ freeTrialRouter.post("/", async (req, res) => {
     html,
   });
 
-  // Fail only if BOTH the save and the email failed
+  // Fail only if BOTH the save and the admin email failed
   if (!sent && !saved) {
     return res
       .status(500)
       .json({ error: "Could not submit your request. Please try again." });
+  }
+
+  // 3) Confirmation email to the parent (a failure here never fails the request)
+  try {
+    const dateLabel = formatDate(input.trialDate);
+    const studentList = input.students
+      .map((s) => `<li>${escapeHtml(s.name)} (Grade ${escapeHtml(s.grade)})</li>`)
+      .join("");
+
+    const parentHtml = `
+      <div style="font-family:Arial,sans-serif;font-size:15px;color:#222;max-width:560px;">
+        <h2 style="color:#0b5cc4;">Thank you for registering!</h2>
+        <p>Hi ${escapeHtml(input.parentName)},</p>
+        <p>Thanks for signing up for a free SAT trial lesson with EdKonnect Academy.</p>
+        <p>
+          <strong>Your session is on:</strong><br />
+          ${escapeHtml(dateLabel)}<br />
+          <span style="color:#555;">Time zone: ${escapeHtml(input.timezone)}</span>
+        </p>
+        <p><strong>Student(s):</strong></p>
+        <ul>${studentList}</ul>
+        <p>Our team will contact you shortly with the exact time and joining details.</p>
+        <p>If you have any questions, just reply to this email or write to
+          <a href="mailto:${ADMIN_EMAIL}">${ADMIN_EMAIL}</a>.</p>
+        <p>Warm regards,<br />EdKonnect Academy</p>
+      </div>`;
+
+    await emailService.sendEmail({
+      to: input.email,
+      subject: `Your Free SAT Trial Lesson - ${dateLabel}`,
+      html: parentHtml,
+    });
+  } catch (error) {
+    console.error("[FreeTrial] Failed to send parent confirmation:", error);
   }
 
   return res.json({ success: true });

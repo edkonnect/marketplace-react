@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { PhoneInput } from "@/components/PhoneInput";
 import { toast } from "sonner";
 import { CheckCircle2, Plus, Trash2 } from "lucide-react";
-import { detectUserTimezone, COMMON_TIMEZONES } from "@/../../shared/timezone-utils";
+import { detectUserTimezone } from "@/../../shared/timezone-utils";
 
 const GRADES = ["6", "7", "8", "9", "10", "11", "12"];
 
@@ -23,42 +23,60 @@ interface StudentRow {
 
 const emptyStudent = (): StudentRow => ({ name: "", grade: "", otherGrade: "" });
 
-function getAllTimezones(detected: string): string[] {
-  let zones: string[] = [];
-  try {
-    const fn = (Intl as any).supportedValuesOf;
-    if (typeof fn === "function") zones = fn.call(Intl, "timeZone");
-  } catch {
-    // fall back below
+// Max 4 time zones per country
+const TIMEZONE_OPTIONS = [
+  { value: "America/New_York", label: "United States - Eastern (New York)" },
+  { value: "America/Chicago", label: "United States - Central (Chicago)" },
+  { value: "America/Denver", label: "United States - Mountain (Denver)" },
+  { value: "America/Los_Angeles", label: "United States - Pacific (Los Angeles)" },
+  { value: "America/Toronto", label: "Canada - Eastern (Toronto)" },
+  { value: "America/Winnipeg", label: "Canada - Central (Winnipeg)" },
+  { value: "America/Edmonton", label: "Canada - Mountain (Edmonton)" },
+  { value: "America/Vancouver", label: "Canada - Pacific (Vancouver)" },
+  { value: "Asia/Kolkata", label: "India (Kolkata)" },
+  { value: "Europe/London", label: "United Kingdom (London)" },
+  { value: "Europe/Berlin", label: "Central Europe (Berlin)" },
+  { value: "Asia/Dubai", label: "United Arab Emirates (Dubai)" },
+  { value: "Asia/Singapore", label: "Singapore" },
+  { value: "Australia/Sydney", label: "Australia - Eastern (Sydney)" },
+  { value: "Australia/Brisbane", label: "Australia - Queensland (Brisbane)" },
+  { value: "Australia/Adelaide", label: "Australia - Central (Adelaide)" },
+  { value: "Australia/Perth", label: "Australia - Western (Perth)" },
+  { value: "Pacific/Auckland", label: "New Zealand (Auckland)" },
+];
+
+// If the visitor's detected zone isn't in the list, show it at the top
+function getTimezoneOptions(detected: string) {
+  if (detected && !TIMEZONE_OPTIONS.some((t) => t.value === detected)) {
+    return [{ value: detected, label: detected.replace(/_/g, " ") }, ...TIMEZONE_OPTIONS];
   }
-  if (!zones.length) zones = COMMON_TIMEZONES.map((t) => t.value);
-  if (detected && !zones.includes(detected)) zones = [detected, ...zones];
-  return zones;
+  return TIMEZONE_OPTIONS;
 }
 
-// Next 3 days starting tomorrow (YYYY-MM-DD + readable label)
+// Fixed trial dates (YYYY-MM-DD). Past dates are hidden automatically.
+const TRIAL_DATES = ["2026-10-17", "2026-11-14", "2026-12-12"];
+
 function getTrialDates() {
-  const out: { value: string; label: string }[] = [];
-  for (let i = 1; i <= 3; i++) {
-    const d = new Date();
-    d.setDate(d.getDate() + i);
-    const value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
-      d.getDate()
-    ).padStart(2, "0")}`;
-    const label = d.toLocaleDateString(undefined, {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return TRIAL_DATES.map((value) => {
+    const [y, m, d] = value.split("-").map(Number);
+    const date = new Date(y, m - 1, d);
+    const label = date.toLocaleDateString("en-US", {
       weekday: "long",
       month: "long",
       day: "numeric",
       year: "numeric",
     });
-    out.push({ value, label });
-  }
-  return out;
+    return { value, label, date };
+  })
+    .filter((x) => x.date >= today)
+    .map(({ value, label }) => ({ value, label }));
 }
 
 export default function FreeTrialSat() {
   const detected = useMemo(() => detectUserTimezone(), []);
-  const timezones = useMemo(() => getAllTimezones(detected), [detected]);
+  const timezones = useMemo(() => getTimezoneOptions(detected), [detected]);
   const trialDates = useMemo(() => getTrialDates(), []);
 
   const [parentName, setParentName] = useState("");
@@ -257,8 +275,8 @@ export default function FreeTrialSat() {
                     onChange={(e) => setTimezone(e.target.value)}
                   >
                     {timezones.map((tz) => (
-                      <option key={tz} value={tz}>
-                        {tz.replace(/_/g, " ")}
+                      <option key={tz.value} value={tz.value}>
+                        {tz.label}
                       </option>
                     ))}
                   </select>
