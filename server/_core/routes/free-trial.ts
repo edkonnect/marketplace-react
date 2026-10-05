@@ -151,9 +151,9 @@ freeTrialRouter.post("/", async (req, res) => {
       <div style="font-family:Arial,sans-serif;font-size:15px;color:#222;max-width:560px;">
         <h2 style="color:#0b5cc4;">Thank you for registering!</h2>
         <p>Hi ${escapeHtml(input.parentName)},</p>
-        <p>Thanks for signing up for a free SAT trial lesson with EdKonnect Academy.</p>
+        <p>Thank you for signing up for a free trial lesson of the SAT with EdKonnect Academy.</p>
         <p>
-          <strong>Your session is on:</strong><br />
+          <strong>Your requested session time is:</strong><br />
           ${escapeHtml(dateLabel)}<br />
           <span style="color:#555;">Time zone: ${escapeHtml(input.timezone)}</span>
         </p>
