@@ -2603,6 +2603,32 @@ export const appRouter = router({
       return grouped;
     }),
 
+    myNoAccountTrials: tutorProcedure.query(async ({ ctx }) => {
+      try {
+        const { getNoAccountTrialsForTutor } = await import("./acuity-sync");
+        const trials = await getNoAccountTrialsForTutor(ctx.user.id);
+        const now = Date.now();
+        return trials.map((t) => ({
+          id: -Number(t.acuityId),
+          subscriptionId: null,
+          tutorId: t.tutorId,
+          parentId: null,
+          scheduledAt: t.scheduledAt,
+          duration: t.duration,
+          status: t.scheduledAt > now ? "scheduled" : "completed",
+          isTrial: true,
+          noAccount: true,
+          studentFirstName: t.studentFirstName,
+          studentLastName: t.studentLastName,
+          course: t.courseTitle ? { title: t.courseTitle } : null,
+          tutor: null,
+          joinUrl: t.meetingUrl,
+        }));
+      } catch (err) {
+        console.error("[myNoAccountTrials] failed", err);
+        return [];
+      }
+    }),
     myTutorBookings: tutorProcedure.query(async ({ ctx }) => {
       const rows = await db.getSessionsByTutorId(ctx.user.id, { limit: 2000 });
       const zoomUrl = await getTutorZoomUrl(ctx.user.id, true);

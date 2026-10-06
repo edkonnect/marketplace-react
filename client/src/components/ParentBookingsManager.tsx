@@ -608,6 +608,7 @@ export function ParentBookingsManager({ mode = "parent" }: { mode?: "parent" | "
   const utils = trpc.useUtils();
   const parentQuery = trpc.session.myBookings.useQuery(undefined, { enabled: !isTutor });
   const tutorQuery = trpc.session.myTutorBookings.useQuery(undefined, { enabled: isTutor });
+  const noAcctTrialsQuery = trpc.session.myNoAccountTrials.useQuery(undefined, { enabled: isTutor });
   const { data: bookings, isLoading, refetch } = (isTutor ? tutorQuery : parentQuery) as any;
   const { data: availabilityData } = trpc.subscription.getAvailability.useQuery(
     { subscriptionId: selectedSubscriptionId ?? 0 },
@@ -854,7 +855,13 @@ export function ParentBookingsManager({ mode = "parent" }: { mode?: "parent" | "
       });
     });
 
-    // Filter by status and student
+    // Acuity trials for families with no platform account (tutor view, read-only)
+    if (isTutor && noAcctTrialsQuery.data) {
+      noAcctTrialsQuery.data.forEach((s: any) => allSessions.push(s));
+    }
+
+    
+// Filter by status and student
     const filteredSessions = allSessions.filter((session: any) => {
       // Filter by status
       let statusMatch = true;
@@ -925,7 +932,7 @@ export function ParentBookingsManager({ mode = "parent" }: { mode?: "parent" | "
     });
 
     return grouped;
-  }, [bookings, selectedStudent, statusFilter]);
+  }, [bookings, selectedStudent, statusFilter, isTutor, noAcctTrialsQuery.data]);
 
   const availableTimeSlots = useMemo(() => {
     if (!newDate || !availabilityData) return [];

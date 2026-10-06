@@ -16,7 +16,7 @@
 import { getDb } from "./db";
 import { users, subscriptions, courses, acuityEmailAliases } from "../drizzle/schema";
 import { eq, sql } from "drizzle-orm";
-import { CALENDAR_TO_TUTOR, APPT_TYPE_TO_COURSE, splitEmails, extractZoomUrl, toIst } from "./acuity-maps";
+import { CALENDAR_TO_TUTOR, APPT_TYPE_TO_COURSE, splitEmails, extractZoomUrl, toIst, TRIAL_APPOINTMENT_TYPES } from "./acuity-maps";
 import { upsertAcuitySession, resolveAcuityAppt, type AcuityAppt, type AcuityLookups } from "./acuity-upsert";
 import { ENV } from "./_core/env";
 
@@ -527,4 +527,56 @@ export async function forceSyncAcuitySession(
     console.error(`[AcuitySync] forceSyncAcuitySession ${acuityAppointmentId} failed:`, err?.message);
     return { ok: false, error: err?.message ?? "Unknown error" };
   }
+}
+
+// ---- Trials booked in Acuity by families with no platform account ----
+// Read-only: never written to the sessions table. Shown to tutors in My Bookings.
+export type NoAccountTrial = {
+  acuityId: string;
+  tutorId: number;
+  scheduledAt: number;
+  duration: number;
+  studentFirstName: string | null;
+  studentLastName: string | null;
+  courseTitle: string | null;
+  meetingUrl: string | null;
+};
+
+let noAccountTrialCache: { at: number; data: NoAccountTrial[] } | null = null;
+const NO_ACCOUNT_TRIAL_TTL_MS = 5 * 60 * 1000;
+
+export async function getNoAccountTrialsForTutor(tutorId: number): Promise<NoAccountTrial[]> {
+  const now = Date.now();
+  if (!noAccountTrialCache || now - noAccountTrialCache.at > NO_ACCOUNT_TRIAL_TTL_MS) {
+    const database = await getDb();
+    if (!database) return [];
+    const minDate = new Date(now - 90 * 86400000).toISOString().split("T")[0];
+    const maxDate = new Date(now + 120 * 86400000).toISOString().split("T")[0];
+    const lookups = await buildLookups(database);
+    const appts = (await fetchAppointments(minDate, maxDate, false)) as AcuityAppt[];
+    const data: NoAccountTrial[] = [];
+    for (const appt of appts) {
+      const apptTutorId = CALENDAR_TO_TUTOR[appt.calendarID];
+      if (!apptTutorId) continue;
+      if (!TRIAL_APPOINTMENT_TYPES.has(appt.appointmentTypeID)) continue;
+      const hasAccount = splitEmails(appt.email).some(
+        (e) => lookups.parentEmailToId[e] || lookups.parentAliasEmailToId[e],
+      );
+      if (hasAccount) continue; // normal sync handles these
+      const scheduledAt = new Date(appt.datetime).getTime();
+      if (Number.isNaN(scheduledAt)) continue;
+      data.push({
+        acuityId: String(appt.id),
+        tutorId: apptTutorId,
+        scheduledAt,
+        duration: parseInt(String(appt.duration ?? ""), 10) || 60,
+        studentFirstName: (appt.firstName || "").trim() || null,
+        studentLastName: (appt.lastName || "").trim() || null,
+        courseTitle: ((appt as any).type as string) || null,
+        meetingUrl: extractZoomUrl(appt.location),
+      });
+    }
+    noAccountTrialCache = { at: now, data };
+  }
+  return noAccountTrialCache.data.filter((t) => t.tutorId === tutorId);
 }
