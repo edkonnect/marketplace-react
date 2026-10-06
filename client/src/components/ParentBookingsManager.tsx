@@ -77,7 +77,7 @@ function CalendarView({
     });
 
     // Sort by date once
-    sessions.sort((a, b) => a.session.scheduledAt - b.session.scheduledAt);
+    sessions.sort((a, b) => (Number(!!b.session.isTrial) - Number(!!a.session.isTrial)) || (a.session.scheduledAt - b.session.scheduledAt));
     return sessions;
   }, [groupedBookings]);
 
@@ -244,10 +244,10 @@ function CalendarView({
                         <button
                           key={session.id}
                           onClick={() => setExpandedSession(session.id)}
-                          className={`w-full text-left p-1.5 rounded text-xs transition-colors truncate ${getSessionColor(session.status)}`}
+                          className={`w-full text-left p-1.5 rounded text-xs transition-colors truncate ${session.isTrial && session.status !== 'cancelled' ? 'bg-purple-600 hover:bg-purple-700 text-white' : getSessionColor(session.status)}`}
                         >
                           <div className="font-medium truncate">
-                            {time} {student} - {subject.substring(0, 15)}{subject.length > 15 ? '...' : ''}
+                            {session.isTrial ? 'TRIAL ' : ''}{time} {student} - {subject.substring(0, 15)}{subject.length > 15 ? '...' : ''}
                           </div>
                         </button>
                       );
@@ -293,7 +293,7 @@ function CalendarView({
                       setViewAllDate(null);
                       setExpandedSession(session.id);
                     }}
-                    className={`w-full text-left p-3 rounded transition-colors ${getSessionColor(session.status)}`}
+                    className={`w-full text-left p-3 rounded transition-colors ${session.isTrial && session.status !== 'cancelled' ? 'bg-purple-600 hover:bg-purple-700 text-white' : getSessionColor(session.status)}`}
                   >
                     <div className="flex items-center justify-between gap-4">
                       <div className="flex items-center gap-3 flex-1">
@@ -598,7 +598,7 @@ export function ParentBookingsManager({ mode = "parent" }: { mode?: "parent" | "
   const [cancelReason, setCancelReason] = useState<string>("");
   const [frequency, setFrequency] = useState<"weekly" | "biweekly">("weekly");
   const [selectedStudent, setSelectedStudent] = useState<string>("all");
-  const [statusFilter, setStatusFilter] = useState<"upcoming" | "completed" | "cancelled" | "all">("all");
+  const [statusFilter, setStatusFilter] = useState<"upcoming" | "completed" | "cancelled" | "trial" | "all">("all");
   const [ratingModalOpen, setRatingModalOpen] = useState(false);
   const [ratingSessionId, setRatingSessionId] = useState<number | null>(null);
   const [viewMode, setViewMode] = useState<"list" | "calendar">("calendar");
@@ -864,6 +864,8 @@ export function ParentBookingsManager({ mode = "parent" }: { mode?: "parent" | "
         statusMatch = session.status === "completed" || session.status === "no_show";
       } else if (statusFilter === "cancelled") {
         statusMatch = session.status === "cancelled";
+      } else if (statusFilter === "trial") {
+        statusMatch = !!session.isTrial;
       }
 
       if (!statusMatch) return false;
@@ -1076,6 +1078,14 @@ export function ParentBookingsManager({ mode = "parent" }: { mode?: "parent" | "
               Cancelled
             </Button>
             <Button
+              variant={statusFilter === "trial" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setStatusFilter("trial")}
+              className="rounded-full"
+            >
+              Trial
+            </Button>
+            <Button
               variant={statusFilter === "all" ? "default" : "outline"}
               size="sm"
               onClick={() => setStatusFilter("all")}
@@ -1139,6 +1149,7 @@ export function ParentBookingsManager({ mode = "parent" }: { mode?: "parent" | "
                 if (statusFilter === "upcoming") return `No upcoming sessions${studentText}`;
                 if (statusFilter === "completed") return `No completed sessions${studentText}`;
                 if (statusFilter === "cancelled") return `No cancelled sessions${studentText}`;
+                if (statusFilter === "trial") return `No trial sessions${studentText}`;
                 return selectedStudent === "all"
                   ? "You don't have any bookings yet"
                   : `No bookings found${studentText}`;
