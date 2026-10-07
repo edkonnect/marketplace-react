@@ -1289,7 +1289,7 @@ export default function TutorDashboard() {
     const normalizedQuery = historyStudentQuery.trim().toLowerCase();
     const startMs = historyStartDate ? new Date(`${historyStartDate}T00:00:00`).getTime() : null;
     const endMs = historyEndDate ? new Date(`${historyEndDate}T23:59:59.999`).getTime() : null;
-    const base = (historySessions || [])
+    const base = [...(historySessions || []), ...(noAcctTrials || [])]
       .filter((s) => !hiddenHistory.has(s.id))
       .filter((s) => s.scheduledAt <= Date.now())
       .filter((s) => {
@@ -1310,7 +1310,7 @@ export default function TutorDashboard() {
       const d = new Date(s.scheduledAt);
       return d.getFullYear() === y && d.getMonth() + 1 === m;
     });
-  }, [historySessions, hiddenHistory, historyStudentQuery, historyStartDate, historyEndDate, historyTimePeriod]);
+  }, [historySessions, noAcctTrials, hiddenHistory, historyStudentQuery, historyStartDate, historyEndDate, historyTimePeriod]);
 
   useEffect(() => {
     if (!availableCourses) return;
@@ -2226,6 +2226,11 @@ export default function TutorDashboard() {
                                         Trial Lesson
                                       </Badge>
                                     )}
+                                    {session.noAccount && (
+                                      <Badge variant="outline" className="text-xs border-amber-500 text-amber-700 bg-amber-50 dark:bg-amber-950/20">
+                                        Account not created
+                                      </Badge>
+                                    )}
                                     {tutorGradeBySessionId.has(session.id) && (() => {
                                       const g = tutorGradeBySessionId.get(session.id)!;
                                       const score = g.rubricOverallScore != null ? Number(g.rubricOverallScore) : null;
@@ -2266,7 +2271,7 @@ export default function TutorDashboard() {
                                   </Button>
                                 )}
 
-                                {session.status === "completed" && (
+                                {session.status === "completed" && !session.noAccount && (
                                   <>
                                     {/* Session Notes Section */}
                                     <div className="mt-4 p-3 sm:p-4 rounded-lg border-l-4 border-blue-500 bg-blue-50 dark:bg-blue-950/20">
