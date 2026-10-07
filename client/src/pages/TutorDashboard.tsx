@@ -387,6 +387,7 @@ export default function TutorDashboard() {
     { enabled: isAuthenticated && user?.role === "tutor", staleTime: 0, refetchOnMount: true }
   );
 
+  const { data: noAcctTrials } = trpc.session.myNoAccountTrials.useQuery(undefined, { refetchOnWindowFocus: false });
   const { data: upcomingSessions, refetch: refetchUpcoming } = trpc.session.myUpcoming.useQuery(
     undefined,
     { enabled: isAuthenticated && user?.role === "tutor", staleTime: 0, refetchOnMount: true }
@@ -2096,7 +2097,7 @@ export default function TutorDashboard() {
                   </div>
 
                   <TutorSessionsManager
-                    upcomingSessions={upcomingSessions || []}
+                    upcomingSessions={[...(upcomingSessions || []), ...(noAcctTrials || []).filter((s: any) => s.scheduledAt >= Date.now() - 7 * 86400000)]}
                     sessionNotes={sessionNotes}
                     setSessionNotes={setSessionNotes}
                     handleOpenCompletionDialog={handleOpenCompletionDialog}

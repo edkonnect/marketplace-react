@@ -572,7 +572,7 @@ export async function getNoAccountTrialsForTutor(tutorId: number): Promise<NoAcc
         duration: parseInt(String(appt.duration ?? ""), 10) || 60,
         studentFirstName: (appt.firstName || "").trim() || null,
         studentLastName: (appt.lastName || "").trim() || null,
-        courseTitle: ((appt as any).type as string) || null,
+        courseTitle: (((appt as any).type as string) || "").replace(/\s*[-\u2013]\s*free\s+trial(\s+session)?\s*$/i, "").trim() || null,
         meetingUrl: extractZoomUrl(appt.location),
       });
     }

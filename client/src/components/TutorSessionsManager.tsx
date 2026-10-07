@@ -490,6 +490,11 @@ export function TutorSessionsManager({
                               Trial Lesson
                             </Badge>
                           )}
+                          {session.noAccount && (
+                            <Badge variant="outline" className="text-xs border-amber-500 text-amber-700 bg-amber-50 dark:bg-amber-950/20">
+                              Account not created
+                            </Badge>
+                          )}
                         </div>
                         <div className="flex items-center gap-2 text-sm text-muted-foreground">
                           <Clock className="w-4 h-4 flex-shrink-0" />
@@ -518,7 +523,7 @@ export function TutorSessionsManager({
                     </div>
 
                     {/* Complete button */}
-                    {canComplete(session) && (
+                    {canComplete(session) && !session.noAccount && (
                       <Button
                         size="sm"
                         onClick={() => handleOpenCompletionDialog(session.id, session.feedbackFromTutor, session.joinUrl)}
@@ -529,7 +534,7 @@ export function TutorSessionsManager({
                     )}
 
                     {/* Notes for completed sessions */}
-                    {session.status === "completed" && (
+                    {session.status === "completed" && !session.noAccount && (
                       <div className="space-y-2">
                         <Label>Session Notes (visible to parent)</Label>
                         <Textarea

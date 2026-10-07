@@ -2620,6 +2620,7 @@ export const appRouter = router({
           noAccount: true,
           studentFirstName: t.studentFirstName,
           studentLastName: t.studentLastName,
+          courseTitle: t.courseTitle,
           course: t.courseTitle ? { title: t.courseTitle } : null,
           tutor: null,
           joinUrl: t.meetingUrl,
