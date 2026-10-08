@@ -115,7 +115,7 @@ freeTrialRouter.post("/", async (req, res) => {
       <p><strong>Email:</strong> ${escapeHtml(input.email)}</p>
       <p><strong>Phone:</strong> ${input.phone ? escapeHtml(input.phone) : "-"}</p>
       <p><strong>Time zone:</strong> ${escapeHtml(input.timezone)}</p>
-      <p><strong>Preferred trial date:</strong> ${escapeHtml(formatDate(input.trialDate))}</p>
+      <p><strong>Course start date:</strong> ${escapeHtml(formatDate(input.trialDate))}</p>
       <table style="border-collapse:collapse;margin-top:8px;">
         <tr>
           <th style="${cell}">#</th>

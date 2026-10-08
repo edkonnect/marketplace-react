@@ -29,20 +29,7 @@ const TIMEZONE_OPTIONS = [
   { value: "America/Chicago", label: "United States - Central (Chicago)" },
   { value: "America/Denver", label: "United States - Mountain (Denver)" },
   { value: "America/Los_Angeles", label: "United States - Pacific (Los Angeles)" },
-  { value: "America/Toronto", label: "Canada - Eastern (Toronto)" },
-  { value: "America/Winnipeg", label: "Canada - Central (Winnipeg)" },
-  { value: "America/Edmonton", label: "Canada - Mountain (Edmonton)" },
-  { value: "America/Vancouver", label: "Canada - Pacific (Vancouver)" },
   { value: "Asia/Kolkata", label: "India (Kolkata)" },
-  { value: "Europe/London", label: "United Kingdom (London)" },
-  { value: "Europe/Berlin", label: "Central Europe (Berlin)" },
-  { value: "Asia/Dubai", label: "United Arab Emirates (Dubai)" },
-  { value: "Asia/Singapore", label: "Singapore" },
-  { value: "Australia/Sydney", label: "Australia - Eastern (Sydney)" },
-  { value: "Australia/Brisbane", label: "Australia - Queensland (Brisbane)" },
-  { value: "Australia/Adelaide", label: "Australia - Central (Adelaide)" },
-  { value: "Australia/Perth", label: "Australia - Western (Perth)" },
-  { value: "Pacific/Auckland", label: "New Zealand (Auckland)" },
 ];
 
 // If the visitor's detected zone isn't in the list, show it at the top
@@ -108,7 +95,7 @@ export default function FreeTrialSat() {
     }
 
     if (!timezone) return toast.error("Select a time zone.");
-    if (!trialDate) return toast.error("Select a trial date.");
+    if (!trialDate) return toast.error("Select a course start date.");
 
     setIsSubmitting(true);
     try {
@@ -283,7 +270,7 @@ export default function FreeTrialSat() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="trialDate">Free trial date *</Label>
+                  <Label htmlFor="trialDate">Course Start Date *</Label>
                   <select
                     id="trialDate"
                     className={selectClass}
