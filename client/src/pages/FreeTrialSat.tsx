@@ -41,7 +41,11 @@ function getTimezoneOptions(detected: string) {
 }
 
 // Fixed trial dates (YYYY-MM-DD). Past dates are hidden automatically.
-const TRIAL_DATES = ["2026-10-17", "2026-11-14", "2026-12-12"];
+const TRIAL_DATES = [
+  "2026-10-17", "2026-11-14", "2026-12-12",
+  "2027-01-16", "2027-02-13", "2027-03-13", "2027-04-17", "2027-05-15", "2027-06-12",
+  "2027-07-17", "2027-08-14", "2027-09-18", "2027-10-16", "2027-11-13", "2027-12-18",
+];
 
 function getTrialDates() {
   const today = new Date();
