@@ -1066,7 +1066,7 @@ export function ParentBookingsManager({ mode = "parent" }: { mode?: "parent" | "
               onClick={() => setStatusFilter("upcoming")}
               className="rounded-full"
             >
-              Upcoming
+              <span className="mr-1.5 inline-block h-2.5 w-2.5 rounded-full bg-blue-600 ring-1 ring-white" />Upcoming
             </Button>
             <Button
               variant={statusFilter === "completed" ? "default" : "outline"}
@@ -1074,7 +1074,7 @@ export function ParentBookingsManager({ mode = "parent" }: { mode?: "parent" | "
               onClick={() => setStatusFilter("completed")}
               className="rounded-full"
             >
-              Completed
+              <span className="mr-1.5 inline-block h-2.5 w-2.5 rounded-full bg-green-600 ring-1 ring-white" />Completed
             </Button>
             <Button
               variant={statusFilter === "cancelled" ? "default" : "outline"}
@@ -1082,7 +1082,7 @@ export function ParentBookingsManager({ mode = "parent" }: { mode?: "parent" | "
               onClick={() => setStatusFilter("cancelled")}
               className="rounded-full"
             >
-              Cancelled
+              <span className="mr-1.5 inline-block h-2.5 w-2.5 rounded-full bg-red-600 ring-1 ring-white" />Cancelled
             </Button>
             <Button
               variant={statusFilter === "trial" ? "default" : "outline"}
@@ -1090,7 +1090,7 @@ export function ParentBookingsManager({ mode = "parent" }: { mode?: "parent" | "
               onClick={() => setStatusFilter("trial")}
               className="rounded-full"
             >
-              Trial
+              <span className="mr-1.5 inline-block h-2.5 w-2.5 rounded-full bg-purple-600 ring-1 ring-white" />Trial
             </Button>
             <Button
               variant={statusFilter === "all" ? "default" : "outline"}
