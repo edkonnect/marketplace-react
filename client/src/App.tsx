@@ -35,6 +35,7 @@ import TutorPayments from "./pages/TutorPayments";
 import Settings from "./pages/Settings";
 import TutorProfile from "./pages/TutorProfile";
 import TutorAvailability from "./pages/TutorAvailability";
+import TutorSessionsTrend from "./pages/TutorSessionsTrend";
 import TermsAndConditions from "./pages/TermsAndConditions";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
 import AboutUs from "./pages/AboutUs";
@@ -84,6 +85,7 @@ function Router() {
       <Route path={"/tutor/availability"} component={TutorAvailability} />
       <Route path={"/tutor/notifications"} component={TutorNotifications} />
       <Route path={"/tutor/payments"} component={TutorPayments} />
+      <Route path={"/tutor/sessions-trend"} component={TutorSessionsTrend} />
       <Route path={"/tutor-profile/:id"} component={TutorDetail} />
       <Route path={"/tutor/:id"} component={TutorDetail} />
       <Route path={"/courses"} component={CourseListing} />
@@ -105,7 +107,7 @@ function Router() {
       <Route path={"/privacy-policy"} component={PrivacyPolicy} />
       <Route path={"/about"} component={AboutUs} />
       <Route path={"/contact"} component={Contact} />
-            <Route path={"/free-trial-sat"} component={FreeTrialSat} />
+      <Route path={"/free-trial-sat"} component={FreeTrialSat} />
       <Route path={"/blog"} component={BlogListing} />
       <Route path={"/blog/:slug"} component={BlogPost} />
       <Route path={"/knowledge-portal"}>{() => { window.location.replace("/"); return null; }}</Route>

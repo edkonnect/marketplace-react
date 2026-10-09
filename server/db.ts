@@ -6711,3 +6711,51 @@ export async function deleteAcuityEmailAlias(id: number) {
   await db.delete(acuityEmailAliases).where(eq(acuityEmailAliases.id, id));
 }
 
+export async function getTutorMonthlySessionTrend(tutorId: number) {
+  const db = await getDb();
+  if (!db) return [];
+
+  // Month boundaries aligned to IST, same as the other session helpers
+  const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+  const istNow = new Date(Date.now() + IST_OFFSET_MS);
+  const y = istNow.getUTCFullYear();
+  const m = istNow.getUTCMonth();
+  const monthStart = (offset: number) => Date.UTC(y, m + offset, 1) - IST_OFFSET_MS;
+
+  const rows = await db
+    .select({ scheduledAt: sessions.scheduledAt, status: sessions.status })
+    .from(sessions)
+    .where(
+      and(
+        eq(sessions.tutorId, tutorId),
+        gte(sessions.scheduledAt, monthStart(-6)),
+        sql`${sessions.scheduledAt} < ${monthStart(7)}`,
+        sql`${sessions.status} <> 'cancelled'`,
+      ),
+    );
+
+  // 13 buckets: last 6 months, current month, next 6 months
+  const buckets = [];
+  for (let off = -6; off <= 6; off++) {
+    buckets.push({
+      start: monthStart(off),
+      end: monthStart(off + 1),
+      month: new Date(Date.UTC(y, m + off, 1)).toLocaleString("en-US", {
+        month: "short",
+        year: "2-digit",
+        timeZone: "UTC",
+      }),
+      total: 0,
+      completed: 0,
+    });
+  }
+
+  for (const r of rows) {
+    const b = buckets.find((x) => r.scheduledAt >= x.start && r.scheduledAt < x.end);
+    if (!b) continue;
+    b.total++;
+    if (r.status === "completed") b.completed++;
+  }
+
+  return buckets.map(({ month, total, completed }) => ({ month, total, completed }));
+}

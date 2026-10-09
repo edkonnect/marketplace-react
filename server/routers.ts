@@ -2372,7 +2372,9 @@ export const appRouter = router({
 
         return session;
     }),
-
+          myMonthlyTrend: tutorProcedure.query(async ({ ctx }) => {
+      return await db.getTutorMonthlySessionTrend(ctx.user.id);
+    }),
     myUpcoming: protectedProcedure.query(async ({ ctx }) => {
       // Zoom URL for a given (tutorId, isHost) pair is identical across all rows in this
       // request, so cache per pair instead of hitting the DB/Zoom API for every session.

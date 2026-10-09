@@ -32,6 +32,7 @@ import { formatSessionTime, COMMON_TIMEZONES } from "@/../../shared/timezone-uti
 import Footer from "@/components/Footer";
 import { statusLabel, statusToStep, stepToStatus, type ProgressStatus } from "@/lib/progressStatus";
 
+
 type ProgressStatusValue = ProgressStatus;
 
 function progressStatusToStep(v: ProgressStatusValue): number {
@@ -354,10 +355,12 @@ export default function TutorDashboard() {
   const { user, isAuthenticated, loading } = useAuth();
   const [, setLocation] = useLocation();
   const utils = trpc.useUtils();
-
+const [showSessionTrend, setShowSessionTrend] = useState(false);
   // Get tab from URL query parameter
   const urlParams = new URLSearchParams(window.location.search);
   const tabFromUrl = urlParams.get('tab') || 'courses';
+
+
 
   const tabContentClass =
     "space-y-6 w-full data-[state=inactive]:hidden";
@@ -397,6 +400,10 @@ export default function TutorDashboard() {
     undefined,
     { enabled: isAuthenticated && user?.role === "tutor", staleTime: 0, refetchOnMount: true }
   );
+
+  const { data: sessionTrend, isLoading: trendLoading } = trpc.session.myMonthlyTrend.useQuery(undefined, { refetchOnWindowFocus: false });
+  const trendPast6 = (sessionTrend ?? []).slice(0, 6).reduce((s, d) => s + d.total, 0);
+const trendNext6 = (sessionTrend ?? []).slice(7).reduce((s, d) => s + d.total, 0);
 
   // Fetch all rubric grades for this tutor's sessions
   const { data: tutorGrades, refetch: refetchTutorGrades } = trpc.grades.getByTutor.useQuery(
@@ -1421,64 +1428,86 @@ export default function TutorDashboard() {
             </Card>
           ) : (
             <>
+              
               {/* Overview Cards */}
-              <div className="grid md:grid-cols-4 gap-6 mb-8">
-                <Card>
-                  <CardHeader className="pb-3">
-                    <CardDescription>Active Courses</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                        <BookOpen className="w-5 h-5 text-primary" />
-                      </div>
-                      <span className="text-3xl font-bold">{activeCourses.length}</span>
-                    </div>
-                  </CardContent>
-                </Card>
+<div className="grid md:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
+  <Card>
+    <CardHeader className="pb-3">
+      <CardDescription>Active Courses</CardDescription>
+    </CardHeader>
+    <CardContent>
+      <div className="flex items-center gap-3">
+        <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+          <BookOpen className="w-5 h-5 text-primary" />
+        </div>
+        <span className="text-3xl font-bold">{activeCourses.length}</span>
+      </div>
+    </CardContent>
+  </Card>
 
-                <Card>
-                  <CardHeader className="pb-3">
-                    <CardDescription>Active Students</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-lg bg-accent/10 flex items-center justify-center">
-                        <Users className="w-5 h-5 text-accent" />
-                      </div>
-                      <span className="text-3xl font-bold">{uniqueActiveStudents}</span>
-                    </div>
-                  </CardContent>
-                </Card>
+  <Card>
+    <CardHeader className="pb-3">
+      <CardDescription>Active Students</CardDescription>
+    </CardHeader>
+    <CardContent>
+      <div className="flex items-center gap-3">
+        <div className="w-10 h-10 rounded-lg bg-accent/10 flex items-center justify-center">
+          <Users className="w-5 h-5 text-accent" />
+        </div>
+        <span className="text-3xl font-bold">{uniqueActiveStudents}</span>
+      </div>
+    </CardContent>
+  </Card>
 
-                <Card>
-                  <CardHeader className="pb-3">
-                    <CardDescription>Upcoming Sessions</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-lg bg-success/10 flex items-center justify-center">
-                        <Calendar className="w-5 h-5 text-success" />
-                      </div>
-                      <span className="text-3xl font-bold">{upcomingSessions?.length || 0}</span>
-                    </div>
-                  </CardContent>
-                </Card>
+  <Card>
+    <CardHeader className="pb-3">
+      <CardDescription>Upcoming Sessions</CardDescription>
+    </CardHeader>
+    <CardContent>
+      <div className="flex items-center gap-3">
+        <div className="w-10 h-10 rounded-lg bg-success/10 flex items-center justify-center">
+          <Calendar className="w-5 h-5 text-success" />
+        </div>
+        <span className="text-3xl font-bold">{upcomingSessions?.length || 0}</span>
+      </div>
+    </CardContent>
+  </Card>
 
-                <Card className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => setLocation("/session-notes")}>
-                  <CardHeader className="pb-3">
-                    <CardDescription>Session Notes</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-lg bg-purple-100 flex items-center justify-center">
-                        <FileText className="w-5 h-5 text-purple-600" />
-                      </div>
-                      <span className="text-sm font-medium text-muted-foreground">View All Notes</span>
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
+  <Card className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => setLocation("/session-notes")}>
+    <CardHeader className="pb-3">
+      <CardDescription>Session Notes</CardDescription>
+    </CardHeader>
+    <CardContent>
+      <div className="flex items-center gap-3">
+        <div className="w-10 h-10 rounded-lg bg-purple-100 flex items-center justify-center">
+          <FileText className="w-5 h-5 text-purple-600" />
+        </div>
+        <span className="text-sm font-medium text-muted-foreground">View All Notes</span>
+      </div>
+    </CardContent>
+  </Card>
+
+  <Card
+  className="cursor-pointer hover:shadow-md transition-shadow"
+  onClick={() => setLocation("/tutor/sessions-trend")}
+>
+  <CardHeader className="pb-3">
+    <CardDescription>Sessions Trend</CardDescription>
+  </CardHeader>
+  <CardContent>
+    <div className="grid grid-cols-2 divide-x">
+      <div className="pr-3">
+        <span className="text-3xl font-bold">{trendPast6}</span>
+        <p className="text-xs text-muted-foreground mt-1">Last 6 months</p>
+      </div>
+      <div className="pl-4">
+        <span className="text-3xl font-bold">{trendNext6}</span>
+        <p className="text-xs text-muted-foreground mt-1">Next 6 months</p>
+      </div>
+    </div>
+  </CardContent>
+</Card>
+</div>
 
               {/* Main Content */}
               <Tabs defaultValue={tabFromUrl} className="space-y-6">
