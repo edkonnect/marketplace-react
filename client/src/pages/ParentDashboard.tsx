@@ -360,7 +360,7 @@ export default function ParentDashboard() {
 
   const activeSubscriptions = subscriptions?.filter(s => s.subscription.status === "active") || [];
   const inactiveSubscriptions = subscriptions?.filter(s => s.subscription.status !== "active") || [];
-  const completedSessions = sessionHistory?.filter(s => s.status === "completed" || s.status === "cancelled") || [];
+ const completedSessions = sessionHistory?.filter(s => s.status === "completed") || [];
   const cancelledSessions = sessionHistory?.filter(s => s.status === "cancelled") || [];
 
   const [selectedHistoryStudent, setSelectedHistoryStudent] = useState<string>("all");
