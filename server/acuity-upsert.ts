@@ -15,6 +15,16 @@
  * The latter flaps back and forth depending on what order a sync batch
  * processes appointments in (e.g. an old tutor's completed sessions landing
  * after a new tutor's sessions in the same batch).
+ *
+ * subscriptionId on slot reuse: when the (tutorId, scheduledAt) unique slot is
+ * already held by a stale row from a DIFFERENT student (e.g. that student's
+ * appointment was later rescheduled/moved but the old row was never cleaned
+ * up), a new booking can land on that same slot and take the row over via
+ * ON DUPLICATE KEY UPDATE / the existingRow branch. subscriptionId must be set
+ * to the newly-resolved value (including null, when the incoming student has
+ * no subscription) rather than COALESCEd against the old row's value — a
+ * COALESCE here silently leaks the PREVIOUS occupant's subscriptionId onto
+ * the new student's session when the new value resolves to null.
  */
 
 import { sql } from "drizzle-orm";
@@ -157,7 +167,7 @@ export async function upsertAcuitySession(
         duration = ${duration},
         courseId = ${courseId ?? null},
         meetingUrl = COALESCE(${meetingUrl}, meetingUrl),
-        subscriptionId = COALESCE(${subscriptionId ?? null}, subscriptionId),
+        subscriptionId = ${subscriptionId ?? null},
         studentFirstName = ${studentFirstName},
         studentLastName = ${studentLastName},
         isTrial = ${isTrial ? 1 : 0},
@@ -192,8 +202,9 @@ export async function upsertAcuitySession(
   }
 
   // 2) New appointment. INSERT, but if the (tutorId, scheduledAt) slot is already
-  //    held by an old row (e.g. cancelled-then-rebooked same slot), take it over
-  //    and re-point it at this appointment.
+  //    held by an old row (e.g. cancelled-then-rebooked same slot, or a stale row
+  //    left behind by a different student whose appointment moved elsewhere),
+  //    take it over and re-point it at this appointment.
   const res = (await db.execute(sql`
     INSERT INTO sessions
       (subscriptionId, tutorId, parentId, scheduledAt, duration, status, isTrial,
@@ -206,7 +217,7 @@ export async function upsertAcuitySession(
       duration = VALUES(duration),
       courseId = VALUES(courseId),
       meetingUrl = COALESCE(VALUES(meetingUrl), meetingUrl),
-      subscriptionId = COALESCE(VALUES(subscriptionId), subscriptionId),
+      subscriptionId = VALUES(subscriptionId),
       studentFirstName = VALUES(studentFirstName),
       studentLastName = VALUES(studentLastName),
       isTrial = VALUES(isTrial),
