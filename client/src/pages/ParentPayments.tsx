@@ -72,10 +72,85 @@ function CombinedCycleCard({ subs }: { subs: Array<{ subscriptionId: number; cou
   );
 }
 
+function getInvoiceWindow(inv: any): { from: number; to: number } | null {
+  const startMs = (inv.periodStart ?? 0) * 1000;
+  const endMs = (inv.periodEnd ?? 0) * 1000;
+  if (startMs > 0 && endMs - startMs >= 24 * 60 * 60 * 1000) {
+    return { from: startMs, to: endMs };
+  }
+  if (!inv.created) return null;
+  const d = new Date(inv.created * 1000);
+  return {
+    from: new Date(d.getFullYear(), d.getMonth() - 1, 1).getTime(),
+    to: new Date(d.getFullYear(), d.getMonth(), 1).getTime(),
+  };
+}
+
+function InvoiceSessions({ inv, sessions, notes, loading }: { inv: any; sessions: any[] | undefined; notes: any[] | undefined; loading: boolean }) {
+  const win = getInvoiceWindow(inv);
+  if (!win) return null;
+
+  const noteBySession = new Map<number, any>();
+  (notes ?? []).forEach((n: any) => {
+    if (n.sessionId != null && !noteBySession.has(n.sessionId)) noteBySession.set(n.sessionId, n);
+  });
+
+  const inWindow = (sessions ?? [])
+    .filter((s: any) => s.scheduledAt >= win.from && s.scheduledAt < win.to)
+    .sort((a: any, b: any) => a.scheduledAt - b.scheduledAt);
+
+  return (
+    <div className="px-5 py-4 bg-muted/30 space-y-3">
+      <p className="text-sm font-semibold">
+        Sessions {format(new Date(win.from), "MMM d")} - {format(new Date(win.to - 1), "MMM d, yyyy")}
+        {!loading && ` (${inWindow.length})`}
+      </p>
+      {loading ? (
+        <Skeleton className="h-16 w-full" />
+      ) : inWindow.length === 0 ? (
+        <p className="text-sm text-muted-foreground">No sessions found for this period.</p>
+      ) : (
+        inWindow.map((s: any) => {
+          const n = noteBySession.get(s.id);
+          const progress = n?.progressSummary ?? s.feedbackFromTutor;
+          const student = [s.studentFirstName, s.studentLastName].filter(Boolean).join(" ");
+          return (
+            <div key={s.id} className="rounded-lg border bg-background p-3 space-y-1">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <p className="text-sm font-medium">
+                  {format(new Date(s.scheduledAt), "MMM d, yyyy - h:mm a")}
+                </p>
+                <Badge variant="outline">{s.status}</Badge>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {[s.courseTitle, student, s.tutorName ? `Tutor: ${s.tutorName}` : null].filter(Boolean).join(" | ")}
+              </p>
+              {progress && <p className="text-sm whitespace-pre-wrap">{progress}</p>}
+              {n?.homework && <p className="text-xs"><span className="font-semibold">Homework: </span>{n.homework}</p>}
+              {n?.challenges && <p className="text-xs"><span className="font-semibold">Challenges: </span>{n.challenges}</p>}
+              {n?.nextSteps && <p className="text-xs"><span className="font-semibold">Next steps: </span>{n.nextSteps}</p>}
+            </div>
+          );
+        })
+      )}
+    </div>
+  );
+}
+
 export function BillingHistory() {
   const { user, isAuthenticated, loading } = useAuth();
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+   
 
+    const anyOpen = Object.values(expanded).some(Boolean);
+  const { data: sessionHistory, isLoading: histLoading } = trpc.session.myHistory.useQuery(
+    undefined,
+    { enabled: isAuthenticated && user?.role === "parent" && anyOpen }
+  );
+  const { data: parentNotes } = trpc.sessionNotes.getParentNotes.useQuery(
+    undefined,
+    { enabled: isAuthenticated && user?.role === "parent" && anyOpen }
+  );
   const { data: invoices, isLoading } = trpc.payment.getStripeInvoices.useQuery(
     undefined,
     { enabled: isAuthenticated && user?.role === "parent" }
@@ -342,6 +417,9 @@ export function BillingHistory() {
                         })}
                       </div>
                       <Separator />
+                                            {!isUpcoming && (
+                        <InvoiceSessions inv={inv} sessions={sessionHistory as any[] | undefined} notes={parentNotes as any[] | undefined} loading={histLoading} />
+                      )}
                       <div className="flex justify-between items-center px-5 py-3 bg-primary text-primary-foreground rounded-b-xl">
                         <span className="text-sm font-bold uppercase tracking-wide">Total Amount</span>
                         <span className="text-lg font-bold">
