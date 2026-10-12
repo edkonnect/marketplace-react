@@ -72,7 +72,7 @@ function CombinedCycleCard({ subs }: { subs: Array<{ subscriptionId: number; cou
   );
 }
 
-export default function ParentPayments() {
+export function BillingHistory() {
   const { user, isAuthenticated, loading } = useAuth();
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
@@ -101,12 +101,8 @@ export default function ParentPayments() {
     setExpanded(prev => ({ ...prev, [id]: !prev[id] }));
   };
 
-  return (
-    <div className="min-h-screen flex flex-col bg-background">
-      <Navigation />
-      <div className="container mx-auto px-4 py-8 mt-20 max-w-4xl">
-        <h1 className="text-3xl font-bold">Billing History</h1>
-
+     return (
+    <div>
         {/* Current cycle tracker for usage-based subscriptions — grouped by billing cycle end date */}
         {usageActiveSubs.length > 0 && (() => {
           // Group by billingCycleEnd so same-end-date subscriptions show as one combined card
@@ -359,6 +355,17 @@ export default function ParentPayments() {
             })}
           </div>
         )}
+          </div>
+  );
+}
+
+export default function ParentPayments() {
+  return (
+    <div className="min-h-screen flex flex-col bg-background">
+      <Navigation />
+      <div className="container mx-auto px-4 py-8 mt-20 max-w-4xl">
+        <h1 className="text-3xl font-bold">Billing History</h1>
+        <BillingHistory />
       </div>
       <Footer />
     </div>
