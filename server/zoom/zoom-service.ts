@@ -256,7 +256,7 @@ export async function getZoomRecording(meetingIdOrUuid: string): Promise<ZoomRec
 export async function findRecordingUuidBySessionTime(
   meetingId: string,
   sessionStartMs: number,
-  toleranceMs: number = 6 * 60 * 60 * 1000 // 6 hours — covers tutors who start Zoom well before scheduled time
+  toleranceMs: number = 30 * 60 * 1000 // 30 min - personal rooms are shared by many tutors
 ): Promise<string | null> {
   const sessionDate = new Date(sessionStartMs);
 
@@ -322,7 +322,6 @@ export async function findRecordingUuidBySessionTime(
   // When a session has multiple instances (e.g., participants left and rejoined due to
   // audio issues), the longer recording is almost always the actual class.
   // Ties within 2 minutes of duration fall back to closest start_time.
-  const DURATION_TIE_THRESHOLD_MINUTES = 2;
 
   const withinTolerance = meetingRecordings.filter(rec =>
     Math.abs(new Date(rec.start_time).getTime() - sessionStartMs) <= toleranceMs
@@ -337,8 +336,6 @@ export async function findRecordingUuidBySessionTime(
   }
 
   withinTolerance.sort((a, b) => {
-    const durationDiff = b.duration - a.duration;
-    if (Math.abs(durationDiff) > DURATION_TIE_THRESHOLD_MINUTES) return durationDiff;
     const diffA = Math.abs(new Date(a.start_time).getTime() - sessionStartMs);
     const diffB = Math.abs(new Date(b.start_time).getTime() - sessionStartMs);
     return diffA - diffB;
