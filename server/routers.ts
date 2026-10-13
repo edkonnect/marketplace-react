@@ -8343,7 +8343,7 @@ For engagementData, describe ONLY the student's participation and behavior. The 
           nextPageToken = data.next_page_token;
         } while (nextPageToken);
 
-        const TOLERANCE_MS = 6 * 60 * 60 * 1000; // 6 hours — covers tutors who start Zoom early
+        const TOLERANCE_MS = 30 * 60 * 1000; // 6 hours — covers tutors who start Zoom early
 
         return allMeetings
           .filter(m => String(m.id) === String(meetingId))
@@ -8354,7 +8354,7 @@ For engagementData, describe ONLY the student's participation and behavior. The 
             durationMinutes: m.duration as number,
             hasTranscript: (m.recording_files as any[])?.some((f: any) => f.file_type === 'TRANSCRIPT') ?? false,
           }))
-          .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
+          .sort((a, b) => Math.abs(new Date(a.startTime).getTime() - sessionScheduledAt) - Math.abs(new Date(b.startTime).getTime() - sessionScheduledAt));
       }),
 
     /**
@@ -8395,6 +8395,14 @@ For engagementData, describe ONLY the student's participation and behavior. The 
           // Admin override: delete the existing (wrong) row and re-fetch using the specified UUID,
           // bypassing both the cache check and auto-detection below.
           if (input.forceUuid && input.sessionId) {
+            if (ctx.user.role !== 'admin') {
+              const sess = await db.getSessionById(input.sessionId);
+              const rec = await getZoomRecording(input.forceUuid);
+              const diffMs = Math.abs(new Date(rec.start_time).getTime() - Number(sess?.scheduledAt));
+              if (!(diffMs <= 30 * 60 * 1000)) {
+                throw new TRPCError({ code: 'BAD_REQUEST', message: 'That recording does not match this session time. Ask an admin.' });
+              }
+            }
             await database.delete(zoomMeetingRecordings).where(
               and(
                 eq(zoomMeetingRecordings.sessionId, input.sessionId),

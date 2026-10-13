@@ -3153,7 +3153,7 @@ const trendNext6 = (sessionTrend ?? []).slice(7).reduce((s, d) => s + d.total, 0
 	          </DialogHeader>
 	          <div className="py-2 space-y-3">
 	            <p className="text-sm text-muted-foreground">
-	              Pick the recording for the actual class (usually the longest one).
+	              Pick the recording that starts closest to the scheduled session time.
 	            </p>
 	            {recordingInstances.map(instance => (
 	              <div
