@@ -8527,6 +8527,17 @@ For engagementData, describe ONLY the student's participation and behavior. The 
           // Fetch transcript from Zoom using the resolved UUID
           const transcriptData = await fetchZoomTranscript(meetingIdToFetch);
           const recording = await getZoomRecording(meetingIdToFetch);
+          // Guard: shared Zoom rooms host many tutors' classes, so confirm the student's name is in the transcript.
+          if (input.sessionId && !(input.forceUuid && ctx.user.role === 'admin')) {
+            const sessChk = await db.getSessionById(input.sessionId);
+            const nameKey = String((sessChk as any)?.studentFirstName ?? '').trim().toLowerCase().slice(0, 4);
+            if (nameKey.length >= 3 && !String(transcriptData.transcript).toLowerCase().includes(nameKey)) {
+              await database.delete(zoomMeetingRecordings).where(
+                and(eq(zoomMeetingRecordings.id, meetingIdToFetch), eq(zoomMeetingRecordings.sessionId, input.sessionId))
+              );
+              throw new TRPCError({ code: 'NOT_FOUND', message: "A recording was found near this time, but it does not look like this student's class. Use Paste Transcript or ask an admin." });
+            }
+          }
 
           // Fix 1: Save to database — include sessionId in onDuplicateKeyUpdate so existing
           // NULL rows (saved by webhook) get linked when tutor manually fetches
