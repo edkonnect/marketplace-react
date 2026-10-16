@@ -38,7 +38,7 @@ function CombinedCycleCard({ subs }: { subs: Array<{ subscriptionId: number; cou
     <Card className="border-l-4 border-l-blue-400 bg-blue-50/30 dark:bg-blue-950/10">
       <CardContent className="p-5">
         <div className="flex items-start justify-between gap-4 flex-wrap">
-          <div className="space-y-2 flex-1">
+          <div className="space-y-4 flex-1">
             <div className="flex items-center gap-2">
               <p className="text-xs text-muted-foreground">
                 Charges on {format(cycleEnd, "MMM d, yyyy")}
@@ -54,8 +54,9 @@ function CombinedCycleCard({ subs }: { subs: Array<{ subscriptionId: number; cou
                 <div key={subs[i].subscriptionId} className={isCombined ? "pl-2 border-l-2 border-blue-200 dark:border-blue-800" : ""}>
                   <p className="font-semibold text-sm">{subs[i].courseName}{subs[i].studentName ? ` — ${subs[i].studentName}` : ""}</p>
                   <p className="text-xs text-muted-foreground">
-                    {format(cycleStart, "MMM d")} – {format(cycleEndDate, "MMM d, yyyy")} · {formatCents(usage.perSessionRateCents, "usd")}/session · {usage.sessionsCount} session{usage.sessionsCount !== 1 ? "s" : ""}
+                    {format(cycleStart, "MMM d")} – {format(cycleEndDate, "MMM d, yyyy")} · {formatCents(usage.perSessionRateCents, "usd")}/session
                   </p>
+                  <CycleSessions subscriptionId={subs[i].subscriptionId} />
                 </div>
               );
             })}
@@ -72,10 +73,118 @@ function CombinedCycleCard({ subs }: { subs: Array<{ subscriptionId: number; cou
   );
 }
 
+function SessionBreakdownView({ cycles, compact }: { cycles: any[]; compact?: boolean }) {
+  const [sel, setSel] = useState<{ sub: number; kind: "completed" | "cancelled" } | null>(null);
+  const [openSession, setOpenSession] = useState<number | null>(null);
+
+  return (
+    <div className="space-y-5">
+      {cycles.map((c: any) => {
+        const kind = sel && sel.sub === c.subscriptionId ? sel.kind : null;
+        const list = kind ? c.sessions.filter((s: any) => s.status === kind) : [];
+        const toggle = (k: "completed" | "cancelled") => {
+          setSel(kind === k ? null : { sub: c.subscriptionId, kind: k });
+          setOpenSession(null);
+        };
+        return (
+          <div key={c.subscriptionId} className="space-y-2">
+            {!compact && (
+              <div>
+                              {cycles.length > 1 && (
+                <p className="text-sm font-semibold">
+                  {c.courseTitle}{c.studentName ? " - " + c.studentName : ""}
+                </p>
+              )}
+          
+                <p className="text-xs text-muted-foreground">
+                  Billing period {format(new Date(c.periodStart + "T00:00:00"), "MMM d")} - {format(new Date(c.periodEnd + "T00:00:00"), "MMM d, yyyy")}
+                </p>
+              </div>
+            )}
+            <div className="flex gap-2 flex-wrap">
+              <Button size="sm" variant={kind === "completed" ? "default" : "outline"} onClick={() => toggle("completed")}>
+                Completed {c.completedCount}
+              </Button>
+              <Button size="sm" variant={kind === "cancelled" ? "default" : "outline"} onClick={() => toggle("cancelled")}>
+                Cancelled {c.cancelledCount}
+              </Button>
+            </div>
+            {c.billedCount != null && c.billedCount !== c.completedCount && (
+              <p className="text-xs text-amber-600">This invoice billed {c.billedCount} sessions.</p>
+            )}
+            {list.map((s: any) => {
+              const isOpen = openSession === s.id;
+              return (
+                <div key={s.id} className="rounded-lg border bg-background">
+                  <button
+                    type="button"
+                    className="w-full flex items-center justify-between gap-2 p-3 text-left"
+                    onClick={() => setOpenSession(isOpen ? null : s.id)}
+                  >
+                    <span className="text-sm font-medium">
+                      {format(new Date(s.scheduledAt), "EEE, MMM d, yyyy - h:mm a")}
+                    </span>
+                    <span className="flex items-center gap-2">
+                      <Badge variant="outline">{s.status}</Badge>
+                      {isOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                    </span>
+                  </button>
+                  {isOpen && (
+                    <div className="px-3 pb-3 pt-3 space-y-1 border-t">
+                      {s.tutorName && <p className="text-xs text-muted-foreground">Tutor: {s.tutorName}</p>}
+                      {s.progress && <p className="text-sm whitespace-pre-wrap">{s.progress}</p>}
+                      {s.homework && <p className="text-xs"><span className="font-semibold">Homework: </span>{s.homework}</p>}
+                      {s.challenges && <p className="text-xs"><span className="font-semibold">Challenges: </span>{s.challenges}</p>}
+                      {s.nextSteps && <p className="text-xs"><span className="font-semibold">Next steps: </span>{s.nextSteps}</p>}
+                      {!s.progress && !s.homework && !s.challenges && !s.nextSteps && (
+                        <p className="text-sm text-muted-foreground">
+                          {s.status === "cancelled" ? "This session was cancelled." : "No notes for this session yet."}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function InvoiceSessions({ invoiceId }: { invoiceId: string }) {
+  const { data, isLoading } = trpc.payment.getInvoiceSessions.useQuery({ invoiceId });
+  if (isLoading) return <div className="px-5 py-4"><Skeleton className="h-16 w-full" /></div>;
+  if (!data || data.length === 0) return null;
+  return (
+    <div className="px-5 py-4 bg-muted/30">
+      <SessionBreakdownView cycles={data} />
+    </div>
+  );
+}
+
+function CycleSessions({ subscriptionId }: { subscriptionId: number }) {
+  const { data, isLoading } = trpc.payment.getCycleSessions.useQuery({ subscriptionId });
+  if (isLoading) return <Skeleton className="h-8 w-40 mt-2" />;
+  if (!data || data.length === 0) return null;
+  return <div className="mt-2"><SessionBreakdownView cycles={data} compact /></div>;
+}
+
 export function BillingHistory() {
   const { user, isAuthenticated, loading } = useAuth();
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+   
 
+    const anyOpen = Object.values(expanded).some(Boolean);
+  const { data: sessionHistory, isLoading: histLoading } = trpc.session.myHistory.useQuery(
+    undefined,
+    { enabled: isAuthenticated && user?.role === "parent" && anyOpen }
+  );
+  const { data: parentNotes } = trpc.sessionNotes.getParentNotes.useQuery(
+    undefined,
+    { enabled: isAuthenticated && user?.role === "parent" && anyOpen }
+  );
   const { data: invoices, isLoading } = trpc.payment.getStripeInvoices.useQuery(
     undefined,
     { enabled: isAuthenticated && user?.role === "parent" }
@@ -304,44 +413,53 @@ export function BillingHistory() {
                   {/* Expandable Line Items */}
                   {isOpen && (
                     <>
-                      <Separator />
-                      <div className="px-5 py-3 space-y-0">
-                        {inv.lines.map((line, idx) => {
-                          const lineCourse = line.courseTitle ?? inv.courseTitle;
-                          const lineStudent = line.studentName ?? inv.studentName;
-                          const linePayNum = line.paymentNumber ?? inv.paymentNumber;
-                          const lineTotalPay = line.totalPayments ?? inv.totalPayments;
-                          return (
-                            <div key={line.id}>
-                              <div className="flex items-start justify-between py-3">
-                                <div>
-                                  <p className="text-sm font-medium">{lineCourse ?? line.description}</p>
-                                  {lineStudent && (
-                                    <p className="text-xs text-muted-foreground mt-0.5">Student: {lineStudent}</p>
-                                  )}
-                                  {linePayNum != null && lineTotalPay != null && (
-                                    <p className="text-xs text-muted-foreground">
-                                      {lineTotalPay === 3
-                                        ? `Installment ${linePayNum} of 3`
-                                        : `Payment ${linePayNum} of ${lineTotalPay} monthly instalments`}
-                                    </p>
-                                  )}
-                                  {(line as any).sessionCount != null && (line as any).perSessionRateCents != null && (
-                                    <p className="text-xs text-muted-foreground">
-                                      {(line as any).sessionCount} session{(line as any).sessionCount !== 1 ? "s" : ""} × {formatCents((line as any).perSessionRateCents, line.currency)}/session
-                                    </p>
-                                  )}
-                                </div>
-                                <span className="font-medium text-sm ml-4 shrink-0">
-                                  {formatCents(line.amount, line.currency)}
-                                </span>
-                              </div>
-                              {idx < inv.lines.length - 1 && <Separator />}
-                            </div>
-                          );
-                        })}
-                      </div>
-                      <Separator />
+                      {(inv.lines.length > 1 ||
+  inv.lines.some((l: any) =>
+    (l.paymentNumber ?? inv.paymentNumber) != null ||
+    (l.sessionCount != null && l.perSessionRateCents != null)
+  )) && (
+  <>
+    <Separator />
+    <div className="px-5 py-3 space-y-0">
+      {inv.lines.map((line, idx) => {
+        const lineCourse = line.courseTitle ?? inv.courseTitle;
+        const lineStudent = line.studentName ?? inv.studentName;
+        const linePayNum = line.paymentNumber ?? inv.paymentNumber;
+        const lineTotalPay = line.totalPayments ?? inv.totalPayments;
+        return (
+          <div key={line.id}>
+            <div className="flex items-start justify-between py-3">
+              <div>
+                <p className="text-sm font-medium">{lineCourse ?? line.description}</p>
+                {lineStudent && (
+                  <p className="text-xs text-muted-foreground mt-0.5">Student: {lineStudent}</p>
+                )}
+                {linePayNum != null && lineTotalPay != null && (
+                  <p className="text-xs text-muted-foreground">
+                    {lineTotalPay === 3
+                      ? `Installment ${linePayNum} of 3`
+                      : `Payment ${linePayNum} of ${lineTotalPay} monthly instalments`}
+                  </p>
+                )}
+                {(line as any).sessionCount != null && (line as any).perSessionRateCents != null && (
+                  <p className="text-xs text-muted-foreground">
+                    {(line as any).sessionCount} session{(line as any).sessionCount !== 1 ? "s" : ""} × {formatCents((line as any).perSessionRateCents, line.currency)}/session
+                  </p>
+                )}
+              </div>
+              <span className="font-medium text-sm ml-4 shrink-0">
+                {formatCents(line.amount, line.currency)}
+              </span>
+            </div>
+            {idx < inv.lines.length - 1 && <Separator />}
+          </div>
+        );
+      })}
+    </div>
+    <Separator />
+  </>
+)}
+                                         {!isUpcoming && <InvoiceSessions invoiceId={inv.id} />}
                       <div className="flex justify-between items-center px-5 py-3 bg-primary text-primary-foreground rounded-b-xl">
                         <span className="text-sm font-bold uppercase tracking-wide">Total Amount</span>
                         <span className="text-lg font-bold">

@@ -6759,3 +6759,105 @@ export async function getTutorMonthlySessionTrend(tutorId: number) {
 
   return buckets.map(({ month, total, completed }) => ({ month, total, completed }));
 }
+
+async function buildCycleBreakdown(
+  parentId: number,
+  subscriptionId: number,
+  startMs: number,
+  endMs: number,
+  billedCount: number | null,
+) {
+  const db = await getDb();
+  if (!db) return null;
+  const sub = await getSubscriptionById(subscriptionId);
+  if (!sub || sub.parentId !== parentId) return null; // only this parent's own subscriptions
+  const course = await getCourseById(sub.courseId);
+
+  const rows = await db
+    .select({
+      id: sessions.id,
+      scheduledAt: sessions.scheduledAt,
+      status: sessions.status,
+      tutorName: users.name,
+      feedbackFromTutor: sessions.feedbackFromTutor,
+      progressSummary: sessionNotes.progressSummary,
+      homework: sessionNotes.homework,
+      challenges: sessionNotes.challenges,
+      nextSteps: sessionNotes.nextSteps,
+    })
+    .from(sessions)
+    .leftJoin(users, eq(users.id, sessions.tutorId))
+    .leftJoin(sessionNotes, eq(sessionNotes.sessionId, sessions.id))
+    .where(
+      and(
+        eq(sessions.subscriptionId, subscriptionId),
+        inArray(sessions.status, ["completed", "cancelled"]),
+        gte(sessions.scheduledAt, startMs),
+        lt(sessions.scheduledAt, endMs),
+      ),
+    )
+    .orderBy(asc(sessions.scheduledAt));
+
+  const seen = new Set<number>();
+  const list: any[] = [];
+  for (const r of rows) {
+    if (seen.has(r.id)) continue;
+    seen.add(r.id);
+    list.push({
+      id: r.id,
+      scheduledAt: r.scheduledAt,
+      status: r.status,
+      tutorName: r.tutorName,
+      progress: r.progressSummary ?? r.feedbackFromTutor ?? null,
+      homework: r.homework ?? null,
+      challenges: r.challenges ?? null,
+      nextSteps: r.nextSteps ?? null,
+    });
+  }
+
+  return {
+    subscriptionId,
+    courseTitle: course?.title ?? "Course",
+    studentName: [sub.studentFirstName, sub.studentLastName].filter(Boolean).join(" ") || null,
+    periodStart: new Date(startMs).toISOString().slice(0, 10),
+    periodEnd: new Date(endMs - 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
+    billedCount,
+    completedCount: list.filter((s) => s.status === "completed").length,
+    cancelledCount: list.filter((s) => s.status === "cancelled").length,
+    sessions: list,
+  };
+}
+
+export async function getInvoiceSessionBreakdown(parentId: number, stripeInvoiceId: string) {
+  const db = await getDb();
+  if (!db) return [];
+  const cycles = await db
+    .select()
+    .from(billingCycles)
+    .where(eq(billingCycles.stripeInvoiceId, stripeInvoiceId));
+
+  const out: any[] = [];
+  for (const cycle of cycles) {
+    const item = await buildCycleBreakdown(
+      parentId,
+      cycle.subscriptionId,
+      new Date(cycle.cycleStart).getTime(),
+      new Date(cycle.cycleEnd).getTime(),
+      cycle.sessionsCount ?? null,
+    );
+    if (item) out.push(item);
+  }
+  return out;
+}
+export async function getCycleSessionBreakdown(parentId: number, subscriptionId: number) {
+  const sub = await getSubscriptionById(subscriptionId);
+  if (!sub || sub.parentId !== parentId || !sub.billingCycleStart || !sub.billingCycleEnd) return [];
+  const item = await buildCycleBreakdown(
+    parentId,
+    subscriptionId,
+    new Date(sub.billingCycleStart).getTime(),
+    new Date(sub.billingCycleEnd).getTime(),
+    null,
+  );
+  return item ? [item] : [];
+}

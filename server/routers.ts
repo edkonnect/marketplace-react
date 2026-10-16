@@ -4289,6 +4289,21 @@ const studentName = sessionName || subName || 'your child';
         return results;
       }),
 
+
+  
+
+              getInvoiceSessions: parentProcedure
+      .input(z.object({ invoiceId: z.string() }))
+      .query(async ({ ctx, input }) => {
+        return await db.getInvoiceSessionBreakdown(ctx.user.id, input.invoiceId);
+      }),
+
+          getCycleSessions: parentProcedure
+      .input(z.object({ subscriptionId: z.number() }))
+      .query(async ({ ctx, input }) => {
+        return await db.getCycleSessionBreakdown(ctx.user.id, input.subscriptionId);
+      }),
+
     getCurrentCycleUsage: parentProcedure
       .input(z.object({ subscriptionId: z.number() }))
       .query(async ({ ctx, input }) => {
