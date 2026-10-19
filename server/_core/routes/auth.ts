@@ -388,7 +388,7 @@ authRouter.post("/forgot-password", async (req, res) => {
 
   // Always return success to avoid leaking whether email exists
   const user = await db.getUserByEmail(email);
-  if (!user) {
+  if (!user || !user.emailVerified) {
     return res.json({ success: true, message: "If an account exists for this email, a reset link has been sent." });
   }
 
