@@ -378,7 +378,7 @@ export async function consumePasswordResetToken(token: string, newPasswordHash: 
 
     await tx
       .update(users)
-      .set({ passwordHash: newPasswordHash, emailVerified: true, emailVerifiedAt: new Date() })
+      .set({ passwordHash: newPasswordHash })
       .where(eq(users.id, resetToken.userId));
   });
 
