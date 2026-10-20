@@ -1250,10 +1250,18 @@ interface PaymentReminderEmailProps {
   courseTitle: string;
   amountDue: string;
   dashboardUrl: string;
+  /**
+   * Set to true for "Pay Later" enrollments. The final amount isn't known yet
+   * (it's invoiced after sessions are completed), so Amount Due shows "TBD".
+   */
+  isPayLater?: boolean;
 }
 
 export function getPaymentReminderEmail(props: PaymentReminderEmailProps): string {
-  const { parentName, studentName, courseTitle, amountDue, dashboardUrl } = props;
+  const { parentName, studentName, courseTitle, amountDue, dashboardUrl, isPayLater = false } = props;
+
+  // Pay Later: don't show a number, show TBD instead
+  const displayAmountDue = isPayLater ? 'TBD' : amountDue;
 
   const content = `
     <h1>Payment Reminder</h1>
@@ -1274,7 +1282,7 @@ export function getPaymentReminderEmail(props: PaymentReminderEmailProps): strin
         </tr>
         <tr>
           <td style="padding: 8px 0; font-weight: 600; color: #111827;">Amount Due:</td>
-          <td style="padding: 8px 0; color: #374151; font-weight: 600;">${amountDue}</td>
+          <td style="padding: 8px 0; color: #374151; font-weight: 600;">${displayAmountDue}</td>
         </tr>
       </table>
     </div>
@@ -1300,9 +1308,6 @@ export function getPaymentReminderEmail(props: PaymentReminderEmailProps): strin
   return getEmailBase(content, {
     preheaderText: `Payment required for ${studentName}'s enrollment in ${courseTitle}`,
   });
-
-
-
 }
 
 

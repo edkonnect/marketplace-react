@@ -58,7 +58,7 @@ export async function sendWelcomeEmail(params: SendWelcomeEmailParams): Promise<
   
   return await emailService.sendEmail({
     to: userEmail,
-    subject: 'Welcome to EdKonnect Academy! ÃƒÂ°Ã…Â¸Ã…Â½Ã¢â‚¬Å“',
+    subject: 'Welcome to EdKonnect Academy! 🎓',
     html,
   });
 }
@@ -290,7 +290,7 @@ export async function sendTutorApprovalEmail(params: SendTutorApprovalEmailParam
 
   return await emailService.sendEmail({
     to: tutorEmail,
-    subject: 'ÃƒÂ°Ã…Â¸Ã…Â½Ã¢â‚¬Â° Your Tutor Application is Approved - EdKonnect Academy',
+    subject: '🎉 Your Tutor Application is Approved - EdKonnect Academy',
     html,
   });
 }
@@ -316,7 +316,7 @@ export async function sendPasswordSetupEmail(params: SendPasswordSetupEmailParam
 
   return await emailService.sendEmail({
     to: tutorEmail,
-    subject: 'ÃƒÂ°Ã…Â¸Ã…Â½Ã¢â‚¬Â° Set Up Your Tutor Account - EdKonnect Academy',
+    subject: '🎉 Set Up Your Tutor Account - EdKonnect Academy',
     html,
   });
 }
@@ -342,7 +342,7 @@ export async function sendCoordinatorPasswordSetupEmail(params: SendCoordinatorP
 
   return await emailService.sendEmail({
     to: coordinatorEmail,
-    subject: 'ÃƒÂ°Ã…Â¸Ã…Â½Ã¢â‚¬Å“ Set Up Your Coordinator Account - EdKonnect Academy',
+    subject: '🎓 Set Up Your Coordinator Account - EdKonnect Academy',
     html,
   });
 }
@@ -379,7 +379,7 @@ export async function sendNoShowNotification(params: SendNoShowNotificationParam
 
   return await emailService.sendEmail({
     to: parentEmail,
-    subject: `ÃƒÂ¢Ã…Â¡Ã‚Â ÃƒÂ¯Ã‚Â¸Ã‚Â Session No-Show Notification - ${courseName}`,
+    subject: `⚠️ Session No-Show Notification - ${courseName}`,
     html,
   });
 }
@@ -392,7 +392,7 @@ export async function sendTutorApplicationReceivedEmail(params: {
   const html = getTutorApplicationReceivedEmail(params);
   return await emailService.sendEmail({
     to: params.tutorEmail,
-    subject: 'ÃƒÂ¢Ã…â€œÃ¢â‚¬Â¦ We received your tutor application - EdKonnect Academy',
+    subject: '✅ We received your tutor application - EdKonnect Academy',
     html,
   });
 }
@@ -445,7 +445,7 @@ export async function sendReferralWelcomeEmail(params: {
   });
   return await emailService.sendEmail({
     to: params.userEmail,
-    subject: 'Welcome to EdKonnect Academy ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â your reward is waiting!',
+    subject: 'Welcome to EdKonnect Academy — your reward is waiting!',
     html,
   });
 }
@@ -465,7 +465,7 @@ export async function sendCouponRewardEmail(params: {
   });
   return await emailService.sendEmail({
     to: params.userEmail,
-    subject: `Your referral discount coupon ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â ${params.couponCode}`,
+    subject: `Your referral discount coupon — ${params.couponCode}`,
     html,
   });
 }
@@ -484,7 +484,7 @@ export async function sendTrialRequestAdminEmail(params: {
   const html = getTrialRequestAdminEmail(params);
   await emailService.sendEmail({
     to: adminEmail,
-    subject: `Trial Lesson Request: ${params.childName} ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â ${params.courseName}`,
+    subject: `Trial Lesson Request: ${params.childName} — ${params.courseName}`,
     html,
   });
 }
@@ -498,7 +498,7 @@ export async function sendTrialRequestConfirmationEmail(params: {
   const html = getTrialRequestConfirmationEmail(params);
   await emailService.sendEmail({
     to: params.email,
-    subject: `Your Trial Lesson Request ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â ${params.courseName}`,
+    subject: `Your Trial Lesson Request — ${params.courseName}`,
     html,
   });
 }
@@ -528,6 +528,8 @@ export async function sendPaymentReminderEmail(params: {
   studentName: string;
   courseTitle: string;
   amountDue: string;
+  /** Pass true for Pay Later enrollments so the email shows "Amount Due: TBD" */
+  isPayLater?: boolean;
 }): Promise<boolean> {
   const dashboardUrl = emailRedirect('/parent/dashboard');
   const html = getPaymentReminderEmail({
@@ -536,6 +538,7 @@ export async function sendPaymentReminderEmail(params: {
     courseTitle: params.courseTitle,
     amountDue: params.amountDue,
     dashboardUrl,
+    isPayLater: params.isPayLater,
   });
   return await emailService.sendEmail({
     to: params.parentEmail,

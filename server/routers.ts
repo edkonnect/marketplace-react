@@ -1809,6 +1809,7 @@ export const appRouter = router({
               studentName: `${input.studentFirstName} ${input.studentLastName}`,
               courseTitle: course.title,
               amountDue: amountDueFormatted,
+              isPayLater: true,
             });
           }
         } catch (err) {
