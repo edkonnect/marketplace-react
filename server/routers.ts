@@ -8531,7 +8531,7 @@ For engagementData, describe ONLY the student's participation and behavior. The 
             }
           }
 
-          // Fix 1: Mark as processing — include sessionId so duplicate rows get linked
+                    // Fix 1: Mark as processing — include sessionId so duplicate rows get linked
           await database.insert(zoomMeetingRecordings).values({
             id: meetingIdToFetch,
             meetingId: input.meetingId,
@@ -8540,14 +8540,15 @@ For engagementData, describe ONLY the student's participation and behavior. The 
           } as typeof zoomMeetingRecordings.$inferInsert).onDuplicateKeyUpdate({
             set: { status: 'processing', sessionId: input.sessionId }
           });
-                   // Fetch transcript from Zoom using the resolved UUID
+
+          // Fetch transcript from Zoom using the resolved UUID
           const transcriptData = await fetchZoomTranscript(meetingIdToFetch);
           const recording = await getZoomRecording(meetingIdToFetch);
           // Guard: shared Zoom rooms host many tutors' classes, so confirm the student (or parent) is in the transcript.
           if (input.sessionId && !(input.forceUuid && ctx.user.role === 'admin')) {
             const sessChk: any = await db.getSessionById(input.sessionId);
             const parentRows = sessChk?.parentId
-              ? await database.select({ name: users.name, firstName: users.firstName, lastName: users.lastName })
+              ? await database.select({ name: users.name, firstName: users.firstName, lastName: users.lastName, email: users.email })
                   .from(users).where(eq(users.id, sessChk.parentId)).limit(1)
               : [];
             const parent = parentRows[0];
@@ -8557,6 +8558,7 @@ For engagementData, describe ONLY the student's participation and behavior. The 
               parent?.name,
               parent?.firstName,
               parent?.lastName,
+              parent?.email ? String(parent.email).split('@')[0] : null,
             ]);
             if (!match.ok) {
               console.warn(
