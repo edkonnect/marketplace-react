@@ -22,6 +22,7 @@ import { uploadProfileImageToS3, deleteProfileImageFromS3, uploadCourseFileToS3,
 import crypto from "crypto";
 import { and, eq } from "drizzle-orm";
 import { subscriptions as subscriptionsTable, tutorProfiles, users } from "../drizzle/schema";
+   import { checkTranscriptMatchesSession, listTranscriptSpeakers } from "./zoom/recording-match";
 
 // Helper to check if user is a tutor
 const tutorProcedure = protectedProcedure.use(({ ctx, next }) => {
@@ -8539,15 +8540,29 @@ For engagementData, describe ONLY the student's participation and behavior. The 
           } as typeof zoomMeetingRecordings.$inferInsert).onDuplicateKeyUpdate({
             set: { status: 'processing', sessionId: input.sessionId }
           });
-
-          // Fetch transcript from Zoom using the resolved UUID
+                   // Fetch transcript from Zoom using the resolved UUID
           const transcriptData = await fetchZoomTranscript(meetingIdToFetch);
           const recording = await getZoomRecording(meetingIdToFetch);
-          // Guard: shared Zoom rooms host many tutors' classes, so confirm the student's name is in the transcript.
+          // Guard: shared Zoom rooms host many tutors' classes, so confirm the student (or parent) is in the transcript.
           if (input.sessionId && !(input.forceUuid && ctx.user.role === 'admin')) {
-            const sessChk = await db.getSessionById(input.sessionId);
-            const nameKey = String((sessChk as any)?.studentFirstName ?? '').trim().toLowerCase().slice(0, 4);
-            if (nameKey.length >= 3 && !String(transcriptData.transcript).toLowerCase().includes(nameKey)) {
+            const sessChk: any = await db.getSessionById(input.sessionId);
+            const parentRows = sessChk?.parentId
+              ? await database.select({ name: users.name, firstName: users.firstName, lastName: users.lastName })
+                  .from(users).where(eq(users.id, sessChk.parentId)).limit(1)
+              : [];
+            const parent = parentRows[0];
+            const match = checkTranscriptMatchesSession(transcriptData.transcript, [
+              sessChk?.studentFirstName,
+              sessChk?.studentLastName,
+              parent?.name,
+              parent?.firstName,
+              parent?.lastName,
+            ]);
+            if (!match.ok) {
+              console.warn(
+                `[fetchTranscript] Name check failed sessionId=${input.sessionId} looked for=${match.keys.join(',')} ` +
+                `speakers in recording=${listTranscriptSpeakers(transcriptData.transcript).join(' | ')}`
+              );
               await database.delete(zoomMeetingRecordings).where(
                 and(eq(zoomMeetingRecordings.id, meetingIdToFetch), eq(zoomMeetingRecordings.sessionId, input.sessionId))
               );
