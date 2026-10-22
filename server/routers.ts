@@ -23,7 +23,7 @@ import crypto from "crypto";
 import { and, eq } from "drizzle-orm";
 import { subscriptions as subscriptionsTable, tutorProfiles, users } from "../drizzle/schema";
    import { checkTranscriptMatchesSession, listTranscriptSpeakers } from "./zoom/recording-match";
-
+   import { hasOverlappingSession } from "./zoom/room-overlap";
 // Helper to check if user is a tutor
 const tutorProcedure = protectedProcedure.use(({ ctx, next }) => {
   if (ctx.user.role !== 'tutor' && ctx.user.role !== 'admin') {
@@ -8544,7 +8544,7 @@ For engagementData, describe ONLY the student's participation and behavior. The 
           // Fetch transcript from Zoom using the resolved UUID
           const transcriptData = await fetchZoomTranscript(meetingIdToFetch);
           const recording = await getZoomRecording(meetingIdToFetch);
-          // Guard: shared Zoom rooms host many tutors' classes, so confirm the student (or parent) is in the transcript.
+                    // Guard: shared Zoom rooms host many tutors' classes, so confirm the student (or parent) is in the transcript.
           if (input.sessionId && !(input.forceUuid && ctx.user.role === 'admin')) {
             const sessChk: any = await db.getSessionById(input.sessionId);
             const parentRows = sessChk?.parentId
@@ -8561,14 +8561,28 @@ For engagementData, describe ONLY the student's participation and behavior. The 
               parent?.email ? String(parent.email).split('@')[0] : null,
             ]);
             if (!match.ok) {
-              console.warn(
-                `[fetchTranscript] Name check failed sessionId=${input.sessionId} looked for=${match.keys.join(',')} ` +
+              // Names don't match. Only block if another session shares this Zoom room at the same time.
+              const overlapping = input.sessionScheduledAt
+                ? await hasOverlappingSession(database, {
+                    meetingId: input.meetingId,
+                    sessionId: input.sessionId,
+                    scheduledAtMs: Number(input.sessionScheduledAt),
+                  })
+                : true;
+              if (overlapping) {
+                console.warn(
+                  `[fetchTranscript] Name check failed sessionId=${input.sessionId} looked for=${match.keys.join(',')} ` +
+                  `speakers in recording=${listTranscriptSpeakers(transcriptData.transcript).join(' | ')}`
+                );
+                await database.delete(zoomMeetingRecordings).where(
+                  and(eq(zoomMeetingRecordings.id, meetingIdToFetch), eq(zoomMeetingRecordings.sessionId, input.sessionId))
+                );
+                throw new TRPCError({ code: 'NOT_FOUND', message: "A recording was found near this time, but it does not look like this student's class. Use Paste Transcript or ask an admin." });
+              }
+              console.log(
+                `[fetchTranscript] Name mismatch accepted (no other session in this room at the same time) sessionId=${input.sessionId} ` +
                 `speakers in recording=${listTranscriptSpeakers(transcriptData.transcript).join(' | ')}`
               );
-              await database.delete(zoomMeetingRecordings).where(
-                and(eq(zoomMeetingRecordings.id, meetingIdToFetch), eq(zoomMeetingRecordings.sessionId, input.sessionId))
-              );
-              throw new TRPCError({ code: 'NOT_FOUND', message: "A recording was found near this time, but it does not look like this student's class. Use Paste Transcript or ask an admin." });
             }
           }
 
