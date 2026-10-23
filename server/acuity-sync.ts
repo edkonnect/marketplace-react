@@ -558,7 +558,10 @@ export async function getNoAccountTrialsForTutor(tutorId: number): Promise<NoAcc
     for (const appt of appts) {
       const apptTutorId = CALENDAR_TO_TUTOR[appt.calendarID];
       if (!apptTutorId) continue;
-      if (!TRIAL_APPOINTMENT_TYPES.has(appt.appointmentTypeID)) continue;
+      if (
+  !TRIAL_APPOINTMENT_TYPES.has(appt.appointmentTypeID) &&
+  !(appt.appointmentTypeID in APPT_TYPE_TO_COURSE)
+) continue;
       const hasAccount = splitEmails(appt.email).some(
         (e) => lookups.parentEmailToId[e] || lookups.parentAliasEmailToId[e],
       );
