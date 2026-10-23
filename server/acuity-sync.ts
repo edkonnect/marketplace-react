@@ -539,7 +539,8 @@ export type NoAccountTrial = {
   studentFirstName: string | null;
   studentLastName: string | null;
   courseTitle: string | null;
-  meetingUrl: string | null;
+    meetingUrl: string | null;
+  isTrial: boolean;
 };
 
 let noAccountTrialCache: { at: number; data: NoAccountTrial[] } | null = null;
@@ -577,6 +578,9 @@ export async function getNoAccountTrialsForTutor(tutorId: number): Promise<NoAcc
         studentLastName: (appt.lastName || "").trim() || null,
         courseTitle: (((appt as any).type as string) || "").replace(/\s*[-\u2013]\s*free\s+trial(\s+session)?\s*$/i, "").trim() || null,
         meetingUrl: extractZoomUrl(appt.location),
+                isTrial:
+          TRIAL_APPOINTMENT_TYPES.has(appt.appointmentTypeID) ||
+          /trial/i.test(String((appt as any).type || "")),
       });
     }
     noAccountTrialCache = { at: now, data };

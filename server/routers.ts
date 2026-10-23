@@ -2624,7 +2624,7 @@ export const appRouter = router({
           scheduledAt: t.scheduledAt,
           duration: t.duration,
           status: t.scheduledAt > now ? "scheduled" : "completed",
-          isTrial: true,
+                    isTrial: t.isTrial,
           noAccount: true,
           studentFirstName: t.studentFirstName,
           studentLastName: t.studentLastName,
