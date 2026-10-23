@@ -24,6 +24,10 @@ import { and, eq } from "drizzle-orm";
 import { subscriptions as subscriptionsTable, tutorProfiles, users } from "../drizzle/schema";
    import { checkTranscriptMatchesSession, listTranscriptSpeakers } from "./zoom/recording-match";
    import { hasOverlappingSession } from "./zoom/room-overlap";
+      import { findLateRecordingByNames } from "./zoom/late-recording";
+
+
+
 // Helper to check if user is a tutor
 const tutorProcedure = protectedProcedure.use(({ ctx, next }) => {
   if (ctx.user.role !== 'tutor' && ctx.user.role !== 'admin') {
@@ -8517,11 +8521,44 @@ For engagementData, describe ONLY the student's participation and behavior. The 
               if (uuid) {
                 meetingIdToFetch = uuid;
                 console.log(`[fetchTranscript] Time-matched UUID=${uuid} for sessionId=${input.sessionId} scheduledAt=${new Date(input.sessionScheduledAt).toISOString()}`);
-              } else {
-                throw new TRPCError({
-                  code: 'NOT_FOUND',
-                  message: 'No recording found for this session. Please check that cloud recording was enabled and the session was recorded in Zoom.',
+                            } else {
+                // The class may have started late or early. Look up to 90 min away and accept a
+                // recording only if the student's or parent's name is in it.
+                const sessLate: any = await db.getSessionById(input.sessionId);
+                const lateParentRows = sessLate?.parentId
+                  ? await database.select({ name: users.name, firstName: users.firstName, lastName: users.lastName, email: users.email })
+                      .from(users).where(eq(users.id, sessLate.parentId)).limit(1)
+                  : [];
+                const lateParent = lateParentRows[0];
+                const late = await findLateRecordingByNames({
+                  meetingId: input.meetingId,
+                  sessionStartMs: Number(input.sessionScheduledAt),
+                  names: [
+                    sessLate?.studentFirstName,
+                    sessLate?.studentLastName,
+                    lateParent?.name,
+                    lateParent?.firstName,
+                    lateParent?.lastName,
+                    lateParent?.email ? String(lateParent.email).split('@')[0] : null,
+                  ],
+                  isUuidTaken: async (candidateUuid: string) => {
+                    const rows = await database
+                      .select({ sessionId: zoomMeetingRecordings.sessionId })
+                      .from(zoomMeetingRecordings)
+                      .where(eq(zoomMeetingRecordings.id, candidateUuid))
+                      .limit(1);
+                    return !!rows[0]?.sessionId && rows[0].sessionId !== input.sessionId;
+                  },
                 });
+                if (late) {
+                  meetingIdToFetch = late.uuid;
+                  console.log(`[fetchTranscript] Late-recording fallback matched uuid=${late.uuid} (${late.minutesFromSession} min from session, name hit=${late.hit}) for sessionId=${input.sessionId}`);
+                } else {
+                  throw new TRPCError({
+                    code: 'NOT_FOUND',
+                    message: 'No recording found for this session. Please check that cloud recording was enabled and the session was recorded in Zoom.',
+                  });
+                }
               }
             } else {
               throw new TRPCError({
