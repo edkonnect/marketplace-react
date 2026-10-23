@@ -21,7 +21,11 @@ export async function hasOverlappingSession(
     meetingId: string;
     sessionId: number | string;
     scheduledAtMs: number;
-    /** Sessions starting less than this far apart are treated as overlapping. Default 60 min. */
+    /**
+     * Sessions starting this far apart or closer count as neighbours, so back-to-back
+     * sessions (exactly 60 min apart) are included: a class that starts late can be
+     * recorded in the next session's slot. Default 60 min.
+     */
     windowMs?: number;
   }
 ): Promise<boolean> {
@@ -34,7 +38,7 @@ export async function hasOverlappingSession(
       WHERE id <> ${opts.sessionId}
         AND status <> 'cancelled'
         AND meetingUrl LIKE ${"%/j/" + String(opts.meetingId) + "%"}
-        AND ABS(scheduledAt - ${opts.scheduledAtMs}) < ${windowMs}
+        AND ABS(scheduledAt - ${opts.scheduledAtMs}) <= ${windowMs}
     `);
 
     const rows: any[] = Array.isArray(result)
