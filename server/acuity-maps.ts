@@ -165,15 +165,18 @@ export const APPT_TYPE_TO_COURSE: Record<number, number | null> = {
   78945546: null, // Parent-Tutor conference
   72851734: null, 72851975: null, // High School Social Science
   74022709: null, 74023161: null, // Spanish
+    99497733: null,  // SAT/ACT (Foundation Course) - Free Sessions
+  99456672: null,  // SAT/ACT (Foundation Course) - 10 Free Sessions
 };
 
 // Trial appointment types — synced even when courseId maps to null.
 export const TRIAL_APPOINTMENT_TYPES = new Set<number>([
   40643350, 55339838,
-  14701559, 15690898,        // PSAT/SAT/ACT free trials
-  61243720,                  // HS CS free trial
-    38756927,                  // HS English free trial (US)
-  14691617,                  // HS Math free trial (US)
+  14701559, 15690898,
+  61243720,
+  38756927,
+  14691617,
+  99497733, 99456672,   // SAT/ACT Foundation Course free sessions
 ]);
 
 // ── Platform Course ID -> Acuity Trial Appointment Type ID(s) ────────────────
