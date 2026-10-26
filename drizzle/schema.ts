@@ -373,7 +373,7 @@ export const sessions = mysqlTable("sessions", {
   parentIdIdx: index("sessions_parentId_idx").on(table.parentId),
   scheduledAtIdx: index("sessions_scheduledAt_idx").on(table.scheduledAt),
   courseIdIdx: index("sessions_courseId_idx").on(table.courseId),
-  tutorStartUnique: uniqueIndex("sessions_tutor_start_unique").on(table.tutorId, table.scheduledAt),
+  tutorStartIdx: index("sessions_tutor_start_idx").on(table.tutorId, table.scheduledAt),
   seriesIdIdx: index("sessions_seriesId_idx").on(table.seriesId),
   trialParentIdx: index("sessions_trial_parent_idx").on(table.parentId, table.isTrial), // Index for trial counting
   acuityAppointmentIdIdx: index("sessions_acuityAppointmentId_idx").on(table.acuityAppointmentId),

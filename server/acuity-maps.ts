@@ -165,8 +165,18 @@ export const APPT_TYPE_TO_COURSE: Record<number, number | null> = {
   78945546: null, // Parent-Tutor conference
   72851734: null, 72851975: null, // High School Social Science
   74022709: null, 74023161: null, // Spanish
-    99497733: null,  // SAT/ACT (Foundation Course) - Free Sessions
-  99456672: null,  // SAT/ACT (Foundation Course) - 10 Free Sessions
+  99497733: null,  // SAT/ACT (Foundation Course) - Free Sessions (course resolved per tutor, see FOUNDATION_COURSE_BY_TUTOR)
+  99456672: null,  // SAT/ACT (Foundation Course) - 10 Free Sessions (course resolved per tutor, see FOUNDATION_COURSE_BY_TUTOR)
+};
+
+// Free Foundation sessions use ONE Acuity appointment type for every subject,
+// so the course is decided by which tutor's calendar the booking is on.
+// To add a tutor: add one line to FOUNDATION_COURSE_BY_TUTOR.
+export const FOUNDATION_FREE_APPT_TYPES = new Set<number>([99497733, 99456672]);
+
+export const FOUNDATION_COURSE_BY_TUTOR: Record<number, number> = {
+  30: 331, // Ms. Mercy Rani -> SAT English Foundation (free)
+  61: 332, // Mr. Mustaq     -> SAT Math Foundation (free)
 };
 
 // Trial appointment types — synced even when courseId maps to null.

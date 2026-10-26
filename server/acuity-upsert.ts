@@ -2,10 +2,15 @@
  * Shared Acuity → sessions upsert logic.
  *
  * Used by BOTH the real-time webhook (acuity-webhook.ts) and the polling/manual
- * sync (acuity-sync.ts) so the two code paths produce identical rows. Keying the
- * upsert on acuityAppointmentId (with a fallback to the (tutorId, scheduledAt)
- * unique index) means reschedules and field corrections self-heal instead of
- * being silently skipped, while manually-entered notes/feedback are preserved.
+ * sync (acuity-sync.ts) so the two code paths produce identical rows. Rows are
+ * keyed on acuityAppointmentId, so reschedules and field corrections self-heal
+ * instead of being silently skipped, while manually-entered notes/feedback are
+ * preserved.
+ *
+ * GROUP SESSIONS: several students may share the same tutor + start time (for
+ * example the free Foundation sessions). Every Acuity appointment therefore
+ * gets its OWN sessions row. A tutor+time slot is never used to find or take
+ * over a row; only acuityAppointmentId identifies an appointment.
  *
  * preferredTutorId sync: when a subscription's tutor changes in Acuity, we want
  * subscriptions.preferredTutorId to follow. This must be ORDER-INDEPENDENT —
@@ -16,15 +21,9 @@
  * processes appointments in (e.g. an old tutor's completed sessions landing
  * after a new tutor's sessions in the same batch).
  *
- * subscriptionId on slot reuse: when the (tutorId, scheduledAt) unique slot is
- * already held by a stale row from a DIFFERENT student (e.g. that student's
- * appointment was later rescheduled/moved but the old row was never cleaned
- * up), a new booking can land on that same slot and take the row over via
- * ON DUPLICATE KEY UPDATE / the existingRow branch. subscriptionId must be set
- * to the newly-resolved value (including null, when the incoming student has
- * no subscription) rather than COALESCEd against the old row's value — a
- * COALESCE here silently leaks the PREVIOUS occupant's subscriptionId onto
- * the new student's session when the new value resolves to null.
+ * subscriptionId: always set to the newly-resolved value (including null, when
+ * the incoming student has no subscription) rather than COALESCEd against the
+ * old row's value, so a stale subscriptionId is never kept on a row.
  */
 
 import { sql } from "drizzle-orm";
@@ -32,6 +31,8 @@ import {
   CALENDAR_TO_TUTOR,
   APPT_TYPE_TO_COURSE,
   TRIAL_APPOINTMENT_TYPES,
+  FOUNDATION_FREE_APPT_TYPES,
+  FOUNDATION_COURSE_BY_TUTOR,
   extractZoomUrl,
   splitEmails,
 } from "./acuity-maps";
@@ -98,7 +99,13 @@ export function resolveAcuityAppt(
   }
   if (!parentId) return { ok: false, reason: "no_parent", emails };
 
-  const courseId = APPT_TYPE_TO_COURSE[appt.appointmentTypeID];
+  let courseId = APPT_TYPE_TO_COURSE[appt.appointmentTypeID];
+  // Free Foundation sessions use one Acuity appointment type for every subject,
+  // so the course is decided by the tutor (see FOUNDATION_COURSE_BY_TUTOR in
+  // acuity-maps.ts).
+  if (FOUNDATION_FREE_APPT_TYPES.has(appt.appointmentTypeID)) {
+    courseId = FOUNDATION_COURSE_BY_TUTOR[tutorId] ?? null;
+  }
   const isTrial = TRIAL_APPOINTMENT_TYPES.has(appt.appointmentTypeID);
   if (courseId === undefined) return { ok: false, reason: "unmapped_type", typeID: appt.appointmentTypeID };
   // Known type but no matching course: only sync if it's a trial.
@@ -127,8 +134,8 @@ export function resolveAcuityAppt(
 
 /**
  * Upsert a single Acuity appointment into the sessions table.
- * Self-heals existing rows (matched by acuityAppointmentId, else by the
- * (tutorId, scheduledAt) unique slot) without clobbering notes/feedback/rating.
+ * Self-heals existing rows (matched by acuityAppointmentId only) without
+ * clobbering notes/feedback/rating.
  */
 export async function upsertAcuitySession(
   db: Db,
@@ -201,33 +208,17 @@ export async function upsertAcuitySession(
     return { ok: true, action: "updated", sessionId: existingRow.id };
   }
 
-  // 2) New appointment. INSERT, but if the (tutorId, scheduledAt) slot is already
-  //    held by an old row (e.g. cancelled-then-rebooked same slot, or a stale row
-  //    left behind by a different student whose appointment moved elsewhere),
-  //    take it over and re-point it at this appointment.
-  const res = (await db.execute(sql`
+  // 2) New appointment. Several students may share a tutor+time slot (group
+  //    sessions), so always INSERT a new row. Rows are matched by
+  //    acuityAppointmentId above, never by slot.
+  await db.execute(sql`
     INSERT INTO sessions
       (subscriptionId, tutorId, parentId, scheduledAt, duration, status, isTrial,
        courseId, meetingUrl, meetingPlatform, studentFirstName, studentLastName, acuityAppointmentId)
     VALUES
       (${subscriptionId ?? null}, ${tutorId}, ${parentId}, ${scheduledAtMs}, ${duration}, ${status}, ${isTrial ? 1 : 0},
        ${courseId ?? null}, ${meetingUrl}, 'Zoom', ${studentFirstName}, ${studentLastName}, ${acuityId})
-    ON DUPLICATE KEY UPDATE
-      parentId = VALUES(parentId),
-      duration = VALUES(duration),
-      courseId = VALUES(courseId),
-      meetingUrl = COALESCE(VALUES(meetingUrl), meetingUrl),
-      subscriptionId = VALUES(subscriptionId),
-      studentFirstName = VALUES(studentFirstName),
-      studentLastName = VALUES(studentLastName),
-      isTrial = VALUES(isTrial),
-      acuityAppointmentId = VALUES(acuityAppointmentId),
-      status = IF(status = 'cancelled', VALUES(status), status),
-      updatedAt = NOW()
-  `)) as any;
-
-  // mysql2 affectedRows: 1 = inserted, 2 = updated via ON DUPLICATE KEY.
-  const affected = res[0]?.affectedRows ?? 0;
+  `);
 
   // Same order-independent derivation as the UPDATE path above: always set
   // preferredTutorId from the subscription's most recent live session,
@@ -247,5 +238,5 @@ export async function upsertAcuitySession(
     `);
   }
 
-  return { ok: true, action: affected === 1 ? "inserted" : "updated" };
+  return { ok: true, action: "inserted" };
 }
