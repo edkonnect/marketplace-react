@@ -41,6 +41,7 @@ function getTimezoneOptions(detected: string) {
 }
 
 // Fixed trial dates (YYYY-MM-DD). Past dates are hidden automatically.
+// The submitted value stays the full date; only the label shows month + year.
 const TRIAL_DATES = [
   "2026-10-17", "2026-11-14", "2026-12-12",
   "2027-01-16", "2027-02-13", "2027-03-13", "2027-04-17", "2027-05-15", "2027-06-12",
@@ -54,9 +55,7 @@ function getTrialDates() {
     const [y, m, d] = value.split("-").map(Number);
     const date = new Date(y, m - 1, d);
     const label = date.toLocaleDateString("en-US", {
-      weekday: "long",
       month: "long",
-      day: "numeric",
       year: "numeric",
     });
     return { value, label, date };
@@ -281,7 +280,7 @@ export default function FreeTrialSat() {
                     value={trialDate}
                     onChange={(e) => setTrialDate(e.target.value)}
                   >
-                    <option value="">Select a date</option>
+                    <option value="">Select a month</option>
                     {trialDates.map((d) => (
                       <option key={d.value} value={d.value}>
                         {d.label}
