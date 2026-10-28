@@ -284,6 +284,8 @@ export async function findRecordingUuidBySessionTime(
     console.warn(`[ZoomService] Could not resolve host for meetingId=${meetingId}, falling back to "me"`);
   }
 
+
+
   // Step 2: List all recordings for the host in the date range
   const allMeetings: ZoomRecording[] = [];
   let nextPageToken: string | undefined;
@@ -350,6 +352,22 @@ export async function findRecordingUuidBySessionTime(
   return best.uuid;
 }
 
+export async function getRecordingParticipants(meetingUuid: string): Promise<string[]> {
+  const accessToken = await getZoomAccessToken();
+  const encodedUuid = encodeURIComponent(encodeURIComponent(meetingUuid));
+  const response = await fetch(
+    `${ZOOM_API_BASE_URL}/past_meetings/${encodedUuid}/participants?page_size=100`,
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  );
+  if (!response.ok) {
+    console.warn(`[ZoomService] Could not fetch participants for uuid=${meetingUuid}`);
+    return [];
+  }
+  const data = await response.json();
+  return (data.participants || [])
+    .map((p: any) => p.user_email?.toLowerCase())
+    .filter(Boolean);
+}
 /**
  * Fetch and parse transcript from Zoom recording
  * Returns plain text transcript (parses VTT format)

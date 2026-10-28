@@ -25,7 +25,7 @@ import { subscriptions as subscriptionsTable, tutorProfiles, users } from "../dr
    import { checkTranscriptMatchesSession, listTranscriptSpeakers } from "./zoom/recording-match";
    import { hasOverlappingSession } from "./zoom/room-overlap";
       import { findLateRecordingByNames } from "./zoom/late-recording";
-
+   import { parentChatRouter } from "./ai/parentChatbot";
 
 
 // Helper to check if user is a tutor
@@ -200,6 +200,7 @@ function generateFallbackJoinUrl(sessionId: number) {
 }
 
 export const appRouter = router({
+     parentChat: parentChatRouter,
   system: systemRouter,
   
   auth: router({
@@ -8598,6 +8599,15 @@ For engagementData, describe ONLY the student's participation and behavior. The 
               parent?.email ? String(parent.email).split('@')[0] : null,
             ]);
             if (!match.ok) {
+                            // Check actual Zoom participant emails before falling back to the overlap block.
+              const { getRecordingParticipants } = await import('./zoom/zoom-service');
+              const participantEmails = await getRecordingParticipants(meetingIdToFetch);
+              const candidateEmails = [parent?.email?.toLowerCase()].filter(Boolean);
+              const emailMatch = candidateEmails.some(e => participantEmails.includes(e));
+
+              if (emailMatch) {
+                console.log(`[fetchTranscript] Accepted via participant email match sessionId=${input.sessionId}`);
+              } else {
               // Names don't match. Only block if another session shares this Zoom room at the same time.
               const overlapping = input.sessionScheduledAt
                 ? await hasOverlappingSession(database, {
@@ -8616,12 +8626,14 @@ For engagementData, describe ONLY the student's participation and behavior. The 
                 );
                 throw new TRPCError({ code: 'NOT_FOUND', message: "A recording was found near this time, but it does not look like this student's class. Use Paste Transcript or ask an admin." });
               }
-              console.log(
-                `[fetchTranscript] Name mismatch accepted (no other session in this room at the same time) sessionId=${input.sessionId} ` +
-                `speakers in recording=${listTranscriptSpeakers(transcriptData.transcript).join(' | ')}`
-              );
-            }
+                          console.log(
+              `[fetchTranscript] Name mismatch accepted (no other session in this room ` +
+              `at the same time) sessionId=${input.sessionId} ` +
+              `speakers in recording=${listTranscriptSpeakers(transcriptData.transcript).join(' | ')}`
+            );
           }
+        }
+      }
 
           // Fix 1: Save to database — include sessionId in onDuplicateKeyUpdate so existing
           // NULL rows (saved by webhook) get linked when tutor manually fetches
