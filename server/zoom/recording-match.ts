@@ -50,6 +50,9 @@ export function buildNameKeys(names: Array<string | null | undefined>): string[]
  * Check whether the transcript mentions any of the given names (as a speaker label
  * or in the spoken text). Words are matched at the start of a word; 3-letter names
  * must match as a whole word so "sam" does not match "sample".
+ *
+ * Second pass: if no key matched, compare the speaker labels to the FULL name words
+ * and accept a shared 3-letter start, so a nickname like "raji" matches "Rajalakshmi".
  */
 export function checkTranscriptMatchesSession(
   transcript: string,
@@ -68,6 +71,28 @@ export function checkTranscriptMatchesSession(
       key.length <= 3 ? haystack.includes(` ${key} `) : haystack.includes(` ${key}`);
     if (found) {
       return { ok: true, keys, hit: key, unverifiable: false };
+    }
+  }
+
+  // Second pass: nicknames/device names. Compare speaker labels to the FULL name words.
+  const fullWords = new Set<string>();
+  for (const n of names) {
+    if (!n) continue;
+    for (const w of normalize(String(n)).split(" ")) if (w.length >= 3) fullWords.add(w);
+  }
+  const prefixLen = (a: string, b: string) => {
+    let i = 0;
+    while (i < a.length && i < b.length && a[i] === b[i]) i++;
+    return i;
+  };
+  for (const speaker of listTranscriptSpeakers(transcript, 20)) {
+    for (const sw of normalize(speaker).split(" ")) {
+      if (sw.length < 3) continue;
+      for (const w of Array.from(fullWords)) {
+        if (prefixLen(sw, w) >= 3) {
+          return { ok: true, keys, hit: "nick:" + sw, unverifiable: false };
+        }
+      }
     }
   }
 
