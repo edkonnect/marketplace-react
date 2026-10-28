@@ -359,10 +359,11 @@ export async function getRecordingParticipants(meetingUuid: string): Promise<str
     `${ZOOM_API_BASE_URL}/past_meetings/${encodedUuid}/participants?page_size=100`,
     { headers: { Authorization: `Bearer ${accessToken}` } }
   );
-  if (!response.ok) {
-    console.warn(`[ZoomService] Could not fetch participants for uuid=${meetingUuid}`);
+ if (!response.ok) {
+    const errText = await response.text();
+    console.warn(`[ZoomService] Could not fetch participants for uuid=${meetingUuid}: ${response.status} ${errText}`);
     return [];
-  }
+}
   const data = await response.json();
   return (data.participants || [])
     .map((p: any) => p.user_email?.toLowerCase())
