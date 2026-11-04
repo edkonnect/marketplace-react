@@ -39,6 +39,7 @@ import {
   tutorFileAssignments,
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
+import { satFeedbackResponses } from "../drizzle/schema";
 
 let _db: MySql2Database<Record<string, never>> & { $client: Pool } | null = null;
 
@@ -6860,4 +6861,16 @@ export async function getCycleSessionBreakdown(parentId: number, subscriptionId:
     null,
   );
   return item ? [item] : [];
+}
+
+export async function saveSatFeedback(data: typeof satFeedbackResponses.$inferInsert) {
+  const database = await getDb();
+  if (!database) throw new Error("Database not available");
+  await database.insert(satFeedbackResponses).values(data);
+}
+
+export async function getAllSatFeedback() {
+  const database = await getDb();
+  if (!database) return [];
+  return database.select().from(satFeedbackResponses).orderBy(desc(satFeedbackResponses.createdAt));
 }

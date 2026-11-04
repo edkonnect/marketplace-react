@@ -480,7 +480,7 @@ export async function sendTrialRequestAdminEmail(params: {
   preferredTime?: string;
   message?: string;
 }): Promise<void> {
-  const adminEmail = process.env.ADMIN_NOTIFICATION_EMAIL ?? 'giteshsagvekar07@gmail.com';
+  const adminEmail = process.env.ADMIN_NOTIFICATION_EMAIL ?? 'seswar8180@gmail.com';
   const html = getTrialRequestAdminEmail(params);
   await emailService.sendEmail({
     to: adminEmail,
@@ -509,7 +509,7 @@ export async function sendAdminNewUserNotification(params: {
   role: 'parent' | 'tutor';
   timezone?: string;
 }): Promise<void> {
-  const adminEmail = process.env.ADMIN_NOTIFICATION_EMAIL ?? 'giteshsagvekar07@gmail.com';
+  const adminEmail = process.env.ADMIN_NOTIFICATION_EMAIL ?? 'seswar8180@gmail.com';
   const roleLabel = params.role === 'tutor' ? 'Tutor' : 'Parent';
   const html = getAdminNewUserNotificationEmail({
     ...params,
@@ -555,7 +555,7 @@ export async function sendLeadAdminEmail(params: {
   message?: string;
   bestAvailability?: string;
 }): Promise<void> {
-  const adminEmail = process.env.ADMIN_NOTIFICATION_EMAIL ?? 'giteshsagvekar07@gmail.com';
+  const adminEmail = process.env.ADMIN_NOTIFICATION_EMAIL ?? 'seswar8180@gmail.com';
   const html = `
     <h2>New Lead from Website Contact Form</h2>
     <p><strong>Name:</strong> ${params.name}</p>
@@ -591,3 +591,60 @@ export async function sendLeadConfirmationEmail(params: {
     html,
   });
 }
+
+const escHtml = (v: unknown) =>
+  String(v ?? "-").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;") || "-";
+
+export async function sendSatFeedbackAdminEmail(p: {
+  name: string; contact: string;
+  prepFeeling?: string; moreInFuture?: string; topicsHelp?: string;
+  targetScore?: string; biggestChallenge?: string;
+  referrals?: string[]; paidInterest: string; testDate?: string;
+  paidWants?: string[]; contactMethod?: string;
+}): Promise<void> {
+  const adminEmail = process.env.ADMIN_NOTIFICATION_EMAIL ?? 'seswar8180@gmail.com';
+  const row = (label: string, value: unknown) =>
+    `<p><strong>${label}:</strong> ${escHtml(Array.isArray(value) ? value.join(", ") || "-" : value || "-")}</p>`;
+  const html = `
+    <h2>New SAT Free Classes Feedback</h2>
+    ${row("Name", p.name)}
+    ${row("Contact", p.contact)}
+    ${row("Prep feeling", p.prepFeeling)}
+    ${row("Want more of", p.moreInFuture)}
+    ${row("Topics needing help", p.topicsHelp)}
+    ${row("Target score", p.targetScore)}
+    ${row("Biggest challenge", p.biggestChallenge)}
+    ${row("Referrals", p.referrals)}
+    <hr/>
+    ${row("Join paid classes?", p.paidInterest)}
+    ${row("SAT test date", p.testDate)}
+    ${row("Wants in paid program", p.paidWants)}
+    ${row("Best way to reach", p.contactMethod)}
+  `;
+  await emailService.sendEmail({
+    to: adminEmail,
+    subject: `${p.paidInterest === "Yes, definitely" ? "[HOT] " : ""}SAT Feedback: ${p.name} (${p.paidInterest})`,
+    html,
+  });
+}
+
+export async function sendSatFeedbackThanksEmail(params: {
+  name: string;
+  email: string;
+}): Promise<void> {
+  const html = `
+    <p>Hi ${escHtml(params.name)},</p>
+    <p>Thank you for attending our free SAT classes and for sharing your feedback. It really helps us improve.</p>
+    <p>If you have any questions, WhatsApp or call us at <a href="tel:+919823670412">+91 98236 70412</a> (India) or <a href="tel:5084448714">+1 508-444-8714</a> (US).</p>
+    <p>Best,<br>
+    Team EdKonnect<br>
+    <a href="https://edkonnect-academy.com">https://edkonnect-academy.com</a></p>
+  `;
+  await emailService.sendEmail({
+    to: params.email,
+    subject: `Thank you for your feedback - EdKonnect Academy`,
+    html,
+  });
+}
+
+

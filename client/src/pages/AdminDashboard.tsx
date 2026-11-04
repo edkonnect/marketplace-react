@@ -43,6 +43,7 @@ import { SuperUserSettings } from "@/components/SuperUserSettings";
 import { useSuperUser } from "@/contexts/SuperUserContext";
 
 import { NOT_SUPER_USER_ERR_MSG } from "@shared/const";
+import { SatFeedbackManager } from "@/components/SatFeedbackManager";
 
 function RevenueBreakdownButton({ isUnlocked, onOpen, onLockAndOpen }: {
   isUnlocked: boolean;
@@ -1580,6 +1581,7 @@ const [sentReminders, setSentReminders] = useState<Record<string, Date>>({});
           {activeSection === "session-notes" && <AdminSessionNotes />}
           {activeSection === "login-report" && <AdminLoginReport />}
           {activeSection === "acuity-sync" && <AcuitySyncPanel />}
+               {activeSection === "satFeedback" && <SatFeedbackManager />}
           {activeSection === "leads" && <LeadsManager />}
           {activeSection === "security" && <SuperUserSettings />}
         </div>
