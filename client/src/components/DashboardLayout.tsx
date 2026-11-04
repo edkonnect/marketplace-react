@@ -70,6 +70,7 @@ export type AdminSection =
   | "login-report"
   | "acuity-sync"
   | "leads"
+  | "satFeedback"
   | "security";
 
 type NavItem = {
@@ -101,6 +102,7 @@ const navGroups: NavGroup[] = [
       { icon: ClipboardList, label: "Login Report", section: "login-report" },
       { icon: RefreshCw, label: "Acuity Sync", section: "acuity-sync" },
       { icon: MessageSquare, label: "Leads", section: "leads" },
+           { icon: MessageSquare, label: "SAT Feedback", section: "satFeedback" },
     ],
   },
   {

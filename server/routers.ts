@@ -10,7 +10,7 @@ import * as db from "./db";
 import { TRPCError } from "@trpc/server";
 import { searchFaq, logUnansweredQuestion, logQuery } from "./faq/faq-search";
 import { checkChatbotRateLimit, bookingRateLimiter } from "./faq/chatbot-rate-limiter";
-import { sendWelcomeEmail, sendBookingConfirmation, sendEnrollmentConfirmation, sendTutorEnrollmentNotification, sendNoShowNotification, formatEmailDate, formatEmailTime, formatEmailPrice, sendTutorApplicationReceivedEmail, sendReferralInviteEmail, sendCouponRewardEmail, sendAdminNewUserNotification, sendTrialRequestAdminEmail, sendTrialRequestConfirmationEmail, sendPaymentReminderEmail, sendLeadAdminEmail, sendLeadConfirmationEmail } from "./emails/email-helpers";
+import { sendWelcomeEmail, sendBookingConfirmation, sendEnrollmentConfirmation, sendTutorEnrollmentNotification, sendNoShowNotification, formatEmailDate, formatEmailTime, formatEmailPrice, sendTutorApplicationReceivedEmail, sendReferralInviteEmail, sendCouponRewardEmail, sendAdminNewUserNotification, sendTrialRequestAdminEmail, sendTrialRequestConfirmationEmail, sendPaymentReminderEmail, sendLeadAdminEmail, sendLeadConfirmationEmail, sendSatFeedbackAdminEmail, sendSatFeedbackThanksEmail} from "./emails/email-helpers";
 import { generateBookingToken, isValidBookingToken } from "./booking-management";
 import { sendCancellationConfirmationEmail } from "./emails/cancellation-email";
 import { generateCurriculumPDF } from "./pdf/pdf-generator";
@@ -25,8 +25,7 @@ import { subscriptions as subscriptionsTable, tutorProfiles, users } from "../dr
    import { checkTranscriptMatchesSession, listTranscriptSpeakers } from "./zoom/recording-match";
    import { hasOverlappingSession } from "./zoom/room-overlap";
       import { findLateRecordingByNames } from "./zoom/late-recording";
-   
-
+   import { SAT_FEELING, SAT_CHALLENGE, SAT_PAID, SAT_WANTS, SAT_CONTACT } from "@shared/satFeedback";
 
 // Helper to check if user is a tutor
 const tutorProcedure = protectedProcedure.use(({ ctx, next }) => {
@@ -4771,6 +4770,56 @@ const studentName = sessionName || subName || 'your child';
 
         return { success: true };
       }),
+  }),
+
+    satFeedback: router({
+    submit: publicProcedure
+      .input(z.object({
+        name: z.string().trim().min(1).max(255),
+        contact: z.string().trim().min(1).max(320),
+        prepFeeling: z.enum(SAT_FEELING).optional(),
+        moreInFuture: z.string().trim().max(2000).optional(),
+        topicsHelp: z.string().trim().max(2000).optional(),
+        targetScore: z.string().trim().max(20).optional(),
+        biggestChallenge: z.enum(SAT_CHALLENGE).optional(),
+        referrals: z.array(z.string().trim().max(300)).max(3).optional(),
+        paidInterest: z.enum(SAT_PAID),
+        testDate: z.string().trim().max(100).optional(),
+        paidWants: z.array(z.enum(SAT_WANTS)).max(6).optional(),
+        contactMethod: z.enum(SAT_CONTACT).optional(),
+        website: z.string().optional(), // honeypot
+      }))
+      .mutation(async ({ input }) => {
+        if (input.website) return { success: true }; // bot, ignore silently
+        const { website, ...data } = input;
+        const referrals = (data.referrals ?? []).filter((r) => r.trim());
+
+        await db.saveSatFeedback({
+          ...data,
+          paidWants: JSON.stringify(data.paidWants ?? []),
+          referrals: JSON.stringify(referrals),
+        });
+
+        try {
+          await sendSatFeedbackAdminEmail({ ...data, referrals });
+        } catch (err) {
+          console.error('[SatFeedback] Failed to send admin email:', err);
+        }
+
+        if (/^\S+@\S+\.\S+$/.test(data.contact)) {
+          try {
+            await sendSatFeedbackThanksEmail({ name: data.name, email: data.contact });
+          } catch (err) {
+            console.error('[SatFeedback] Failed to send thank-you email:', err);
+          }
+        }
+
+        return { success: true };
+      }),
+
+    list: adminProcedure.query(async () => {
+      return await db.getAllSatFeedback();
+    }),
   }),
 
   // Admin Management
