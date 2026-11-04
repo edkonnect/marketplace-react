@@ -110,6 +110,11 @@ export default function Footer() {
     Privacy Policy
   </Link>
 </li>
+<li>
+  <Link href="/sat-feedback" onClick={scrollToTop} className="hover:text-primary transition-colors">
+    Feedback Form
+  </Link>
+</li>
               <li>
                 <a href="/promote" onClick={scrollToTop} className="hover:text-primary transition-colors">
                   Promote with us

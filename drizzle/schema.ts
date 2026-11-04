@@ -1304,3 +1304,25 @@ export const freeTrialRequests = mysqlTable("free_trial_requests", {
 });
 
 export type FreeTrialRequest = typeof freeTrialRequests.$inferSelect;
+
+
+export const satFeedbackResponses = mysqlTable("sat_feedback_responses", {
+  id: int("id").autoincrement().primaryKey(),
+  name: varchar("name", { length: 255 }).notNull(),
+  contact: varchar("contact", { length: 320 }).notNull(),
+  prepFeeling: varchar("prepFeeling", { length: 50 }),
+  moreInFuture: text("moreInFuture"),
+  topicsHelp: text("topicsHelp"),
+  targetScore: varchar("targetScore", { length: 20 }),
+  biggestChallenge: varchar("biggestChallenge", { length: 50 }),
+  referrals: text("referrals"),
+  paidInterest: varchar("paidInterest", { length: 30 }).notNull(),
+  testDate: varchar("testDate", { length: 100 }),
+  paidWants: text("paidWants"),
+  contactMethod: varchar("contactMethod", { length: 20 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => ({
+  createdIdx: index("sat_feedback_created_idx").on(table.createdAt),
+}));
+
+export type SatFeedbackResponse = typeof satFeedbackResponses.$inferSelect;

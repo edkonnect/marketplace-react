@@ -31,6 +31,7 @@ import Footer from "@/components/Footer";
 import { buildParentAnalyticsViewModel } from "@/lib/parentAnalytics";
 import { statusLabel, statusToPercentScore } from "@/lib/progressStatus";
 import { BillingHistory } from "./ParentPayments";
+import { ParentChatBot } from "@/components/ParentChatBot";
 
 function renderBoldMarkdown(text: string) {
   const html = text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
@@ -1063,6 +1064,7 @@ export default function ParentDashboard() {
                 <TabsTrigger className="whitespace-nowrap" value="analytics">Analytics</TabsTrigger>
                 <TabsTrigger className="whitespace-nowrap" value="my-files">My Files</TabsTrigger>
                 <TabsTrigger className="whitespace-nowrap" value="billing">Invoices</TabsTrigger>
+                <TabsTrigger className="whitespace-nowrap" value="assistant">Assistant</TabsTrigger>
               </TabsList>
             </div>
 
@@ -2098,6 +2100,10 @@ export default function ParentDashboard() {
 </TabsContent>
             <TabsContent value="my-files" forceMount className={tabContentClass}>
               <ParentFilesPanel />
+            </TabsContent>
+            <TabsContent value="assistant" forceMount className={tabContentClass}>
+              <h2 className="text-2xl font-bold">Assistant</h2>
+              <ParentChatBot />
             </TabsContent>
             <TabsContent value="analytics" forceMount className={tabContentClass}>
               {/* Header */}
