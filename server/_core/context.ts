@@ -1,12 +1,13 @@
 import type { CreateExpressContextOptions } from "@trpc/server/adapters/express";
 import type { User } from "../../drizzle/schema";
-import { authenticateRequest, verifySuperUserCookie } from "./services/authService";
+import { authenticateRequest, verifySuperUserCookie, getImpersonatedBy } from "./services/authService";
 
 export type TrpcContext = {
   req: CreateExpressContextOptions["req"];
   res: CreateExpressContextOptions["res"];
   user: User | null;
   superUserVerified: boolean;
+  impersonatedBy: number | null;
 };
 
 export async function createContext(
@@ -30,10 +31,14 @@ export async function createContext(
     }
   }
 
+  // Set only for admin "temp-login" sessions (admin acting as a parent/tutor)
+  const impersonatedBy = user ? await getImpersonatedBy(opts.req) : null;
+
   return {
     req: opts.req,
     res: opts.res,
     user,
     superUserVerified,
+    impersonatedBy,
   };
 }

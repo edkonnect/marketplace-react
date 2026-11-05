@@ -25,8 +25,9 @@ import { subscriptions as subscriptionsTable, tutorProfiles, users } from "../dr
    import { checkTranscriptMatchesSession, listTranscriptSpeakers } from "./zoom/recording-match";
    import { hasOverlappingSession } from "./zoom/room-overlap";
       import { findLateRecordingByNames } from "./zoom/late-recording";
-   import { SAT_FEELING, SAT_CHALLENGE, SAT_PAID, SAT_WANTS, SAT_CONTACT } from "@shared/satFeedback";
 
+import { SAT_FEELING, SAT_CHALLENGE, SAT_PAID, SAT_WANTS, SAT_CONTACT } from "@shared/satFeedback";
+import { parentChatRouter } from "./ai/parentChatbot";
 // Helper to check if user is a tutor
 const tutorProcedure = protectedProcedure.use(({ ctx, next }) => {
   if (ctx.user.role !== 'tutor' && ctx.user.role !== 'admin') {
@@ -199,7 +200,7 @@ function generateFallbackJoinUrl(sessionId: number) {
 }
 
 export const appRouter = router({
-  
+     parentChat: parentChatRouter,
   system: systemRouter,
   
   auth: router({

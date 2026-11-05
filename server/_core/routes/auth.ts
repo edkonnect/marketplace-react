@@ -217,6 +217,7 @@ authRouter.post("/temp-login", async (req, res) => {
     sub: user.id,
     email: user.email || "",
     role: user.role as "parent" | "tutor",
+    impersonatedBy: caller.id, // marks this session as "admin acting as this user"
   });
 
   const { passwordHash: _pw, ...safeUser } = user as any;
@@ -254,6 +255,7 @@ authRouter.post("/refresh-token", async (req, res) => {
       sub: payload.sub,
       email: payload.email,
       role: payload.role,
+      impersonatedBy: payload.impersonatedBy, // keep the temp-login marker after refresh
     });
     res.json({ ok: true });
   } catch (error) {
