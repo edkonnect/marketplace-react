@@ -38,6 +38,7 @@ type JwtPayload = {
   sub: number;
   email: string;
   role: "parent" | "tutor" | "admin" | "coordinator";
+  impersonatedBy?: number; // set only by admin temp-login
 };
 
 const accessSecret = new TextEncoder().encode(ENV.cookieSecret);
@@ -99,6 +100,18 @@ export async function authenticateRequest(req: Request) {
     return user;
   } catch (err) {
     throw err;
+  }
+}
+
+export async function getImpersonatedBy(req: Request): Promise<number | null> {
+  const token = (req as any).cookies?.[ACCESS_TOKEN_COOKIE];
+  if (!token) return null;
+  try {
+    const { payload } = await jwtVerify(token, accessSecret);
+    const v = Number((payload as any).impersonatedBy);
+    return Number.isFinite(v) && v > 0 ? v : null;
+  } catch {
+    return null;
   }
 }
 
