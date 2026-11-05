@@ -560,6 +560,11 @@ const parentOnlyProcedure = protectedProcedure.use(({ ctx, next }) => {
   if (ctx.user.role !== "parent" && ctx.user.role !== "admin") {
     throw new TRPCError({ code: "FORBIDDEN", message: "Only parents can use the assistant" });
   }
+  // TEMP: testing phase. Only admin temp-login sessions may use the assistant.
+  // Remove this check to release it to all parents.
+  if (!ctx.impersonatedBy) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "The assistant is not available yet." });
+  }
   return next({ ctx });
 });
 
@@ -590,6 +595,9 @@ function suggestAllowed(userId: number) {
 }
 
 export const parentChatRouter = router({
+    access: protectedProcedure.query(({ ctx }) => ({
+    allowed: ctx.user.role === "parent" && !!ctx.impersonatedBy,
+  })),
   chat: parentOnlyProcedure
     .input(
       z.object({
