@@ -334,6 +334,7 @@ async function runTool(db: Db, name: string, args: Args, ctx: ToolCtx): Promise<
         })
         .from(sessions)
         .leftJoin(subscriptions, eq(sessions.subscriptionId, subscriptions.id))
+                .leftJoin(courses, eq(courses.id, sql`COALESCE(${sessions.courseId}, ${subscriptions.courseId})`))
         .where(
           and(
             eq(sessions.parentId, parentId),
@@ -356,6 +357,7 @@ async function runTool(db: Db, name: string, args: Args, ctx: ToolCtx): Promise<
             progressSummary: clip(r.progressSummary),
             challenges: clip(r.challenges),
             nextSteps: clip(r.nextSteps),
+                        course: r.courseTitle,
             topicsCovered: parseList(r.topics),
           } as Record<string, unknown>,
         })),
@@ -369,6 +371,7 @@ async function runTool(db: Db, name: string, args: Args, ctx: ToolCtx): Promise<
             entry: {
               sessionDate: fmtTime(r.scheduledAt, tz),
               student: r.student,
+                            course: r.courseTitle,
               tutorSummary: clip(r.feedback, 2500),
             } as Record<string, unknown>,
           })),
