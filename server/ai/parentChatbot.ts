@@ -293,6 +293,7 @@ async function runTool(db: Db, name: string, args: Args, ctx: ToolCtx): Promise<
           nextSteps: sessionNotes.nextSteps,
           homework: sessionNotes.homework,
           topics: sessionNotes.topicsCovered,
+                    courseTitle: courses.title,
           subFirst: subscriptions.studentFirstName,
           subLast: subscriptions.studentLastName,
           trialFirst: sessions.studentFirstName,
@@ -301,6 +302,7 @@ async function runTool(db: Db, name: string, args: Args, ctx: ToolCtx): Promise<
         .from(sessionNotes)
         .innerJoin(sessions, eq(sessionNotes.sessionId, sessions.id))
         .leftJoin(subscriptions, eq(sessions.subscriptionId, subscriptions.id))
+                .leftJoin(courses, eq(courses.id, sql`COALESCE(${sessions.courseId}, ${subscriptions.courseId})`))
         .where(
           ONLY_NOTIFIED_NOTES
             ? and(eq(sessionNotes.parentId, parentId), eq(sessionNotes.parentNotified, true))
@@ -324,6 +326,7 @@ async function runTool(db: Db, name: string, args: Args, ctx: ToolCtx): Promise<
           sessionId: sessions.id,
           scheduledAt: sessions.scheduledAt,
           feedback: sessions.feedbackFromTutor,
+                    courseTitle: courses.title,
           subFirst: subscriptions.studentFirstName,
           subLast: subscriptions.studentLastName,
           trialFirst: sessions.studentFirstName,
@@ -536,7 +539,7 @@ ACT LIKE A HELPFUL AGENT, NOT A SEARCH BOX
 - If there is no homework, don't stop at "none": share the next steps from the most recent session notes, mention any quiz still waiting, and offer them as practice ideas. Also say where notes are found (the Notes tab).
 - If a recordingPasscode is given with a link, show it right after the link ("Passcode: ...").
 - If getSessionRecordings returns nothing, say plainly that no recording is available for the recent sessions (it may not have been recorded, or it may have been removed) and suggest messaging the tutor through the Messages link. Do not offer to check other sessions again, and never say recordings are "still processing".
-- When the parent asks about the next session, also look at the latest session notes and add one short tip for how to prepare, taken from the "next steps".
+-- When the parent asks about the next session, look at the latest session notes that have the SAME course as that next session (compare the course names) and add one short tip taken from their "next steps". If no notes match that course, skip the tip. Never use notes from a different course.
 - After answering, add at most ONE short, relevant offer for the next step (for example offer the recording link, the notes of the last session, or where to join the next session). Don't repeat an offer the parent ignored.
 
 WHERE THINGS ARE ON THE PARENT DASHBOARD (give directions)
