@@ -1,6 +1,7 @@
 import Navigation from "@/components/Navigation";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
+
 import { cn } from "@/lib/utils";
 import { useFormatPrice } from "@/hooks/useFormatPrice";
 import { useIsIndianUser } from "@/hooks/useIsIndianUser";
@@ -219,7 +220,7 @@ export default function ParentDashboard() {
     { enabled: isAuthenticated && user?.role === "parent" }
   );
 
-
+  const { data: assistantAccess } = trpc.parentChat.access.useQuery(undefined, { retry: false });
 
 
   type QuizModalState = {
@@ -1064,7 +1065,9 @@ export default function ParentDashboard() {
                 <TabsTrigger className="whitespace-nowrap" value="analytics">Analytics</TabsTrigger>
                 <TabsTrigger className="whitespace-nowrap" value="my-files">My Files</TabsTrigger>
                 <TabsTrigger className="whitespace-nowrap" value="billing">Invoices</TabsTrigger>
-                <TabsTrigger className="whitespace-nowrap" value="assistant">Assistant</TabsTrigger>
+                {assistantAccess?.allowed && (
+  <TabsTrigger className="whitespace-nowrap" value="assistant">Assistant</TabsTrigger>
+)}
               </TabsList>
             </div>
 
