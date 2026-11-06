@@ -1066,7 +1066,10 @@ export default function ParentDashboard() {
                 <TabsTrigger className="whitespace-nowrap" value="my-files">My Files</TabsTrigger>
                 <TabsTrigger className="whitespace-nowrap" value="billing">Invoices</TabsTrigger>
                 {assistantAccess?.allowed && (
-  <TabsTrigger className="whitespace-nowrap" value="assistant">Assistant</TabsTrigger>
+                    <TabsTrigger className="whitespace-nowrap" value="assistant">
+                    <Sparkles className="mr-1.5 h-4 w-4" />
+                    AI Assistant
+                  </TabsTrigger>
 )}
               </TabsList>
             </div>
@@ -2105,7 +2108,10 @@ export default function ParentDashboard() {
               <ParentFilesPanel />
             </TabsContent>
             <TabsContent value="assistant" forceMount className={tabContentClass}>
-              <h2 className="text-2xl font-bold">Assistant</h2>
+                            <h2 className="flex items-center gap-2 text-2xl font-bold">
+                <Sparkles className="h-6 w-6 text-primary" />
+                AI Assistant
+              </h2>
               <ParentChatBot />
             </TabsContent>
             <TabsContent value="analytics" forceMount className={tabContentClass}>

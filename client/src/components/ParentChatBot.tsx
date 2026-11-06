@@ -132,7 +132,7 @@ export function ParentChatBot({ height = "min(72vh, 680px)" }: { height?: string
             <Sparkles className="size-4 text-primary" />
           </div>
           <div className="leading-tight">
-            <p className="text-sm font-semibold">EdKonnect Assistant</p>
+            <p className="text-sm font-semibold">EdKonnect AI Assistant</p>
             <p className="text-xs text-muted-foreground">Sessions, notes, recordings, homework and quizzes</p>
           </div>
         </div>
