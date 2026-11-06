@@ -153,6 +153,19 @@ const toolDeclarations = [
     },
   },
 
+    {
+    name: "getStudentSummary",
+    description:
+      "Get an overall picture of how the child is doing: attendance, practice quiz results and recent progress from tutor notes, per course and overall. Use for questions like 'how is my child doing', 'give me a summary of progress', or 'how is she doing in English'.",
+    parameters: {
+      type: "OBJECT",
+      properties: {
+        studentName: studentParam,
+        courseName: { type: "STRING", description: "Optional. Course or subject name, for example English or Math." },
+      },
+    },
+  },
+
 ] as unknown as FunctionDeclaration[];
 
 // ───────────────────────── Tool implementations (all scoped to ctx.parentId) ─────────────────────────
@@ -606,7 +619,161 @@ async function runTool(db: Db, name: string, args: Args, ctx: ToolCtx): Promise<
         overall.scheduledButNotCompletedInRequestedMonth = months.reduce((a, m) => a + m.scheduledButNotCompleted, 0);
       }
       return { courses: perCourse, overall };
+    }   
+
+         case "getStudentSummary": {
+      const now = Date.now();
+      const ninetyDaysAgo = now - 90 * 24 * 60 * 60 * 1000;
+      const subs = await db
+        .select({
+          id: subscriptions.id,
+          first: subscriptions.studentFirstName,
+          last: subscriptions.studentLastName,
+          courseTitle: courses.title,
+          customTotal: subscriptions.customTotalSessions,
+          courseTotal: courses.totalSessions,
+        })
+        .from(subscriptions)
+        .leftJoin(courses, eq(subscriptions.courseId, courses.id))
+        .where(and(eq(subscriptions.parentId, parentId), ne(subscriptions.status, "cancelled")))
+        .limit(20);
+      const courseFilter = typeof args.courseName === "string" ? args.courseName.trim().toLowerCase() : "";
+      const chosen = subs
+        .map((s) => ({ ...s, student: fullName(s.first, s.last) }))
+        .filter((s) => matchesStudent(s.student, args.studentName))
+        .filter((s) => !courseFilter || (s.courseTitle ?? "").toLowerCase().includes(courseFilter));
+      if (chosen.length === 0) return { found: false };
+      const ids = chosen.map((s) => s.id);
+
+      const sessionRows = await db
+        .select({ subscriptionId: sessions.subscriptionId, status: sessions.status, scheduledAt: sessions.scheduledAt })
+        .from(sessions)
+        .where(and(eq(sessions.parentId, parentId), inArray(sessions.subscriptionId, ids)))
+        .limit(2000);
+
+      const quizRows = await db
+        .select({
+          subscriptionId: sessions.subscriptionId,
+          status: sessionQuizzes.status,
+          score: sessionQuizzes.score,
+          correct: sessionQuizzes.correctCount,
+          outOf: sessionQuizzes.totalCount,
+          completedAt: sessionQuizzes.completedAt,
+        })
+        .from(sessionQuizzes)
+        .innerJoin(sessions, eq(sessionQuizzes.sessionId, sessions.id))
+        .where(and(eq(sessionQuizzes.parentId, parentId), ne(sessionQuizzes.status, "draft"), inArray(sessions.subscriptionId, ids)))
+        .limit(200);
+
+      const noteRows = await db
+        .select({
+          sessionId: sessions.id,
+          subscriptionId: sessions.subscriptionId,
+          scheduledAt: sessions.scheduledAt,
+          topics: sessionNotes.topicsCovered,
+          challenges: sessionNotes.challenges,
+          nextSteps: sessionNotes.nextSteps,
+          progress: sessionNotes.progressSummary,
+        })
+        .from(sessionNotes)
+        .innerJoin(sessions, eq(sessionNotes.sessionId, sessions.id))
+        .where(
+          and(
+            eq(sessionNotes.parentId, parentId),
+            inArray(sessions.subscriptionId, ids),
+            ONLY_NOTIFIED_NOTES ? eq(sessionNotes.parentNotified, true) : undefined
+          )
+        )
+        .orderBy(desc(sessions.scheduledAt))
+        .limit(60);
+
+      const feedbackOnly = await db
+        .select({ sessionId: sessions.id, subscriptionId: sessions.subscriptionId, scheduledAt: sessions.scheduledAt, feedback: sessions.feedbackFromTutor })
+        .from(sessions)
+        .where(
+          and(
+            eq(sessions.parentId, parentId),
+            inArray(sessions.subscriptionId, ids),
+            inArray(sessions.status, ["completed", "no_show"]),
+            isNotNull(sessions.feedbackFromTutor),
+            ne(sessions.feedbackFromTutor, "")
+          )
+        )
+        .orderBy(desc(sessions.scheduledAt))
+        .limit(60);
+
+      const perCourse = chosen.map((s) => {
+        const mine = sessionRows.filter((r) => r.subscriptionId === s.id);
+        const completed = mine.filter((r) => r.status === "completed").length;
+        const noShow = mine.filter((r) => r.status === "no_show").length;
+        const total = s.customTotal ?? s.courseTotal ?? null;
+        const quizzes = quizRows.filter((q) => q.subscriptionId === s.id);
+        const done = quizzes.filter((q) => q.status === "completed");
+        const scored = done.filter((q) => q.score != null);
+        const avg = scored.length ? Math.round(scored.reduce((a, q) => a + (q.score as number), 0) / scored.length) : null;
+        const latest = [...done].sort((a, b) => (b.completedAt?.getTime() ?? 0) - (a.completedAt?.getTime() ?? 0))[0];
+
+        const mineNotes = noteRows.filter((n) => n.subscriptionId === s.id);
+        const noteIds = new Set(mineNotes.map((n) => n.sessionId));
+        const recent = [
+          ...mineNotes.map((n) => ({
+            ts: n.scheduledAt,
+            entry: {
+              sessionDate: fmtDate(new Date(n.scheduledAt), tz),
+              topicsCovered: parseList(n.topics),
+              challenges: clip(n.challenges, 400),
+              nextSteps: clip(n.nextSteps, 400),
+              progress: clip(n.progress, 400),
+            } as Record<string, unknown>,
+          })),
+          ...feedbackOnly
+            .filter((f) => f.subscriptionId === s.id && !noteIds.has(f.sessionId))
+            .map((f) => ({
+              ts: f.scheduledAt,
+              entry: { sessionDate: fmtDate(new Date(f.scheduledAt), tz), tutorSummary: clip(f.feedback, 600) } as Record<string, unknown>,
+            })),
+        ]
+          .sort((a, b) => b.ts - a.ts)
+          .slice(0, 3)
+          .map((x) => x.entry);
+
+                return {
+          student: s.student,
+          course: s.courseTitle,
+          sessions: {
+            completed,
+            totalSessions: total,
+            left: total != null ? Math.max(total - completed, 0) : null,
+            missedSessionsRecorded: noShow,
+            cancelledLast90Days: mine.filter((r) => r.status === "cancelled" && r.scheduledAt >= ninetyDaysAgo && r.scheduledAt <= now).length,
+            upcomingScheduled: mine.filter((r) => r.status === "scheduled" && r.scheduledAt >= now).length,
+            pastNotMarkedCompleted: mine.filter((r) => r.status === "scheduled" && r.scheduledAt < now).length,
+          },
+          quizzes: {
+            completed: done.length,
+            averageScorePercent: avg,
+            latest: latest
+              ? { scorePercent: latest.score, correct: latest.correct, outOf: latest.outOf, on: fmtDate(latest.completedAt, tz) }
+              : null,
+            assignedNotCompleted: quizzes.filter((q) => q.status !== "completed").length,
+          },
+          recentProgress: recent,
+        };
+      });
+
+      const allScored = quizRows.filter((q) => q.status === "completed" && q.score != null);
+      return {
+        courses: perCourse,
+        overall: {
+          sessionsCompleted: perCourse.reduce((a, c) => a + c.sessions.completed, 0),
+          quizzesCompleted: perCourse.reduce((a, c) => a + c.quizzes.completed, 0),
+          averageQuizScorePercent: allScored.length
+            ? Math.round(allScored.reduce((a, q) => a + (q.score as number), 0) / allScored.length)
+            : null,
+        },
+      };
     }
+
 
     default:
       return { error: `Unknown tool: ${name}` };
@@ -638,7 +805,12 @@ ACT LIKE A HELPFUL AGENT, NOT A SEARCH BOX
 -- When the parent asks about the next session, look at the latest session notes that have the SAME course as that next session (compare the course names) and add one short tip taken from their "next steps". If no notes match that course, skip the tip. Never use notes from a different course.
 - For questions about how many sessions (this month, in a given month, completed, left or in total), call getSessionCounts and answer with plain numbers per course and overall, for example "14 completed, 22 left, 36 in total". For a month question, pass the month number. Count only sessions marked completed.
 - Never use the sessionsCompleted or totalSessions numbers from listMyStudents for counts, because they can be out of date. Use getSessionCounts instead.
-- If pastSessionsNotMarkedCompleted is more than 0, add one short sentence saying some past sessions are not marked completed yet, so the count may go up once the tutor updates them. Never say a session was missed or attended unless the data says completed.
+- If pastSessionsNotMarkedCompleted is more than 0, add one short sentence saying some past sessions are not marked completed yet, so the count may go up once the tutor updates them. For a question about one month, use scheduledButNotCompletedInRequestedMonth for that month instead. Never say a session was missed or attended unless the data says completed.
+- For "how is my child doing" questions (overall progress, performance, attendance, a summary), call getStudentSummary and write a short, warm summary: one friendly opening line, then 3 to 5 short lines covering attendance, quiz results, what was covered recently, and what to work on next. If the child has several courses, give the overall picture first, then at most one short line per course.
+- Use the real numbers from the tool, for example "17 of 36 sessions completed" or "scored 7 out of 7 on the last quiz". Say something positive only when the data supports it. If there is little data, say so plainly. Never invent numbers, topics or progress.
+- If the parent names a subject (for example English or Math), call getStudentSummary with courseName and summarise only that subject.
+- Keep a summary under about 120 words unless the parent asks for more detail, then offer one next step, for example the latest notes. Use no-shows only if the data shows them, never blame anyone for cancelled sessions, and never use rubric grades or tutor evaluations.
+- Never say "perfect attendance", "100% attendance", "excellent attendance" or give an attendance percentage. You only know sessions marked completed and sessions marked as missed (missedSessionsRecorded). When missedSessionsRecorded is 0, say "no missed sessions are recorded". Otherwise say how many were marked as missed. If pastNotMarkedCompleted is more than 0 for a course, say that some past sessions are not marked completed yet. Do not mention cancelled sessions unless the parent asks.
 - After answering, add at most ONE short, relevant offer for the next step (for example offer the recording link, the notes of the last session, or where to join the next session). Don't repeat an offer the parent ignored.
 
 WHERE THINGS ARE ON THE PARENT DASHBOARD (give directions)
