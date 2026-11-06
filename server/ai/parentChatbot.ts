@@ -607,6 +607,27 @@ function takeFacts(userId: number): string {
   return f && Date.now() - f.at < 3 * 60 * 1000 ? f.text : "";
 }
 
+// ───────────────────────── Save every chat message (so admins can see what parents ask) ─────────────────────────
+// Links and passcodes are removed before saving.
+function cleanForSaving(text: string): string {
+  return text
+    .replace(/https?:\/\/[^\s)]+/g, "[link]")
+    .replace(/passcode:?\s*\S+/gi, "Passcode: [hidden]");
+}
+async function saveChatMessage(
+  db: Db,
+  row: { conversationId: string; userId: number; viaTempLogin: boolean; userMessage: string; botReply: string; toolsUsed: string; hadError: boolean }
+) {
+  try {
+    await db.execute(
+      sql`INSERT INTO parent_chat_messages (conversationId, userId, viaTempLogin, userMessage, botReply, toolsUsed, hadError)
+          VALUES (${row.conversationId}, ${row.userId}, ${row.viaTempLogin ? 1 : 0}, ${cleanForSaving(row.userMessage).slice(0, 4000)}, ${cleanForSaving(row.botReply).slice(0, 20000)}, ${row.toolsUsed.slice(0, 500)}, ${row.hadError ? 1 : 0})`
+    );
+  } catch (err) {
+    // Saving must never break the chat
+    console.error("[Parent Chat] Could not save message:", String((err as Error)?.message ?? err).slice(0, 200));
+  }
+}
 // Light rate limit for the follow-up suggestion calls
 const suggestHits = new Map<number, number[]>();
 function suggestAllowed(userId: number) {
@@ -637,6 +658,7 @@ export const parentChatRouter = router({
           .refine((m) => m[m.length - 1].role === "user", "The last message must be from the user"),
         // Browser time zone, used when the parent has no time zone saved on their account
         timeZone: z.string().max(64).optional(),
+                conversationId: z.string().max(64).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -700,12 +722,23 @@ export const parentChatRouter = router({
 
         rememberFacts(ctx.user.id, toolLog);
 
-        let reply = "";
+               let reply = "";
         try {
           reply = result.response.text().trim();
         } catch {
           // text() throws if the response was blocked or empty
         }
+
+        void saveChatMessage(db, {
+          conversationId: input.conversationId || "no-id",
+          userId: ctx.user.id,
+          viaTempLogin: !!ctx.impersonatedBy,
+          userMessage: userText,
+          botReply: reply,
+          toolsUsed: Array.from(new Set(toolLog.map((t) => t.name))).join(","),
+          hadError: !reply || toolLog.some((t) => !!(t.data as any)?.error),
+        });
+
         return {
           reply: reply || "Sorry, I couldn't put together an answer for that. Could you rephrase your question?",
         };

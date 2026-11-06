@@ -18,6 +18,7 @@ import { cn } from "@/lib/utils";
  */
 
 type ChatMessage = { role: "user" | "assistant"; content: string };
+const newConversationId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
 
 const DEFAULT_QUESTIONS = [
   "When is our next session?",
@@ -28,6 +29,7 @@ const DEFAULT_QUESTIONS = [
 
 export function ParentChatBot({ height = "min(72vh, 680px)" }: { height?: string | number }) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+    const [conversationId, setConversationId] = useState(newConversationId);
   const [suggestions, setSuggestions] = useState<string[]>(DEFAULT_QUESTIONS);
   const [input, setInput] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -56,6 +58,7 @@ export function ParentChatBot({ height = "min(72vh, 680px)" }: { height?: string
     chatMutation.mutate(
       {
         timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+                conversationId,
         messages: next,
       },
       {
@@ -87,6 +90,7 @@ export function ParentChatBot({ height = "min(72vh, 680px)" }: { height?: string
   const reset = () => {
     if (isThinking) return;
     setMessages([]);
+        setConversationId(newConversationId());
     setSuggestions(DEFAULT_QUESTIONS);
     setInput("");
   };
