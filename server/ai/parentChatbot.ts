@@ -138,6 +138,21 @@ const toolDeclarations = [
     description: "List study materials / files the tutor shared with this parent (titles and descriptions only).",
     parameters: { type: "OBJECT", properties: {} },
   },
+    {
+    name: "getSessionCounts",
+    description:
+      "Count the child's sessions: completed, left and total per course and overall, and how many were held in a given month. Use for questions like 'how many sessions did we have in July', 'how many are left' or 'how many are completed overall'.",
+    parameters: {
+      type: "OBJECT",
+      properties: {
+        studentName: studentParam,
+        courseName: { type: "STRING", description: "Optional. Course or subject name, for example English." },
+        month: { type: "INTEGER", description: "Optional. Month number 1-12, to count sessions held in that month." },
+        year: { type: "INTEGER", description: "Optional. Year for the month (default is the current year)." },
+      },
+    },
+  },
+
 ] as unknown as FunctionDeclaration[];
 
 // ───────────────────────── Tool implementations (all scoped to ctx.parentId) ─────────────────────────
@@ -515,6 +530,84 @@ async function runTool(db: Db, name: string, args: Args, ctx: ToolCtx): Promise<
       }));
     }
 
+        case "getSessionCounts": {
+      const now = Date.now();
+      const subs = await db
+        .select({
+          id: subscriptions.id,
+          first: subscriptions.studentFirstName,
+          last: subscriptions.studentLastName,
+          courseTitle: courses.title,
+          customTotal: subscriptions.customTotalSessions,
+          courseTotal: courses.totalSessions,
+        })
+        .from(subscriptions)
+        .leftJoin(courses, eq(subscriptions.courseId, courses.id))
+        .where(and(eq(subscriptions.parentId, parentId), ne(subscriptions.status, "cancelled")))
+        .limit(20);
+      const rows = await db
+        .select({ subscriptionId: sessions.subscriptionId, status: sessions.status, scheduledAt: sessions.scheduledAt })
+        .from(sessions)
+        .where(eq(sessions.parentId, parentId))
+        .limit(2000);
+
+      const monthKey = (ms: number) => {
+        const parts = new Intl.DateTimeFormat("en-US", { timeZone: tz, year: "numeric", month: "2-digit" }).formatToParts(new Date(ms));
+        return `${parts.find((p) => p.type === "year")?.value}-${parts.find((p) => p.type === "month")?.value}`;
+      };
+      const monthNum = Math.floor(Number(args.month));
+      const yearNum = Number(args.year) || Number(monthKey(now).slice(0, 4));
+      const wantedMonth = monthNum >= 1 && monthNum <= 12 ? `${yearNum}-${String(monthNum).padStart(2, "0")}` : null;
+      const courseFilter = typeof args.courseName === "string" ? args.courseName.trim().toLowerCase() : "";
+
+      const perCourse = subs
+        .map((s) => ({ ...s, student: fullName(s.first, s.last) }))
+        .filter((s) => matchesStudent(s.student, args.studentName))
+        .filter((s) => !courseFilter || (s.courseTitle ?? "").toLowerCase().includes(courseFilter))
+        .map((s) => {
+          const mine = rows.filter((r) => r.subscriptionId === s.id);
+          const completed = mine.filter((r) => r.status === "completed").length;
+          const total = s.customTotal ?? s.courseTotal ?? null;
+          const out: Record<string, unknown> = {
+            student: s.student,
+            course: s.courseTitle,
+            totalSessions: total,
+            completed,
+            left: total != null ? Math.max(total - completed, 0) : null,
+            upcomingScheduled: mine.filter((r) => r.status === "scheduled" && r.scheduledAt >= now).length,
+            pastSessionsNotMarkedCompleted: mine.filter((r) => r.status === "scheduled" && r.scheduledAt < now).length,
+            cancelled: mine.filter((r) => r.status === "cancelled").length,
+          };
+          if (wantedMonth) {
+            const inMonth = mine.filter((r) => monthKey(r.scheduledAt) === wantedMonth);
+            out.inRequestedMonth = {
+              month: wantedMonth,
+              completed: inMonth.filter((r) => r.status === "completed").length,
+              cancelled: inMonth.filter((r) => r.status === "cancelled").length,
+              scheduledButNotCompleted: inMonth.filter((r) => r.status === "scheduled").length,
+            };
+          }
+          return out;
+        });
+
+      if (perCourse.length === 0) return { found: false };
+      const sum = (key: string) => perCourse.reduce((a, c) => a + (Number(c[key]) || 0), 0);
+      const overall: Record<string, unknown> = {
+        completed: sum("completed"),
+        totalSessions: perCourse.every((c) => c.totalSessions != null) ? sum("totalSessions") : null,
+        left: perCourse.every((c) => c.left != null) ? sum("left") : null,
+        pastSessionsNotMarkedCompleted: sum("pastSessionsNotMarkedCompleted"),
+      };
+      if (wantedMonth) {
+        const months = perCourse.map((c) => c.inRequestedMonth as { completed: number; cancelled: number; scheduledButNotCompleted: number });
+        overall.requestedMonth = wantedMonth;
+        overall.completedInRequestedMonth = months.reduce((a, m) => a + m.completed, 0);
+        overall.cancelledInRequestedMonth = months.reduce((a, m) => a + m.cancelled, 0);
+        overall.scheduledButNotCompletedInRequestedMonth = months.reduce((a, m) => a + m.scheduledButNotCompleted, 0);
+      }
+      return { courses: perCourse, overall };
+    }
+
     default:
       return { error: `Unknown tool: ${name}` };
   }
@@ -543,6 +636,9 @@ ACT LIKE A HELPFUL AGENT, NOT A SEARCH BOX
 - If a recordingPasscode is given with a link, show it right after the link ("Passcode: ...").
 - If getSessionRecordings returns nothing, say plainly that no recording is available for the recent sessions (it may not have been recorded, or it may have been removed) and suggest messaging the tutor through the Messages link. Do not offer to check other sessions again, and never say recordings are "still processing".
 -- When the parent asks about the next session, look at the latest session notes that have the SAME course as that next session (compare the course names) and add one short tip taken from their "next steps". If no notes match that course, skip the tip. Never use notes from a different course.
+- For questions about how many sessions (this month, in a given month, completed, left or in total), call getSessionCounts and answer with plain numbers per course and overall, for example "14 completed, 22 left, 36 in total". For a month question, pass the month number. Count only sessions marked completed.
+- Never use the sessionsCompleted or totalSessions numbers from listMyStudents for counts, because they can be out of date. Use getSessionCounts instead.
+- If pastSessionsNotMarkedCompleted is more than 0, add one short sentence saying some past sessions are not marked completed yet, so the count may go up once the tutor updates them. Never say a session was missed or attended unless the data says completed.
 - After answering, add at most ONE short, relevant offer for the next step (for example offer the recording link, the notes of the last session, or where to join the next session). Don't repeat an offer the parent ignored.
 
 WHERE THINGS ARE ON THE PARENT DASHBOARD (give directions)
