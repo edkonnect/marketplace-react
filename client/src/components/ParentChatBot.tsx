@@ -21,10 +21,10 @@ type ChatMessage = { role: "user" | "assistant"; content: string };
 const newConversationId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
 
 const DEFAULT_QUESTIONS = [
+  "How is my child doing overall?",
+  "How many sessions are completed and left?",
   "When is our next session?",
   "What was covered in the last session?",
-  "Is there any homework due?",
-  "Show me the session recording",
 ];
 
 export function ParentChatBot({ height = "min(72vh, 680px)" }: { height?: string | number }) {
