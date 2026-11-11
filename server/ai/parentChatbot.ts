@@ -33,7 +33,7 @@ import {
 const MODEL = "gemini-2.5-flash";
 const MAX_TOOL_ROUNDS = 5; // max back-and-forth between Gemini and our tools per message
 const MAX_HISTORY = 12; // previous chat turns sent to Gemini
-const MAX_MESSAGE_CHARS = 2000;
+const MAX_MESSAGE_CHARS = 12000;
 const RATE_MAX = 20; // messages per parent...
 const RATE_WINDOW_MS = 10 * 60 * 1000; // ...per 10 minutes
 // If true, notes from the session_notes table are shown only after the tutor sent them to the parent
@@ -162,6 +162,21 @@ const toolDeclarations = [
       properties: {
         studentName: studentParam,
         courseName: { type: "STRING", description: "Optional. Course or subject name, for example English or Math." },
+      },
+    },
+  },
+
+    {
+    name: "getMonthlyProgress",
+    description:
+      "Get what was done month by month: sessions completed, topics covered, challenges, next steps and quiz results for a given month (or the last 6 months if no month is given), per course. Use for questions like 'what did he do in January', 'what happened in March' or 'month by month progress'.",
+    parameters: {
+      type: "OBJECT",
+      properties: {
+        studentName: studentParam,
+        courseName: { type: "STRING", description: "Optional. Course or subject name, for example English or Math." },
+        month: { type: "INTEGER", description: "Optional. Month number 1-12." },
+        year: { type: "INTEGER", description: "Optional. Year for the month (default is the current year)." },
       },
     },
   },
@@ -774,7 +789,161 @@ async function runTool(db: Db, name: string, args: Args, ctx: ToolCtx): Promise<
       };
     }
 
+       case "getMonthlyProgress": {
+      const now = Date.now();
+      const subs = await db
+        .select({ id: subscriptions.id, first: subscriptions.studentFirstName, last: subscriptions.studentLastName, courseTitle: courses.title })
+        .from(subscriptions)
+        .leftJoin(courses, eq(subscriptions.courseId, courses.id))
+        .where(and(eq(subscriptions.parentId, parentId), ne(subscriptions.status, "cancelled")))
+        .limit(20);
+      const courseFilter = typeof args.courseName === "string" ? args.courseName.trim().toLowerCase() : "";
+      const chosen = subs
+        .map((s) => ({ ...s, student: fullName(s.first, s.last) }))
+        .filter((s) => matchesStudent(s.student, args.studentName))
+        .filter((s) => !courseFilter || (s.courseTitle ?? "").toLowerCase().includes(courseFilter));
+      if (chosen.length === 0) return { found: false };
+      const ids = chosen.map((s) => s.id);
+      const subCourse = new Map<number, string>(chosen.map((s): [number, string] => [s.id, s.courseTitle ?? "Course"]));
 
+      const monthKey = (ms: number) => {
+        const parts = new Intl.DateTimeFormat("en-US", { timeZone: tz, year: "numeric", month: "2-digit" }).formatToParts(new Date(ms));
+        return `${parts.find((p) => p.type === "year")?.value}-${parts.find((p) => p.type === "month")?.value}`;
+      };
+      const monthLabel = (key: string) =>
+        new Intl.DateTimeFormat("en-US", { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${key}-15T12:00:00Z`));
+      const monthNum = Math.floor(Number(args.month));
+      const yearNum = Number(args.year) || Number(monthKey(now).slice(0, 4));
+      const wanted = monthNum >= 1 && monthNum <= 12 ? `${yearNum}-${String(monthNum).padStart(2, "0")}` : null;
+
+      type Bucket = {
+        completed: number;
+        missed: number;
+        cancelled: number;
+        topics: Set<string>;
+        challenges: string[];
+        nextSteps: string[];
+        tutorSummaries: string[];
+        quizScores: number[];
+        quizzesNotCompleted: number;
+      };
+      const byMonth = new Map<string, Map<string, Bucket>>();
+      const bucket = (key: string, subId: number): Bucket => {
+        const course = subCourse.get(subId) ?? "Course";
+        let m = byMonth.get(key);
+        if (!m) {
+          m = new Map();
+          byMonth.set(key, m);
+        }
+        let b = m.get(course);
+        if (!b) {
+          b = { completed: 0, missed: 0, cancelled: 0, topics: new Set(), challenges: [], nextSteps: [], tutorSummaries: [], quizScores: [], quizzesNotCompleted: 0 };
+          m.set(course, b);
+        }
+        return b;
+      };
+
+      const sessionRows = await db
+        .select({ subscriptionId: sessions.subscriptionId, status: sessions.status, scheduledAt: sessions.scheduledAt })
+        .from(sessions)
+        .where(and(eq(sessions.parentId, parentId), inArray(sessions.subscriptionId, ids)))
+        .limit(3000);
+      for (const r of sessionRows) {
+        if (r.subscriptionId == null) continue;
+        if (r.status === "completed") bucket(monthKey(r.scheduledAt), r.subscriptionId).completed++;
+        else if (r.status === "no_show") bucket(monthKey(r.scheduledAt), r.subscriptionId).missed++;
+        else if (r.status === "cancelled") bucket(monthKey(r.scheduledAt), r.subscriptionId).cancelled++;
+      }
+
+      const noteRows = await db
+        .select({
+          sessionId: sessions.id,
+          subscriptionId: sessions.subscriptionId,
+          scheduledAt: sessions.scheduledAt,
+          topics: sessionNotes.topicsCovered,
+          challenges: sessionNotes.challenges,
+          nextSteps: sessionNotes.nextSteps,
+        })
+        .from(sessionNotes)
+        .innerJoin(sessions, eq(sessionNotes.sessionId, sessions.id))
+        .where(
+          and(
+            eq(sessionNotes.parentId, parentId),
+            inArray(sessions.subscriptionId, ids),
+            ONLY_NOTIFIED_NOTES ? eq(sessionNotes.parentNotified, true) : undefined
+          )
+        )
+        .limit(500);
+      const noteSessionIds = new Set<number>();
+      for (const n of noteRows) {
+        if (n.subscriptionId == null) continue;
+        noteSessionIds.add(n.sessionId);
+        const b = bucket(monthKey(n.scheduledAt), n.subscriptionId);
+        parseList(n.topics).forEach((t) => b.topics.add(t));
+        const c = clip(n.challenges, 200);
+        if (c && b.challenges.length < 3) b.challenges.push(c);
+        const x = clip(n.nextSteps, 200);
+        if (x && b.nextSteps.length < 3) b.nextSteps.push(x);
+      }
+
+      const feedbackRows = await db
+        .select({ sessionId: sessions.id, subscriptionId: sessions.subscriptionId, scheduledAt: sessions.scheduledAt, feedback: sessions.feedbackFromTutor })
+        .from(sessions)
+        .where(
+          and(
+            eq(sessions.parentId, parentId),
+            inArray(sessions.subscriptionId, ids),
+            inArray(sessions.status, ["completed", "no_show"]),
+            isNotNull(sessions.feedbackFromTutor),
+            ne(sessions.feedbackFromTutor, "")
+          )
+        )
+        .limit(500);
+      for (const f of feedbackRows) {
+        if (f.subscriptionId == null || noteSessionIds.has(f.sessionId)) continue;
+        const b = bucket(monthKey(f.scheduledAt), f.subscriptionId);
+        const s = clip(f.feedback, 300);
+        if (s && b.tutorSummaries.length < 2) b.tutorSummaries.push(s);
+      }
+
+      const quizRows = await db
+        .select({ subscriptionId: sessions.subscriptionId, status: sessionQuizzes.status, score: sessionQuizzes.score, scheduledAt: sessions.scheduledAt })
+        .from(sessionQuizzes)
+        .innerJoin(sessions, eq(sessionQuizzes.sessionId, sessions.id))
+        .where(and(eq(sessionQuizzes.parentId, parentId), ne(sessionQuizzes.status, "draft"), inArray(sessions.subscriptionId, ids)))
+        .limit(500);
+      for (const q of quizRows) {
+        if (q.subscriptionId == null) continue;
+        const b = bucket(monthKey(q.scheduledAt), q.subscriptionId);
+        if (q.status === "completed" && q.score != null) b.quizScores.push(q.score);
+        else if (q.status !== "completed") b.quizzesNotCompleted++;
+      }
+
+      const keys = Array.from(byMonth.keys())
+        .sort()
+        .reverse()
+        .filter((k) => !wanted || k === wanted)
+        .slice(0, wanted ? 1 : 6);
+      if (keys.length === 0) return { found: false, month: wanted };
+      return {
+        months: keys.map((k) => ({
+          month: monthLabel(k),
+          courses: Array.from(byMonth.get(k)!.entries()).map(([course, b]) => ({
+            course,
+            sessionsCompleted: b.completed,
+            missedSessionsRecorded: b.missed,
+            cancelled: b.cancelled,
+            topicsCovered: Array.from(b.topics).slice(0, 12),
+            challenges: b.challenges,
+            nextSteps: b.nextSteps,
+            tutorSummaries: b.tutorSummaries,
+            quizzesCompleted: b.quizScores.length,
+            averageQuizScorePercent: b.quizScores.length ? Math.round(b.quizScores.reduce((a, s) => a + s, 0) / b.quizScores.length) : null,
+            quizzesAssignedNotCompleted: b.quizzesNotCompleted,
+          })),
+        })),
+      };
+    }
     default:
       return { error: `Unknown tool: ${name}` };
   }
@@ -809,6 +978,10 @@ ACT LIKE A HELPFUL AGENT, NOT A SEARCH BOX
 - For "how is my child doing" questions (overall progress, performance, attendance, a summary), call getStudentSummary and write a short, warm summary: one friendly opening line, then 3 to 5 short lines covering attendance, quiz results, what was covered recently, and what to work on next. If the child has several courses, give the overall picture first, then at most one short line per course.
 - Use the real numbers from the tool, for example "17 of 36 sessions completed" or "scored 7 out of 7 on the last quiz". Say something positive only when the data supports it. If there is little data, say so plainly. Never invent numbers, topics or progress.
 - If the parent names a subject (for example English or Math), call getStudentSummary with courseName and summarise only that subject.
+- For questions about what was done in a particular month (for example "what did he do in January") or "month by month" progress, call getMonthlyProgress with the month number, and courseName if a subject is named. If the month asked is later in the year than today, use last year. For each month give 3 to 5 short lines: sessions completed, topics covered, challenges, quiz results and next steps. If there is no data for that month, say so plainly. With no month given, give a short line per month for the recent months.
+- In a month-by-month answer, skip months with no completed sessions, and keep each month to 2 or 3 short lines.
+- If the parent asks how many sessions were cancelled, call getSessionCounts and add up the cancelled numbers per course. Never say you cannot see cancelled sessions.
+- If completed is higher than totalSessions for a course, never write "X out of Y". Say "X sessions completed" and leave out the sessions left.
 - Keep a summary under about 120 words unless the parent asks for more detail, then offer one next step, for example the latest notes. Use no-shows only if the data shows them, never blame anyone for cancelled sessions, and never use rubric grades or tutor evaluations.
 - Never say "perfect attendance", "100% attendance", "excellent attendance" or give an attendance percentage. You only know sessions marked completed and sessions marked as missed (missedSessionsRecorded). When missedSessionsRecorded is 0, say "no missed sessions are recorded". Otherwise say how many were marked as missed. If pastNotMarkedCompleted is more than 0 for a course, say that some past sessions are not marked completed yet. Do not mention cancelled sessions unless the parent asks.
 - After answering, add at most ONE short, relevant offer for the next step (for example offer the recording link, the notes of the last session, or where to join the next session). Don't repeat an offer the parent ignored.
