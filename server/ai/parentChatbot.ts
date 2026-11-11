@@ -28,7 +28,7 @@ import {
   users,
   zoomMeetingRecordings,
 } from "../../drizzle/schema";
-
+import { sanitizeReply } from "./sanitizeReply";
 // ───────────────────────── Settings ─────────────────────────
 const MODEL = "gemini-2.5-flash";
 const MAX_TOOL_ROUNDS = 5; // max back-and-forth between Gemini and our tools per message
@@ -1166,12 +1166,13 @@ export const parentChatRouter = router({
 
         rememberFacts(ctx.user.id, toolLog);
 
-               let reply = "";
+                       let reply = "";
         try {
           reply = result.response.text().trim();
         } catch {
           // text() throws if the response was blocked or empty
         }
+        reply = sanitizeReply(reply);
 
         void saveChatMessage(db, {
           conversationId: input.conversationId || "no-id",
