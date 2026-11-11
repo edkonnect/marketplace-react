@@ -15,7 +15,8 @@ import { z } from "zod";
 import { ENV } from "../_core/env";
 import { protectedProcedure, router } from "../_core/trpc";
 import { getDb } from "../db";
-import { getZoomRecording } from "../zoom/zoom-service";
+import { getRecordingParticipants, getZoomRecording } from "../zoom/zoom-service";
+import { checkTranscriptMatchesSession } from "../zoom/recording-match";
 import {
   courseFiles,
   courses,
@@ -191,7 +192,7 @@ type Db = NonNullable<Awaited<ReturnType<typeof getDb>>>;
 // Zoom for it (read-only, using the recording's UUID) and cache the answer for 30 minutes.
 // Callers only pass session ids that already belong to the logged-in parent.
 type RecLink = { url: string; passcode?: string };
-type FoundRecording = { uuid: string; shareUrl: string | null };
+type FoundRecording = { uuid: string; shareUrl: string | null; meetingId: string; recordedMs: number | null };
 
 const zoomLinkCache = new Map<string, { at: number; link: RecLink | null }>();
 const ZOOM_CACHE_MS = 30 * 60 * 1000;
@@ -213,6 +214,107 @@ async function zoomShareLink(uuid: string): Promise<RecLink | null> {
   return link;
 }
 
+// ── Strict check before a recording is shared with a parent ──────────────────────────────
+const RECORDING_WINDOW_MS = 30 * 60 * 1000;
+const participantsCache = new Map<string, { at: number; emails: string[] }>();
+
+async function recordingParticipants(uuid: string): Promise<string[]> {
+  const cached = participantsCache.get(uuid);
+  if (cached && Date.now() - cached.at < ZOOM_CACHE_MS) return cached.emails;
+  let emails: string[] = [];
+  try {
+    emails = (await getRecordingParticipants(uuid)).map((e) => String(e).toLowerCase());
+  } catch {
+    emails = [];
+  }
+  participantsCache.set(uuid, { at: Date.now(), emails });
+  return emails;
+}
+
+const startTimeCache = new Map<string, { at: number; ms: number | null }>();
+
+// Some saved recordings have no recordedAt, so ask Zoom for the real start time.
+async function recordingStartMs(uuid: string): Promise<number | null> {
+  const cached = startTimeCache.get(uuid);
+  if (cached && Date.now() - cached.at < ZOOM_CACHE_MS) return cached.ms;
+  let ms: number | null = null;
+  try {
+    const rec: any = await getZoomRecording(uuid);
+    const t = rec?.start_time ? new Date(rec.start_time).getTime() : NaN;
+    ms = Number.isFinite(t) ? t : null;
+  } catch {
+    ms = null;
+  }
+  startTimeCache.set(uuid, { at: Date.now(), ms });
+  return ms;
+}
+
+async function recordingMatchesSession(db: Db, sessionId: number, rec: FoundRecording): Promise<boolean> {
+  const no = (why: string) => {
+    console.warn(`[Parent Chat] Recording ${rec.uuid.slice(0, 8)}... rejected for session ${sessionId}: ${why}`);
+    return false;
+  };
+  try {
+    const [s] = await db
+      .select({
+        parentId: sessions.parentId,
+        scheduledAt: sessions.scheduledAt,
+        meetingUrl: sessions.meetingUrl,
+        studentFirst: sessions.studentFirstName,
+        studentLast: sessions.studentLastName,
+        subFirst: subscriptions.studentFirstName,
+        subLast: subscriptions.studentLastName,
+      })
+      .from(sessions)
+      .leftJoin(subscriptions, eq(sessions.subscriptionId, subscriptions.id))
+      .where(eq(sessions.id, sessionId))
+      .limit(1);
+    if (!s) return no("session not found");
+
+    // 1. Time: the recording must start close to the session start
+        // The start time is not always saved. When it is known it must be close to the session start;
+    // when it is unknown, the room and the name match below decide.
+    const startMs = rec.recordedMs ?? (await recordingStartMs(rec.uuid));
+    if (startMs) {
+      const apartMin = Math.round(Math.abs(startMs - Number(s.scheduledAt)) / 60000);
+      if (apartMin > RECORDING_WINDOW_MS / 60000) return no(`recorded ${apartMin} minutes from the session start`);
+    }
+
+    // 2. Room: if the session's own join link names a Zoom meeting, the recording must be from it
+    const roomId = s.meetingUrl?.match(/\/j\/(\d{9,12})/)?.[1];
+    if (roomId && rec.meetingId.replace(/\D/g, "") !== roomId) return no("different Zoom room than the session's join link");
+
+    // 3. People: the transcript mentions the child or parent, or the parent's email was in the call
+    const [parent] = await db
+      .select({ name: users.name, firstName: users.firstName, lastName: users.lastName, email: users.email })
+      .from(users)
+      .where(eq(users.id, s.parentId))
+      .limit(1);
+
+    const [t] = await db
+      .select({ text: zoomMeetingRecordings.transcriptText })
+      .from(zoomMeetingRecordings)
+      .where(eq(zoomMeetingRecordings.id, rec.uuid))
+      .limit(1);
+    if (t?.text) {
+      const m = checkTranscriptMatchesSession(t.text, [
+        s.studentFirst,
+        s.studentLast,
+        s.subFirst,
+        s.subLast,
+        parent?.name,
+        parent?.firstName,
+        parent?.lastName,
+      ]);
+      if (m.ok && !m.unverifiable && m.hit && !m.hit.startsWith("nick:")) return true;
+    }
+    const parentEmail = parent?.email ? String(parent.email).toLowerCase() : "";
+    if (parentEmail && (await recordingParticipants(rec.uuid)).includes(parentEmail)) return true;
+    return no("no student or parent name in the transcript, and the parent's email was not in the call");
+  } catch (err) {
+    return no(`check failed: ${String((err as Error)?.message ?? err).slice(0, 120)}`);
+  }
+}
 // Completed recordings saved for these sessions (latest one per session).
 async function findRecordings(db: Db, sessionIds: number[]): Promise<Map<number, FoundRecording>> {
   const map = new Map<number, FoundRecording>();
@@ -222,25 +324,36 @@ async function findRecordings(db: Db, sessionIds: number[]): Promise<Map<number,
       id: zoomMeetingRecordings.id,
       sessionId: zoomMeetingRecordings.sessionId,
       shareUrl: zoomMeetingRecordings.shareUrl,
+            meetingId: zoomMeetingRecordings.meetingId,
+      recordedMs: sql<number | null>`UNIX_TIMESTAMP(${zoomMeetingRecordings.recordedAt}) * 1000`,
     })
     .from(zoomMeetingRecordings)
     .where(and(inArray(zoomMeetingRecordings.sessionId, sessionIds), eq(zoomMeetingRecordings.status, "completed")))
     .orderBy(desc(zoomMeetingRecordings.recordedAt));
   for (const r of rows) {
     if (r.sessionId != null && !map.has(r.sessionId)) {
-      map.set(r.sessionId, { uuid: r.id, shareUrl: r.shareUrl && r.shareUrl.trim() ? r.shareUrl : null });
+         map.set(r.sessionId, {
+        uuid: r.id,
+        shareUrl: r.shareUrl && r.shareUrl.trim() ? r.shareUrl : null,
+        meetingId: r.meetingId,
+        recordedMs: r.recordedMs != null ? Number(r.recordedMs) : null,
+      });
     }
   }
   return map;
 }
 
 // Turn found recordings into playable links (stored link first, otherwise ask Zoom).
-async function resolveLinks(found: Map<number, FoundRecording>, sessionIds: number[]): Promise<Map<number, RecLink>> {
+async function resolveLinks(db: Db, found: Map<number, FoundRecording>, sessionIds: number[]): Promise<Map<number, RecLink>> {
   const out = new Map<number, RecLink>();
   await Promise.all(
     sessionIds.map(async (sid) => {
       const f = found.get(sid);
       if (!f) return;
+      if (!(await recordingMatchesSession(db, sid, f))) {
+        console.warn(`[Parent Chat] Recording not shared: could not confirm it belongs to session ${sid}`);
+        return;
+      }
       if (f.shareUrl) {
         out.set(sid, { url: f.shareUrl });
         return;
@@ -253,7 +366,7 @@ async function resolveLinks(found: Map<number, FoundRecording>, sessionIds: numb
 }
 
 async function recordingLinks(db: Db, sessionIds: number[]): Promise<Map<number, RecLink>> {
-  return resolveLinks(await findRecordings(db, sessionIds), sessionIds);
+    return resolveLinks(db, await findRecordings(db, sessionIds), sessionIds);
 }
 
 async function runTool(db: Db, name: string, args: Args, ctx: ToolCtx): Promise<unknown> {
@@ -455,7 +568,8 @@ async function runTool(db: Db, name: string, args: Args, ctx: ToolCtx): Promise<
         .filter((r) => matchesStudent(r.student, args.studentName))
         .filter((r) => found.has(r.sessionId))
         .slice(0, wanted + 2); // a little extra in case Zoom no longer has some of them
-      const links = await resolveLinks(found, candidates.map((r) => r.sessionId));
+              console.log(`[Parent Chat] Recording lookup: asked for ${wanted}, ${candidates.length} candidate session(s) with a saved recording`);
+            const links = await resolveLinks(db, found, candidates.map((r) => r.sessionId));
       return candidates
         .filter((r) => links.has(r.sessionId))
         .slice(0, wanted)
