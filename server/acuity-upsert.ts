@@ -56,6 +56,8 @@ export type AcuityLookups = {
   parentEmailToId: Record<string, number>;
   /** key `${parentId}-${courseId}-${studentFirstLower}` -> subscription id (prefer active) */
   subByParentCourseStudent: Record<string, number>;
+    /** key `${parentId}-${studentFirstLower}` -> ids of that child's active subscriptions (fallback link) */
+  subsByParentStudent?: Record<string, number[]>;
   /** lowercased acuity alias email -> platform user id (admin-managed overrides) */
   parentAliasEmailToId: Record<string, number>;
 };
@@ -119,12 +121,16 @@ export function resolveAcuityAppt(
   const studentFirstName = (appt.firstName || "").trim() || null;
   const studentLastName = (appt.lastName || "").trim() || null;
 
-  let subscriptionId: number | null = null;
+    let subscriptionId: number | null = null;
   if (courseId != null && studentFirstName) {
     const key = `${parentId}-${courseId}-${studentFirstName.toLowerCase()}`;
     subscriptionId = lookups.subByParentCourseStudent[key] ?? null;
+    // Fallback: exact course did not match. Link only if the child has exactly one active subscription.
+    if (subscriptionId == null) {
+      const mine = lookups.subsByParentStudent?.[`${parentId}-${studentFirstName.toLowerCase()}`];
+      if (mine && mine.length === 1) subscriptionId = mine[0];
+    }
   }
-
   return {
     ok: true, action: "unchanged",
     tutorId, parentId, courseId, subscriptionId,

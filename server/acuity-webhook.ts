@@ -99,21 +99,23 @@ export async function upsertAcuityAppointment(apt: AcuityAppointment): Promise<v
     if (rows.length > 0) parentEmailToId[email] = rows[0].id;
   }
 
-  const subByParentCourseStudent: Record<string, number> = {};
+    const subByParentCourseStudent: Record<string, number> = {};
+  const subsByParentStudent: Record<string, number[]> = {};
   const parentId = Object.values(parentEmailToId)[0];
   if (parentId) {
     const subRows = await db
-      .select({ id: subscriptions.id, courseId: subscriptions.courseId, studentFirstName: subscriptions.studentFirstName })
+      .select({ id: subscriptions.id, courseId: subscriptions.courseId, studentFirstName: subscriptions.studentFirstName, status: subscriptions.status })
       .from(subscriptions)
       .where(sql`${subscriptions.parentId} = ${parentId}`);
     for (const s of subRows) {
       const student = (s.studentFirstName || "").trim().toLowerCase();
       if (!student) continue;
       subByParentCourseStudent[`${parentId}-${s.courseId}-${student}`] = s.id;
+      if (s.status === "active") (subsByParentStudent[`${parentId}-${student}`] ??= []).push(s.id);
     }
   }
 
-  const lookups: AcuityLookups = { parentEmailToId, subByParentCourseStudent };
+  const lookups: AcuityLookups = { parentEmailToId, subByParentCourseStudent, subsByParentStudent };
   const result = await upsertAcuitySession(db, apt as AcuityAppt, lookups);
 
   if (!result.ok) {

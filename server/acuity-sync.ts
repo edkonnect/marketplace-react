@@ -57,19 +57,24 @@ async function buildLookups(database: NonNullable<Awaited<ReturnType<typeof getD
     })
     .from(subscriptions);
 
-  const subByParentCourseStudent: Record<string, number> = {};
+    const subByParentCourseStudent: Record<string, number> = {};
+  const subsByParentStudent: Record<string, number[]> = {};
   for (const s of allSubs) {
     const student = (s.studentFirstName || "").trim().toLowerCase();
     if (!student) continue;
     const key = `${s.parentId}-${s.courseId}-${student}`;
     if (!subByParentCourseStudent[key] || s.status === "active") subByParentCourseStudent[key] = s.id;
+    if (s.status === "active") {
+      const k2 = `${s.parentId}-${student}`;
+      (subsByParentStudent[k2] ??= []).push(s.id);
+    }
   }
 
   const aliases = await database.select({ acuityEmail: acuityEmailAliases.acuityEmail, userId: acuityEmailAliases.userId }).from(acuityEmailAliases);
   const parentAliasEmailToId: Record<string, number> = {};
   for (const a of aliases) parentAliasEmailToId[a.acuityEmail.toLowerCase()] = a.userId;
 
-  return { parentEmailToId, subByParentCourseStudent, parentAliasEmailToId };
+    return { parentEmailToId, subByParentCourseStudent, parentAliasEmailToId, subsByParentStudent };
 }
 
 export async function syncAcuitySessions(): Promise<{
