@@ -10,7 +10,7 @@
  */
 import { GoogleGenerativeAI, type FunctionDeclaration } from "@google/generative-ai";
 import { TRPCError } from "@trpc/server";
-import { and, asc, desc, eq, gte, inArray, isNotNull, ne, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, ne, sql } from "drizzle-orm";
 import { z } from "zod";
 import { ENV } from "../_core/env";
 import { protectedProcedure, router } from "../_core/trpc";
@@ -688,10 +688,12 @@ async function runTool(db: Db, name: string, args: Args, ctx: ToolCtx): Promise<
         .where(and(eq(subscriptions.parentId, parentId), ne(subscriptions.status, "cancelled")))
         .limit(20);
       const rows = await db
-        .select({ subscriptionId: sessions.subscriptionId, status: sessions.status, scheduledAt: sessions.scheduledAt })
+                .select({ subscriptionId: sessions.subscriptionId, first: sessions.studentFirstName, status: sessions.status, scheduledAt: sessions.scheduledAt })
         .from(sessions)
         .where(eq(sessions.parentId, parentId))
         .limit(2000);
+      const sameChild = (a: string | null | undefined, b: string | null | undefined) =>
+        (a ?? "").trim().toLowerCase() === (b ?? "").trim().toLowerCase();
 
       const monthKey = (ms: number) => {
         const parts = new Intl.DateTimeFormat("en-US", { timeZone: tz, year: "numeric", month: "2-digit" }).formatToParts(new Date(ms));
@@ -707,7 +709,11 @@ async function runTool(db: Db, name: string, args: Args, ctx: ToolCtx): Promise<
         .filter((s) => matchesStudent(s.student, args.studentName))
         .filter((s) => !courseFilter || (s.courseTitle ?? "").toLowerCase().includes(courseFilter))
         .map((s) => {
-          const mine = rows.filter((r) => r.subscriptionId === s.id);
+                    // Unlinked sessions count only when the child has exactly one subscription (no guessing)
+          const onlyOneSub = subs.filter((x) => sameChild(x.first, s.first)).length === 1;
+          const mine = rows.filter(
+            (r) => r.subscriptionId === s.id || (onlyOneSub && r.subscriptionId == null && sameChild(r.first, s.first))
+          );
           const completed = mine.filter((r) => r.status === "completed").length;
           const total = s.customTotal ?? s.courseTotal ?? null;
           const out: Record<string, unknown> = {
@@ -779,7 +785,20 @@ async function runTool(db: Db, name: string, args: Args, ctx: ToolCtx): Promise<
         .from(sessions)
         .where(and(eq(sessions.parentId, parentId), inArray(sessions.subscriptionId, ids)))
         .limit(2000);
+         
+              const sameChild = (a: string | null | undefined, b: string | null | undefined) =>
+        (a ?? "").trim().toLowerCase() === (b ?? "").trim().toLowerCase();
 
+      // Sessions with no subscription link (migrated or manually booked)
+      const orphanRows = await db
+        .select({
+          first: sessions.studentFirstName,
+          status: sessions.status,
+          scheduledAt: sessions.scheduledAt,
+        })
+        .from(sessions)
+        .where(and(eq(sessions.parentId, parentId), isNull(sessions.subscriptionId)))
+        .limit(2000);
       const quizRows = await db
         .select({
           subscriptionId: sessions.subscriptionId,
@@ -832,7 +851,12 @@ async function runTool(db: Db, name: string, args: Args, ctx: ToolCtx): Promise<
         .limit(60);
 
       const perCourse = chosen.map((s) => {
-        const mine = sessionRows.filter((r) => r.subscriptionId === s.id);
+               // Attribute unlinked sessions only when the child has exactly one subscription (no guessing)
+        const onlyOneSub = subs.filter((x) => sameChild(x.first, s.first)).length === 1;
+        const mine = [
+          ...sessionRows.filter((r) => r.subscriptionId === s.id),
+          ...(onlyOneSub ? orphanRows.filter((o) => sameChild(o.first, s.first)) : []),
+        ];
         const completed = mine.filter((r) => r.status === "completed").length;
         const noShow = mine.filter((r) => r.status === "no_show").length;
         const total = s.customTotal ?? s.courseTotal ?? null;
