@@ -1689,7 +1689,7 @@ export default function ParentDashboard() {
                       <CardContent className="pt-6">
                         <div className="flex items-start justify-between">
                         <div className="flex-1">
-                          <div className="flex items-center gap-3 mb-2">
+                          <div className="flex items-center gap-3 mb-2 flex-wrap">
                             <div className="text-sm text-muted-foreground">{session.courseTitle || "Course"}</div>
                             <p className="font-semibold">
                               {formatSessionTime(session.scheduledAt, parentTimezone, 'MMM d, yyyy')} • {formatSessionTime(session.scheduledAt, parentTimezone, 'h:mm a')}
@@ -1712,6 +1712,11 @@ export default function ParentDashboard() {
                               <Badge variant="outline" className="text-xs border-blue-500 text-blue-700 bg-blue-50 dark:bg-blue-950/20">
                                 Trial Lesson
                               </Badge>
+                            )}
+                          {(session.status === "completed" || session.status === "no_show") && (
+                              <div className="ml-auto">
+                                <SessionRecording sessionId={session.id} />
+                              </div>
                             )}
                           </div>
                           <p className="text-sm text-muted-foreground mb-2">
@@ -3444,6 +3449,42 @@ export default function ParentDashboard() {
         </Dialog>
       )}
       <Footer />
+    </div>
+  );
+}
+
+function SessionRecording({ sessionId }: { sessionId: number }) {
+  const { data } = trpc.parentChat.myRecordings.useQuery(
+    { sessionIds: [sessionId] },
+    { retry: false, staleTime: 5 * 60 * 1000, refetchOnWindowFocus: false }
+  );
+  const rec = data?.[0];
+  if (!rec) return null;
+  const copyPasscode = async () => {
+    try {
+      await navigator.clipboard.writeText(rec.passcode ?? "");
+      toast.success("Passcode copied");
+    } catch {
+      toast.error("Could not copy passcode");
+    }
+  };
+  return (
+    <div className="flex items-center gap-2 flex-wrap justify-end">
+      <Button size="sm" variant="outline" asChild>
+        <a href={rec.url} target="_blank" rel="noopener noreferrer">
+          <Video className="w-4 h-4 mr-1.5" />
+          Watch Recording
+        </a>
+      </Button>
+      {rec.passcode && (
+        <div className="flex items-center gap-2 text-sm">
+          <span className="text-muted-foreground">Passcode:</span>
+          <code className="px-2 py-0.5 rounded bg-muted font-mono text-xs select-all">{rec.passcode}</code>
+          <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" onClick={copyPasscode}>
+            Copy
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

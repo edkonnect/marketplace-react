@@ -1223,6 +1223,26 @@ function suggestAllowed(userId: number) {
   return true;
 }
 
+// Used only by myRecordings: Zoom keeps returning a link for deleted recordings,
+// but with zero files, so only treat it as available when files exist.
+const liveLinkCache = new Map<string, { at: number; link: RecLink | null }>();
+async function zoomLiveLink(uuid: string): Promise<RecLink | null> {
+  const cached = liveLinkCache.get(uuid);
+  if (cached && Date.now() - cached.at < ZOOM_CACHE_MS) return cached.link;
+  let link: RecLink | null = null;
+  try {
+    const rec: any = await getZoomRecording(uuid);
+    const hasFiles = Array.isArray(rec?.recording_files) && rec.recording_files.length > 0;
+    if (rec?.share_url && hasFiles) {
+      link = { url: String(rec.share_url), passcode: rec.password ? String(rec.password) : undefined };
+    }
+  } catch {
+    link = null;
+  }
+  liveLinkCache.set(uuid, { at: Date.now(), link });
+  return link;
+}
+
 export const parentChatRouter = router({
     access: protectedProcedure.query(({ ctx }) => ({
     allowed: ctx.user.role === "parent" && !!ctx.impersonatedBy,
@@ -1406,5 +1426,32 @@ ${facts || "(nothing)"}`;
         console.error("[Parent Chat] Suggestion error:", error);
         return { suggestions: [] as string[] };
       }
+    }),
+  // Recording links for the logged-in parent's own sessions (any parent, not admin-only).
+  myRecordings: protectedProcedure
+    .input(z.object({ sessionIds: z.array(z.number().int()).max(50) }))
+    .query(async ({ ctx, input }) => {
+      if (ctx.user.role !== "parent") return [];
+      const db = await getDb();
+      if (!db || input.sessionIds.length === 0) return [];
+      const own = await db
+        .select({ id: sessions.id })
+        .from(sessions)
+        .where(and(inArray(sessions.id, input.sessionIds), eq(sessions.parentId, ctx.user.id)));
+      const ids = own.map((r) => r.id);
+      if (ids.length === 0) return [];
+      const found = await findRecordings(db, ids);
+      const matched = await resolveLinks(db, found, ids);
+      const out: { sessionId: number; url: string; passcode: string | null }[] = [];
+      await Promise.all(
+        Array.from(matched.keys()).map(async (sessionId) => {
+          const f = found.get(sessionId);
+          if (!f) return;
+          // Always confirm with Zoom: if Zoom deleted the recording, show nothing.
+          const live = await zoomLiveLink(f.uuid);
+          if (live) out.push({ sessionId, url: live.url, passcode: live.passcode ?? null });
+        })
+      );
+      return out;
     }),
 });
