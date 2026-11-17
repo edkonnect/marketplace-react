@@ -521,7 +521,7 @@ export default function CourseDetail() {
                       </div>
                       <div>
                         <p className="font-medium">Format</p>
-                        <p className="text-sm text-muted-foreground">One-on-one tutoring</p>
+                        <p className="text-sm text-muted-foreground">{course.id === 333 ? "Group" : "One-on-one tutoring"}</p>
                       </div>
                     </div>
                   </div>
