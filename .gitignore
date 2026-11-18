@@ -125,3 +125,4 @@ ecosystem.config.cjs
 package-lock.json
 drizzle/meta/
 drizzle/0044_flippant_namorita.sql
+patch-*.cjs
