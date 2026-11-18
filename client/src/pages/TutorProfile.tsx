@@ -7,6 +7,7 @@ import { VideoUploadManager } from "@/components/VideoUploadManager";
 import { User } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import Footer from "@/components/Footer";
+import { TrialWelcomeSettings } from "@/components/TrialWelcomeSettings";
 
 export default function TutorProfile() {
   const { user, isAuthenticated, loading } = useAuth();
@@ -47,7 +48,8 @@ export default function TutorProfile() {
         </div>
 
         <ZoomMeetingSetup tutorProfile={tutorProfile} />
-        <VideoUploadManager currentVideoUrl={(tutorProfile as any)?.introVideoUrl} />
+                <VideoUploadManager currentVideoUrl={(tutorProfile as any)?.introVideoUrl} />
+        <TrialWelcomeSettings />
       </div>
       <Footer />
     </div>

@@ -111,6 +111,7 @@ export const tutorProfiles = mysqlTable("tutor_profiles", {
   profileImageUrl: text("profileImageUrl"),
   introVideoUrl: text("introVideoUrl"), // URL to intro video in S3
   introVideoKey: varchar("introVideoKey", { length: 512 }), // S3 key for video file
+    trialWelcomeMessage: text("trialWelcomeMessage"),
   isActive: boolean("isActive").default(true).notNull(),
   approvalStatus: varchar("approvalStatus", { length: 20 }).default("pending").notNull(), // pending, approved, rejected
   rejectionReason: text("rejectionReason"), // Optional reason for rejection
@@ -1326,3 +1327,20 @@ export const satFeedbackResponses = mysqlTable("sat_feedback_responses", {
 }));
 
 export type SatFeedbackResponse = typeof satFeedbackResponses.$inferSelect;
+
+
+export const trialWelcomeMessages = mysqlTable("trial_welcome_messages", {
+  id: int("id").autoincrement().primaryKey(),
+  tutorId: int("tutorId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  parentId: int("parentId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  studentKey: varchar("studentKey", { length: 191 }).notNull(),
+  studentName: varchar("studentName", { length: 255 }).notNull(),
+  sessionId: int("sessionId"),
+  conversationId: int("conversationId"),
+  messageId: int("messageId"),
+  emailStatus: varchar("emailStatus", { length: 20 }).default("pending").notNull(),
+  sentAt: timestamp("sentAt").defaultNow().notNull(),
+}, (table) => ({
+  trialWelcomeUnique: uniqueIndex("trial_welcome_unique").on(table.tutorId, table.parentId, table.studentKey),
+  parentIdIdx: index("trial_welcome_parentId_idx").on(table.parentId),
+}));

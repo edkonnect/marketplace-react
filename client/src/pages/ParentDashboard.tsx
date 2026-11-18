@@ -21,7 +21,6 @@ import { Link, useLocation } from "wouter";
 import { BookOpen, Calendar, MessageSquare, CreditCard, Clock, Users, Video, FileText, HelpCircle, CheckCircle, TrendingUp, BarChart2, LogIn, Sparkles, Search, Target, Activity, Download, ChevronLeft, ChevronRight } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { LOGIN_PATH } from "@/const";
-import { NotificationCenter } from "@/components/NotificationCenter";
 import { ParentBookingsManager } from "@/components/ParentBookingsManager";
 import { ParentSessionsManager } from "@/components/ParentSessionsManager";
 import { AppointmentScheduler } from "@/components/AppointmentScheduler";

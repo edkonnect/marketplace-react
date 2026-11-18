@@ -6874,3 +6874,175 @@ export async function getAllSatFeedback() {
   if (!database) return [];
   return database.select().from(satFeedbackResponses).orderBy(desc(satFeedbackResponses.createdAt));
 }
+
+
+// ============ Trial welcome messages ============
+
+export function buildTrialStudentKey(first?: string | null, last?: string | null) {
+  return [first, last]
+    .map((p) => (p ?? "").trim())
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+}
+
+/**
+ * Students with an upcoming (scheduled, future) trial with this tutor
+ * who have not been welcomed yet. One entry per parent + student, using
+ * the earliest upcoming trial.
+ */
+export async function getPendingTrialWelcomes(tutorId: number) {
+  const db = await getDb();
+  if (!db) return [];
+
+  try {
+    const result = (await db.execute(sql`
+      SELECT
+        s.id AS sessionId,
+        s.parentId,
+        s.courseId,
+        s.scheduledAt,
+        s.studentFirstName,
+        s.studentLastName,
+        u.firstName AS parentFirstName,
+        u.lastName AS parentLastName,
+        u.email AS parentEmail,
+        u.timezone AS parentTimezone,
+        c.title AS courseTitle
+      FROM sessions s
+      JOIN users u ON u.id = s.parentId
+      LEFT JOIN courses c ON c.id = s.courseId
+      LEFT JOIN trial_welcome_messages w
+        ON w.tutorId = s.tutorId
+       AND w.parentId = s.parentId
+       AND w.studentKey = (LOWER(TRIM(CONCAT_WS(' ', s.studentFirstName, s.studentLastName))) COLLATE utf8mb4_bin)
+      WHERE s.tutorId = ${tutorId}
+        AND s.isTrial = 1
+        AND s.status = 'scheduled'
+        AND s.scheduledAt > ${Date.now()}
+        AND s.studentFirstName IS NOT NULL
+        AND TRIM(s.studentFirstName) <> ''
+        AND w.id IS NULL
+      ORDER BY s.scheduledAt ASC
+    `)) as any;
+
+    const rows: any[] = result?.[0] ?? [];
+
+    // Rows come earliest-first, so the first one seen per student is their next trial.
+    const seen = new Set<string>();
+    const pending: Array<{
+      sessionId: number;
+      parentId: number;
+      parentName: string;
+      parentEmail: string;
+      parentTimezone: string | null;
+      studentKey: string;
+      studentName: string;
+      courseTitle: string;
+      nextTrialAt: number;
+    }> = [];
+
+    for (const r of rows) {
+      const studentKey = buildTrialStudentKey(r.studentFirstName, r.studentLastName);
+      const dedupe = `${r.parentId}:${studentKey}`;
+      if (!studentKey || seen.has(dedupe)) continue;
+      seen.add(dedupe);
+
+      pending.push({
+        sessionId: Number(r.sessionId),
+        parentId: Number(r.parentId),
+        parentName: [r.parentFirstName, r.parentLastName].filter(Boolean).join(" ").trim() || "Parent",
+        parentEmail: r.parentEmail,
+        parentTimezone: r.parentTimezone ?? null,
+        studentKey,
+        studentName: [r.studentFirstName, r.studentLastName].filter(Boolean).join(" ").trim(),
+        courseTitle: r.courseTitle || "trial lesson",
+        nextTrialAt: Number(r.scheduledAt),
+      });
+    }
+
+    return pending;
+  } catch (error) {
+    console.error("[Database] Failed to get pending trial welcomes:", error);
+    return [];
+  }
+}
+
+/**
+ * Record that a tutor has welcomed a student. Safe to call twice:
+ * the unique key (tutor + parent + student) ignores duplicates.
+ */
+export async function recordTrialWelcome(params: {
+  tutorId: number;
+  parentId: number;
+  studentName: string;
+  sessionId?: number | null;
+  conversationId?: number | null;
+  messageId?: number | null;
+  emailStatus?: "pending" | "sent" | "failed";
+}) {
+  const db = await getDb();
+  if (!db) return false;
+
+  try {
+    const studentKey = params.studentName.trim().toLowerCase();
+    await db.execute(sql`
+      INSERT INTO trial_welcome_messages
+        (tutorId, parentId, studentKey, studentName, sessionId, conversationId, messageId, emailStatus)
+      VALUES
+        (${params.tutorId}, ${params.parentId}, ${studentKey}, ${params.studentName.trim()},
+         ${params.sessionId ?? null}, ${params.conversationId ?? null}, ${params.messageId ?? null},
+         ${params.emailStatus ?? "pending"})
+      ON DUPLICATE KEY UPDATE id = id
+    `);
+    return true;
+  } catch (error) {
+    console.error("[Database] Failed to record trial welcome:", error);
+    return false;
+  }
+}
+
+/** True if the tutor's public profile page will show an intro video. */
+export async function tutorHasIntroVideo(tutorId: number): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return false;
+  try {
+    const result = (await db.execute(sql`
+      SELECT introVideoUrl FROM tutor_profiles WHERE userId = ${tutorId} LIMIT 1
+    `)) as any;
+    const row = result?.[0]?.[0];
+    return Boolean(row?.introVideoUrl && String(row.introVideoUrl).trim());
+  } catch (error) {
+    console.error("[Database] Failed to check tutor intro video:", error);
+    return false;
+  }
+}
+
+export async function getTutorTrialWelcomeMessage(tutorId: number): Promise<string | null> {
+  const db = await getDb();
+  if (!db) return null;
+  try {
+    const result = (await db.execute(sql`
+      SELECT trialWelcomeMessage FROM tutor_profiles WHERE userId = ${tutorId} LIMIT 1
+    `)) as any;
+    const text = result?.[0]?.[0]?.trialWelcomeMessage;
+    return text && String(text).trim() ? String(text) : null;
+  } catch (error) {
+    console.error("[Database] Failed to get trial welcome message:", error);
+    return null;
+  }
+}
+
+export async function saveTutorTrialWelcomeMessage(tutorId: number, text: string | null) {
+  const db = await getDb();
+  if (!db) return false;
+  try {
+    await db.execute(sql`
+      UPDATE tutor_profiles SET trialWelcomeMessage = ${text} WHERE userId = ${tutorId}
+    `);
+    return true;
+  } catch (error) {
+    console.error("[Database] Failed to save trial welcome message:", error);
+    return false;
+  }
+}

@@ -93,6 +93,31 @@ interface CoordinatorConversation {
   hasMessages: boolean;
 }
 
+/** Turns http(s) links in plain text into clickable links. Uses React elements, not raw HTML. */
+function renderMessageText(text: string, isOwn: boolean) {
+  const linkClass = isOwn
+    ? "underline font-medium text-white hover:opacity-80"
+    : "underline font-medium text-blue-600 hover:text-blue-800";
+
+  const parts = text.split(/(https?:\/\/[^\s]+)/g);
+  return parts.map((part, i) => {
+    if (/^https?:\/\//.test(part)) {
+      // Keep trailing punctuation (like a final "." or ",") outside the link
+      const match = part.match(/^(.*?)([.,;:!?)]*)$/);
+      const url = match?.[1] ?? part;
+      const trailing = match?.[2] ?? "";
+      return (
+        <span key={i}>
+          <a href={url} target="_blank" rel="noopener noreferrer" className={linkClass}>
+            {url}
+          </a>
+          {trailing}
+        </span>
+      );
+    }
+    return <span key={i}>{part}</span>;
+  });
+}
 export default function Messages() {
   const { user, isAuthenticated, loading } = useAuth();
   const utils = trpc.useUtils();
@@ -1461,7 +1486,7 @@ export default function Messages() {
                                   </div>
                                 )}
                                 {msg.content && (
-                                  <p className="text-sm whitespace-pre-wrap break-words break-all">{msg.content}</p>
+                                  <p className="text-sm whitespace-pre-wrap break-words break-all">{renderMessageText(msg.content, isOwn)}</p>
                                 )}
                                 <p className={`text-xs mt-1 ${
                                   isOwn ? "text-primary-foreground/70" : "text-muted-foreground"
