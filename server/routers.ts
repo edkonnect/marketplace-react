@@ -27,6 +27,7 @@ import { subscriptions as subscriptionsTable, tutorProfiles, users } from "../dr
       import { findLateRecordingByNames } from "./zoom/late-recording";
    import { parentChatRouter } from "./ai/parentChatbot";
 import { SAT_FEELING, SAT_CHALLENGE, SAT_PAID, SAT_WANTS, SAT_CONTACT } from "@shared/satFeedback";
+import { buildTrialWelcomeText, sendTrialWelcomeEmail, TRIAL_WELCOME_MAX_CHARS } from "./emails/trial-welcome";
 
 // Helper to check if user is a tutor
 const tutorProcedure = protectedProcedure.use(({ ctx, next }) => {
@@ -199,10 +200,138 @@ function generateFallbackJoinUrl(sessionId: number) {
   return `https://zoom.us/j/9${padded}`;
 }
 
+const trialWelcomeRouter = router({
+  getPending: tutorProcedure.query(async ({ ctx }) => {
+    const pending = await db.getPendingTrialWelcomes(ctx.user.id);
+    if (pending.length === 0) return [];
+
+    const tutorName =
+      [ctx.user.firstName, ctx.user.lastName].filter(Boolean).join(" ").trim() ||
+      ctx.user.name ||
+      "Your tutor";
+    const hasIntroVideo = await db.tutorHasIntroVideo(ctx.user.id);
+    const customText = await db.getTutorTrialWelcomeMessage(ctx.user.id);
+
+    return pending.map(({ parentEmail, ...p }) => ({
+      ...p,
+      previewText: buildTrialWelcomeText({
+        parentName: p.parentName,
+        tutorName,
+        studentName: p.studentName,
+        tutorId: ctx.user.id,
+        hasIntroVideo,
+        customText,
+      }),
+    }));
+  }),
+
+  getMyMessage: tutorProcedure.query(async ({ ctx }) => {
+    return { text: (await db.getTutorTrialWelcomeMessage(ctx.user.id)) ?? "" };
+  }),
+
+  saveMyMessage: tutorProcedure
+    .input(z.object({ text: z.string().max(TRIAL_WELCOME_MAX_CHARS) }))
+    .mutation(async ({ ctx, input }) => {
+      const text = input.text.trim();
+      const ok = await db.saveTutorTrialWelcomeMessage(ctx.user.id, text || null);
+      if (!ok) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Could not save' });
+      return { success: true };
+    }),
+
+  previewMessage: tutorProcedure
+    .input(z.object({ text: z.string().max(TRIAL_WELCOME_MAX_CHARS) }))
+    .mutation(async ({ ctx, input }) => {
+      const tutorName =
+        [ctx.user.firstName, ctx.user.lastName].filter(Boolean).join(" ").trim() ||
+        ctx.user.name ||
+        "Your tutor";
+      const hasIntroVideo = await db.tutorHasIntroVideo(ctx.user.id);
+      return {
+        text: buildTrialWelcomeText({
+          parentName: "Parent",
+          tutorName,
+          studentName: "your student",
+          tutorId: ctx.user.id,
+          hasIntroVideo,
+          customText: input.text,
+        }),
+      };
+    }),
+
+  send: tutorProcedure
+    .input(z.object({ parentId: z.number(), studentKey: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const pending = await db.getPendingTrialWelcomes(ctx.user.id);
+      const target = pending.find(
+        (p) => p.parentId === input.parentId && p.studentKey === input.studentKey
+      );
+      if (!target) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'This student is no longer pending' });
+      }
+
+      const tutorName =
+        [ctx.user.firstName, ctx.user.lastName].filter(Boolean).join(" ").trim() ||
+        ctx.user.name ||
+        "Your tutor";
+      const hasIntroVideo = await db.tutorHasIntroVideo(ctx.user.id);
+      const customText = await db.getTutorTrialWelcomeMessage(ctx.user.id);
+      const params = {
+        parentName: target.parentName,
+        tutorName,
+        studentName: target.studentName,
+        tutorId: ctx.user.id,
+        hasIntroVideo,
+        customText,
+      };
+
+      const conversation = await db.createOrGetTutorInquiryConversation(target.parentId, ctx.user.id);
+      if (!conversation) {
+        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Could not open conversation' });
+      }
+      const messageId = await db.createMessage({
+        conversationId: conversation.id,
+        senderId: ctx.user.id,
+        content: buildTrialWelcomeText(params),
+        sentAt: Date.now(),
+      });
+      if (!messageId) {
+        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Could not save message' });
+      }
+
+      await db.createInAppNotification({
+        userId: target.parentId,
+        title: "New message",
+        message: `${tutorName} sent you a welcome message about ${target.studentName}`,
+        type: "message",
+        relatedId: conversation.id,
+      });
+
+      let emailOk = false;
+      try {
+        emailOk = await sendTrialWelcomeEmail({ ...params, parentEmail: target.parentEmail });
+      } catch (err) {
+        console.error("[TrialWelcome] Email failed:", err);
+      }
+
+      await db.recordTrialWelcome({
+        tutorId: ctx.user.id,
+        parentId: target.parentId,
+        studentName: target.studentName,
+        sessionId: target.sessionId,
+        conversationId: conversation.id,
+        messageId,
+        emailStatus: emailOk ? "sent" : "failed",
+      });
+
+      return { success: true, emailSent: emailOk };
+    }),
+});
+
 export const appRouter = router({
      parentChat: parentChatRouter,
   system: systemRouter,
-  
+  trialWelcome: trialWelcomeRouter,
+
   auth: router({
     me: publicProcedure.query(opts => {
       const user = opts.ctx.user;

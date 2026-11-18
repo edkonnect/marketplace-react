@@ -1396,3 +1396,59 @@ export function getTrialReminderEmail(props: TrialReminderEmailProps): TrialRemi
     }),
   };
 }
+
+export function getTrialWelcomeEmail(params: {
+  parentName: string;
+  tutorName: string;
+  studentName: string;
+  profileUrl: string;
+  hasIntroVideo: boolean;
+  customText?: string | null;
+  signupUrl: string;
+  loginUrl: string;
+  adminEmail: string;
+}): string {
+  const esc = (s: string) =>
+    s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+  const profileLine = params.hasIntroVideo
+    ? "You can read my profile and watch my introduction video here:"
+    : "You can read my profile here:";
+
+  const custom = params.customText?.trim();
+  const introHtml = custom
+    ? `<p style="margin:0 0 12px; color:#374151; font-size:15px;">${esc(custom).replace(/\n/g, "<br/>")}</p>`
+    : `<p style="margin:0 0 12px; color:#374151; font-size:15px;">
+        I'm <strong>${esc(params.tutorName)}</strong>, and I've been assigned as the tutor for
+        <strong>${esc(params.studentName)}</strong>'s trial lesson. I'm looking forward to teaching ${esc(params.studentName)}!
+      </p>`;
+
+  const content = `
+    <h2 style="margin:0 0 16px; font-size:20px; color:#111827;">Welcome from your tutor, ${esc(params.tutorName)}</h2>
+    <p style="margin:0 0 12px; color:#374151; font-size:15px;">Hi ${esc(params.parentName)},</p>
+    ${introHtml}
+    <p style="margin:0 0 12px; color:#374151; font-size:15px;">
+      ${profileLine}
+      <a href="${params.profileUrl}" style="color:#2563eb;">${params.profileUrl}</a>
+    </p>
+    <p style="margin:0 0 8px; color:#374151; font-size:15px;">
+      Please sign up or sign in to your EdKonnect account to get access to all the files and other
+      features on the website:
+    </p>
+    <ul style="margin:0 0 12px; padding-left:20px; color:#374151; font-size:15px; line-height:1.8;">
+      <li>Sign up: <a href="${params.signupUrl}" style="color:#2563eb;">${params.signupUrl}</a></li>
+      <li>Sign in: <a href="${params.loginUrl}" style="color:#2563eb;">${params.loginUrl}</a></li>
+    </ul>
+    <p style="margin:0 0 12px; color:#374151; font-size:15px;">
+      If you have any trouble signing in, or if you are not interested in the trial lesson, please
+      contact the admin at
+      <a href="mailto:${params.adminEmail}" style="color:#2563eb;">${params.adminEmail}</a>
+      and they will help you or cancel your session.
+    </p>
+    <p style="margin:0; color:#374151; font-size:15px;">${custom ? "" : "Looking forward to meeting you!<br/>"}${esc(params.tutorName)}</p>
+  `;
+
+  return getEmailBase(content, {
+    preheaderText: `${params.tutorName} will be teaching ${params.studentName}`,
+  });
+}

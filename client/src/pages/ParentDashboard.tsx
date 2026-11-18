@@ -20,7 +20,6 @@ import { Link, useLocation } from "wouter";
 import { BookOpen, Calendar, MessageSquare, CreditCard, Clock, Users, Video, FileText, HelpCircle, CheckCircle, TrendingUp, BarChart2, LogIn, Sparkles, Search, Target, Activity, Download, ChevronLeft, ChevronRight } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { LOGIN_PATH } from "@/const";
-import { NotificationCenter } from "@/components/NotificationCenter";
 import { ParentBookingsManager } from "@/components/ParentBookingsManager";
 import { ParentSessionsManager } from "@/components/ParentSessionsManager";
 import { AppointmentScheduler } from "@/components/AppointmentScheduler";
@@ -970,7 +969,6 @@ export default function ParentDashboard() {
                 <h1 className="text-3xl font-bold mb-2">Parent Dashboard</h1>
                 <p className="text-muted-foreground">Manage your child's tutoring sessions and progress</p>
               </div>
-              <NotificationCenter />
             </div>
           </div>
         </div>
