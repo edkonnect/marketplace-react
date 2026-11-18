@@ -9,6 +9,7 @@ import rateLimit from "express-rate-limit";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
+import { recordingStreamRouter } from "../zoom/recording-stream";
 import { serveStatic, setupVite } from "./vite";
 import { ENV } from "./env";
 import { authRouter } from "./routes/auth";
@@ -98,6 +99,7 @@ async function startServer() {
 
   const { handleZoomWebhook } = await import("../zoom/zoom-webhook");
   app.post("/api/webhooks/zoom", handleZoomWebhook);
+app.use("/api/recording-stream", recordingStreamRouter);
 
   app.use("/api/auth", authLimiter, authRouter);
   const { mobileRouter } = await import("./routes/mobile");

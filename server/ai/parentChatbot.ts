@@ -1243,6 +1243,15 @@ async function zoomLiveLink(uuid: string): Promise<RecLink | null> {
   return link;
 }
 
+// Used by the recording stream route: returns the recording uuid only if it matches the session.
+export async function verifiedRecordingUuid(db: Db, sessionId: number): Promise<string | null> {
+  const found = await findRecordings(db, [sessionId]);
+  const f = found.get(sessionId);
+  if (!f) return null;
+  if (!(await recordingMatchesSession(db, sessionId, f))) return null;
+  return f.uuid;
+}
+
 export const parentChatRouter = router({
     access: protectedProcedure.query(({ ctx }) => ({
     allowed: ctx.user.role === "parent" && !!ctx.impersonatedBy,
@@ -1442,14 +1451,14 @@ ${facts || "(nothing)"}`;
       if (ids.length === 0) return [];
       const found = await findRecordings(db, ids);
       const matched = await resolveLinks(db, found, ids);
-      const out: { sessionId: number; url: string; passcode: string | null }[] = [];
+      const out: { sessionId: number }[] = [];
       await Promise.all(
         Array.from(matched.keys()).map(async (sessionId) => {
           const f = found.get(sessionId);
           if (!f) return;
           // Always confirm with Zoom: if Zoom deleted the recording, show nothing.
           const live = await zoomLiveLink(f.uuid);
-          if (live) out.push({ sessionId, url: live.url, passcode: live.passcode ?? null });
+          if (live) out.push({ sessionId });
         })
       );
       return out;

@@ -971,7 +971,6 @@ export default function ParentDashboard() {
                 <h1 className="text-3xl font-bold mb-2">Parent Dashboard</h1>
                 <p className="text-muted-foreground">Manage your child's tutoring sessions and progress</p>
               </div>
-              <NotificationCenter />
             </div>
           </div>
         </div>
@@ -3454,37 +3453,37 @@ export default function ParentDashboard() {
 }
 
 function SessionRecording({ sessionId }: { sessionId: number }) {
+  const [open, setOpen] = useState(false);
   const { data } = trpc.parentChat.myRecordings.useQuery(
     { sessionIds: [sessionId] },
     { retry: false, staleTime: 5 * 60 * 1000, refetchOnWindowFocus: false }
   );
-  const rec = data?.[0];
-  if (!rec) return null;
-  const copyPasscode = async () => {
-    try {
-      await navigator.clipboard.writeText(rec.passcode ?? "");
-      toast.success("Passcode copied");
-    } catch {
-      toast.error("Could not copy passcode");
-    }
-  };
+  if (!data || data.length === 0) return null;
   return (
-    <div className="flex items-center gap-2 flex-wrap justify-end">
-      <Button size="sm" variant="outline" asChild>
-        <a href={rec.url} target="_blank" rel="noopener noreferrer">
-          <Video className="w-4 h-4 mr-1.5" />
-          Watch Recording
-        </a>
+    <>
+      <Button size="sm" variant="outline" onClick={() => setOpen(true)}>
+        <Video className="w-4 h-4 mr-1.5" />
+        Session Recording
       </Button>
-      {rec.passcode && (
-        <div className="flex items-center gap-2 text-sm">
-          <span className="text-muted-foreground">Passcode:</span>
-          <code className="px-2 py-0.5 rounded bg-muted font-mono text-xs select-all">{rec.passcode}</code>
-          <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" onClick={copyPasscode}>
-            Copy
-          </Button>
-        </div>
-      )}
-    </div>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-w-4xl">
+          <DialogHeader>
+            <DialogTitle>Session Recording</DialogTitle>
+          </DialogHeader>
+          {open && (
+            <video
+              src={"/api/recording-stream/" + sessionId}
+              controls
+              autoPlay
+              playsInline
+              controlsList="nodownload noremoteplayback"
+              disablePictureInPicture
+              onContextMenu={(e) => e.preventDefault()}
+              className="w-full rounded-lg bg-black max-h-[70vh]"
+            />
+          )}
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
