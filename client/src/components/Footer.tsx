@@ -68,6 +68,11 @@ export default function Footer() {
     Take your test
   </a>
 </li>
+              <li>
+                <Link href="/free-trial-sat" onClick={scrollToTop} className="hover:text-primary transition-colors">
+                  Free Trial
+                </Link>
+              </li>
             </ul>
           </div>
 

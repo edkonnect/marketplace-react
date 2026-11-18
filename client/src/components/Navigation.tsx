@@ -388,13 +388,6 @@ export default function Navigation() {
                       Become a Tutor
                     </Link>
                   )}
-                  {role !== "tutor" && (
-                    <Link href="/free-trial-sat" className={`text-sm font-medium transition-colors hover:text-primary ${
-                      location === "/free-trial-sat" ? "text-primary" : "text-muted-foreground"
-                    }`}>
-                      Free Trial
-                    </Link>
-                  )}
 
                   {isAuthenticated && (
                     <>
@@ -655,9 +648,6 @@ export default function Navigation() {
 
                                     {role !== "tutor" && (
                     <Link href="/tutor-registration" onClick={() => setMobileMenuOpen(false)} className="text-sm font-medium py-2 hover:text-primary transition-colors">Become a Tutor</Link>
-                  )}
-                  {role !== "tutor" && (
-                    <Link href="/free-trial-sat" onClick={() => setMobileMenuOpen(false)} className="text-sm font-medium py-2 hover:text-primary transition-colors">Free Trial</Link>
                   )}
                   <button
                     onClick={() => { setIsVideoModalOpen(true); setMobileMenuOpen(false); }}
