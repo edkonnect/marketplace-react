@@ -42,12 +42,12 @@ export function VideoPlayerWithRecommendations({
   return (
     <div className="space-y-6">
       {/* Video Player */}
-      <div className="aspect-video bg-muted rounded-lg overflow-hidden">
+      <div className="aspect-video bg-black rounded-lg overflow-hidden">
         <video
           ref={videoRef}
           src={videoUrl}
           controls
-          className="w-full h-full object-cover"
+          className="w-full h-full object-contain"
         >
           Your browser does not support the video tag.
         </video>
