@@ -4745,7 +4745,9 @@ export async function getSimilarTutors(tutorId: number, limit: number = 2) {
         hourlyRate: tutorProfiles.hourlyRate,
         rating: tutorProfiles.rating,
         totalReviews: tutorProfiles.totalReviews,
-        introVideoUrl: tutorProfiles.introVideoUrl,
+              profileImageUrl: tutorProfiles.profileImageUrl,
+      introVideoUrl: tutorProfiles.introVideoUrl,
+      isActive: tutorProfiles.isActive,
       })
       .from(tutorProfiles)
       .innerJoin(users, eq(tutorProfiles.userId, users.id))
