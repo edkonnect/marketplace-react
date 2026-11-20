@@ -31,7 +31,7 @@ import { toast } from "sonner";
 import { formatSessionTime, COMMON_TIMEZONES } from "@/../../shared/timezone-utils";
 import Footer from "@/components/Footer";
 import { statusLabel, statusToStep, stepToStatus, type ProgressStatus } from "@/lib/progressStatus";
-
+import { TrialWelcomeDialog } from "@/components/TrialWelcomeDialog";
 
 type ProgressStatusValue = ProgressStatus;
 
@@ -2801,6 +2801,7 @@ const trendNext6 = (sessionTrend ?? []).slice(7).reduce((s, d) => s + d.total, 0
       </Dialog>
 
       <ReferralCouponPopup />
+            <TrialWelcomeDialog />
 
       {transcriptModal && (
         <Dialog open={true} onOpenChange={() => setTranscriptModal(null)}>
