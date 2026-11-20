@@ -764,13 +764,11 @@ export const appRouter = router({
           });
         }
 
-        // Upload to S3
-        const { storagePut } = await import('./storage/storage');
+                // Upload to S3
+        const { uploadIntroVideoToS3 } = await import('./storage/s3Storage');
         const buffer = Buffer.from(input.base64Data, 'base64');
-        const fileKey = `tutor-videos/${ctx.user.id}-${Date.now()}-${input.fileName}`;
-        
-        const result = await storagePut(fileKey, buffer, input.fileType);
-
+        const result = await uploadIntroVideoToS3(buffer, input.fileType, input.fileName, ctx.user.id);
+        const fileKey = result.key;
         // Update tutor profile with video URL
         const success = await db.updateTutorProfile(ctx.user.id, {
           introVideoUrl: result.url,

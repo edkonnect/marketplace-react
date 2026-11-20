@@ -260,3 +260,38 @@ export async function getCourseFilePresignedUrl(fileKey: string, originalUrl: st
     { expiresIn: 3600 }
   );
 }
+
+
+/**
+ * Upload a tutor introduction video to S3 under tutor-videos/<userId>/.
+ * Needs public read on tutor-videos/* in the bucket policy.
+ */
+export async function uploadIntroVideoToS3(
+  buffer: Buffer,
+  mimeType: string,
+  originalFileName: string,
+  userId: number
+): Promise<{ url: string; key: string }> {
+  const ext = originalFileName.split(".").pop()?.toLowerCase() ?? "mp4";
+  const uuid = crypto.randomUUID();
+  const key = `tutor-videos/${userId}/${uuid}.${ext}`;
+
+  if (hasS3Credentials()) {
+    await getS3Client().send(
+      new PutObjectCommand({
+        Bucket: ENV.awsS3Bucket,
+        Key: key,
+        Body: buffer,
+        ContentType: mimeType,
+      })
+    );
+    return {
+      url: `https://${ENV.awsS3Bucket}.s3.${ENV.awsS3Region}.amazonaws.com/${key}`,
+      key,
+    };
+  }
+
+  // Local dev fallback
+  const url = saveLocally(key, buffer, mimeType);
+  return { url, key };
+}
