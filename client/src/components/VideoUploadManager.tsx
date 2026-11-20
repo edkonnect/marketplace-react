@@ -119,11 +119,11 @@ export function VideoUploadManager({ currentVideoUrl, onUploadComplete }: VideoU
       <CardContent className="space-y-4">
         {currentVideoUrl ? (
           <div className="space-y-4">
-            <div className="aspect-video bg-muted rounded-lg overflow-hidden">
+            <div className="aspect-video bg-black rounded-lg overflow-hidden">
               <video
                 src={currentVideoUrl}
                 controls
-                className="w-full h-full object-cover"
+                className="w-full h-full object-contain"
               >
                 Your browser does not support the video tag.
               </video>
