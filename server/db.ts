@@ -651,8 +651,10 @@ export async function getTutorProfileByUserId(userId: number) {
       hourlyRate: tutorProfiles.hourlyRate,
       yearsOfExperience: tutorProfiles.yearsOfExperience,
       availability: tutorProfiles.availability,
-      profileImageUrl: tutorProfiles.profileImageUrl,
+            profileImageUrl: tutorProfiles.profileImageUrl,
+      introVideoUrl: tutorProfiles.introVideoUrl,
       isActive: tutorProfiles.isActive,
+     
       rating: tutorProfiles.rating,
       totalReviews: tutorProfiles.totalReviews,
       approvalStatus: tutorProfiles.approvalStatus,
