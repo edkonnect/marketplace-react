@@ -8924,6 +8924,100 @@ For engagementData, describe ONLY the student's participation and behavior. The 
         return { success: true };
       }),
 
+
+          /**
+     * Tutor + student join/leave times for a session's Zoom recording (tutor/admin only)
+     */
+    getAttendance: protectedProcedure
+      .input(z.object({
+        sessionId: z.number(),
+        recordingId: z.string(),
+      }))
+      .query(async ({ input, ctx }) => {
+        const session: any = await db.getSessionById(input.sessionId);
+        if (!session) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'Session not found' });
+        }
+        if (ctx.user.role !== 'admin' && session.tutorId !== ctx.user.id) {
+          throw new TRPCError({ code: 'FORBIDDEN', message: 'You do not have access to this session' });
+        }
+        const database = await db.getDb();
+        if (!database) {
+          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Database not available' });
+        }
+
+        const getUser = async (id?: number | null) => {
+          if (!id) return null;
+          const rows = await database
+            .select({ name: users.name, firstName: users.firstName, lastName: users.lastName, email: users.email })
+            .from(users).where(eq(users.id, id)).limit(1);
+          return rows[0] ?? null;
+        };
+        const tutor = await getUser(session.tutorId);
+        const parent = await getUser(session.parentId);
+
+        const { getRecordingAttendance } = await import('./zoom/zoom-service');
+        const { zoomMeetingRecordings } = await import('../drizzle/schema');
+        const savedRows = await database
+          .select({ sessionId: zoomMeetingRecordings.sessionId, attendance: zoomMeetingRecordings.attendance })
+          .from(zoomMeetingRecordings)
+          .where(eq(zoomMeetingRecordings.id, input.recordingId))
+          .limit(1);
+        if (!savedRows[0] || savedRows[0].sessionId !== input.sessionId) {
+          throw new TRPCError({ code: 'FORBIDDEN', message: 'Recording does not belong to this session' });
+        }
+        let attendance: any[] = [];
+        if (savedRows[0].attendance) {
+          try { attendance = JSON.parse(savedRows[0].attendance); } catch {}
+        }
+        if (attendance.length === 0) {
+          attendance = await getRecordingAttendance(input.recordingId);
+          if (attendance.length > 0) {
+            await database.update(zoomMeetingRecordings)
+              .set({ attendance: JSON.stringify(attendance) })
+              .where(eq(zoomMeetingRecordings.id, input.recordingId));
+          }
+        }
+
+        const low = (s?: string | null) => String(s || '').trim().toLowerCase();
+        const tutorEmail = low(tutor?.email);
+        const parentEmail = low(parent?.email);
+        const tutorFirst = low(tutor?.firstName) || low(tutor?.name).split(' ')[0];
+        const studentFirst = low(session.studentFirstName);
+
+        const nameTokens = [tutor?.name, tutor?.firstName, tutor?.lastName]
+          .flatMap(v => low(v).split(/[^a-z]+/))
+          .filter(w => w.length >= 3 && !['edkonnect', 'academy'].includes(w));
+        const botWords = ['read.ai', 'fireflies', 'otter', 'notetaker', 'notes', 'bot'];
+        const isBot = (n: string) => botWords.some(b => low(n).includes(b));
+        const tutorRec =
+          (tutorEmail && attendance.find(a => a.email === tutorEmail)) ||
+          attendance.find(a => !isBot(a.name) && nameTokens.some(w => low(a.name).includes(w))) ||
+          attendance.find(a => !isBot(a.name) && a.email.endsWith('@edkonnect.com')) ||
+          null;
+        const studentRec =
+          attendance.find(a => a !== tutorRec && (
+            (parentEmail && a.email === parentEmail) ||
+            (studentFirst && low(a.name).includes(studentFirst))
+          )) || null;
+
+        const scheduledAt = Number(session.scheduledAt);
+        const shape = (r: { name: string; joinTime: string; leaveTime: string } | null) =>
+          r ? {
+            name: r.name,
+            joinTime: r.joinTime,
+            leaveTime: r.leaveTime,
+            minutesFromStart: Math.floor(new Date(r.joinTime).getTime() / 60000) - Math.floor(scheduledAt / 60000),
+          } : null;
+
+        return {
+          scheduledAt,
+          tutor: shape(tutorRec),
+          student: shape(studentRec),
+          totalParticipants: attendance.length,
+        };
+      }),
+
     /**
      * Get all recordings for a session
      */

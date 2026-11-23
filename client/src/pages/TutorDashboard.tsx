@@ -1159,6 +1159,14 @@ const trendNext6 = (sessionTrend ?? []).slice(7).reduce((s, d) => s + d.total, 0
     }
   };
 
+  const attendanceQuery = trpc.zoom.getAttendance.useQuery(
+    { sessionId: transcriptModal?.sessionId ?? 0, recordingId: transcriptModal?.recordingId ?? "" },
+    { enabled: !!transcriptModal?.recordingId && !!transcriptModal?.sessionId, retry: false }
+  );
+  const fmtAttTime = (iso: string) =>
+    new Date(iso).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: tutorTimezone || undefined });
+  const attTiming = (m: number) => (m > 0 ? m + " min late" : m < 0 ? Math.abs(m) + " min early" : "on time");
+
   const handlePasteTranscript = (sessionId: number) => {
     const session = historySessions?.find((s) => s.id === sessionId);
     const studentName = [session?.studentFirstName, session?.studentLastName]
@@ -2832,6 +2840,23 @@ const trendNext6 = (sessionTrend ?? []).slice(7).reduce((s, d) => s + d.total, 0
 
               {/* Transcript Tab */}
               <TabsContent value="transcript" className="flex-1 flex flex-col gap-4 min-h-0 mt-4 overflow-y-auto pr-1">
+                {attendanceQuery.data && (attendanceQuery.data.tutor || attendanceQuery.data.student) && (
+                  <div className="shrink-0 rounded-md border bg-muted/30 p-3 text-sm space-y-1">
+                    <div className="font-medium">Class timing</div>
+                    <div>Scheduled start: {fmtAttTime(new Date(attendanceQuery.data.scheduledAt).toISOString())}</div>
+                    {attendanceQuery.data.tutor && (
+                      <div>
+                        Tutor: joined {fmtAttTime(attendanceQuery.data.tutor.joinTime)} ({attTiming(attendanceQuery.data.tutor.minutesFromStart)}) &bull; left {fmtAttTime(attendanceQuery.data.tutor.leaveTime)}
+                      </div>
+                    )}
+                    {attendanceQuery.data.student && (
+                      <div>
+                        Student: joined {fmtAttTime(attendanceQuery.data.student.joinTime)} ({attTiming(attendanceQuery.data.student.minutesFromStart)}) &bull; left {fmtAttTime(attendanceQuery.data.student.leaveTime)}
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {transcriptModal.editable ? (
   <div className="space-y-2">
     <Textarea

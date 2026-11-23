@@ -1000,6 +1000,7 @@ export const zoomMeetingRecordings = mysqlTable("zoom_meeting_recordings", {
   status: mysqlEnum("status", ["pending", "processing", "completed", "failed"]).default("pending").notNull(),
   errorMessage: text("errorMessage"),
   shareUrl: text("shareUrl"), // Zoom share URL for recordings
+  attendance: text("attendance"), // JSON: participant join/leave times
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 }, (table) => ({

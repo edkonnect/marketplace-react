@@ -507,3 +507,54 @@ export async function downloadZoomRecordingFile(
 
   return { buffer, mimeType, fileName };
 }
+
+
+
+export type AttendanceRecord = {
+  name: string;
+  email: string;
+  joinTime: string;
+  leaveTime: string;
+};
+
+/**
+ * Per-person attendance for a Zoom meeting instance.
+ * If someone left and rejoined, merges into earliest join + latest leave.
+ */
+export async function getRecordingAttendance(meetingUuid: string): Promise<AttendanceRecord[]> {
+  const accessToken = await getZoomAccessToken();
+  const encodedUuid = encodeURIComponent(encodeURIComponent(meetingUuid));
+  const merged = new Map<string, AttendanceRecord>();
+  let nextToken = "";
+
+  do {
+    const url =
+      ZOOM_API_BASE_URL +
+      "/past_meetings/" + encodedUuid + "/participants?page_size=300" +
+      (nextToken ? "&next_page_token=" + encodeURIComponent(nextToken) : "");
+    const response = await fetch(url, { headers: { Authorization: "Bearer " + accessToken } });
+    if (!response.ok) {
+      const errText = await response.text();
+      console.warn("[ZoomService] Could not fetch attendance for uuid=" + meetingUuid + ": " + response.status + " " + errText);
+      break;
+    }
+    const data = await response.json();
+    for (const p of data.participants || []) {
+      if (!p.join_time || !p.leave_time) continue;
+      const email = String(p.user_email || "").toLowerCase();
+      const name = String(p.name || "").trim();
+      const key = email || name.toLowerCase();
+      if (!key) continue;
+      const prev = merged.get(key);
+      if (!prev) {
+        merged.set(key, { name, email, joinTime: p.join_time, leaveTime: p.leave_time });
+      } else {
+        if (new Date(p.join_time) < new Date(prev.joinTime)) prev.joinTime = p.join_time;
+        if (new Date(p.leave_time) > new Date(prev.leaveTime)) prev.leaveTime = p.leave_time;
+      }
+    }
+    nextToken = data.next_page_token || "";
+  } while (nextToken);
+
+  return Array.from(merged.values());
+}
