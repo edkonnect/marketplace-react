@@ -1730,10 +1730,10 @@ export default function ParentDashboard() {
                             return (
                               <div className="text-sm text-muted-foreground mb-2 space-y-0.5">
                                 {t.tutor && (
-                                  <p><span className="font-medium">Tutor:</span> Start at {fmt(t.tutor.joinTime)} &bull; End at {fmt(t.tutor.leaveTime)}</p>
+                                  <p><span className="font-semibold text-blue-700 bg-blue-50 dark:bg-blue-950/30 dark:text-blue-300 px-1.5 py-0.5 rounded mr-1">Tutor:</span> Started at {fmt(t.tutor.joinTime)} &bull; Ended at {fmt(t.tutor.leaveTime)}</p>
                                 )}
                                 {t.student && (
-                                  <p><span className="font-medium">Student:</span> Start at {fmt(t.student.joinTime)} &bull; End at {fmt(t.student.leaveTime)}</p>
+                                  <p><span className="font-semibold text-purple-700 bg-purple-50 dark:bg-purple-950/30 dark:text-purple-300 px-1.5 py-0.5 rounded mr-1">Student:</span> Started at {fmt(t.student.joinTime)} &bull; Ended at {fmt(t.student.leaveTime)}</p>
                                 )}
                               </div>
                             );
