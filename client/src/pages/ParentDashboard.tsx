@@ -1723,6 +1723,21 @@ export default function ParentDashboard() {
                               <> • Student: {[session.studentFirstName, session.studentLastName].filter(Boolean).join(" ")}</>
                             )}
                           </p>
+                          {(() => {
+                            const t = (session as any).attendanceTiming;
+                            if (!t || (!t.tutor && !t.student)) return null;
+                            const fmt = (iso: string) => new Date(iso).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: parentTimezone || undefined });
+                            return (
+                              <div className="text-sm text-muted-foreground mb-2 space-y-0.5">
+                                {t.tutor && (
+                                  <p><span className="font-medium">Tutor:</span> Start at {fmt(t.tutor.joinTime)} &bull; End at {fmt(t.tutor.leaveTime)}</p>
+                                )}
+                                {t.student && (
+                                  <p><span className="font-medium">Student:</span> Start at {fmt(t.student.joinTime)} &bull; End at {fmt(t.student.leaveTime)}</p>
+                                )}
+                              </div>
+                            );
+                          })()}
                           {session.feedbackFromTutor && (
                             <div className="mt-3 p-4 sm:p-5 rounded-xl border-l-4 border-blue-500 bg-gradient-to-br from-blue-50 to-blue-100/50 dark:from-blue-950/30 dark:to-blue-900/20 shadow-sm">
                               <div className="flex items-start gap-3">

@@ -2579,6 +2579,62 @@ export const appRouter = router({
     }),
 
     myHistory: protectedProcedure.query(async ({ ctx }) => {
+
+      const attachAttendance = async (list: any[]) => {
+        try {
+          const ids = list.map((x: any) => x.id).filter(Boolean);
+          if (ids.length === 0) return list;
+          const database = await db.getDb();
+          if (!database) return list;
+          const { zoomMeetingRecordings } = await import('../drizzle/schema');
+          const { inArray } = await import('drizzle-orm');
+          const recs = await database
+            .select({ sessionId: zoomMeetingRecordings.sessionId, attendance: zoomMeetingRecordings.attendance })
+            .from(zoomMeetingRecordings)
+            .where(inArray(zoomMeetingRecordings.sessionId, ids));
+          const bySession = new Map<number, any[]>();
+          for (const r of recs) {
+            if (!r.attendance || r.sessionId == null) continue;
+            try {
+              const arr = JSON.parse(r.attendance);
+              if (Array.isArray(arr) && arr.length > 0) bySession.set(r.sessionId, arr);
+            } catch {}
+          }
+          const low = (v: any) => String(v || '').trim().toLowerCase();
+          const toks = (v: any) => low(v).split(/[^a-z]+/).filter((w: string) => w.length >= 3 && !['edkonnect', 'academy'].includes(w));
+          const botWords = ['read.ai', 'fireflies', 'otter', 'notetaker', 'notes', 'bot'];
+          const isBot = (n: string) => botWords.some(b => low(n).includes(b));
+          return list.map((item: any) => {
+            let att = bySession.get(item.id);
+            if (!att && item.scheduledAt && item.status === 'completed') {
+              const found: { arr: any[] | null; diff: number } = { arr: null, diff: 15 * 60000 + 1 };
+              Array.from(bySession.keys()).forEach((sid) => {
+                const other = list.find((x: any) => x.id === sid);
+                if (!other || other.tutorId !== item.tutorId) return;
+                const arr = bySession.get(sid)!;
+                const startMs = Math.min(...arr.map((x: any) => new Date(x.joinTime).getTime()));
+                const diff = Math.abs(startMs - Number(item.scheduledAt));
+                if (diff < found.diff) { found.diff = diff; found.arr = arr; }
+              });
+              if (found.arr) att = found.arr;
+            }
+            if (!att) return item;
+            const tutorTokens = toks(item.tutorName);
+            const studentTokens = [...toks(item.studentFirstName), ...toks(item.parentName)];
+            const tutorRec = att.find((x: any) => !isBot(x.name) && tutorTokens.some((w: string) => low(x.name).includes(w)))
+              || att.find((x: any) => !isBot(x.name) && low(x.email).endsWith('@edkonnect.com'))
+              || null;
+            let studentRec = att.find((x: any) => x !== tutorRec && !isBot(x.name) && studentTokens.some((w: string) => low(x.name).includes(w))) || null;
+            if (!studentRec) { const others = att.filter((o: any) => o !== tutorRec && !isBot(o.name)); if (others.length === 1) studentRec = others[0]; }
+            const pick = (r: any) => (r ? { joinTime: r.joinTime, leaveTime: r.leaveTime } : null);
+            return { ...item, attendanceTiming: { tutor: pick(tutorRec), student: pick(studentRec) } };
+          });
+        } catch (e) {
+          console.warn('[myHistory] attendance attach failed', e);
+          return list;
+        }
+      };
+      const baseHistory: any[] = await (async () => {
       // Zoom URL for a given (tutorId, isHost) pair is identical across all rows in this
       // request, so cache per pair instead of hitting the DB/Zoom API for every session.
       const zoomUrlCache = new Map<string, Promise<string | null>>();
@@ -2632,6 +2688,8 @@ export const appRouter = router({
           };
         }));
       }
+    })();
+      return await attachAttendance(baseHistory);
     }),
 
     // Coordinator-specific: Get upcoming sessions for a specific parent
@@ -3504,6 +3562,7 @@ export const appRouter = router({
           (input.status === 'completed' || (!input.status && session.status === 'completed'));
 
         if (isNotesUpdate) {
+          void (async () => {
           try {
             const parent = await db.getUserById(session.parentId);
             const tutor = await db.getUserById(session.tutorId);
@@ -3564,6 +3623,7 @@ const studentName = sessionName || subName || 'your child';
           } catch (emailError) {
             console.error('[Session Notes] Failed to send notification:', emailError);
           }
+          })();
         }
 
         // Send email notification to parent if session is marked as no-show
@@ -8996,6 +9056,7 @@ For engagementData, describe ONLY the student's participation and behavior. The 
         const parentEmail = low(parent?.email);
         const tutorFirst = low(tutor?.firstName) || low(tutor?.name).split(' ')[0];
         const studentFirst = low(session.studentFirstName);
+        const parentTokens = [parent?.name, parent?.firstName, parent?.lastName].flatMap(v => low(v).split(/[^a-z]+/)).filter(w => w.length >= 3);
 
         const nameTokens = [tutor?.name, tutor?.firstName, tutor?.lastName]
           .flatMap(v => low(v).split(/[^a-z]+/))
@@ -9007,11 +9068,13 @@ For engagementData, describe ONLY the student's participation and behavior. The 
           attendance.find(a => !isBot(a.name) && nameTokens.some(w => low(a.name).includes(w))) ||
           attendance.find(a => !isBot(a.name) && a.email.endsWith('@edkonnect.com')) ||
           null;
-        const studentRec =
+        let studentRec =
           attendance.find(a => a !== tutorRec && (
             (parentEmail && a.email === parentEmail) ||
-            (studentFirst && low(a.name).includes(studentFirst))
+            (studentFirst && low(a.name).includes(studentFirst)) ||
+            parentTokens.some(w => low(a.name).includes(w))
           )) || null;
+            if (!studentRec) { const others = attendance.filter((o: any) => o !== tutorRec && !isBot(o.name)); if (others.length === 1) studentRec = others[0]; }
 
         const scheduledAt = Number(session.scheduledAt);
         const shape = (r: { name: string; joinTime: string; leaveTime: string } | null) =>

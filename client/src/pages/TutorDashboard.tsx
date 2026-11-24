@@ -653,7 +653,7 @@ const trendNext6 = (sessionTrend ?? []).slice(7).reduce((s, d) => s + d.total, 0
   const [progressSuggestionModal, setProgressSuggestionModal] = useState<null | { subscriptionId: number; studentName: string; courseTitle: string }>(null);
 
    const updateTranscriptMutation = trpc.zoom.updateTranscript.useMutation({
-    onSuccess: () => toast.success("Transcript saved!"),
+    onSuccess: () => { toast.success("Transcript saved!"); refetchHistory(); },
     onError: (e) => toast.error("Failed to save transcript: " + e.message),
   });
   const fetchTranscriptMutation = trpc.zoom.fetchTranscript.useMutation({
@@ -2230,7 +2230,7 @@ const trendNext6 = (sessionTrend ?? []).slice(7).reduce((s, d) => s + d.total, 0
                           return (
                             <Card key={session.id}>
                               <CardContent className="pt-4 sm:pt-6 space-y-4">
-                                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
+                                <div className="relative flex flex-col xl:flex-row xl:items-center xl:justify-between gap-3 sm:gap-4">
                                   <div className="flex items-start sm:items-center gap-3 sm:gap-4 flex-1 min-w-0">
                                     <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
                                       <Calendar className="w-5 h-5 sm:w-6 sm:h-6 text-primary" />
@@ -2244,6 +2244,7 @@ const trendNext6 = (sessionTrend ?? []).slice(7).reduce((s, d) => s + d.total, 0
                                           const { date, time } = formatSessionDateTime(session.scheduledAt);
                                           return `${date} • ${time} • ${session.duration} min`;
                                         })()}
+
                                       </p>
                                       <p className="text-xs sm:text-sm text-muted-foreground">
                                         {(session.studentFirstName || session.studentLastName)
@@ -2653,7 +2654,7 @@ const trendNext6 = (sessionTrend ?? []).slice(7).reduce((s, d) => s + d.total, 0
                                 })()}
 
                                 {(
-                                  <div className="flex gap-2">
+                                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
                                     <Button
                                       size="sm"
                                       variant="outline"
@@ -2672,6 +2673,28 @@ const trendNext6 = (sessionTrend ?? []).slice(7).reduce((s, d) => s + d.total, 0
                                     >
                                       Remove from history
                                     </Button>
+                                    {(() => {
+                                      const t = (session as any).attendanceTiming;
+                                      if (!t || (!t.tutor && !t.student)) return null;
+                                      const fmt = (iso: string) => new Date(iso).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: tutorTimezone || undefined });
+                                      const mins = (iso: string) => Math.floor(new Date(iso).getTime() / 60000) - Math.floor(Number(session.scheduledAt) / 60000);
+                                      const tLate = t.tutor ? mins(t.tutor.joinTime) : 0;
+                                      const sLate = t.student ? mins(t.student.joinTime) : 0;
+                                      return (
+                                        <div className="text-xs sm:text-sm text-muted-foreground flex flex-wrap items-center gap-x-4 gap-y-0.5">
+                                          {t.tutor && (
+                                            <span>
+                                              <span className="font-semibold text-blue-700 bg-blue-50 dark:bg-blue-950/30 dark:text-blue-300 px-1.5 py-0.5 rounded mr-1">Tutor:</span> Started at <span className={tLate > 3 ? "text-red-600 font-semibold" : ""}>{fmt(t.tutor.joinTime)}{tLate > 3 ? " (" + tLate + " min late)" : ""}</span> &bull; Ended at {fmt(t.tutor.leaveTime)}
+                                            </span>
+                                          )}
+                                          {t.student && (
+                                            <span>
+                                              <span className="font-semibold text-purple-700 bg-purple-50 dark:bg-purple-950/30 dark:text-purple-300 px-1.5 py-0.5 rounded mr-1">Student:</span> Started at <span className={sLate > 3 ? "text-orange-600 font-semibold" : ""}>{fmt(t.student.joinTime)}{sLate > 3 ? " (" + sLate + " min late)" : ""}</span> &bull; Ended at {fmt(t.student.leaveTime)}
+                                            </span>
+                                          )}
+                                        </div>
+                                      );
+                                    })()}
                                   </div>
                                 )}
                               </CardContent>
@@ -2869,7 +2892,7 @@ const trendNext6 = (sessionTrend ?? []).slice(7).reduce((s, d) => s + d.total, 0
       size="sm"
       variant="outline"
       onClick={() => {
-        if (!transcriptModal.recordingId) return;
+        if (!transcriptModal.recordingId) { toast.error("This transcript was pasted, so there is no Zoom recording to save it to. Use Summarize to save the notes."); return; }
         updateTranscriptMutation.mutate({
           recordingId: transcriptModal.recordingId,
           transcriptText: transcriptModal.transcript,
@@ -2877,7 +2900,7 @@ const trendNext6 = (sessionTrend ?? []).slice(7).reduce((s, d) => s + d.total, 0
       }}
       disabled={updateTranscriptMutation.isPending}
     >
-      Save Edited Transcript
+      {updateTranscriptMutation.isPending ? "Saving..." : "Save Edited Transcript"}
     </Button>
   </div>
                 ) : (
