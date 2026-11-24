@@ -54,7 +54,7 @@ export function NotificationBell() {
 
     // Navigate to tutor dashboard sessions tab for session-related notifications
     setOpen(false);
-    setLocation('/tutor/dashboard?tab=sessions');
+    if (typeof notification.type === 'string' && notification.type.startsWith('announcement:')) { setLocation(notification.type.slice('announcement:'.length)); } else { setLocation('/tutor/dashboard?tab=sessions'); }
   };
 
   const handleMarkAllAsRead = () => {
