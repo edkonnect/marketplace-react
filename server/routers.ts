@@ -941,7 +941,9 @@ export const appRouter = router({
       .input(z.object({ userId: z.number() }))
       .query(async ({ input }) => {
         const profile = await db.getParentProfileByUserId(input.userId);
-        return profile;
+        if (!profile) return profile;
+        const { billingEmail: _billingEmail, ...publicProfile } = profile;
+        return publicProfile;
       }),
 
     getMy: parentProcedure.query(async ({ ctx }) => {
@@ -968,9 +970,19 @@ export const appRouter = router({
       .input(z.object({
         childrenInfo: z.string().optional(),
         preferences: z.string().optional(),
+        billingEmail: z.union([z.literal(""), z.string().trim().email().max(320)]).optional(),
       }))
       .mutation(async ({ ctx, input }) => {
-        const success = await db.updateParentProfile(ctx.user.id, input);
+        const { billingEmail, ...rest } = input;
+        const updates = {
+          ...rest,
+          ...(billingEmail !== undefined ? { billingEmail: billingEmail.trim() || null } : {}),
+        };
+        const existing = await db.getParentProfileByUserId(ctx.user.id);
+        // updateParentProfile silently does nothing when the parent has no profile row yet
+        const success = existing
+          ? await db.updateParentProfile(ctx.user.id, updates)
+          : !!(await db.createParentProfile({ userId: ctx.user.id, ...updates }));
         if (!success) {
           throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to update profile' });
         }
@@ -1425,7 +1437,7 @@ export const appRouter = router({
             courseName: course.title,
             courseId: course.id,
             userId: ctx.user.id,
-            userEmail: ctx.user.email,
+            userEmail: await db.getBillingEmailOrLogin(ctx.user.id, ctx.user.email),
             userName: ctx.user.name,
             origin: input.origin,
             currency,
@@ -1613,7 +1625,7 @@ export const appRouter = router({
             const parentUser = await db.getUserById(ctx.user.id);
             const stripeCustomerId = await getOrCreateStripeCustomer({
               userId: ctx.user.id,
-              email: ctx.user.email,
+              email: await db.getBillingEmailOrLogin(ctx.user.id, ctx.user.email),
               name: ctx.user.name,
               existingStripeCustomerId: parentUser?.stripeCustomerId,
               currency: enrollCurrency,
@@ -1790,7 +1802,7 @@ export const appRouter = router({
             const parentUser = await db.getUserById(ctx.user.id);
             const stripeCustomerId = await getOrCreateStripeCustomer({
               userId: ctx.user.id,
-              email: ctx.user.email,
+              email: await db.getBillingEmailOrLogin(ctx.user.id, ctx.user.email),
               name: ctx.user.name,
               existingStripeCustomerId: parentUser?.stripeCustomerId,
               currency: installmentCurrency,
@@ -2004,7 +2016,7 @@ export const appRouter = router({
           courseName: course.title,
           courseId: course.id,
           userId: ctx.user.id,
-          userEmail: ctx.user.email,
+          userEmail: await db.getBillingEmailOrLogin(ctx.user.id, ctx.user.email),
           userName: ctx.user.name,
           origin: input.origin,
           currency: retryCurrency,
@@ -2043,7 +2055,7 @@ export const appRouter = router({
         const installRetryCurrency = useInrInstallRetry ? "inr" as const : "usd" as const;
         const stripeCustomerId = await getOrCreateStripeCustomer({
           userId: ctx.user.id,
-          email: ctx.user.email,
+          email: await db.getBillingEmailOrLogin(ctx.user.id, ctx.user.email),
           name: ctx.user.name,
           existingStripeCustomerId: parentUser?.stripeCustomerId,
           currency: installRetryCurrency,
@@ -2106,7 +2118,7 @@ export const appRouter = router({
 
         const stripeCustomerId = await getOrCreateStripeCustomer({
           userId: ctx.user.id,
-          email: ctx.user.email,
+          email: await db.getBillingEmailOrLogin(ctx.user.id, ctx.user.email),
           name: ctx.user.name,
           existingStripeCustomerId: parentUser?.stripeCustomerId,
           currency: setupCurrency,
@@ -4487,7 +4499,7 @@ const studentName = sessionName || subName || 'your child';
           courseName: course.title,
           courseId: course.id,
           userId: ctx.user.id,
-          userEmail: ctx.user.email,
+          userEmail: await db.getBillingEmailOrLogin(ctx.user.id, ctx.user.email),
           userName: ctx.user.name,
           origin: `${ctx.req.protocol}://${ctx.req.get("host")}`,
           currency: checkoutCurrency,

@@ -145,6 +145,7 @@ export const parentProfiles = mysqlTable("parent_profiles", {
   emergencyContactName: varchar("emergencyContactName", { length: 255 }),
   emergencyContactPhone: varchar("emergencyContactPhone", { length: 20 }),
   bestTimeToContact: varchar("bestTimeToContact", { length: 100 }),
+    billingEmail: varchar("billingEmail", { length: 320 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 }, (table) => ({

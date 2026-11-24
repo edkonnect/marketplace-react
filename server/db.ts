@@ -779,6 +779,7 @@ export async function getParentProfileByUserId(userId: number) {
       emergencyContactName: parentProfiles.emergencyContactName,
       emergencyContactPhone: parentProfiles.emergencyContactPhone,
       bestTimeToContact: parentProfiles.bestTimeToContact,
+      billingEmail: parentProfiles.billingEmail,
       createdAt: parentProfiles.createdAt,
       updatedAt: parentProfiles.updatedAt,
       timezone: users.timezone,
@@ -801,6 +802,11 @@ export async function updateParentProfile(userId: number, updates: Partial<Inser
     console.error("[Database] Failed to update parent profile:", error);
     return false;
   }
+}
+
+export async function getBillingEmailOrLogin(userId: number, loginEmail: string): Promise<string> {
+  const profile = await getParentProfileByUserId(userId);
+  return profile?.billingEmail?.trim() || loginEmail;
 }
 
 // ============ Coordinator Profile Management ============

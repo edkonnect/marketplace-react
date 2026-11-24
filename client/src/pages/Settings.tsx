@@ -28,6 +28,7 @@ export default function Settings() {
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [timezone, setTimezone] = useState("");
+  const [billingEmail, setBillingEmail] = useState("");
 
   // Password
   const [currentPassword, setCurrentPassword] = useState("");
@@ -71,6 +72,19 @@ const { data: subscriptions } = trpc.subscription.mySubscriptions.useQuery(undef
       setTimezone((meData as any).timezone || "");
     }
   }, [meData]);
+
+  const { data: parentProfileData, refetch: refetchParentProfile } = trpc.parentProfile.getMy.useQuery(undefined, {
+    enabled: isAuthenticated && user?.role === "parent",
+  });
+
+  useEffect(() => {
+    if (parentProfileData) setBillingEmail((parentProfileData as any).billingEmail || "");
+  }, [parentProfileData]);
+
+  const updateParentProfileMutation = trpc.parentProfile.update.useMutation({
+    onSuccess: () => { toast.success("Billing email saved"); refetchParentProfile(); },
+    onError: (err) => toast.error(err.message || "Failed to save billing email"),
+  });
 
   useEffect(() => {
     if (tutorProfile) {
@@ -209,6 +223,12 @@ const { data: subscriptions } = trpc.subscription.mySubscriptions.useQuery(undef
     updateProfileMutation.mutate(updates);
   };
 
+  const handleBillingEmailSave = () => {
+    const value = billingEmail.trim();
+    if (value && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) { toast.error("Please enter a valid billing email"); return; }
+    updateParentProfileMutation.mutate({ billingEmail: value });
+  };
+
   const handlePasswordChange = () => {
     if (newPassword !== confirmPassword) { toast.error("New passwords do not match"); return; }
     if (newPassword.length < 8) { toast.error("Password must be at least 8 characters"); return; }
@@ -314,6 +334,29 @@ const { data: subscriptions } = trpc.subscription.mySubscriptions.useQuery(undef
             </div>
           </div>
         </section>
+
+        {user?.role === "parent" && (
+          <section className="mb-8">
+            <div className="flex items-center gap-2 mb-4">
+              <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center">
+                <User className="w-4 h-4 text-primary" />
+              </div>
+              <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Billing</h2>
+            </div>
+            <div className="bg-background rounded-xl border shadow-sm p-6 space-y-5">
+              <div className="space-y-1.5">
+                <Label htmlFor="billingEmail" className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Billing Email Address</Label>
+                <Input id="billingEmail" type="email" value={billingEmail} onChange={e => setBillingEmail(e.target.value)} placeholder="Same as login email" />
+                <Button type="button" variant="link" size="sm" className="h-auto p-0 text-xs" onClick={() => setBillingEmail(email)} disabled={!email}>Use login email</Button>
+              </div>
+              <div className="flex justify-end pt-1">
+                <Button onClick={handleBillingEmailSave} disabled={updateParentProfileMutation.isPending} size="sm">
+                  {updateParentProfileMutation.isPending ? "Saving..." : "Save Billing Email"}
+                </Button>
+              </div>
+            </div>
+          </section>
+        )}
 
         {/* Security */}
         <section className="mb-8">
