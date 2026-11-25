@@ -33,7 +33,7 @@ import {
 } from "../../drizzle/schema";
 import { sanitizeReply } from "./sanitizeReply";
 import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
-import "core-js/actual/iterator";
+import "core-js/actual/iterator/index.js";
 import { extractText, getDocumentProxy } from "unpdf";
 // ───────────────────────── Settings ─────────────────────────
 const MODEL = "gemini-2.5-flash";
